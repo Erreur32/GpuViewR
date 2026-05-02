@@ -100,18 +100,45 @@ function printBoot(): void {
   const ip = getDisplayIP();
   const publicUrl = getPublicUrl();
 
+  // In Docker, DASHBOARD_PORT is the host port mapped to the container's PORT.
+  // The banner must show that *external* port to be openable from a browser
+  // (the container-internal port — config.port — would be unreachable from the host).
+  const dashboardPort = parseInt(process.env.DASHBOARD_PORT || String(config.port), 10);
+
   // In dev, the user opens Vite (5181 by default); in Docker prod, Express serves dist/ directly.
   const vitePort = parseInt(process.env.VITE_PORT || '5181', 10);
-  const backendUrl = publicUrl && isProd ? publicUrl : `http://${ip}:${config.port}`;
-  const localBackend = `http://localhost:${config.port}`;
-  const frontendWeb = isProd
-    ? backendUrl
-    : `http://${ip}:${vitePort}`;
-  const frontendLocal = isProd
-    ? localBackend
-    : `http://localhost:${vitePort}`;
 
-  const wsUrl = (isProd ? backendUrl : `http://${ip}:${config.port}`).replace(/^http/, 'ws') + '/ws/gpu';
+  let frontendWeb: string;
+  let frontendLocal: string;
+  let backendApi: string;
+  let wsUrl: string;
+
+  if (publicUrl && isProd) {
+    // Reverse-proxy / public domain configured — use it for everything.
+    frontendWeb = publicUrl;
+    frontendLocal = publicUrl;
+    backendApi = publicUrl;
+    wsUrl = publicUrl.replace(/^http/, 'ws') + '/ws/gpu';
+  } else if (isDocker) {
+    // Docker: external URL uses host IP + DASHBOARD_PORT; localhost line uses
+    // the same external port (the container-internal port is hidden from users).
+    frontendWeb = `http://${ip}:${dashboardPort}`;
+    frontendLocal = `http://localhost:${dashboardPort}`;
+    backendApi = frontendWeb;
+    wsUrl = frontendWeb.replace(/^http/, 'ws') + '/ws/gpu';
+  } else if (isProd) {
+    // Bare-metal `npm start` — Express serves the bundle directly on PORT.
+    frontendWeb = `http://${ip}:${config.port}`;
+    frontendLocal = `http://localhost:${config.port}`;
+    backendApi = frontendWeb;
+    wsUrl = frontendWeb.replace(/^http/, 'ws') + '/ws/gpu';
+  } else {
+    // npm run dev — Vite on VITE_PORT, backend on config.port, both on the dev box.
+    frontendWeb = `http://${ip}:${vitePort}`;
+    frontendLocal = `http://localhost:${vitePort}`;
+    backendApi = `http://${ip}:${config.port}`;
+    wsUrl = backendApi.replace(/^http/, 'ws') + '/ws/gpu';
+  }
 
   let envLabel: string;
   if (isProd && isDocker) envLabel = `Docker · v${version}`;
@@ -127,10 +154,10 @@ function printBoot(): void {
     containerName,
     frontendWeb,
     frontendLocal,
-    backendApi: backendUrl,
+    backendApi,
     websocket: wsUrl,
     features: [
-      'Authentication (JWT + bcrypt)',
+      'Authentication (JWT + bcryptjs)',
       'Live GPU streaming (WebSocket)',
       'Multi-GPU + 5 themes + arc/bar gauges',
       'Alerts engine (sustain + cooldown)',
@@ -142,10 +169,10 @@ function printBoot(): void {
   console.log(banner);
 
   // Compact summary into the persistent log buffer (visible in /logs page).
-  logger.success('boot', `Listening on ${backendUrl} (env: ${envLabel}, ip: ${ip})`);
+  logger.success('boot', `Listening on ${backendApi} (env: ${envLabel}, ip: ${ip})`);
   logger.info('boot', `Frontend WEB:   ${frontendWeb}`);
   logger.info('boot', `Frontend Local: ${frontendLocal}`);
-  logger.info('boot', `Backend  API:   ${backendUrl}/api/health`);
+  logger.info('boot', `Backend  API:   ${backendApi}/api/health`);
   logger.info('boot', `WebSocket:      ${wsUrl}`);
 }
 

@@ -42,6 +42,10 @@ services:
       # Container port (must match the right-hand port mapping above).
       PORT: 3015
 
+      # Host port mapped to the container — used by the boot banner so the
+      # printed URL is openable from the host. Defaults to 7510.
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
+
       # Shown in the boot banner. If unset, GpuViewR auto-detects a LAN IP,
       # but inside Docker that may resolve to the bridge gateway (172.x.x.x).
       # Set HOST_IP=<your LAN IP> to make the printed URL openable from the LAN.
