@@ -19,7 +19,17 @@
  
 **Real-time NVIDIA GPU monitoring dashboard, packaged as a single Docker image.**
 
-[Quick start](#quick-start) · [Configuration](#configuration) · [First login](#first-login) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Roadmap](#roadmap)
+[Screenshot](#screenshot) · [Quick start](#quick-start) · [Configuration](#configuration) · [First login](#first-login) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Roadmap](#roadmap)
+
+</div>
+
+---
+
+## Screenshot
+
+<div align="center">
+
+<img src="public/gpuviewr_screnshot.png" alt="GpuViewR dashboard screenshot" />
 
 </div>
 

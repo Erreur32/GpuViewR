@@ -1,12 +1,9 @@
-release: v0.1.13 - cleaner Updates tab, smarter tooltip, deterministic check feedback
+release: v0.1.14 - README screenshot, PNG favicon
 
-- Updates tab: drop the inline release-notes <pre> block (About tab
-  is the only changelog viewer now). Replaced with a compact link
-  card "Release notes - vX.Y.Z -> View on GitHub".
-- Chart tooltip is anchored on the cursor with a flipping diagonal
-  offset (top-right by default, flips to the left near the right
-  edge, below near the top) so it never overlaps the pointer or
-  gets clipped.
-- updateStore.check() returns the result so the UI can branch on
-  the actual value. "Check now" always toasts: up-to-date,
-  available, or a failure reason.
+- README: new "Screenshot" section embedding
+  public/gpuviewr_screnshot.png, plus a matching link in the
+  table of contents at the top of the page.
+- index.html: switch the browser favicon from the small SVG to
+  /gpuviewr_logo.png so the tab icon matches the in-app logo.
+  The PNG is intentionally oversized for now; a properly sized
+  favicon will come later.
