@@ -14,6 +14,13 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 *.code-workspace
+# Vim / Neovim swap files (also when filename starts with a dot)
+*.swp
+*.swo
+*.sw?
+.*.swp
+.*.swo
+.*.sw?
 
 # AI tools
 .claude
