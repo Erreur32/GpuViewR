@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns an empty string when `PUBLIC_URL` is unset, and the banner uses the
   detected IP for the public URL row.
 
+### Changed
+- Replaced the old `scripts/bump-version.js` with a richer
+  `scripts/update-version.sh`, mirroring the LogviewR pattern. The new script:
+  - Updates `package.json`, `package-lock.json`,
+    `src/components/layout/Header.tsx`, and matching version markers in
+    `README.md`.
+  - Generates (or refreshes) a `commit-message.txt` template.
+  - Optional `--tag-push` flag does commit + annotated tag + branch & tag
+    push in one shot — exactly what the GHCR publish workflow needs.
+  - npm aliases preserved: `npm run version:bump <new_version>`.
+
 ### Added
 - **In-app update checker**: new admin-facing module that polls GitHub for
   newer releases and verifies the matching image is published on GHCR.

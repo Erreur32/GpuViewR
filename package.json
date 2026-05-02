@@ -21,10 +21,8 @@
     "build": "vite build",
     "start": "cross-env NODE_ENV=production tsx server/index.ts",
     "preview": "vite preview",
-    "version:bump": "node scripts/bump-version.js",
-    "version:patch": "node scripts/bump-version.js patch",
-    "version:minor": "node scripts/bump-version.js minor",
-    "version:major": "node scripts/bump-version.js major",
+    "version:bump": "./scripts/update-version.sh",
+    "version:tag-push": "./scripts/update-version.sh",
     "test": "tsx --test server/**/*.test.ts"
   },
   "dependencies": {
