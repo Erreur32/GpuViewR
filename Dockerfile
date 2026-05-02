@@ -6,7 +6,7 @@
 # This rewrite uses the same Docker volumes/port for migration compatibility.
 
 # ---------- Stage 1: Build ----------
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS builder
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim@sha256:d415caac2f1f77b98caaf9415c5f807e14bc8d7bdea62561ea2fef4fbd08a73c AS builder
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ RUN npm prune --production && npm cache clean --force
 
 
 # ---------- Stage 2: Runtime ----------
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim@sha256:d415caac2f1f77b98caaf9415c5f807e14bc8d7bdea62561ea2fef4fbd08a73c
 
 WORKDIR /app
 
