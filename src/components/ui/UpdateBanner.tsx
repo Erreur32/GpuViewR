@@ -7,7 +7,7 @@ const UPDATE_COMMAND = 'docker compose pull && docker compose up -d';
 
 export default function UpdateBanner() {
   const { t } = useTranslation();
-  const { result, loading, check, dismiss, isDismissed, hydrate } = useUpdateStore();
+  const { result, loading, check, dismiss, isDismissed, hydrate, bannerEnabled } = useUpdateStore();
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -16,6 +16,7 @@ export default function UpdateBanner() {
     void check(false);
   }, [hydrate, check]);
 
+  if (!bannerEnabled) return null;
   if (!result || !result.updateAvailable || !result.dockerReady) return null;
   if (result.latestVersion && isDismissed(result.latestVersion)) return null;
 

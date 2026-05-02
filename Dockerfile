@@ -62,6 +62,7 @@ COPY --chown=node:node --from=builder /app/dist ./dist
 COPY --chown=node:node --from=builder /app/server ./server
 COPY --chown=node:node --from=builder /app/tsconfig.json ./
 COPY --chown=node:node --from=builder /app/CHANGELOG.md ./
+COPY --chown=node:node --from=builder /app/README.md ./
 
 ENV NODE_ENV=production
 ENV PORT=3015

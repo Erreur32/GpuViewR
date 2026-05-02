@@ -193,7 +193,11 @@ emitted and a green toast confirms it.
 
 ### Planned
 
-- Per-process GPU usage breakdown (`nvidia-smi --query-compute-apps`)
+- **Per-process GPU usage breakdown** — list the processes currently
+  using each GPU (PID, command name, used VRAM, compute %) via
+  `nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv`,
+  with a live table on the dashboard and optional alerts on a watched
+  process
 - Password reset CLI
 - CSV export of historical metrics
 - PWA (installable on mobile, offline shell)

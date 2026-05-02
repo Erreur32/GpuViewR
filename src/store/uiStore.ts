@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { applyTheme, getTheme } from '../lib/themes';
 
 export type GaugeView = 'arc' | 'bar';
-export type Range = '1m' | '2m' | '5m' | '15m' | '1h' | '6h' | '24h' | '3d';
+export type Range = 'live' | '5m' | '15m' | '1h' | '6h' | '24h' | '3d';
 export type ChartSeriesKey = 'util' | 'temp' | 'pow';
 export type ChartColors = Partial<Record<ChartSeriesKey, string>>;
 export type TimeFormat = '24h' | '12h';
@@ -152,7 +152,13 @@ export const useUiStore = create<UiState>((set, get) => ({
   hydrate: () => {
     const themeId = readLS(KEYS.theme, 'midnight');
     const gaugeView = (readLS(KEYS.view, 'arc') as GaugeView) || 'arc';
-    const range = (readLS(KEYS.range, '1h') as Range) || '1h';
+    // Migrate legacy values ('1m', '2m') that no longer exist in the
+    // Range union to the closest current option so the UI does not break
+    // for users upgrading from <= 0.1.8.
+    const rawRange = readLS(KEYS.range, '1h');
+    const range: Range = (['live', '5m', '15m', '1h', '6h', '24h', '3d'] as Range[]).includes(rawRange as Range)
+      ? (rawRange as Range)
+      : ((rawRange === '1m' || rawRange === '2m') ? 'live' : '1h');
     const sound = readLS(KEYS.sound, '0') === '1';
     const chartColors = readChartColors();
     const timeFormat = (readLS(KEYS.timeFormat, '24h') as TimeFormat) || '24h';

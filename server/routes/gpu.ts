@@ -33,6 +33,8 @@ router.get('/stats', (req, res) => {
 });
 
 function parseRange(input: string): number {
+  // "live" = the rolling 50-second window shown by default on the chart.
+  if (input === 'live') return 50;
   const m = /^(\d+(?:\.\d+)?)(s|m|h|d)$/.exec(input);
   if (!m) return 3600;
   const n = parseFloat(m[1]);

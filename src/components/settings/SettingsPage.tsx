@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Moon, LayoutGrid, BarChart3, Languages, Clock, Sliders, Share2, Database, RefreshCw, Activity } from 'lucide-react';
+import { Moon, LayoutGrid, BarChart3, Languages, Clock, Sliders, Share2, Database, RefreshCw, Activity, Info } from 'lucide-react';
 import { useUiStore, DEFAULT_THRESHOLDS, type ChartSeriesKey } from '../../store/uiStore';
 import { THEMES } from '../../lib/themes';
 import UpdateSettings from './UpdateSettings';
 import DatabaseSettings from './DatabaseSettings';
 import ExportsSettings from './ExportsSettings';
+import AboutSettings from './AboutSettings';
 
-type TabId = 'general' | 'exports' | 'database' | 'updates';
+type TabId = 'general' | 'exports' | 'database' | 'updates' | 'about';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -44,10 +45,11 @@ export default function SettingsPage() {
     { id: 'exports', label: t('settings.tab_exports'), icon: Share2 },
     { id: 'database', label: t('settings.tab_database'), icon: Database },
     { id: 'updates', label: t('settings.tab_updates'), icon: RefreshCw },
+    { id: 'about', label: t('settings.tab_about'), icon: Info },
   ];
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-5xl">
       <header>
         <h1 className="text-2xl font-bold">{t('settings.title')}</h1>
         <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('settings.subtitle')}</p>
@@ -175,6 +177,7 @@ export default function SettingsPage() {
       {tab === 'exports' && <ExportsSettings />}
       {tab === 'database' && <DatabaseSettings />}
       {tab === 'updates' && <UpdateSettings />}
+      {tab === 'about' && <AboutSettings />}
     </div>
   );
 }

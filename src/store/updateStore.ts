@@ -25,22 +25,26 @@ interface UpdateState {
   config: UpdateConfig | null;
   loading: boolean;
   dismissed: string | null;
+  bannerEnabled: boolean;
 
   check: (force?: boolean) => Promise<void>;
   loadConfig: () => Promise<void>;
   saveConfig: (patch: Partial<UpdateConfig>) => Promise<void>;
   dismiss: (version: string) => void;
   isDismissed: (version: string) => boolean;
+  setBannerEnabled: (v: boolean) => void;
   hydrate: () => void;
 }
 
 const DISMISS_KEY = 'gpuviewr.update_dismissed';
+const BANNER_KEY = 'gpuviewr.update_banner_enabled';
 
 export const useUpdateStore = create<UpdateState>((set, get) => ({
   result: null,
   config: null,
   loading: false,
   dismissed: null,
+  bannerEnabled: true,
 
   check: async (force = false) => {
     set({ loading: true });
@@ -76,8 +80,15 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
 
   isDismissed: (version) => get().dismissed === version,
 
+  setBannerEnabled: (v) => {
+    localStorage.setItem(BANNER_KEY, v ? '1' : '0');
+    set({ bannerEnabled: v });
+  },
+
   hydrate: () => {
     const d = localStorage.getItem(DISMISS_KEY);
     if (d) set({ dismissed: d });
+    const b = localStorage.getItem(BANNER_KEY);
+    if (b !== null) set({ bannerEnabled: b === '1' });
   },
 }));
