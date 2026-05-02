@@ -32,101 +32,11 @@
 ## Features
 
 - ⚡ **Real-time**: WebSocket streaming, 1 s tick (no JSON polling)
-- 🎨 **Modern UI**: Tailwind, 5 built-in themes (3 dark + 2 light), responsive mobile-first
-- 📈 **Fast charts**: uPlot for smooth time-series streaming
-- 🔘 **Switchable gauges**: arc rings or Grafana-style horizontal bars
-- ✨ **Sparklines** in every gauge card
-- 🔔 **Alerts engine**: sustained-duration thresholds, cooldown, browser notifications, optional sound
 - 📜 **Filterable server logs**: level / scope / search, live auto-refresh
 - 🌍 **i18n**: English / French out of the box
 - 🔐 **Authentication**: first user becomes admin (bcryptjs + JWT)
 - 🔢 **Multi-GPU**: automatic tabs when 2+ devices are detected
 - 🐳 **Single Docker image**: multi-arch (amd64 / arm64), Node 22 Debian slim
-
----
-
-## Credits
-
-GpuViewR is a complete rewrite **inspired by and originally based on**
-[**bigsk1/gpu-monitor**](https://github.com/bigsk1/gpu-monitor) (MIT License).
-The original project provided the foundation: GPU data collection approach via
-`nvidia-smi`, the SQLite schema for historical metrics, and the Docker
-packaging strategy.
-
-<details>
-<summary><b>What changed in GpuViewR</b> (click to expand)</summary>
-
-<table>
-<thead>
-<tr>
-  <th width="22%">Area</th>
-  <th width="36%"><sub>🪦</sub> Original <code>gpu-monitor</code></th>
-  <th width="42%"><sub>🚀</sub> GpuViewR</th>
-</tr>
-</thead>
-<tbody>
-
-<tr><td>📡 <b>Data transport</b></td>
-<td>Polling JSON every <b>5 s</b>, chart every <b>30 s</b></td>
-<td><b>WebSocket</b> streaming every <b>1 s</b>, auto-reconnect with backoff</td></tr>
-
-<tr><td>⚙️ <b>Collector</b></td>
-<td>Bash script (≈ 630 lines), <code>nvidia-smi</code> + intermediate JSON files</td>
-<td>TypeScript service, <code>nvidia-smi</code> spawned from Node, batched DB writes</td></tr>
-
-<tr><td>💾 <b>Storage</b></td>
-<td>SQLite (single GPU column), 24 h retention</td>
-<td>SQLite WAL + index per GPU, <b>7 d retention</b> (configurable)</td></tr>
-
-<tr><td>🎨 <b>Frontend</b></td>
-<td>One HTML file, <b>1 183 lines</b> of inline HTML+CSS+JS</td>
-<td><b>React 19</b> + Vite + TailwindCSS, modular components, ~25 KB gzip</td></tr>
-
-<tr><td>📊 <b>Charts</b></td>
-<td>Chart.js 3.7 (≈ 195 KB)</td>
-<td><b>uPlot</b> (≈ 40 KB), built for live time-series</td></tr>
-
-<tr><td>🌈 <b>Theming</b></td>
-<td>One fixed dark palette</td>
-<td><b>5 themes</b> (3 dark + 2 light) via CSS variables</td></tr>
-
-<tr><td>📐 <b>Gauges</b></td>
-<td>Static horizontal bars</td>
-<td><b>Arc rings or Grafana-style bars</b>, switchable; sparklines per card</td></tr>
-
-<tr><td>🔢 <b>Multi-GPU</b></td>
-<td>Single GPU only</td>
-<td><b>Multi-GPU</b> with auto tabs when ≥ 2 devices detected</td></tr>
-
-<tr><td>🔐 <b>Authentication</b></td>
-<td>None (anyone with the URL gets in)</td>
-<td><b>bcryptjs + JWT</b>, first user becomes admin</td></tr>
-
-<tr><td>🔔 <b>Alerts</b></td>
-<td>Front-end thresholds only</td>
-<td>DB-backed rules, <b>sustain + cooldown</b> evaluator, in-app toasts, browser notifications, sound</td></tr>
-
-<tr><td>📜 <b>Server logs</b></td>
-<td>Plain log file</td>
-<td><b>Filterable Logs page</b> (level / scope / search) + auto-refresh</td></tr>
-
-<tr><td>🌍 <b>i18n</b></td>
-<td>English only</td>
-<td><b>EN / FR</b> shipped, scaffolded for more locales</td></tr>
-
-<tr><td>🔄 <b>Update flow</b></td>
-<td>Manual <code>docker compose pull</code></td>
-<td>In-app <b>update banner</b> (GitHub + GHCR check) + standard Docker Compose update commands</td></tr>
-
-<tr><td>🐳 <b>Image</b></td>
-<td>Single-stage Python image</td>
-<td><b>Multi-stage Node 22 Alpine</b>, multi-arch <b>amd64 + arm64</b>, healthcheck</td></tr>
-
-</tbody>
-</table>
-</details>
-
-Original work © bigsk1 (see [LICENSE](LICENSE)).
 
 ---
 
@@ -327,6 +237,91 @@ emitted and a green toast confirms it.
 - CSV export of historical metrics
 - PWA (installable on mobile, offline shell)
 - Email / webhook alert dispatchers (in addition to in-app + browser)
+
+---
+
+## Credits
+
+GpuViewR is a complete rewrite **inspired by and originally based on**
+[**bigsk1/gpu-monitor**](https://github.com/bigsk1/gpu-monitor) (MIT License).
+The original project provided the foundation: GPU data collection approach via
+`nvidia-smi`, the SQLite schema for historical metrics, and the Docker
+packaging strategy.
+
+<details>
+<summary><b>What changed in GpuViewR</b> (click to expand)</summary>
+
+<table>
+<thead>
+<tr>
+  <th width="22%">Area</th>
+  <th width="36%"><sub>🪦</sub> Original <code>gpu-monitor</code></th>
+  <th width="42%"><sub>🚀</sub> GpuViewR</th>
+</tr>
+</thead>
+<tbody>
+
+<tr><td>📡 <b>Data transport</b></td>
+<td>Polling JSON every <b>5 s</b>, chart every <b>30 s</b></td>
+<td><b>WebSocket</b> streaming every <b>1 s</b>, auto-reconnect with backoff</td></tr>
+
+<tr><td>⚙️ <b>Collector</b></td>
+<td>Bash script (≈ 630 lines), <code>nvidia-smi</code> + intermediate JSON files</td>
+<td>TypeScript service, <code>nvidia-smi</code> spawned from Node, batched DB writes</td></tr>
+
+<tr><td>💾 <b>Storage</b></td>
+<td>SQLite (single GPU column), 24 h retention</td>
+<td>SQLite WAL + index per GPU, <b>7 d retention</b> (configurable)</td></tr>
+
+<tr><td>🎨 <b>Frontend</b></td>
+<td>One HTML file, <b>1 183 lines</b> of inline HTML+CSS+JS</td>
+<td><b>React 19</b> + Vite + TailwindCSS, modular components, ~25 KB gzip</td></tr>
+
+<tr><td>📊 <b>Charts</b></td>
+<td>Chart.js 3.7 (≈ 195 KB)</td>
+<td><b>uPlot</b> (≈ 40 KB), built for live time-series</td></tr>
+
+<tr><td>🌈 <b>Theming</b></td>
+<td>One fixed dark palette</td>
+<td><b>5 themes</b> (3 dark + 2 light) via CSS variables</td></tr>
+
+<tr><td>📐 <b>Gauges</b></td>
+<td>Static horizontal bars</td>
+<td><b>Arc rings or Grafana-style bars</b>, switchable; sparklines per card</td></tr>
+
+<tr><td>🔢 <b>Multi-GPU</b></td>
+<td>Single GPU only</td>
+<td><b>Multi-GPU</b> with auto tabs when ≥ 2 devices detected</td></tr>
+
+<tr><td>🔐 <b>Authentication</b></td>
+<td>None (anyone with the URL gets in)</td>
+<td><b>bcryptjs + JWT</b>, first user becomes admin</td></tr>
+
+<tr><td>🔔 <b>Alerts</b></td>
+<td>Front-end thresholds only</td>
+<td>DB-backed rules, <b>sustain + cooldown</b> evaluator, in-app toasts, browser notifications, sound</td></tr>
+
+<tr><td>📜 <b>Server logs</b></td>
+<td>Plain log file</td>
+<td><b>Filterable Logs page</b> (level / scope / search) + auto-refresh</td></tr>
+
+<tr><td>🌍 <b>i18n</b></td>
+<td>English only</td>
+<td><b>EN / FR</b> shipped, scaffolded for more locales</td></tr>
+
+<tr><td>🔄 <b>Update flow</b></td>
+<td>Manual <code>docker compose pull</code></td>
+<td>In-app <b>update banner</b> (GitHub + GHCR check) + standard Docker Compose update commands</td></tr>
+
+<tr><td>🐳 <b>Image</b></td>
+<td>Single-stage Python image</td>
+<td><b>Multi-stage Node 22 Alpine</b>, multi-arch <b>amd64 + arm64</b>, healthcheck</td></tr>
+
+</tbody>
+</table>
+</details>
+
+Original work © bigsk1 (see [LICENSE](LICENSE)).
 
 ---
 
