@@ -31,6 +31,8 @@ export interface HistoryRow {
   timestamp_epoch: number;
   temperature: number;
   utilization: number | null;
+  memory_used: number;
+  memory_total: number | null;
   power: number;
 }
 

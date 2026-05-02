@@ -10,11 +10,18 @@ interface Props { gpuIndex: number; }
 
 import type { HistoryRow } from '../../store/gpuStore';
 
+// In "Live" mode the chart shows the last LIVE_WINDOW_S seconds as a
+// rolling scope. 90s gives ~90 points at the default 1Hz tick — dense
+// enough to see real movement, sparse enough that the line still
+// breathes and individual hover targets stay clickable.
+const LIVE_WINDOW_S = 90;
+
 interface CursorValues {
   t: number | null;
   utilization: number | null;
   temperature: number | null;
   power: number | null;
+  memory: number | null;
 }
 
 type ChipProps = Readonly<{
@@ -45,10 +52,10 @@ export default function LiveChart({ gpuIndex }: Props) {
   const setHistoryCache = useGpuStore((s) => s.setHistory);
   const [historic, setHistoric] = useState<HistoryRow[]>(() => cachedHistory?.rows ?? []);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null });
+  const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null, memory: null });
   const [tip, setTip] = useState<{ left: number; top: number; show: boolean }>({ left: 0, top: 0, show: false });
   const [pinned, setPinned] = useState<boolean>(false);
-  const [visible, setVisible] = useState<{ util: boolean; temp: boolean; pow: boolean }>({ util: true, temp: true, pow: true });
+  const [visible, setVisible] = useState<{ util: boolean; temp: boolean; pow: boolean; mem: boolean }>({ util: true, temp: true, pow: true, mem: true });
 
   // uPlot needs latest props inside its hooks; keep refs to avoid rebuilding the
   // chart on every threshold/visibility/format change.
@@ -61,10 +68,10 @@ export default function LiveChart({ gpuIndex }: Props) {
   useEffect(() => { visibleRef.current = visible; }, [visible]);
   useEffect(() => { timeFormatRef.current = timeFormat; plotRef.current?.redraw(false); }, [timeFormat]);
 
-  const toggleSeries = (key: 'util' | 'temp' | 'pow') => {
+  const toggleSeries = (key: 'util' | 'temp' | 'pow' | 'mem') => {
     setVisible((v) => {
       const next = { ...v, [key]: !v[key] };
-      const idxMap = { util: 1, temp: 2, pow: 3 } as const;
+      const idxMap = { util: 1, temp: 2, pow: 3, mem: 4 } as const;
       plotRef.current?.setSeries(idxMap[key], { show: next[key] });
       return next;
     });
@@ -101,6 +108,7 @@ export default function LiveChart({ gpuIndex }: Props) {
     const accent = chartColors.util ?? (root.getPropertyValue('--gv-accent').trim() || '#2f7bff');
     const warn = chartColors.temp ?? (root.getPropertyValue('--gv-warn').trim() || '#f59e0b');
     const ok = chartColors.pow ?? (root.getPropertyValue('--gv-ok').trim() || '#10b981');
+    const info = chartColors.mem ?? (root.getPropertyValue('--gv-info').trim() || '#06b6d4');
 
     const opts: uPlot.Options = {
       width: containerRef.current.clientWidth,
@@ -144,6 +152,7 @@ export default function LiveChart({ gpuIndex }: Props) {
         { label: t('dashboard.metrics.utilization'), stroke: accent, width: 2, scale: '%', fill: makeGradient(accent) },
         { label: t('dashboard.metrics.temperature'), stroke: warn, width: 2, scale: '%', fill: makeGradient(warn) },
         { label: t('dashboard.metrics.power'), stroke: ok, width: 2, scale: 'W', fill: makeGradient(ok) },
+        { label: t('dashboard.metrics.memory'), stroke: info, width: 2, scale: '%', fill: makeGradient(info) },
       ],
       // We render our own legend chip row below the chart, so disable the
       // built-in legend (which only shows values on hover and clutters the layout).
@@ -156,7 +165,7 @@ export default function LiveChart({ gpuIndex }: Props) {
             const left = u.cursor.left ?? -1;
             const top = u.cursor.top ?? -1;
             if (idx === null || idx === undefined || left < 0 || top < 0) {
-              setCursor({ t: null, utilization: null, temperature: null, power: null });
+              setCursor({ t: null, utilization: null, temperature: null, power: null, memory: null });
               setTip((prev) => (prev.show ? { ...prev, show: false } : prev));
             } else {
               setCursor({
@@ -164,6 +173,7 @@ export default function LiveChart({ gpuIndex }: Props) {
                 utilization: (u.data[1]?.[idx] as number | undefined) ?? null,
                 temperature: (u.data[2]?.[idx] as number | undefined) ?? null,
                 power: (u.data[3]?.[idx] as number | undefined) ?? null,
+                memory: (u.data[4]?.[idx] as number | undefined) ?? null,
               });
               setTip({ left, top, show: true });
             }
@@ -192,12 +202,13 @@ export default function LiveChart({ gpuIndex }: Props) {
             if (vis.util) drawLine(th.util, '%', accent);
             if (vis.temp) drawLine(th.temp, '%', warn);
             if (vis.pow) drawLine(th.pow, 'W', ok);
+            if (vis.mem) drawLine(th.mem, '%', info);
             ctx.restore();
           },
         ],
       },
     };
-    plotRef.current = new uPlot(opts, [[], [], [], []] as unknown as AlignedData, containerRef.current);
+    plotRef.current = new uPlot(opts, [[], [], [], [], []] as unknown as AlignedData, containerRef.current);
 
     const ro = new ResizeObserver(() => {
       if (containerRef.current && plotRef.current) {
@@ -207,27 +218,39 @@ export default function LiveChart({ gpuIndex }: Props) {
     ro.observe(containerRef.current);
     return () => { ro.disconnect(); plotRef.current?.destroy(); plotRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, themeId, chartColors.util, chartColors.temp, chartColors.pow]);
+  }, [t, themeId, chartColors.util, chartColors.temp, chartColors.pow, chartColors.mem]);
 
-  // Push merged data (history + live) to chart
+  // Push merged data (history + live) to chart, computing memory % from
+  // memory_used / memory_total. In "Live" mode we keep only the rolling
+  // last LIVE_WINDOW_S seconds so old points slide off the left and the
+  // chart reads as a true real-time scope.
   useEffect(() => {
     if (!plotRef.current) return;
     const liveT = series?.t ?? [];
     const liveUtil = series?.utilization ?? [];
     const liveTemp = series?.temperature ?? [];
     const livePow = series?.power ?? [];
+    const liveMemUsed = series?.memory_used ?? [];
+    const memTotalLive = latestSample?.memory_total ?? null;
 
     const lastHistEpoch = historic.length > 0 ? historic[historic.length - 1].timestamp_epoch : -Infinity;
     const tArr: number[] = [];
-    const utilArr: number[] = [];
+    const utilArr: (number | null)[] = [];
     const tempArr: number[] = [];
     const powArr: number[] = [];
+    const memArr: (number | null)[] = [];
+
+    const memPct = (used: number, total: number | null): number | null => {
+      if (total === null || total <= 0) return null;
+      return (used / total) * 100;
+    };
 
     for (const h of historic) {
       tArr.push(h.timestamp_epoch);
       utilArr.push(h.utilization);
       tempArr.push(h.temperature);
       powArr.push(h.power);
+      memArr.push(memPct(h.memory_used, h.memory_total));
     }
     for (let i = 0; i < liveT.length; i++) {
       if (liveT[i] > lastHistEpoch) {
@@ -235,26 +258,51 @@ export default function LiveChart({ gpuIndex }: Props) {
         utilArr.push(liveUtil[i]);
         tempArr.push(liveTemp[i]);
         powArr.push(livePow[i]);
+        memArr.push(memPct(liveMemUsed[i] ?? 0, memTotalLive));
       }
     }
-    plotRef.current.setData([tArr, utilArr, tempArr, powArr] as AlignedData);
-  }, [historic, series]);
+
+    if (range === 'live' && tArr.length > 0) {
+      const cutoff = tArr[tArr.length - 1] - LIVE_WINDOW_S;
+      let drop = 0;
+      while (drop < tArr.length && tArr[drop] < cutoff) drop++;
+      if (drop > 0) {
+        tArr.splice(0, drop);
+        utilArr.splice(0, drop);
+        tempArr.splice(0, drop);
+        powArr.splice(0, drop);
+        memArr.splice(0, drop);
+      }
+    }
+
+    plotRef.current.setData([tArr, utilArr, tempArr, powArr, memArr] as AlignedData);
+  }, [historic, series, range, latestSample?.memory_total]);
 
   // What the legend shows: the cursor value if hovering/pinned, else the live latest sample.
-  const display = useMemo<{ live: boolean; t: number | null; util: number | null; temp: number | null; pow: number | null }>(() => {
+  const display = useMemo<{
+    live: boolean;
+    t: number | null;
+    util: number | null;
+    temp: number | null;
+    pow: number | null;
+    mem: number | null;
+  }>(() => {
     if (cursor.t !== null) {
-      return { live: false, t: cursor.t, util: cursor.utilization, temp: cursor.temperature, pow: cursor.power };
+      return { live: false, t: cursor.t, util: cursor.utilization, temp: cursor.temperature, pow: cursor.power, mem: cursor.memory };
     }
     if (latestSample) {
+      const memTotal = latestSample.memory_total;
+      const memPct = memTotal && memTotal > 0 ? (latestSample.memory_used / memTotal) * 100 : null;
       return {
         live: true,
         t: latestSample.timestamp_epoch,
         util: latestSample.utilization,
         temp: latestSample.temperature,
         pow: latestSample.power,
+        mem: memPct,
       };
     }
-    return { live: true, t: null, util: null, temp: null, pow: null };
+    return { live: true, t: null, util: null, temp: null, pow: null, mem: null };
   }, [cursor, latestSample]);
 
   return (
@@ -294,6 +342,16 @@ export default function LiveChart({ gpuIndex }: Props) {
             onColorReset={() => setChartColor('pow', null)}
             isCustom={!!chartColors.pow}
           />
+          <Chip
+            colorVar={chartColors.mem ?? 'var(--gv-info)'}
+            label={t('dashboard.metrics.memory')}
+            value={fmt(display.mem, '%')}
+            active={visible.mem}
+            onClick={() => toggleSeries('mem')}
+            onColorChange={(c) => setChartColor('mem', c)}
+            onColorReset={() => setChartColor('mem', null)}
+            isCustom={!!chartColors.mem}
+          />
           <span
             className="text-[10px] px-2 py-0.5 rounded-full"
             style={{
@@ -331,12 +389,15 @@ export default function LiveChart({ gpuIndex }: Props) {
           <div
             className="pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md text-[11px] shadow-lg backdrop-blur-sm"
             style={{
-              left: tip.left + 12,
-              top: Math.max(0, tip.top - 8),
+              // Offset the tooltip clear of the cursor so it never sits
+              // behind the mouse pointer (was 12 / -8, too tight on
+              // some pointer skins).
+              left: tip.left + 22,
+              top: Math.max(0, tip.top - 28),
               background: 'color-mix(in srgb, var(--gv-surface) 92%, transparent)',
               border: '1px solid var(--gv-border)',
               color: 'var(--gv-text)',
-              minWidth: 140,
+              minWidth: 160,
             }}
           >
             <div className="font-semibold tabular-nums mb-1" style={{ color: 'var(--gv-text-muted)' }}>
@@ -367,6 +428,15 @@ export default function LiveChart({ gpuIndex }: Props) {
                   {t('dashboard.metrics.power')}
                 </span>
                 <span className="font-semibold tabular-nums">{fmt(cursor.power, ' W')}</span>
+              </div>
+            )}
+            {visible.mem && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.mem ?? 'var(--gv-info)' }} />
+                  {t('dashboard.metrics.memory')}
+                </span>
+                <span className="font-semibold tabular-nums">{fmt(cursor.memory, '%')}</span>
               </div>
             )}
           </div>

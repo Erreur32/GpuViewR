@@ -1,12 +1,23 @@
 import path from 'path';
+import fs from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const SERVER_PORT = process.env.PORT || process.env.SERVER_PORT || '3015';
 const CLIENT_PORT = parseInt(process.env.VITE_PORT || '5181', 10);
 
+// Read the version from package.json at config time so the frontend
+// always shows the version managed by scripts/update-version.sh,
+// without ever hardcoding it inside a component.
+const PKG_VERSION = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'),
+).version as string;
+
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify(PKG_VERSION),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

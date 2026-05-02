@@ -1,9 +1,9 @@
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Cpu, LogOut, BellRing, FileText, Settings, LayoutDashboard, Server } from 'lucide-react';
+import { LogOut, BellRing, FileText, Settings, LayoutDashboard, Server } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
-const VERSION = 'v0.1.10';
+const VERSION = `v${__APP_VERSION__}`;
 
 export default function Header() {
   const { t } = useTranslation();
@@ -14,12 +14,18 @@ export default function Header() {
             style={{ borderColor: 'var(--gv-border)', background: 'color-mix(in srgb, var(--gv-bg) 70%, transparent)' }}>
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-4 flex-wrap">
         <NavLink to="/" className="flex items-center gap-3 group">
-          <div className="grid place-items-center w-9 h-9 rounded-xl" style={{
-            background: 'color-mix(in srgb, var(--gv-accent) 18%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--gv-accent) 35%, transparent)',
-          }}>
-            <Cpu className="w-5 h-5" style={{ color: 'var(--gv-accent)' }} />
-          </div>
+          <img
+            src="/GPUViewR.png"
+            alt="GpuViewR"
+            width={36}
+            height={36}
+            className="w-9 h-9 rounded-xl object-contain"
+            style={{
+              background: 'color-mix(in srgb, var(--gv-accent) 18%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--gv-accent) 35%, transparent)',
+              padding: 4,
+            }}
+          />
           <div className="leading-tight">
             <div className="font-semibold flex items-center gap-2">
               {t('app.title')}

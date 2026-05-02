@@ -229,7 +229,12 @@
     "cancel": "Cancel",
     "close": "Close",
     "copied": "Copied",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "connected": "Live",
+    "disconnected": "Offline"
+  },
+  "footer": {
+    "aggregate_help": "Aggregate across all GPUs: average utilization · average temperature · total power"
   },
   "system": {
     "title": "System",

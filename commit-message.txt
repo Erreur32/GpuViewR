@@ -1,14 +1,17 @@
-release: v0.1.10 - Custom tab, history cache, About polish, persistent WS
+release: v0.1.11 - memory series, rolling Live, real logo, live footer
 
-- New "Custom" tab in Settings: theme picker, gauge style (moved from
-  General) and a Chart curves card with 5 presets (Cyber, Sunset,
-  Aurora, Royal, Graphite) plus per-metric color pickers.
-- About tab: real /GPUViewR.png logo, README-style badges, colored
-  changelog renderer, expanded by default.
-- Updates tab: new "Update banner" card with show/hide toggle.
-- gpuStore caches chart history per gpu|range so the live chart
-  paints instantly when returning to the Dashboard from another tab.
-- useGpuStream lifted to AppLayout so the WebSocket stays open while
-  the user is on Settings / Alerts / Logs.
-- Sonar S7773: parseInt / parseFloat -> Number.parseInt /
-  Number.parseFloat sweep across server and src.
+- Live chart: new memory % series (4th curve, cyan / --gv-info)
+  with chip, gradient fill, threshold line and cursor tooltip.
+- Chart presets get a 4th color slot; settings get a 4th color
+  picker and a 4th threshold field for memory.
+- Live range is now a rolling 90s window (LIVE_WINDOW_S = 90s),
+  in sync with parseRange('live') on the server. Points slide off
+  the left tick by tick.
+- Cursor tooltip offset further from the pointer.
+- Header and login page show the real /GPUViewR.png logo.
+- New live AppFooter: WS status pill (with pulse), GPU count,
+  aggregate util/temp/power, live clock (24h/12h aware), GitHub
+  link, dynamic version.
+- Frontend version sourced from package.json via Vite-injected
+  __APP_VERSION__ (declared in src/vite-env.d.ts). Header / Footer
+  use it; update-version.sh no longer rewrites Header.tsx.

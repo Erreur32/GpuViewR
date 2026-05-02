@@ -142,13 +142,8 @@ else
   echo -e "  ${Y}○${R} package-lock.json                  ${Y}(not found, run npm install later)${R}"
 fi
 
-# ── 3. src/components/layout/Header.tsx: VERSION constant ──────────────────
-if [ -f "$HEADER_TSX" ]; then
-  sedi "$HEADER_TSX" "s/const VERSION = 'v${SEMVER_PATTERN}';/const VERSION = 'v$NEW';/"
-  echo -e "  ${G}✓${R} src/components/layout/Header.tsx   ${C}(VERSION = 'v$NEW')${R}"
-else
-  echo -e "  ${RED}✗${R} src/components/layout/Header.tsx   ${RED}(file not found)${R}"
-fi
+# ── 3. Header / footer VERSION: derived from package.json at build time
+#       (vite injects __APP_VERSION__), so nothing to bump here anymore.
 
 # ── 4. README.md: release links + version text ────────────────────────────
 # Note: the static "GpuViewR-vX.Y.Z" badge has been removed from the README;

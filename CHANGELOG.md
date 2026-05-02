@@ -5,6 +5,44 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2026-05-02
+
+Memory series on the live chart, rolling 90s Live window, and a
+proper logo in the header / login + a live footer.
+
+### Added
+- **Memory % series** on the live chart (utilization, temperature,
+  power, memory). Color from `--gv-info` (cyan), gradient fill, chip
+  legend, threshold line, cursor tooltip — all wired so the new
+  series feels native.
+- 4th color slot in every chart preset (Cyber, Sunset, Aurora, Royal,
+  Graphite) and a 4th `ColorPicker` + `ThresholdField` in the
+  "Custom" / "Chart thresholds" cards.
+- **Live AppFooter**: connection pill (Wifi + pulse dot when online,
+  WifiOff when not), GPU count, aggregate metrics across all GPUs
+  (avg util · avg temp · total power), live clock honoring the
+  user 24h / 12h preference, plus a GitHub link and the dynamic
+  version.
+- Header and login page now show the real `/GPUViewR.png` logo
+  (replacing the generic Cpu icon).
+
+### Changed
+- **Live range is now a rolling 90-second window** instead of a
+  fixed slice. Points older than `LIVE_WINDOW_S` slide off the left
+  on every tick so the chart reads as a true real-time scope.
+  Server `parseRange('live')` aligned to 90s so the history fetch
+  returns just enough rows to seed the window.
+- Cursor tooltip is offset further from the pointer (no more
+  pointer overlap), with a wider min-width to fit the 4 metrics.
+- **Frontend version is no longer hardcoded.** Vite injects
+  `__APP_VERSION__` from `package.json` (declared in
+  `src/vite-env.d.ts`); Header and Footer use it. The update
+  script no longer touches `Header.tsx`.
+
+### Notes
+- The hotspot / CodeQL noise from previous runs is unchanged here;
+  this release does not add any new flagged code.
+
 ## [0.1.10] - 2026-05-02
 
 Polish on top of v0.1.9: navigation no longer interrupts the live

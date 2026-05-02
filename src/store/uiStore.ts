@@ -3,7 +3,7 @@ import { applyTheme, getTheme } from '../lib/themes';
 
 export type GaugeView = 'arc' | 'bar';
 export type Range = 'live' | '5m' | '15m' | '1h' | '6h' | '24h' | '3d';
-export type ChartSeriesKey = 'util' | 'temp' | 'pow';
+export type ChartSeriesKey = 'util' | 'temp' | 'pow' | 'mem';
 export type ChartColors = Partial<Record<ChartSeriesKey, string>>;
 export type TimeFormat = '24h' | '12h';
 export type ChartThresholds = Partial<Record<ChartSeriesKey, number>>;
@@ -12,6 +12,7 @@ export const DEFAULT_THRESHOLDS: Required<ChartThresholds> = {
   util: 95,
   temp: 83,
   pow: 350,
+  mem: 90,
 };
 
 interface UiState {
@@ -77,7 +78,7 @@ function readChartThresholds(): ChartThresholds {
     const obj = JSON.parse(raw) as ChartThresholds;
     if (typeof obj !== 'object' || obj === null) return { ...DEFAULT_THRESHOLDS };
     const out: ChartThresholds = {};
-    for (const k of ['util', 'temp', 'pow'] as ChartSeriesKey[]) {
+    for (const k of ['util', 'temp', 'pow', 'mem'] as ChartSeriesKey[]) {
       const v = obj[k];
       if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
     }

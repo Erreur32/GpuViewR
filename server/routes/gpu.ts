@@ -33,8 +33,11 @@ router.get('/stats', (req, res) => {
 });
 
 function parseRange(input: string): number {
-  // "live" = the rolling 50-second window shown by default on the chart.
-  if (input === 'live') return 50;
+  // "live" = the rolling 90-second window shown by default on the chart.
+  // Kept in sync with LIVE_WINDOW_S in src/components/dashboard/LiveChart.tsx
+  // so the history fetch returns just enough rows to seed the rolling
+  // scope without overshooting.
+  if (input === 'live') return 90;
   const m = /^(\d+(?:\.\d+)?)(s|m|h|d)$/.exec(input);
   if (!m) return 3600;
   const n = Number.parseFloat(m[1]);

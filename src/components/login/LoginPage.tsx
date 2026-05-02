@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Cpu, LogIn, UserPlus } from 'lucide-react';
+import { LogIn, UserPlus } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
 export default function LoginPage() {
@@ -25,9 +25,20 @@ export default function LoginPage() {
     <div className="min-h-screen w-full grid place-items-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center gap-3 mb-8">
-          <div className="grid place-items-center w-14 h-14 rounded-2xl bg-brand-600/20 border border-brand-500/30">
-            <Cpu className="w-7 h-7 text-brand-400" />
-          </div>
+          <img
+            src="/GPUViewR.png"
+            alt="GpuViewR"
+            width={72}
+            height={72}
+            className="w-18 h-18 rounded-2xl object-contain"
+            style={{
+              width: 72,
+              height: 72,
+              background: 'color-mix(in srgb, var(--gv-accent) 18%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--gv-accent) 35%, transparent)',
+              padding: 6,
+            }}
+          />
           <h1 className="text-3xl font-bold tracking-tight">{t('app.title')}</h1>
           <p className="text-sm text-slate-400">{t('app.subtitle')}</p>
         </div>
