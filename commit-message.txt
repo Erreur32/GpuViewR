@@ -1,4 +1,4 @@
-release: v0.1.8 — tabbed settings, chart thresholds, gradient fills, cursor tooltip
+release: v0.1.8 - tabbed settings, chart thresholds, gradient fills, cursor tooltip
 
 UI / Settings
 - Settings page now grouped into tabs: General / Exports / Database / Updates.
@@ -22,7 +22,7 @@ Chart
 
 Tooling
 - scripts/update-version.sh: stop rewriting the static "GpuViewR-vX.Y.Z"
-  README badge — the dynamic GitHub Release badge already updates itself,
+  README badge - the dynamic GitHub Release badge already updates itself,
   so the static one was removed from the README.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>

@@ -61,58 +61,12 @@ echo "HOST_IP=$(hostname -I | awk '{print $1}')" >> .env
 # echo "TZ=Europe/Paris"       >> .env
 ```
 
-### Step 2: drop in this `docker-compose.yml`
+### Step 2: grab the `docker-compose.yml`
 
-Save it next to your `.env`:
-
-```yaml
-services:
-  gpuviewr:
-    image: ghcr.io/erreur32/gpuviewr:latest
-    container_name: gpuviewr
-    restart: unless-stopped
-
-    ports:
-      - "${DASHBOARD_PORT:-7510}:3015"
-
-    environment:
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (see Step 1)}
-      PORT: 3015
-      DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
-      HOST_IP: ${HOST_IP:-}
-      CONTAINER_NAME: gpuviewr
-      TZ: ${TZ:-Europe/Paris}
-      GPU_TICK_MS: ${GPU_TICK_MS:-1000}
-      RETENTION_DAYS: ${RETENTION_DAYS:-7}
-
-    volumes:
-      - ./data:/app/data    # persistent SQLite (users + GPU history + alerts)
-
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, utility]
-    runtime: nvidia
-
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-```
-
-> A ready-to-copy version is also available in
-> [`docker-compose.example.yml`](docker-compose.example.yml).
+Use the [`docker-compose.yml`](docker-compose.yml) shipped with this repo
+(copy it next to your `.env`, or clone the repo). It pulls the published
+image from GHCR, exposes the dashboard on `${DASHBOARD_PORT}`, persists
+SQLite under `./data`, and reserves all NVIDIA GPUs to the container.
 
 ### Step 3: start it
 

@@ -398,8 +398,13 @@ export function renderPrometheus(samples: GpuSample[]): string {
   help('gpuviewr_gpu_clock_graphics_hz', 'GPU graphics clock (Hz)', 'gauge');
   help('gpuviewr_gpu_clock_memory_hz', 'GPU memory clock (Hz)', 'gauge');
 
+  // Prometheus label-value escaping: backslash → \\, quote → \", newline → \n.
+  // Order matters: escape backslashes first, otherwise we'd escape the
+  // backslashes we just inserted for quotes.
+  const escapeLabel = (v: string) =>
+    v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
   const labels = (s: GpuSample) =>
-    `{gpu="${s.gpu_index}",name="${s.name.replace(/"/g, '\\"')}"${s.uuid ? `,uuid="${s.uuid}"` : ''}}`;
+    `{gpu="${s.gpu_index}",name="${escapeLabel(s.name)}"${s.uuid ? `,uuid="${escapeLabel(s.uuid)}"` : ''}}`;
 
   for (const s of samples) {
     const l = labels(s);

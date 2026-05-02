@@ -10,6 +10,7 @@ import { config, getPublicUrl } from './config.js';
 import { initializeDatabase, closeDatabase } from './database/connection.js';
 import { logger } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { apiLimiter, authLimiter, metricsLimiter } from './middleware/rateLimit.js';
 import { gpuCollector, startRetentionJob } from './services/gpuCollector.js';
 import { setupGpuWebSocket } from './services/gpuStreamWS.js';
 import { alertService } from './services/alertService.js';
@@ -49,18 +50,22 @@ async function bootstrap(): Promise<void> {
 
   const app = express();
   app.disable('x-powered-by');
+  // Trust the first proxy hop (typical reverse-proxy setup) so that
+  // express-rate-limit and req.ip use X-Forwarded-For correctly.
+  app.set('trust proxy', 1);
   app.use(cors());
   app.use(express.json({ limit: '256kb' }));
 
+  app.use('/api', apiLimiter);
   app.use('/api/health', healthRoutes);
-  app.use('/api/auth', authRoutes);
+  app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/gpu', gpuRoutes);
   app.use('/api/alerts', alertsRoutes);
   app.use('/api/logs', logsRoutes);
   app.use('/api/updates', updatesRoutes);
   app.use('/api/system', systemRoutes);
   app.use('/api/exports', exportsRoutes);
-  app.use('/metrics', metricsRoutes);
+  app.use('/metrics', metricsLimiter, metricsRoutes);
 
   const distDir = path.resolve(__dirname, '..', 'dist');
   if (fs.existsSync(distDir)) {

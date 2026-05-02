@@ -12,7 +12,10 @@ WORKDIR /app
 
 # Build tools required to compile better-sqlite3 native module.
 # We build on glibc to keep runtime compatibility with nvidia-smi (also glibc).
+# apt-get upgrade pulls in the latest OS security patches (e.g. zlib CVEs)
+# even when the parent node:22-bookworm-slim tag has not been republished yet.
 RUN apt-get update \
+  && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends \
     python3 \
     make \
@@ -39,6 +42,7 @@ WORKDIR /app
 #  tzdata  : honor TZ env var
 #  We do NOT bundle nvidia-smi: it's mounted/exposed by the NVIDIA container toolkit.
 RUN apt-get update \
+  && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends \
     gosu \
     tzdata \
