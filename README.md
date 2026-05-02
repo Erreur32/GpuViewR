@@ -2,25 +2,19 @@
 
 <div align="center">
 
-<img src="public/GPUViewR.png" alt="GpuViewR" width="128" height="128" />
+<img src="public/GpuViewR-Ban.png" alt="GpuViewR"  width="628" height="458" />
 
-![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.7-111827?style=for-the-badge)
-![Status](https://img.shields.io/badge/Status-DEVELOPMENT-374151?style=for-the-badge)
+[![Release](https://img.shields.io/github/v/release/Erreur32/GpuViewR?style=for-the-badge&logo=github&logoColor=white&label=Release&color=111827)](https://github.com/Erreur32/GpuViewR/releases)
 ![Docker](https://img.shields.io/badge/Docker-Ready-1f2937?style=for-the-badge&logo=docker&logoColor=38bdf8)
 ![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900)
-![React](https://img.shields.io/badge/React-19-111827?style=for-the-badge&logo=react&logoColor=38bdf8)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.8-111827?style=for-the-badge&logo=typescript&logoColor=60a5fa)
 [![License](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white)](LICENSE)
 
-[![Build](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/docker-publish.yml?style=for-the-badge&logo=github&logoColor=white&label=Build&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/docker-publish.yml)
-[![CI](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/ci.yml?style=for-the-badge&logo=github&logoColor=white&label=CI&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/ci.yml)
-[![CodeQL](https://img.shields.io/badge/CodeQL-active-brightgreen?style=for-the-badge&logo=github)](https://github.com/Erreur32/GpuViewR/security/code-scanning)
 [![OSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/Erreur32/GpuViewR?style=for-the-badge&label=Scorecard)](https://scorecard.dev/viewer/?uri=github.com/Erreur32/GpuViewR)
+[![CodeQL](https://img.shields.io/badge/CodeQL-active-brightgreen?style=for-the-badge&logo=github)](https://github.com/Erreur32/GpuViewR/security/code-scanning)
 [![SonarCloud Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=Erreur32_GpuViewR2&metric=alert_status)](https://sonarcloud.io/summary/overall?id=Erreur32_GpuViewR2)
 [![Snyk](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/snyk.yml?style=for-the-badge&logo=snyk&logoColor=white&label=Snyk&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/snyk.yml)
-[![Release](https://img.shields.io/github/v/release/Erreur32/GpuViewR?style=for-the-badge&logo=github&logoColor=white&label=Release&color=111827)](https://github.com/Erreur32/GpuViewR/releases)
-[![GHCR](https://img.shields.io/badge/ghcr.io-erreur32%2Fgpuviewr-111827?style=for-the-badge&logo=docker&logoColor=38bdf8)](https://github.com/Erreur32/GpuViewR/pkgs/container/gpuviewr)
 
+ 
 **Real-time NVIDIA GPU monitoring dashboard, packaged as a single Docker image.**
 
 [Quick start](#quick-start) · [Configuration](#configuration) · [First login](#first-login) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Roadmap](#roadmap)
