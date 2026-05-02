@@ -8,6 +8,7 @@ import LiveChart from './LiveChart';
 import RangeSelector from './RangeSelector';
 import GpuTabs from './GpuTabs';
 import StatsSection from './StatsSection';
+import GpuProcessesTable from './GpuProcessesTable';
 import UpdateBanner from '../ui/UpdateBanner';
 
 export default function Dashboard() {
@@ -128,6 +129,8 @@ export default function Dashboard() {
       </div>
 
       <LiveChart gpuIndex={active.gpu_index} />
+
+      <GpuProcessesTable gpuIndex={active.gpu_index} />
 
       <h3 className="text-sm font-semibold uppercase tracking-wider pt-2" style={{ color: 'var(--gv-text-muted)' }}>
         {t('dashboard.stats_24h')}

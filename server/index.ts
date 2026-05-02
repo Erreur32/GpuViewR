@@ -28,6 +28,7 @@ import systemRoutes from './routes/system.js';
 import exportsRoutes from './routes/exports.js';
 import metricsRoutes from './routes/metrics.js';
 import infoRoutes from './routes/info.js';
+import processesRoutes from './routes/processes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,6 +68,7 @@ async function bootstrap(): Promise<void> {
   app.use('/api/system', systemRoutes);
   app.use('/api/exports', exportsRoutes);
   app.use('/api/info', infoRoutes);
+  app.use('/api/processes', processesRoutes);
   app.use('/metrics', metricsLimiter, metricsRoutes);
 
   const distDir = path.resolve(__dirname, '..', 'dist');
