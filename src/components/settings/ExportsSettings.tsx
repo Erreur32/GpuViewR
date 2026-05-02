@@ -178,7 +178,7 @@ function InfluxBlock({ cfg, disabled, onSave, onTest }: Readonly<{
   return (
     <Block icon={<Database className="w-4 h-4" />} title="InfluxDB v2">
       <Toggle label={t('settings.exports_enabled')} checked={s.enabled} onChange={(v) => setS({ ...s, enabled: v })} disabled={disabled} />
-      <Field label="URL" value={s.url} onChange={(v) => setS({ ...s, url: v })} disabled={disabled} placeholder="http://influxdb:8086" />
+      <Field label="URL" value={s.url} onChange={(v) => setS({ ...s, url: v })} disabled={disabled} placeholder="https://influxdb:8086" />
       <div className="grid grid-cols-2 gap-2">
         <Field label="Org" value={s.org} onChange={(v) => setS({ ...s, org: v })} disabled={disabled} />
         <Field label="Bucket" value={s.bucket} onChange={(v) => setS({ ...s, bucket: v })} disabled={disabled} />
