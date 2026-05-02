@@ -385,6 +385,7 @@ function Chip({ colorVar, label, value, active, onClick, onColorChange, onColorR
         className="inline-flex relative cursor-pointer"
         title="Pick color"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         <span
           className="inline-block w-2.5 h-2.5 rounded-full"
