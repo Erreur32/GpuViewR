@@ -150,15 +150,15 @@ else
   echo -e "  ${RED}✗${R} src/components/layout/Header.tsx   ${RED}(file not found)${R}"
 fi
 
-# ── 4. README.md: badges and release links ────────────────────────────────
+# ── 4. README.md: release links + version text ────────────────────────────
+# Note: the static "GpuViewR-vX.Y.Z" badge has been removed from the README;
+# the dynamic GitHub Release badge updates itself, so we no longer rewrite it.
 if [ -f "$ROOT_README" ]; then
-  # GpuViewR-vX.Y.Z (badge style, optional 'v' prefix)
-  sedi "$ROOT_README" "s/GpuViewR-v\\?${SEMVER_PATTERN}/GpuViewR-v$NEW/g"
   # releases/tag/vX.Y.Z
   sedi "$ROOT_README" "s|releases/tag/v${SEMVER_PATTERN}|releases/tag/v$NEW|g"
   # Backtick-quoted current semver (only the current version, to avoid wide replace)
   sedi "$ROOT_README" "s/\`$CURRENT_ESC\`/\`$NEW\`/g"
-  echo -e "  ${G}✓${R} README.md                          ${C}(badges + release links + version text)${R}"
+  echo -e "  ${G}✓${R} README.md                          ${C}(release links + version text)${R}"
 else
   echo -e "  ${RED}✗${R} README.md                          ${RED}(file not found)${R}"
 fi

@@ -42,13 +42,27 @@ export default function LiveChart({ gpuIndex }: Props) {
   const chartColors = useUiStore((s) => s.chartColors);
   const setChartColor = useUiStore((s) => s.setChartColor);
   const timeFormat = useUiStore((s) => s.timeFormat);
+  const chartThresholds = useUiStore((s) => s.chartThresholds);
+  const chartThresholdsEnabled = useUiStore((s) => s.chartThresholdsEnabled);
   const series = useGpuStore((s) => s.series.get(gpuIndex));
   const latestSample = useGpuStore((s) => s.latest.get(gpuIndex));
   const [historic, setHistoric] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null });
+  const [tip, setTip] = useState<{ left: number; top: number; show: boolean }>({ left: 0, top: 0, show: false });
   const [pinned, setPinned] = useState<boolean>(false);
   const [visible, setVisible] = useState<{ util: boolean; temp: boolean; pow: boolean }>({ util: true, temp: true, pow: true });
+
+  // uPlot needs latest props inside its hooks; keep refs to avoid rebuilding the
+  // chart on every threshold/visibility/format change.
+  const thresholdsRef = useRef(chartThresholds);
+  const thresholdsEnabledRef = useRef(chartThresholdsEnabled);
+  const visibleRef = useRef(visible);
+  const timeFormatRef = useRef(timeFormat);
+  useEffect(() => { thresholdsRef.current = chartThresholds; plotRef.current?.redraw(false); }, [chartThresholds]);
+  useEffect(() => { thresholdsEnabledRef.current = chartThresholdsEnabled; plotRef.current?.redraw(false); }, [chartThresholdsEnabled]);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
+  useEffect(() => { timeFormatRef.current = timeFormat; plotRef.current?.redraw(false); }, [timeFormat]);
 
   const toggleSeries = (key: 'util' | 'temp' | 'pow') => {
     setVisible((v) => {
@@ -92,15 +106,38 @@ export default function LiveChart({ gpuIndex }: Props) {
         W: { auto: true },
       },
       axes: [
-        { stroke: muted, grid: { stroke: grid } },
+        {
+          stroke: muted,
+          grid: { stroke: grid },
+          values: (_u, vals) => {
+            const pad = (n: number) => String(n).padStart(2, '0');
+            const step = vals.length > 1 ? Math.abs(vals[1] - vals[0]) : 60;
+            const showSeconds = step < 60;
+            return vals.map((v) => {
+              const d = new Date(v * 1000);
+              if (timeFormatRef.current === '24h') {
+                return showSeconds
+                  ? `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+                  : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+              }
+              let h = d.getHours();
+              const ampm = h >= 12 ? 'PM' : 'AM';
+              h = h % 12;
+              if (h === 0) h = 12;
+              return showSeconds
+                ? `${pad(h)}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ampm}`
+                : `${pad(h)}:${pad(d.getMinutes())} ${ampm}`;
+            });
+          },
+        },
         { stroke: muted, grid: { stroke: grid }, scale: '%', values: (_u, vals) => vals.map((v) => v + '%') },
         { side: 1, stroke: muted, grid: { show: false }, scale: 'W', values: (_u, vals) => vals.map((v) => v + ' W') },
       ],
       series: [
         {},
-        { label: t('dashboard.metrics.utilization'), stroke: accent, width: 2, scale: '%', fill: hexAlpha(accent, 0.10) },
-        { label: t('dashboard.metrics.temperature'), stroke: warn, width: 2, scale: '%' },
-        { label: t('dashboard.metrics.power'), stroke: ok, width: 2, scale: 'W' },
+        { label: t('dashboard.metrics.utilization'), stroke: accent, width: 2, scale: '%', fill: makeGradient(accent) },
+        { label: t('dashboard.metrics.temperature'), stroke: warn, width: 2, scale: '%', fill: makeGradient(warn) },
+        { label: t('dashboard.metrics.power'), stroke: ok, width: 2, scale: 'W', fill: makeGradient(ok) },
       ],
       // We render our own legend chip row below the chart, so disable the
       // built-in legend (which only shows values on hover and clutters the layout).
@@ -110,9 +147,11 @@ export default function LiveChart({ gpuIndex }: Props) {
         setCursor: [
           (u) => {
             const idx = u.cursor.idx;
-            if (idx === null || idx === undefined) {
-              // Mouse left the plot, fall back to "live" mode (latest values).
+            const left = u.cursor.left ?? -1;
+            const top = u.cursor.top ?? -1;
+            if (idx === null || idx === undefined || left < 0 || top < 0) {
               setCursor({ t: null, utilization: null, temperature: null, power: null });
+              setTip((prev) => (prev.show ? { ...prev, show: false } : prev));
             } else {
               setCursor({
                 t: u.data[0]?.[idx] ?? null,
@@ -120,7 +159,34 @@ export default function LiveChart({ gpuIndex }: Props) {
                 temperature: (u.data[2]?.[idx] as number | undefined) ?? null,
                 power: (u.data[3]?.[idx] as number | undefined) ?? null,
               });
+              setTip({ left, top, show: true });
             }
+          },
+        ],
+        draw: [
+          (u) => {
+            if (!thresholdsEnabledRef.current) return;
+            const th = thresholdsRef.current;
+            const vis = visibleRef.current;
+            const ctx = u.ctx;
+            const { left, top, width, height } = u.bbox;
+            ctx.save();
+            ctx.setLineDash([5, 4]);
+            ctx.lineWidth = 1;
+            const drawLine = (val: number | undefined, scale: string, color: string) => {
+              if (val === undefined || !Number.isFinite(val)) return;
+              const y = u.valToPos(val, scale, true);
+              if (!Number.isFinite(y) || y < top || y > top + height) return;
+              ctx.strokeStyle = hexAlpha(color, 0.5);
+              ctx.beginPath();
+              ctx.moveTo(left, y);
+              ctx.lineTo(left + width, y);
+              ctx.stroke();
+            };
+            if (vis.util) drawLine(th.util, '%', accent);
+            if (vis.temp) drawLine(th.temp, '%', warn);
+            if (vis.pow) drawLine(th.pow, 'W', ok);
+            ctx.restore();
           },
         ],
       },
@@ -239,21 +305,67 @@ export default function LiveChart({ gpuIndex }: Props) {
           </span>
         </div>
       </div>
-      <div
-        ref={containerRef}
-        role="button"
-        tabIndex={0}
-        aria-pressed={pinned}
-        className="w-full select-none cursor-pointer"
-        onClick={() => setPinned((p) => !p)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setPinned((p) => !p);
-          }
-        }}
-        title={pinned ? t('dashboard.click_unpin') : t('dashboard.click_pin')}
-      />
+      <div className="relative">
+        <div
+          ref={containerRef}
+          role="button"
+          tabIndex={0}
+          aria-pressed={pinned}
+          className="w-full select-none cursor-pointer"
+          onClick={() => setPinned((p) => !p)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setPinned((p) => !p);
+            }
+          }}
+          title={pinned ? t('dashboard.click_unpin') : t('dashboard.click_pin')}
+        />
+        {tip.show && cursor.t !== null && (
+          <div
+            className="pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md text-[11px] shadow-lg backdrop-blur-sm"
+            style={{
+              left: tip.left + 12,
+              top: Math.max(0, tip.top - 8),
+              background: 'color-mix(in srgb, var(--gv-surface) 92%, transparent)',
+              border: '1px solid var(--gv-border)',
+              color: 'var(--gv-text)',
+              minWidth: 140,
+            }}
+          >
+            <div className="font-semibold tabular-nums mb-1" style={{ color: 'var(--gv-text-muted)' }}>
+              {fmtDateTime(cursor.t, timeFormat)}
+            </div>
+            {visible.util && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.util ?? 'var(--gv-accent)' }} />
+                  {t('dashboard.metrics.utilization')}
+                </span>
+                <span className="font-semibold tabular-nums">{fmt(cursor.utilization, '%')}</span>
+              </div>
+            )}
+            {visible.temp && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.temp ?? 'var(--gv-warn)' }} />
+                  {t('dashboard.metrics.temperature')}
+                </span>
+                <span className="font-semibold tabular-nums">{fmt(cursor.temperature, '°C')}</span>
+              </div>
+            )}
+            {visible.pow && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.pow ?? 'var(--gv-ok)' }} />
+                  {t('dashboard.metrics.power')}
+                </span>
+                <span className="font-semibold tabular-nums">{fmt(cursor.power, ' W')}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       {loadingHistory && (
         <div className="mt-2 text-xs" style={{ color: 'var(--gv-text-dim)' }}>
           {t('common.loading')}
@@ -330,4 +442,20 @@ function hexAlpha(hex: string, a: number): string {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function makeGradient(color: string): (u: uPlot) => CanvasGradient | string {
+  return (u: uPlot) => {
+    const ctx = u.ctx;
+    const top = u.bbox.top;
+    const bottom = u.bbox.top + u.bbox.height;
+    if (!Number.isFinite(top) || !Number.isFinite(bottom) || bottom <= top) {
+      return hexAlpha(color, 0.10);
+    }
+    const grad = ctx.createLinearGradient(0, top, 0, bottom);
+    grad.addColorStop(0, hexAlpha(color, 0.32));
+    grad.addColorStop(0.6, hexAlpha(color, 0.10));
+    grad.addColorStop(1, hexAlpha(color, 0));
+    return grad;
+  };
 }
