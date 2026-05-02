@@ -113,6 +113,7 @@
   "settings": {
     "title": "Réglages",
     "subtitle": "Personnalisez votre tableau de bord",
+    "saved": "Réglages enregistrés",
     "theme": "Thème",
     "dark_themes": "Sombre",
     "light_themes": "Clair",
@@ -121,7 +122,31 @@
     "language": "Langue",
     "lang_more_help": "D'autres langues peuvent être ajoutées dans src/i18n/locales/.",
     "sound": "Son",
-    "sound_enable": "Jouer un son sur alerte"
+    "sound_enable": "Jouer un son sur alerte",
+    "updates": "Mises à jour",
+    "updates_enable": "Vérifier automatiquement les mises à jour",
+    "updates_frequency": "Fréquence de vérification (heures)",
+    "updates_frequency_help": "Intervalle entre deux interrogations de GitHub. Le résultat est mis en cache pour cette durée."
+  },
+  "updates": {
+    "available_title": "GpuViewR {{version}} est disponible",
+    "available_subtitle": "Vous utilisez {{current}} — la dernière version est {{latest}}.",
+    "see_details": "Détails",
+    "copy_command": "Copier la commande",
+    "modal_title": "Mise à jour vers GpuViewR {{version}}",
+    "release_notes": "Notes de version",
+    "no_notes": "Aucune note de version publiée.",
+    "view_on_github": "Voir sur GitHub",
+    "how_to": "Comment mettre à jour",
+    "how_to_help": "Exécutez cette commande sur l'hôte qui fait tourner le conteneur. Elle sauvegarde vos données, pull la nouvelle image et redémarre le service.",
+    "help_pull": "pull l'image la plus récente et redémarre",
+    "help_check": "vérifie qu'une nouvelle image est disponible sans rien modifier",
+    "help_rollback": "restaure l'image précédente et la dernière sauvegarde",
+    "current": "Actuelle",
+    "latest": "Dernière",
+    "last_check": "Dernière vérification",
+    "cached": "cache",
+    "recheck": "Vérifier"
   },
   "common": {
     "loading": "Chargement...",
@@ -129,6 +154,8 @@
     "language": "Langue",
     "save": "Enregistrer",
     "cancel": "Annuler",
+    "close": "Fermer",
+    "copied": "Copié",
     "refresh": "Rafraîchir"
   }
 }

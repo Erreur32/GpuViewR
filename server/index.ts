@@ -13,6 +13,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { gpuCollector, startRetentionJob } from './services/gpuCollector.js';
 import { setupGpuWebSocket } from './services/gpuStreamWS.js';
 import { alertService } from './services/alertService.js';
+import { updateService } from './services/updateService.js';
 import { ensurePortFreeOrExit, getDisplayIP, renderBanner } from './utils/banner.js';
 
 import authRoutes from './routes/auth.js';
@@ -20,6 +21,7 @@ import gpuRoutes from './routes/gpu.js';
 import healthRoutes from './routes/health.js';
 import alertsRoutes from './routes/alerts.js';
 import logsRoutes from './routes/logs.js';
+import updatesRoutes from './routes/updates.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,6 +40,7 @@ async function bootstrap(): Promise<void> {
 
   initializeDatabase();
   alertService.init();
+  updateService.init();
 
   const app = express();
   app.disable('x-powered-by');
@@ -49,6 +52,7 @@ async function bootstrap(): Promise<void> {
   app.use('/api/gpu', gpuRoutes);
   app.use('/api/alerts', alertsRoutes);
   app.use('/api/logs', logsRoutes);
+  app.use('/api/updates', updatesRoutes);
 
   const distDir = path.resolve(__dirname, '..', 'dist');
   if (fs.existsSync(distDir)) {

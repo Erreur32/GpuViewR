@@ -21,6 +21,7 @@ if (!config.jwtSecret || config.jwtSecret.length < 16) {
   config.jwtSecret = 'dev-only-insecure-secret-change-me-please-________________';
 }
 
+/** Returns PUBLIC_URL if explicitly configured, otherwise an empty string. */
 export function getPublicUrl(): string {
-  return config.publicUrl || `http://localhost:${config.port}`;
+  return config.publicUrl || '';
 }

@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
-import { Sun, Moon, LayoutGrid, BarChart3, Volume2, Languages } from 'lucide-react';
+import { Moon, LayoutGrid, BarChart3, Volume2, Languages } from 'lucide-react';
 import { useUiStore } from '../../store/uiStore';
 import { THEMES } from '../../lib/themes';
+import UpdateSettings from './UpdateSettings';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -75,6 +76,8 @@ export default function SettingsPage() {
           {t('settings.sound_enable')}
         </label>
       </section>
+
+      <UpdateSettings />
     </div>
   );
 }

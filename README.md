@@ -145,7 +145,24 @@ complete list.
 
 ## Updating
 
-GpuViewR ships with an `update.sh` helper:
+GpuViewR has **two complementary update mechanisms**:
+
+### 1. In-app update notice
+
+The server polls GitHub once per `frequencyHours` (default: 24 h) and verifies
+the matching Docker image is actually published on GHCR. When an update is
+ready, every authenticated user sees a banner on the dashboard:
+
+- **"Details"** opens a modal with release notes (pulled from GitHub Releases,
+  falling back to the local `CHANGELOG.md`) and the exact command to run.
+- **"Copy update command"** copies `./update.sh` to the clipboard.
+- The dismiss button hides that specific version's banner only.
+
+Admin-only knobs in `Settings → Updates`: enable/disable the checker, change
+the polling frequency (1 h … 7 days). The result is cached so polling never
+hits GitHub more often than the configured frequency.
+
+### 2. `update.sh` helper
 
 ```bash
 ./update.sh             # backup data, pull latest, restart

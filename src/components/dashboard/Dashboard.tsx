@@ -8,6 +8,7 @@ import LiveChart from './LiveChart';
 import RangeSelector from './RangeSelector';
 import GpuTabs from './GpuTabs';
 import StatsSection from './StatsSection';
+import UpdateBanner from '../ui/UpdateBanner';
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -22,9 +23,12 @@ export default function Dashboard() {
 
   if (samples.length === 0) {
     return (
-      <div className="card p-8 text-center" style={{ color: 'var(--gv-text-muted)' }}>
-        {t('dashboard.no_gpu')}
-      </div>
+      <>
+        <UpdateBanner />
+        <div className="card p-8 text-center" style={{ color: 'var(--gv-text-muted)' }}>
+          {t('dashboard.no_gpu')}
+        </div>
+      </>
     );
   }
 
@@ -35,6 +39,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <UpdateBanner />
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <GpuTabs samples={samples} />
 

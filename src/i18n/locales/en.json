@@ -113,6 +113,7 @@
   "settings": {
     "title": "Settings",
     "subtitle": "Personalize the dashboard",
+    "saved": "Settings saved",
     "theme": "Theme",
     "dark_themes": "Dark",
     "light_themes": "Light",
@@ -121,7 +122,31 @@
     "language": "Language",
     "lang_more_help": "More languages can be added under src/i18n/locales/.",
     "sound": "Sound",
-    "sound_enable": "Play sound on alert"
+    "sound_enable": "Play sound on alert",
+    "updates": "Updates",
+    "updates_enable": "Check for updates automatically",
+    "updates_frequency": "Check frequency (hours)",
+    "updates_frequency_help": "How often the server polls GitHub for new releases. The result is cached for this duration."
+  },
+  "updates": {
+    "available_title": "GpuViewR {{version}} is available",
+    "available_subtitle": "You are running {{current}} — latest is {{latest}}.",
+    "see_details": "Details",
+    "copy_command": "Copy update command",
+    "modal_title": "Update to GpuViewR {{version}}",
+    "release_notes": "Release notes",
+    "no_notes": "No release notes published yet.",
+    "view_on_github": "View on GitHub",
+    "how_to": "How to update",
+    "how_to_help": "Run this command on the host where the container is deployed. It backs up your data, pulls the new image, and restarts the service.",
+    "help_pull": "pull the latest image and restart",
+    "help_check": "check whether a new image is available without changing anything",
+    "help_rollback": "restore the previous image and data backup",
+    "current": "Current",
+    "latest": "Latest",
+    "last_check": "Last check",
+    "cached": "cached",
+    "recheck": "Check now"
   },
   "common": {
     "loading": "Loading...",
@@ -129,6 +154,8 @@
     "language": "Language",
     "save": "Save",
     "cancel": "Cancel",
+    "close": "Close",
+    "copied": "Copied",
     "refresh": "Refresh"
   }
 }

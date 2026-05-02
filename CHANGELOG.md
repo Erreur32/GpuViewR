@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `getPublicUrl()` returned a localhost fallback that fooled the boot banner
+  into showing `http://localhost:PORT` instead of the detected LAN IP. It now
+  returns an empty string when `PUBLIC_URL` is unset, and the banner uses the
+  detected IP for the public URL row.
+
 ### Added
+- **In-app update checker**: new admin-facing module that polls GitHub for
+  newer releases and verifies the matching image is published on GHCR.
+  - `GET /api/updates/check` (cached per `frequencyHours`, `?force=true` to
+    bypass)
+  - `GET /api/updates/config` and `PATCH /api/updates/config` (admin-only)
+  - SQLite-backed `app_config` key/value store
+  - Frontend dashboard banner with **Copy update command** + dismiss
+  - Modal showing release notes (GitHub Releases body, falls back to local
+    `CHANGELOG.md`) and the `./update.sh` instructions
+  - Settings panel toggle (admin-only) for enable / frequency
+  - Falls back gracefully when no release is published yet
 - **Boot banner** (LogviewR-style): boxed Unicode art with title, environment
   label, container name, and color-coded URLs for `Frontend WEB`,
   `Frontend Local`, `Backend API`, `WebSocket`. The banner is also written to
