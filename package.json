@@ -34,7 +34,7 @@
     "express-rate-limit": "^8.3.2",
     "i18next": "^25.8.4",
     "jsonwebtoken": "^9.0.2",
-    "lucide-react": "^0.555.0",
+    "lucide-react": "^0.577.0",
     "mqtt": "^5.15.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -60,7 +60,7 @@
     "cross-env": "^7.0.3",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
-    "typescript": "~5.8.2",
+    "typescript": "~5.9.3",
     "vite": "^6.2.0"
   }
 }
