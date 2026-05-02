@@ -37,7 +37,7 @@
     "lucide-react": "^0.555.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-i18next": "^16.5.4",
+    "react-i18next": "^17.0.6",
     "react-router-dom": "^7.14.0",
     "tsx": "^4.21.0",
     "uplot": "^1.6.32",
