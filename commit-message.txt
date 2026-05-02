@@ -1,28 +1,33 @@
-release: v0.1.8 - tabbed settings, chart thresholds, gradient fills, cursor tooltip
+release: v0.1.9 - About tab, processes, Live filter, security hardening
 
-UI / Settings
-- Settings page now grouped into tabs: General / Exports / Database / Updates.
-  Active tab is persisted in localStorage (gpuviewr.settingsTab).
-- New "Chart thresholds" card in the General tab: master toggle, per-metric
-  value (utilization %, temperature °C, power W), per-field clear button,
-  and "Restore defaults" action. Defaults: util=95%, temp=83°C, pow=350W.
+Settings
+- About tab with logo, version, features, GitHub links, MIT and
+  embedded changelog viewer (GET /api/info/changelog).
+- Tabbed Settings (General / Exports / Database / Updates / About).
+- Chart thresholds card (toggle + per-metric value + clear + reset).
+- Update banner is now permanently dismissible (toggle in About tab).
 
 Chart
-- Dashed reference lines drawn on the live chart for each enabled metric,
-  using uPlot's draw hook so the lines respect series visibility, theme,
-  and custom colors. Thresholds toggle / values redraw the chart in place.
-- Modern area fills: vertical gradient (top ~32% alpha → 0% at bottom)
-  applied to utilization, temperature, and power series for a cleaner
-  Grafana-style look.
-- Hover tooltip following the cursor: shows the sample's date/time
-  (24h/12h aware) and the values of currently visible curves with their
-  series color dots.
-- X-axis time labels now follow the user's 24h / 12h preference and add
-  seconds automatically when the tick spacing is below one minute.
+- Cursor tooltip with date/time and visible curve values.
+- Gradient area fills (util, temp, pow).
+- Live (50s) range replacing 1m / 2m, with auto-migration.
+- X-axis honors 24h / 12h preference.
+- gpuStore.ingest is now immutable so live ticks always render.
 
-Tooling
-- scripts/update-version.sh: stop rewriting the static "GpuViewR-vX.Y.Z"
-  README badge - the dynamic GitHub Release badge already updates itself,
-  so the static one was removed from the README.
+GPU
+- Per-process GPU table (PID / process / VRAM) polling
+  /api/processes[?gpu=<i>], cached 1.5s server-side.
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Layout
+- max-w-7xl -> max-w-[1600px] on header / main / Settings.
+
+Security
+- Rate limiting on /api, /api/auth and /metrics (express-rate-limit),
+  trust proxy = 1.
+- Prometheus label escaping (backslash, quote, newline).
+- MQTT clientId via crypto.randomBytes.
+- HTTPS placeholder for the InfluxDB URL field.
+- Paired onKeyDown for the chart color picker label.
+- SECURITY.md with disclosure flow.
+- Dockerfile: apt-get upgrade in both stages, FROM pinned to digest.
+- CI actions pinned to commit SHAs, release.yml minimal token perms.

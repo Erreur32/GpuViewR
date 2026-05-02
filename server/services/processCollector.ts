@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process';
 import { logger } from '../utils/logger.js';
+import { spawnNvidiaSmi } from '../utils/nvidiaSmi.js';
 
 export interface GpuProcess {
   pid: number;
@@ -26,14 +26,14 @@ class ProcessCollector {
   // always render a stable table (e.g. nvidia-smi missing on dev hosts).
   async getSnapshot(): Promise<Snapshot> {
     if (Date.now() - this.last.ts < CACHE_MS) return this.last;
-    if (this.inflight) return this.inflight;
+    if (this.inflight !== null) return this.inflight;
     this.inflight = this.refresh().finally(() => { this.inflight = null; });
     return this.inflight;
   }
 
   private refresh(): Promise<Snapshot> {
     return new Promise((resolve) => {
-      const child = spawn('nvidia-smi', [
+      const child = spawnNvidiaSmi([
         `--query-compute-apps=${QUERY}`,
         '--format=csv,noheader,nounits',
       ]);

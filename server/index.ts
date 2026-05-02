@@ -6,6 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import type { CorsOptions } from 'cors';
 import { config, getPublicUrl } from './config.js';
 import { initializeDatabase, closeDatabase } from './database/connection.js';
 import { logger } from './utils/logger.js';
@@ -55,7 +56,29 @@ async function bootstrap(): Promise<void> {
   // Trust the first proxy hop (typical reverse-proxy setup) so that
   // express-rate-limit and req.ip use X-Forwarded-For correctly.
   app.set('trust proxy', 1);
-  app.use(cors());
+  // CORS: in production the frontend is served by Express itself, so
+  // browsers never need cross-origin requests. We restrict CORS to the
+  // configured public URL (if any) and explicitly allow Vite's dev
+  // server during development. This avoids the permissive
+  // Access-Control-Allow-Origin: * default flagged by Sonar S5122.
+  const allowedOrigins = new Set<string>();
+  const publicUrl = getPublicUrl();
+  if (publicUrl) allowedOrigins.add(publicUrl);
+  if (config.nodeEnv !== 'production') {
+    const vitePort = parseInt(process.env.VITE_PORT || '5181', 10);
+    allowedOrigins.add(`http://localhost:${vitePort}`);
+    allowedOrigins.add(`http://127.0.0.1:${vitePort}`);
+  }
+  const corsOptions: CorsOptions = {
+    origin: (origin, cb) => {
+      // Same-origin requests (no Origin header) are always allowed.
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.has(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  };
+  app.use(cors(corsOptions));
   app.use(express.json({ limit: '256kb' }));
 
   app.use('/api', apiLimiter);

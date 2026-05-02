@@ -1,7 +1,7 @@
-import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { spawnNvidiaSmi, spawnSyncNvidiaSmi } from '../utils/nvidiaSmi.js';
 import { GpuDeviceRepository, GpuMetricRepository, type GpuMetric } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
 
@@ -88,7 +88,7 @@ class GpuCollector extends EventEmitter {
   private checkNvidiaSmi(): void {
     if (this.nvidiaSmiAvailable !== null) return;
     try {
-      const r = spawnSync('nvidia-smi', ['--version'], { encoding: 'utf-8', timeout: 3000 });
+      const r = spawnSyncNvidiaSmi(['--version'], 3000);
       this.nvidiaSmiAvailable = r.status === 0;
     } catch {
       this.nvidiaSmiAvailable = false;
@@ -96,7 +96,7 @@ class GpuCollector extends EventEmitter {
   }
 
   private tick(): void {
-    const child = spawn('nvidia-smi', [
+    const child = spawnNvidiaSmi([
       `--query-gpu=${QUERY_FIELDS.join(',')}`,
       '--format=csv,noheader,nounits',
     ]);

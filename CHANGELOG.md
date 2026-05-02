@@ -5,6 +5,75 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-05-02
+
+Settings, chart polish, per-process GPU table, security hardening.
+
+### Added
+- **About tab in Settings**: logo, version (installed + latest), feature
+  highlights, GitHub author + repo links, MIT license. Includes a
+  dismissible update-banner toggle (persisted in `localStorage`) and an
+  embedded changelog viewer with version selector reading
+  `GET /api/info/changelog`.
+- **Tabbed Settings layout**: General / Exports / Database / Updates /
+  About, active tab persisted in `localStorage`.
+- **Chart thresholds card** in the General tab: master toggle,
+  per-metric value (utilization %, temperature °C, power W), per-field
+  clear, restore defaults. Defaults: util=95, temp=83, pow=350.
+- **Cursor tooltip** on the live chart showing date/time + visible
+  curve values, with theme colors and 24h/12h aware formatting.
+- **Modern gradient area fills** for utilization, temperature and power
+  series.
+- **Live (50s) range button** replacing 1m / 2m, with auto-migration of
+  legacy localStorage values.
+- **Per-process GPU table**: PID / process name / VRAM, polled every
+  2.5s via `GET /api/processes[?gpu=<i>]`. Backed by a 1.5s in-process
+  cache around `nvidia-smi --query-compute-apps`.
+- **`/api/info/{changelog,readme}`** endpoints, whitelist-only and size
+  capped.
+- **SECURITY.md** with disclosure flow and supported versions.
+
+### Changed
+- Layout widened from `max-w-7xl` to `max-w-[1600px]` (header, main,
+  Settings) for large monitors.
+- Live chart x-axis now honors the user 24h / 12h preference and adds
+  seconds when the tick spacing drops below one minute.
+- WebSocket per-client connect/disconnect logs demoted to `debug`.
+- `gpuStore.ingest` now produces immutable `Series` objects so the
+  chart picks up live ticks without waiting for a range change.
+- Dockerfile: `apt-get upgrade -y` in both stages and FROM lines pinned
+  to `node:22-bookworm-slim@sha256:d415caac…`. Runtime image now also
+  ships `README.md`.
+- CI workflow actions pinned to commit SHAs.
+- `release.yml`: top-level `permissions: read-all`, `contents: write`
+  scoped to the `create-release` job only.
+- `update-version.sh`: stop rewriting the static `GpuViewR-vX.Y.Z`
+  README badge (replaced by the dynamic GitHub Release badge).
+
+### Security
+- **Rate limiting** (`express-rate-limit`): apiLimiter (600/min) on
+  `/api`, authLimiter (10/min, brute-force window) on `/api/auth`,
+  metricsLimiter (120/min) on `/metrics`. `trust proxy = 1` so
+  `X-Forwarded-For` is honored behind a reverse proxy. Closes 11
+  CodeQL "Missing rate limiting" alerts.
+- **Prometheus label escaping**: backslash, quote and newline are now
+  escaped on `name` and `uuid` labels (CodeQL #29).
+- **MQTT clientId**: `Math.random()` replaced with `randomBytes(4)`
+  (Sonar `typescript:S2245`).
+- **InfluxDB URL placeholder**: `http://` → `https://` (Sonar
+  `typescript:S5332`).
+- **a11y**: paired `onKeyDown` with `onClick` on the chart color-picker
+  label (Sonar `typescript:S1082`).
+- **PATH hardening**: nvidia-smi spawns now use a fixed `PATH`
+  (`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`) so a
+  malicious working directory cannot shadow the binary (Sonar
+  `typescript:S4036`).
+- **CORS**: replaced `cors()` with an origin allowlist (the configured
+  public URL plus the Vite dev port in development), removing the
+  permissive `Access-Control-Allow-Origin: *` (Sonar `typescript:S5122`).
+- **Async safety**: explicit `!== null` guard on the in-flight cache
+  Promise (Sonar `typescript:S6544`).
+
 ## [0.1.7] - 2026-05-02
 
 Exports & integrations: Prometheus, MQTT (with Home Assistant
