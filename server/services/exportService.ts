@@ -1,4 +1,5 @@
 import { connect as mqttConnect, MqttClient } from 'mqtt';
+import { randomBytes } from 'node:crypto';
 import { gpuCollector, type GpuSample } from './gpuCollector.js';
 import { AppConfigRepo, ensureAppConfigSchema } from '../database/models/AppConfig.js';
 import { logger } from '../utils/logger.js';
@@ -190,7 +191,7 @@ class ExportService {
         username: cfg.username || undefined,
         password: cfg.password || undefined,
         reconnectPeriod: 5000,
-        clientId: `gpuviewr-${Math.random().toString(16).slice(2, 10)}`,
+        clientId: `gpuviewr-${randomBytes(4).toString('hex')}`,
       });
       client.on('connect', () => {
         logger.success('export', `MQTT connected to ${cfg.url}`);

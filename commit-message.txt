@@ -1,41 +1,28 @@
-release: v0.1.7, exports - prometheus / mqtt+ha / influxdb / webhook
+release: v0.1.8 — tabbed settings, chart thresholds, gradient fills, cursor tooltip
 
-Exports and integrations
-- Prometheus pull endpoint at GET /metrics, exposing
-  gpuviewr_gpu_{temperature_celsius,utilization_ratio,memory_used_bytes,
-  memory_total_bytes,power_watts,fan_speed_ratio,clock_graphics_hz,
-  clock_memory_hz} with gpu/name/uuid labels per GPU. Returns 404 when
-  the exporter is disabled (no scrape leakage).
-- MQTT publish: one retained JSON message per GPU on
-  <prefix>/gpu<N>/state at a configurable interval. Supports username,
-  password, custom topic prefix, and optional Home Assistant discovery
-  which auto-publishes homeassistant/sensor/.../config topics so sensors
-  register automatically in HA.
-- InfluxDB v2 line-protocol push to <url>/api/v2/write with Token auth.
-  Configurable measurement name and interval.
-- Webhook JSON push (POST or PUT) of {source, timestamp, samples} to
-  a configurable URL with custom headers and interval.
+UI / Settings
+- Settings page now grouped into tabs: General / Exports / Database / Updates.
+  Active tab is persisted in localStorage (gpuviewr.settingsTab).
+- New "Chart thresholds" card in the General tab: master toggle, per-metric
+  value (utilization %, temperature °C, power W), per-field clear button,
+  and "Restore defaults" action. Defaults: util=95%, temp=83°C, pow=350W.
 
-UI
-- New Settings > Exports & integrations: per-exporter form (toggle,
-  URL, credentials, interval, exporter-specific options) with a "Send
-  test" button per exporter. Passwords and InfluxDB tokens are masked
-  in API responses and only updated when the user types a new value.
+Chart
+- Dashed reference lines drawn on the live chart for each enabled metric,
+  using uPlot's draw hook so the lines respect series visibility, theme,
+  and custom colors. Thresholds toggle / values redraw the chart in place.
+- Modern area fills: vertical gradient (top ~32% alpha → 0% at bottom)
+  applied to utilization, temperature, and power series for a cleaner
+  Grafana-style look.
+- Hover tooltip following the cursor: shows the sample's date/time
+  (24h/12h aware) and the values of currently visible curves with their
+  series color dots.
+- X-axis time labels now follow the user's 24h / 12h preference and add
+  seconds automatically when the tick spacing is below one minute.
 
-Backend
-- New server/services/exportService.ts: subscribes to gpuCollector
-  'sample', schedules push exporters on per-exporter intervals, manages
-  a single MQTT connection, exposes renderPrometheus() to the metrics
-  route. Configs persisted in app_config.export_configs.
-- New routes server/routes/exports.ts (configs API) and
-  server/routes/metrics.ts (Prometheus exposition).
-- SPA catch-all regex updated so /metrics is not swallowed by the
-  static fallback.
-- New runtime dependency: mqtt.
-
-Roadmap
-- README roadmap split into Done (Exports v0.1.7) and Planned
-  (per-process breakdown, password-reset CLI, CSV export, PWA, email
-  dispatcher, multi-host fan-out).
+Tooling
+- scripts/update-version.sh: stop rewriting the static "GpuViewR-vX.Y.Z"
+  README badge — the dynamic GitHub Release badge already updates itself,
+  so the static one was removed from the README.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
