@@ -11,9 +11,11 @@
 
 [![OSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/Erreur32/GpuViewR?style=for-the-badge&label=Scorecard)](https://scorecard.dev/viewer/?uri=github.com/Erreur32/GpuViewR)
 [![CodeQL](https://img.shields.io/badge/CodeQL-active-brightgreen?style=for-the-badge&logo=github)](https://github.com/Erreur32/GpuViewR/security/code-scanning)
-[![SonarCloud Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=Erreur32_GpuViewR2&metric=alert_status)](https://sonarcloud.io/summary/overall?id=Erreur32_GpuViewR2)
 [![Snyk](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/snyk.yml?style=for-the-badge&logo=snyk&logoColor=white&label=Snyk&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/snyk.yml)
 
+[![SonarCloud](https://img.shields.io/sonar/quality_gate/Erreur32_GpuViewR2?server=https%3A%2F%2Fsonarcloud.io&style=for-the-badge&logo=sonarcloud&logoColor=white&label=Sonar)](https://sonarcloud.io/summary/overall?id=Erreur32_GpuViewR2)
+[![Security](https://sonarcloud.io/api/project_badges/measure?project=Erreur32_GpuViewR2&metric=security_rating)](https://sonarcloud.io/summary/overall?id=Erreur32_GpuViewR2)
+[![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=Erreur32_GpuViewR2&metric=sqale_rating)](https://sonarcloud.io/summary/overall?id=Erreur32_GpuViewR2)
  
 **Real-time NVIDIA GPU monitoring dashboard, packaged as a single Docker image.**
 
