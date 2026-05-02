@@ -5,6 +5,26 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.16] - 2026-05-02
+
+Fan as a first-class chart curve and stat tile, Royal palette shipped
+as the new out-of-the-box default, and one-click classic alert presets.
+
+### Added
+- **Fan speed in the live chart**: 5th series on the % scale with its
+  own legend chip, threshold line, color picker and a Stats tile.
+- **Alert presets**: `GET /api/alerts/presets` and
+  `POST /api/alerts/presets/install` endpoints, plus a "Presets" modal
+  on the Alerts page that seeds 9 classic GPU rules (temp critical /
+  high, VRAM saturated / high, power high, sustained 100% util, fan
+  runaway / stalled, idle anomaly). Installed rules land disabled so
+  the user reviews thresholds before arming them.
+
+### Changed
+- **Default chart palette is now Royal**: seeded once at first hydrate
+  via a `chart_palette_initialized` flag in localStorage, leaving any
+  pre-existing custom colors untouched on upgrade.
+
 ## [0.1.13] - 2026-05-02
 
 UX polish: cleaner Updates tab, smarter chart tooltip, deterministic

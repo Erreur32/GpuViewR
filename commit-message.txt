@@ -1,11 +1,13 @@
-release: v0.1.15 - better GPU process name detection, license cleanup
+release: v0.1.16 - fan curve + stats, Royal default palette, alert presets
 
-- processCollector: when nvidia-smi reports "[Not Found]" (or
-  empty / "-" / "N/A") for a compute-app process_name, fall back
-  to reading /proc/<pid>/cmdline (basename of argv0) and then
-  /proc/<pid>/comm before labeling the row "unknown". Resolves
-  rows that used to stay stuck on "[Not Found]" forever.
-  Requires the container to share the host PID namespace
-  (`pid: host` in docker-compose.yml) for host-side processes.
-- LICENSE & README: drop the legacy bigsk1/gpu-monitor copyright
-  block from both the LICENSE file and the README license excerpt.
+- Fan speed promoted to a 5th chart series (% scale) with its own
+  legend chip, threshold line, color picker and a Stats tile so the
+  fan_speed metric the collector already stores in SQLite is finally
+  exposed in the UI.
+- Royal palette is now seeded on first launch via a one-shot
+  chart_palette_initialized flag in localStorage, leaving any
+  existing custom colors untouched on upgrade.
+- New /alerts/presets endpoints + Presets modal seed the 9 classic
+  GPU alerts (temp critical/high, VRAM saturated/high, power high,
+  sustained 100% util, fan runaway/stalled, idle anomaly). Rules are
+  installed disabled so the user reviews thresholds before arming.
