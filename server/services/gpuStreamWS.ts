@@ -18,7 +18,7 @@ export function setupGpuWebSocket(server: HttpServer): void {
       return;
     }
 
-    logger.info('ws', `client connected (user=${payload.username})`);
+    logger.debug('ws', `client connected (user=${payload.username})`);
 
     const snapshot = gpuCollector.getLatest();
     if (snapshot.length) safeSend(ws, { type: 'snapshot', samples: snapshot });
@@ -33,7 +33,7 @@ export function setupGpuWebSocket(server: HttpServer): void {
     ws.on('close', () => {
       gpuCollector.off('sample', onSample);
       alertService.off('event', onAlert);
-      logger.info('ws', `client disconnected (user=${payload.username})`);
+      logger.debug('ws', `client disconnected (user=${payload.username})`);
     });
     ws.on('error', (err) => logger.warn('ws', 'socket error:', err.message));
   });
