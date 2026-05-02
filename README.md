@@ -4,7 +4,7 @@
 
 <img src="public/gpuviewr.svg" alt="GpuViewR" width="128" height="128" />
 
-![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.0-111827?style=for-the-badge)
+![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.1-111827?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-DEVELOPMENT-374151?style=for-the-badge)
 ![Docker](https://img.shields.io/badge/Docker-Ready-1f2937?style=for-the-badge&logo=docker&logoColor=38bdf8)
 ![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900)
@@ -21,16 +21,15 @@
 [![Release](https://img.shields.io/github/v/release/Erreur32/GpuViewR?style=for-the-badge&logo=github&logoColor=white&label=Release&color=111827)](https://github.com/Erreur32/GpuViewR/releases)
 [![GHCR](https://img.shields.io/badge/ghcr.io-erreur32%2Fgpuviewr-111827?style=for-the-badge&logo=docker&logoColor=38bdf8)](https://github.com/Erreur32/GpuViewR/pkgs/container/gpuviewr)
 
-**Real-time NVIDIA GPU monitoring dashboard.**
-Built with **React 19 · Vite · TailwindCSS · uPlot · Express 5 · WebSocket · better-sqlite3**.
+**Real-time NVIDIA GPU monitoring dashboard, packaged as a single Docker image.**
 
-[Quick start](#quick-start) · [First login](#first-login--there-is-no-default-account) · [Configuration](#configuration) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Roadmap](#roadmap)
+[Quick start](#quick-start) · [Configuration](#configuration) · [First login](#first-login) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Roadmap](#roadmap)
 
 </div>
 
 ---
 
-GpuViewR is a from-scratch reimplementation of GPU monitoring, focused on:
+## Features
 
 - ⚡ **Real-time** — WebSocket streaming, 1 s tick (no JSON polling)
 - 🎨 **Modern UI** — Tailwind, 5 built-in themes (3 dark + 2 light), responsive mobile-first
@@ -39,8 +38,8 @@ GpuViewR is a from-scratch reimplementation of GPU monitoring, focused on:
 - ✨ **Sparklines** in every gauge card
 - 🔔 **Alerts engine** — sustained-duration thresholds, cooldown, browser notifications, optional sound
 - 📜 **Filterable server logs** — level / scope / search, live auto-refresh
-- 🌍 **i18n** — English / French out of the box, easy to extend
-- 🔐 **Authentication** — first user becomes admin (bcrypt + JWT)
+- 🌍 **i18n** — English / French out of the box
+- 🔐 **Authentication** — first user becomes admin (bcryptjs + JWT)
 - 🔢 **Multi-GPU** — automatic tabs when 2+ devices are detected
 - 🐳 **Single Docker image** — multi-arch (amd64 / arm64), Node 22 Alpine
 
@@ -50,14 +49,12 @@ GpuViewR is a from-scratch reimplementation of GPU monitoring, focused on:
 
 GpuViewR is a complete rewrite **inspired by and originally based on**
 [**bigsk1/gpu-monitor**](https://github.com/bigsk1/gpu-monitor) (MIT License).
-
 The original project provided the foundation: GPU data collection approach via
 `nvidia-smi`, the SQLite schema for historical metrics, and the Docker
-packaging strategy. GpuViewR keeps the data model compatible so existing
-gpu-monitor users can migrate without losing their history (see
-[`Docs/MIGRATION.md`](Docs/MIGRATION.md)).
+packaging strategy.
 
-### What changed in GpuViewR
+<details>
+<summary><b>What changed in GpuViewR</b> — click to expand</summary>
 
 <table>
 <thead>
@@ -69,157 +66,177 @@ gpu-monitor users can migrate without losing their history (see
 </thead>
 <tbody>
 
-<tr>
-  <td>📡 <b>Data transport</b></td>
-  <td>Polling <code>gpu_current_stats.json</code> every <b>5 s</b>, chart every <b>30 s</b></td>
-  <td><b>WebSocket</b> streaming every <b>1 s</b>, auto-reconnect with backoff</td>
-</tr>
+<tr><td>📡 <b>Data transport</b></td>
+<td>Polling JSON every <b>5 s</b>, chart every <b>30 s</b></td>
+<td><b>WebSocket</b> streaming every <b>1 s</b>, auto-reconnect with backoff</td></tr>
 
-<tr>
-  <td>⚙️ <b>Collector</b></td>
-  <td>Bash script (≈ 630 lines), <code>nvidia-smi</code> + intermediate JSON files</td>
-  <td>TypeScript service, <code>nvidia-smi</code> spawned from Node, batched DB writes</td>
-</tr>
+<tr><td>⚙️ <b>Collector</b></td>
+<td>Bash script (≈ 630 lines), <code>nvidia-smi</code> + intermediate JSON files</td>
+<td>TypeScript service, <code>nvidia-smi</code> spawned from Node, batched DB writes</td></tr>
 
-<tr>
-  <td>💾 <b>Storage</b></td>
-  <td>SQLite (single GPU column), 24 h retention</td>
-  <td>SQLite WAL + index per GPU, <b>7 d retention</b> (configurable)</td>
-</tr>
+<tr><td>💾 <b>Storage</b></td>
+<td>SQLite (single GPU column), 24 h retention</td>
+<td>SQLite WAL + index per GPU, <b>7 d retention</b> (configurable)</td></tr>
 
-<tr>
-  <td>🎨 <b>Frontend</b></td>
-  <td>One <code>gpu-stats.html</code> file, <b>1 183 lines</b> of inline HTML+CSS+JS</td>
-  <td><b>React 19</b> + Vite + TailwindCSS, modular components, ~25 KB gzip</td>
-</tr>
+<tr><td>🎨 <b>Frontend</b></td>
+<td>One HTML file, <b>1 183 lines</b> of inline HTML+CSS+JS</td>
+<td><b>React 19</b> + Vite + TailwindCSS, modular components, ~25 KB gzip</td></tr>
 
-<tr>
-  <td>📊 <b>Charts</b></td>
-  <td>Chart.js <b>3.7</b> (≈ 195 KB)</td>
-  <td><b>uPlot</b> (≈ 40 KB), built for live time-series</td>
-</tr>
+<tr><td>📊 <b>Charts</b></td>
+<td>Chart.js 3.7 (≈ 195 KB)</td>
+<td><b>uPlot</b> (≈ 40 KB), built for live time-series</td></tr>
 
-<tr>
-  <td>🌈 <b>Theming</b></td>
-  <td>One fixed dark palette</td>
-  <td><b>5 themes</b> (3 dark + 2 light) via CSS variables, theme picker in Settings</td>
-</tr>
+<tr><td>🌈 <b>Theming</b></td>
+<td>One fixed dark palette</td>
+<td><b>5 themes</b> (3 dark + 2 light) via CSS variables</td></tr>
 
-<tr>
-  <td>📐 <b>Gauges</b></td>
-  <td>Static horizontal bars</td>
-  <td><b>Arc rings or Grafana-style bars</b>, switchable; sparklines on every card</td>
-</tr>
+<tr><td>📐 <b>Gauges</b></td>
+<td>Static horizontal bars</td>
+<td><b>Arc rings or Grafana-style bars</b>, switchable; sparklines per card</td></tr>
 
-<tr>
-  <td>🔢 <b>Multi-GPU</b></td>
-  <td>Single GPU only</td>
-  <td><b>Multi-GPU</b> with auto tabs when ≥ 2 devices detected</td>
-</tr>
+<tr><td>🔢 <b>Multi-GPU</b></td>
+<td>Single GPU only</td>
+<td><b>Multi-GPU</b> with auto tabs when ≥ 2 devices detected</td></tr>
 
-<tr>
-  <td>🔐 <b>Authentication</b></td>
-  <td>None — anyone with the URL gets in</td>
-  <td><b>bcrypt + JWT</b>, first user becomes admin (no default credentials)</td>
-</tr>
+<tr><td>🔐 <b>Authentication</b></td>
+<td>None — anyone with the URL gets in</td>
+<td><b>bcryptjs + JWT</b>, first user becomes admin</td></tr>
 
-<tr>
-  <td>🔔 <b>Alerts</b></td>
-  <td>Threshold + browser notification (front-end only)</td>
-  <td>DB-backed rules, <b>sustain + cooldown</b> evaluator, in-app toasts, browser notifications, optional sound</td>
-</tr>
+<tr><td>🔔 <b>Alerts</b></td>
+<td>Front-end thresholds only</td>
+<td>DB-backed rules, <b>sustain + cooldown</b> evaluator, in-app toasts, browser notifications, sound</td></tr>
 
-<tr>
-  <td>📜 <b>Server logs</b></td>
-  <td>Plain log file</td>
-  <td><b>Filterable Logs page</b> (level / scope / search) + auto-refresh</td>
-</tr>
+<tr><td>📜 <b>Server logs</b></td>
+<td>Plain log file</td>
+<td><b>Filterable Logs page</b> (level / scope / search) + auto-refresh</td></tr>
 
-<tr>
-  <td>🌍 <b>i18n</b></td>
-  <td>English only</td>
-  <td><b>EN / FR</b> shipped, scaffolded for more locales</td>
-</tr>
+<tr><td>🌍 <b>i18n</b></td>
+<td>English only</td>
+<td><b>EN / FR</b> shipped, scaffolded for more locales</td></tr>
 
-<tr>
-  <td>🔄 <b>Update flow</b></td>
-  <td>Manual <code>docker compose pull && up -d</code></td>
-  <td>In-app <b>update banner</b> (GitHub + GHCR check) and <code>update.sh</code> helper with auto-backup &amp; rollback</td>
-</tr>
+<tr><td>🔄 <b>Update flow</b></td>
+<td>Manual <code>docker compose pull</code></td>
+<td>In-app <b>update banner</b> (GitHub + GHCR check) + <code>update.sh</code> with auto-backup &amp; rollback</td></tr>
 
-<tr>
-  <td>🐳 <b>Image</b></td>
-  <td>Single-stage Python image</td>
-  <td><b>Multi-stage Node 22 Alpine</b>, multi-arch <b>amd64 + arm64</b>, healthcheck included</td>
-</tr>
+<tr><td>🐳 <b>Image</b></td>
+<td>Single-stage Python image</td>
+<td><b>Multi-stage Node 22 Alpine</b>, multi-arch <b>amd64 + arm64</b>, healthcheck</td></tr>
 
 </tbody>
 </table>
+</details>
 
-Original work © bigsk1 — see [LICENSE](LICENSE) for the full notice.
+Original work © bigsk1 — see [LICENSE](LICENSE).
 
 ---
 
 ## Quick start
 
-### Docker (recommended)
+### Prerequisites
+
+- A host with an **NVIDIA GPU** and the
+  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+  installed (so containers can see `nvidia-smi`).
+- Docker Engine 23+ with the Compose plugin.
+
+### Step 1 — create your `.env`
 
 ```bash
-# 1. Generate a JWT secret
-echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
+mkdir -p ~/gpuviewr && cd ~/gpuviewr
 
-# 2. (Optional) Pin the LAN IP that appears in the boot banner
+# Generate a JWT secret (required)
+echo "JWT_SECRET=$(openssl rand -base64 32)"  > .env
+
+# Pin the LAN IP that the boot banner should print (recommended in Docker)
 echo "HOST_IP=$(hostname -I | awk '{print $1}')" >> .env
 
-# 3. Start
-docker compose up -d
-
-# 4. Open the dashboard
-#    http://localhost:7510
+# Optional overrides
+# echo "DASHBOARD_PORT=7510"   >> .env  # change host port if 7510 is taken
+# echo "TZ=Europe/Paris"       >> .env
 ```
 
-The first time you connect, the login page automatically switches to **"Create
-admin account"**. The first user you register is granted the `admin` role.
-Subsequent registrations create regular `user` accounts.
+### Step 2 — drop in this `docker-compose.yml`
 
-> Default Docker port is **`7510`** (host) → **`3015`** (container). Override
-> the host port with `DASHBOARD_PORT=...` in `.env`.
+Save it next to your `.env`:
 
-### Local development (npm)
+```yaml
+services:
+  gpuviewr:
+    image: ghcr.io/erreur32/gpuviewr:latest
+    container_name: gpuviewr
+    restart: unless-stopped
+
+    ports:
+      - "${DASHBOARD_PORT:-7510}:3015"
+
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (see Step 1)}
+      PORT: 3015
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
+      HOST_IP: ${HOST_IP:-}
+      CONTAINER_NAME: gpuviewr
+      TZ: ${TZ:-Europe/Paris}
+      GPU_TICK_MS: ${GPU_TICK_MS:-1000}
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+
+    volumes:
+      - ./data:/app/data    # persistent SQLite (users + GPU history + alerts)
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility]
+    runtime: nvidia
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+> A ready-to-copy version is also available in
+> [`docker-compose.example.yml`](docker-compose.example.yml).
+
+### Step 3 — start it
 
 ```bash
-git clone https://github.com/Erreur32/GpuViewR.git
-cd GpuViewR
-nvm use                              # Node 22
-npm install
-cp .env.example .env && nano .env    # set JWT_SECRET
-npm run dev                          # client + server in parallel
+docker compose up -d
+docker compose logs -f gpuviewr   # watch the boot banner
 ```
 
-| Endpoint | URL |
-|---|---|
-| Frontend (Vite dev) | `http://localhost:5181` |
-| Backend API | `http://localhost:3015/api` |
-| WebSocket | `ws://localhost:3015/ws/gpu` |
+The boot banner prints the URL to open. With defaults that's
+**`http://<your-host-ip>:7510`**.
 
-The boot banner prints all four URLs, including a network-reachable variant
-based on the detected LAN IP. If the configured port is already in use, the
-backend exits with a clear, color-coded message rather than crashing later.
+> **Port mapping.** Inside the container the app listens on **`3015`**.
+> Docker maps the **host port `7510`** to the container's `3015`. You always
+> open the dashboard on the **host port** (`7510` by default, or whatever
+> you set in `DASHBOARD_PORT`). The `3015` you see in the banner is a
+> reminder of the internal port — not the URL to use from your browser.
 
 ---
 
-## First login — there is no default account
+## First login
 
-GpuViewR ships **without** any pre-baked credentials, on purpose:
+GpuViewR ships **without** any pre-baked credentials.
 
-1. The first time you reach `/login`, the API reports `hasUsers: false`.
-2. The login form switches into **"Create admin account"** mode.
-3. Pick your own `username` (≥ 3 chars) and `password` (≥ 8 chars).
-4. The first user is created with role `admin` automatically.
-5. Future registrations are regular `user` accounts.
+1. Open the dashboard URL — the login page detects an empty database and
+   switches to **"Create admin account"**.
+2. Pick your own `username` (≥ 3 chars) and `password` (≥ 8 chars).
+3. The first user is granted role `admin` automatically. Subsequent
+   registrations create regular `user` accounts.
 
-**Lost your password?** The simplest path is to wipe the user store and start
-over:
+**Lost your password?** Wipe the user store and start over:
 
 ```bash
 docker compose down
@@ -227,28 +244,43 @@ rm -rf ./data/gpuviewr.db*
 docker compose up -d
 ```
 
-(GPU history is stored in the same SQLite file, so it will be reset too. A
-dedicated `npm run reset-password` helper is on the roadmap.)
+(GPU history is stored in the same SQLite file, so it will be reset too.)
 
 ---
 
 ## Configuration
 
-All settings are read from `.env`. See [`.env.example`](.env.example) for the
-complete list.
+All settings are read from `.env`.
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `JWT_SECRET` | — | **Required.** Secret for signing JWTs. Generate with `openssl rand -base64 32`. |
-| `PORT` | `3015` | Backend HTTP/WebSocket port (inside the container in Docker). |
-| `VITE_PORT` | `5181` | Vite dev server port (npm dev only). |
-| `DASHBOARD_PORT` | `7510` | Docker only — host port mapped to the container's `PORT`. |
-| `HOST_IP` | _auto_ | LAN IP shown in the banner. Auto-detected if unset. |
-| `PUBLIC_URL` | — | If you serve GpuViewR behind a reverse proxy. |
+| `JWT_SECRET` | — | **Required.** Secret for signing JWTs. `openssl rand -base64 32` |
+| `DASHBOARD_PORT` | `7510` | Host port mapped to the container. Open this in your browser. |
+| `HOST_IP` | _auto_ | LAN IP shown in the boot banner. Auto-detected if unset; recommended in Docker. |
+| `PUBLIC_URL` | — | Set when you serve GpuViewR behind a reverse proxy. |
 | `TZ` | `Europe/Paris` | Container timezone. |
 | `GPU_TICK_MS` | `1000` | How often `nvidia-smi` is sampled. |
-| `RETENTION_DAYS` | `7` | How long historical metrics are kept. |
-| `DATA_DIR` | `./data` | Where the SQLite DB lives. |
+| `RETENTION_DAYS` | `7` | How long historical metrics are kept in SQLite. |
+
+Internal ports (rarely need to change):
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `PORT` | `3015` | Container-internal HTTP/WebSocket port. Must match the right side of the compose port mapping. |
+
+### Updating
+
+The dashboard polls GitHub once per `frequencyHours` (default 24 h) and
+shows a banner when a newer GHCR image is available. Apply it from the host
+with:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+A copy of the `update.sh` helper (with `--check` and `--rollback` and
+automatic data backups) is shipped in the repo for power users — see
+[`Docs/CONTRIBUTING.md`](Docs/CONTRIBUTING.md).
 
 ---
 
@@ -257,34 +289,16 @@ complete list.
 ### Themes
 
 Five themes ship by default: `Midnight`, `Graphite`, `Oceanic` (dark),
-`Daylight`, `Paper` (light). Add a new theme by editing
-[`src/lib/themes.ts`](src/lib/themes.ts) — each theme is a token map that's
-applied to CSS variables on `<html>`:
-
-```ts
-export const THEMES: Theme[] = [
-  // ...
-  {
-    id: 'sunset',
-    label: 'Sunset',
-    mode: 'dark',
-    tokens: { /* bg, surface, accent, ok, warn, danger, ... */ },
-  },
-];
-```
-
-The new theme appears in **Settings → Theme** automatically.
+`Daylight`, `Paper` (light). Pick one in **Settings → Theme**.
 
 ### Gauges
 
 Toggle between **arc rings** and **Grafana-style horizontal bars** from the
-dashboard toolbar or **Settings → Gauge style**. The choice is persisted
-per-browser in `localStorage`.
+dashboard toolbar or **Settings → Gauge style**.
 
 ### Languages
 
-Add a locale in [`src/i18n/locales/`](src/i18n/locales/) and register it in
-[`src/i18n/index.ts`](src/i18n/index.ts). Missing keys fall back to English.
+English and French are shipped. Use **Settings → Language** to switch.
 
 ---
 
@@ -297,14 +311,14 @@ Define rules in **Alerts → New rule** (admin only). Each rule has:
 | Metric | `temperature`, `utilization`, `memory %`, `power`, `fan_speed` |
 | Condition | `above` (≥) or `below` (≤) the threshold |
 | Threshold | Numeric value |
-| Sustained (s) | The threshold must be held for this long before firing |
+| Sustained (s) | The threshold must hold for this long before firing |
 | Cooldown (s) | Minimum gap between two firings of the same rule |
 | GPU index | Empty = applies to all GPUs |
 | Notify browser | Native `Notification` API |
-| Notify sound | Plays `/alert.mp3` (replace the placeholder for a real tone) |
+| Notify sound | Plays a short tone |
 
-When a rule fires, GpuViewR pushes a `type: "alert"` frame on the same
-WebSocket — the UI shows a toast immediately and (optionally) raises a browser
+When a rule fires, GpuViewR pushes an `alert` frame on the same WebSocket —
+the UI shows a toast immediately and (optionally) raises a browser
 notification. When the metric returns into range, a `resolved` event is
 emitted and a green toast confirms it.
 
@@ -337,3 +351,8 @@ copy, modify, merge, publish, distribute, sublicense, and sell copies of the
 software, subject to the license terms.
 
 [![License](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white)](LICENSE)
+
+---
+
+> 🛠 Want to hack on GpuViewR? See [`Docs/CONTRIBUTING.md`](Docs/CONTRIBUTING.md)
+> for the local development setup, release flow, and architecture notes.

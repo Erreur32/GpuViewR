@@ -1,0 +1,46 @@
+release: v0.1.1 — first public release
+
+GpuViewR is a from-scratch rewrite of bigsk1/gpu-monitor with a modern
+TypeScript stack (React 19 + Vite + TailwindCSS + uPlot on the front;
+Express 5 + WebSocket + better-sqlite3 + bcryptjs + JWT on the back),
+shipped as a single multi-arch Docker image (Node 22 Alpine, amd64 + arm64).
+
+Highlights
+- Live WebSocket streaming (1 s tick) with auto-reconnect.
+- 5 built-in themes (3 dark + 2 light), arc / horizontal-bar gauges,
+  sparklines, multi-GPU tabs, range selector (5 min to 3 d), 24 h stats.
+- Authentication: first user becomes admin (bcryptjs + JWT, no default
+  credentials).
+- Alerts engine with sustained-duration thresholds, cooldown, browser
+  notifications, optional sound.
+- Filterable Logs page (level / scope / search, live auto-refresh).
+- In-app update banner powered by /api/updates/check (GitHub + GHCR).
+- Boot banner with port-availability check, IP detection, color URLs.
+- i18n: English / French shipped, scaffolded for more locales.
+
+Security
+- bcrypt -> bcryptjs swap unblocks the tar Dependabot advisory by removing
+  the transitive @mapbox/node-pre-gyp -> tar chain (npm ls tar is empty).
+- Added CodeQL, OpenSSF Scorecard, Snyk (Code + Open Source + Container)
+  and SonarCloud workflows. Dependabot configured for npm + GitHub Actions
+  + Docker base image, weekly grouped on Monday morning Europe/Paris.
+
+Fixed
+- Boot banner now prints the host-mapped port (DASHBOARD_PORT) in Docker,
+  instead of the unreachable container-internal port.
+- getPublicUrl() no longer returns a localhost fallback that masked the
+  detected LAN IP in the banner.
+- .gitignore rule `logs` promoted to `/logs` so src/components/logs/ is
+  no longer accidentally ignored.
+
+Changed
+- README rewritten for end users: dropped the local-development section,
+  inlined a copy-paste docker-compose.yml, added a step-by-step .env
+  walk-through, kept the comparison table behind a collapsible block.
+- Default ports verified free against the host: backend 3015, Vite 5181,
+  Docker host 7510.
+- bump-version.js -> update-version.sh (LogviewR pattern, with --tag-push).
+
+See CHANGELOG.md for the full breakdown.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>

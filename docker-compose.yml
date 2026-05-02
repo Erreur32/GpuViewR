@@ -30,6 +30,7 @@ services:
     environment:
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3015
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
       CONTAINER_NAME: gpuviewr
       HOST_IP: ${HOST_IP:-}
       TZ: ${TZ:-Europe/Paris}
