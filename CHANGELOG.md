@@ -5,6 +5,55 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.17] - 2026-05-02
+
+Stats / chart reorder around fan, CSV history export, exporter
+"what's being sent" panel, password-reset CLI, settings polish.
+
+### Added
+- **Password reset CLI** (`scripts/reset-password.ts`, also
+  `npm run user:reset-password`) for admins who lose web-UI
+  access. Honors `DATA_DIR`, supports `--list`, masked prompt with
+  confirmation, or non-interactive `--password=<value>`.
+- **CSV history export**: streaming `GET /api/gpu/history.csv`
+  (`gpu=<i>|all`) backed by `better-sqlite3` `iterate()`, with a
+  "CSV" button next to the chart title. UTF-8 BOM for Excel
+  compatibility and RFC-4180 escaping.
+- **Exporter "What's being sent" panel** under each enabled
+  exporter (Prometheus, MQTT, InfluxDB) showing the active
+  endpoint and the exact list of metrics / topics / payload keys /
+  HA sensors / tag+field keys. Sourced from a single
+  `PROMETHEUS_METRICS` / `MQTT_PAYLOAD_KEYS` / `MQTT_HA_SENSORS` /
+  `INFLUX_TAG_KEYS` / `INFLUX_FIELD_KEYS` catalog shared with the
+  publishing code so the panel and the wire output can't drift.
+- **Webhook custom headers editor** (generic type) so users can
+  attach `Authorization` / `X-API-Key` / etc. to each request.
+- **Notifications section** in `Settings -> General`: global sound
+  toggle (`Volume2`/`VolumeX`) and a one-click "Enable browser
+  notifications" button that surfaces the current permission
+  state (granted / not asked / blocked / not supported).
+
+### Changed
+- **Dashboard order is now Temp - Util - Memory - Fan - Power**
+  across the gauges above the chart (Fan card added, grid bumped
+  to `lg:grid-cols-5`), the Statistics table, the chart legend
+  chips and the cursor tooltip. Per-category colors preserved.
+- **Footer aggregate pill** folds in average fan speed (skipped on
+  GPUs that don't expose `fan_speed`), in the same global order.
+- **Webhook push interval** is now visible for every webhook type
+  in metrics mode (previously hidden for Discord/Telegram even
+  though the server scheduled their pushes).
+- **Notification icon** switched to `/GPUViewR.png` for parity
+  with the rest of the branding.
+- **`renderPrometheus`** now drives its `# HELP`/`# TYPE` block
+  from the shared `PROMETHEUS_METRICS` catalog (output bytes
+  identical, single source of truth).
+
+### Fixed
+- **`selectedGpu` persists across reloads** (key
+  `gpuviewr.selected_gpu`); previously the dashboard always
+  snapped back to GPU #0 on every page load.
+
 ## [0.1.16] - 2026-05-02
 
 Fan as a first-class chart curve and stat tile, Royal palette shipped
