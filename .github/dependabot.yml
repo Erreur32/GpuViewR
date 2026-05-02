@@ -1,4 +1,13 @@
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Strategy:
+# - Minor and patch updates are grouped into a single weekly PR per ecosystem
+#   (so contributors review one PR instead of 15).
+# - Major bumps are IGNORED here on purpose: they almost always need a
+#   coordinated migration (Tailwind 4, Vite 8, TypeScript 6, etc.) and are
+#   handled by hand in dedicated upgrade PRs. Dependabot security alerts
+#   still file PRs for vulnerable major bumps regardless of this rule.
+#
 version: 2
 updates:
   # npm dependencies (server + frontend share a single root package.json)
@@ -9,21 +18,23 @@ updates:
       day: monday
       time: "06:00"
       timezone: Europe/Paris
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     labels:
       - dependencies
     commit-message:
       prefix: "deps"
       include: scope
     groups:
-      # Group all minor/patch bumps to keep the queue short
-      minor-and-patch:
+      npm-minor-patch:
         applies-to: version-updates
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  # GitHub Actions versions (only allow security + tagged updates)
+  # GitHub Actions versions
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -31,14 +42,24 @@ updates:
       day: monday
       time: "06:30"
       timezone: Europe/Paris
+    open-pull-requests-limit: 5
     labels:
       - ci
       - github-actions
     commit-message:
       prefix: "ci"
       include: scope
+    groups:
+      ci-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  # Base Docker images (Node 22 Alpine)
+  # Base Docker images (Node 22 Alpine). LTS pin: do not auto-bump majors.
   - package-ecosystem: docker
     directory: /
     schedule:
@@ -46,8 +67,12 @@ updates:
       day: monday
       time: "06:45"
       timezone: Europe/Paris
+    open-pull-requests-limit: 2
     labels:
       - docker
     commit-message:
       prefix: "docker"
       include: scope
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
