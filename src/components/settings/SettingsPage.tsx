@@ -4,6 +4,7 @@ import { useUiStore } from '../../store/uiStore';
 import { THEMES } from '../../lib/themes';
 import UpdateSettings from './UpdateSettings';
 import DatabaseSettings from './DatabaseSettings';
+import ExportsSettings from './ExportsSettings';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -71,6 +72,8 @@ export default function SettingsPage() {
           <button className="seg-btn" aria-pressed={timeFormat === '12h'} onClick={() => setTimeFormat('12h')}>12h (AM/PM)</button>
         </div>
       </section>
+
+      <ExportsSettings />
 
       <DatabaseSettings />
 

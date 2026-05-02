@@ -14,6 +14,7 @@ import { gpuCollector, startRetentionJob } from './services/gpuCollector.js';
 import { setupGpuWebSocket } from './services/gpuStreamWS.js';
 import { alertService } from './services/alertService.js';
 import { updateService } from './services/updateService.js';
+import { exportService } from './services/exportService.js';
 import { ensurePortFreeOrExit, getDisplayIP, renderBanner } from './utils/banner.js';
 
 import authRoutes from './routes/auth.js';
@@ -23,6 +24,8 @@ import alertsRoutes from './routes/alerts.js';
 import logsRoutes from './routes/logs.js';
 import updatesRoutes from './routes/updates.js';
 import systemRoutes from './routes/system.js';
+import exportsRoutes from './routes/exports.js';
+import metricsRoutes from './routes/metrics.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +45,7 @@ async function bootstrap(): Promise<void> {
   initializeDatabase();
   alertService.init();
   updateService.init();
+  exportService.init();
 
   const app = express();
   app.disable('x-powered-by');
@@ -55,11 +59,13 @@ async function bootstrap(): Promise<void> {
   app.use('/api/logs', logsRoutes);
   app.use('/api/updates', updatesRoutes);
   app.use('/api/system', systemRoutes);
+  app.use('/api/exports', exportsRoutes);
+  app.use('/metrics', metricsRoutes);
 
   const distDir = path.resolve(__dirname, '..', 'dist');
   if (fs.existsSync(distDir)) {
     app.use(express.static(distDir));
-    app.get(/^(?!\/api\/|\/ws\/).*/, (_req, res) => {
+    app.get(/^(?!\/api\/|\/ws\/|\/metrics(?:$|\/)).*/, (_req, res) => {
       res.sendFile(path.join(distDir, 'index.html'));
     });
   } else if (config.nodeEnv === 'production') {
@@ -81,6 +87,7 @@ async function bootstrap(): Promise<void> {
   const shutdown = (signal: string) => {
     logger.info('boot', `Received ${signal}, shutting down...`);
     gpuCollector.stop();
+    exportService.shutdown();
     server.close(() => {
       closeDatabase();
       process.exit(0);

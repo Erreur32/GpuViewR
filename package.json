@@ -1,7 +1,7 @@
 {
   "name": "gpuviewr",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "description": "Modern real-time NVIDIA GPU monitoring dashboard (React + Vite + Express + WebSocket + uPlot)",
   "homepage": "https://github.com/Erreur32/GpuViewR",
@@ -35,6 +35,7 @@
     "i18next": "^25.8.4",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.555.0",
+    "mqtt": "^5.15.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-i18next": "^16.5.4",

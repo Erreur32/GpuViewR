@@ -5,6 +5,45 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-05-02
+
+Exports & integrations: Prometheus, MQTT (with Home Assistant
+discovery), InfluxDB v2, and Webhook.
+
+### Added
+- **Prometheus exporter**: pull-based `GET /metrics` exposing
+  `gpuviewr_gpu_temperature_celsius`, `gpuviewr_gpu_utilization_ratio`,
+  `gpuviewr_gpu_memory_{used,total}_bytes`, `gpuviewr_gpu_power_watts`,
+  `gpuviewr_gpu_fan_speed_ratio`, `gpuviewr_gpu_clock_{graphics,memory}_hz`
+  with `gpu`, `name`, `uuid` labels per GPU. Endpoint returns 404 when
+  the exporter is disabled (no scrape leakage).
+- **MQTT exporter**: publishes one retained JSON message per GPU on
+  `<topicPrefix>/gpu<N>/state` at configurable intervals. Supports
+  username/password, custom topic prefix, and **optional Home Assistant
+  discovery** which auto-publishes `homeassistant/sensor/.../config`
+  topics so all GPU sensors register automatically in HA.
+- **InfluxDB v2 exporter**: pushes line-protocol writes to
+  `<url>/api/v2/write?org=&bucket=&precision=s` with `Authorization:
+  Token ...`. Configurable measurement name and write interval.
+- **Webhook exporter**: posts a JSON payload `{source, timestamp,
+  samples}` to a configurable URL with custom method (POST/PUT) and
+  headers, at a configurable interval.
+- **Settings > Exports & integrations**: per-exporter form (enable
+  toggle, URL, credentials, interval, exporter-specific options),
+  "Send test" buttons that fire a one-shot push, and secret masking
+  (passwords / tokens are returned redacted by the API and only updated
+  when the user types a new value).
+- **Roadmap section** in `README.md` reorganized into "Done" (Exports
+  v0.1.7) and "Planned" (per-process breakdown, password-reset CLI,
+  CSV export, PWA, email dispatcher, multi-host fan-out).
+
+### Changed
+- Server boot now calls `exportService.init()` and registers
+  `app.use('/api/exports', ...)` (configs API) and
+  `app.use('/metrics', ...)` (Prometheus). The SPA catch-all regex was
+  updated so `/metrics` is not swallowed by the static fallback.
+- New `mqtt` runtime dependency.
+
 ## [0.1.6] - 2026-05-02
 
 System tab, DB management UI, per-series chart colors, time format,

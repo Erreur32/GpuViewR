@@ -4,7 +4,7 @@
 
 <img src="public/GPUViewR.png" alt="GpuViewR" width="128" height="128" />
 
-![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.6-111827?style=for-the-badge)
+![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.7-111827?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-DEVELOPMENT-374151?style=for-the-badge)
 ![Docker](https://img.shields.io/badge/Docker-Ready-1f2937?style=for-the-badge&logo=docker&logoColor=38bdf8)
 ![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900)
@@ -232,11 +232,23 @@ emitted and a green toast confirms it.
 
 ## Roadmap
 
+### Done
+
+- [x] **Exports & integrations** (v0.1.7)
+  - **Prometheus** pull endpoint (`GET /metrics`, `gpuviewr_gpu_*` metrics)
+  - **MQTT** publish per-GPU JSON state (`<prefix>/gpu<N>/state`) with optional **Home Assistant discovery** so sensors auto-register in HA
+  - **InfluxDB v2** line-protocol push (configurable URL / org / bucket / token)
+  - **Webhook** JSON push (POST/PUT, configurable URL, headers, interval)
+  - Each exporter toggleable from `Settings > Exports & integrations`, with a "Send test" action
+
+### Planned
+
 - Per-process GPU usage breakdown (`nvidia-smi --query-compute-apps`)
 - Password reset CLI
 - CSV export of historical metrics
 - PWA (installable on mobile, offline shell)
-- Email / webhook alert dispatchers (in addition to in-app + browser)
+- Email alert dispatcher (browser + in-app already supported; webhook covers most external dispatch)
+- Multi-host fan-out (one GpuViewR aggregating remote agents)
 
 ---
 

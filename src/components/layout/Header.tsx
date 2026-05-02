@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Cpu, LogOut, BellRing, FileText, Settings, LayoutDashboard, Server } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
-const VERSION = 'v0.1.6';
+const VERSION = 'v0.1.7';
 
 export default function Header() {
   const { t } = useTranslation();

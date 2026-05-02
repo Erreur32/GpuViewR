@@ -1,65 +1,41 @@
-release: v0.1.6, system tab + DB ui + chart colors + sound move
+release: v0.1.7, exports - prometheus / mqtt+ha / influxdb / webhook
 
-System
-- New System tab in the header (next to Alerts) showing host hardware
-  and runtime info: OS, kernel, arch, hostname, uptime, loadavg; CPU
-  model, cores, base clock; memory total/used/free with a usage bar;
-  Node process info (version, PID, RSS, uptime); per-GPU details
-  (UUID, driver, memory, temperature, utilization, power, fan, clocks).
-  Polls /api/system every 10 s.
+Exports and integrations
+- Prometheus pull endpoint at GET /metrics, exposing
+  gpuviewr_gpu_{temperature_celsius,utilization_ratio,memory_used_bytes,
+  memory_total_bytes,power_watts,fan_speed_ratio,clock_graphics_hz,
+  clock_memory_hz} with gpu/name/uuid labels per GPU. Returns 404 when
+  the exporter is disabled (no scrape leakage).
+- MQTT publish: one retained JSON message per GPU on
+  <prefix>/gpu<N>/state at a configurable interval. Supports username,
+  password, custom topic prefix, and optional Home Assistant discovery
+  which auto-publishes homeassistant/sensor/.../config topics so sensors
+  register automatically in HA.
+- InfluxDB v2 line-protocol push to <url>/api/v2/write with Token auth.
+  Configurable measurement name and interval.
+- Webhook JSON push (POST or PUT) of {source, timestamp, samples} to
+  a configurable URL with custom headers and interval.
 
-Database management
-- Settings > Database section: live stats (rows, file size including
-  WAL/SHM, oldest/newest sample, journal mode, page count/size),
-  configurable retention 1-365 days persisted in app_config and
-  honored by the hourly retention job, admin-only purge actions
-  (purge beyond retention, wipe all) followed by VACUUM.
-- Schema migration at boot: gpu_metrics.utilization is now NULLABLE.
-  Drivers reporting [N/A] no longer poison the column with a fake 0.
-- SQLite tuning: cache_size = -65536 (~64 MiB), mmap_size = 256 MiB,
-  temp_store = MEMORY. WAL + synchronous = NORMAL kept.
+UI
+- New Settings > Exports & integrations: per-exporter form (toggle,
+  URL, credentials, interval, exporter-specific options) with a "Send
+  test" button per exporter. Passwords and InfluxDB tokens are masked
+  in API responses and only updated when the user types a new value.
 
-Chart UX
-- Per-series chart colors: each chip below the live chart has a
-  clickable swatch opening the native color picker. Custom colors
-  persist in localStorage and feed both the chart strokes/fill and
-  the chips. A small reset button next to a customized chip restores
-  the theme default.
-- Time format toggle (24h / 12h) in Settings, applied to the live
-  chip timestamp and tooltip on the chart. New src/lib/time.ts.
-- Stats card colors track the average of each metric over the period
-  (green / amber / red). Memory avg is converted to pct using live
-  memory_total. All-green = healthy period.
+Backend
+- New server/services/exportService.ts: subscribes to gpuCollector
+  'sample', schedules push exporters on per-exporter intervals, manages
+  a single MQTT connection, exposes renderPrometheus() to the metrics
+  route. Configs persisted in app_config.export_configs.
+- New routes server/routes/exports.ts (configs API) and
+  server/routes/metrics.ts (Prometheus exposition).
+- SPA catch-all regex updated so /metrics is not swallowed by the
+  static fallback.
+- New runtime dependency: mqtt.
 
-Header / Alerts / Footer
-- Sound toggle moved from Settings to the Alerts page header (next to
-  "Enable browser notifications") since it gates alert sounds. Shows
-  Sound ON / Sound OFF with a mute icon.
-- Removed the global LIVE / OFFLINE pill from the header (the
-  per-gauge live indicators on the dashboard already convey freshness).
-- Removed the "inspired by bigsk1/gpu-monitor" footer line. The
-  credit remains in the README.
-
-Update checker
-- Cached check result is invalidated at boot when the running version
-  no longer matches the cached currentVersion (avoids stale numbers
-  after a version bump).
-- Settings > Updates now displays the latest version's release notes
-  (GitHub release, fallback to local CHANGELOG.md), with a "View on
-  GitHub" link, even when already up to date.
-
-Releases
-- New .github/workflows/release.yml: pushing a vX.Y.Z tag auto-creates
-  a GitHub Release with the matching CHANGELOG section as the body.
-
-SonarCloud
-- LiveChart: chart container is keyboard-accessible (role=button,
-  tabIndex, Enter/Space toggle pin/unpin) instead of a click-only div.
-- LiveChart: ChipProps is a Readonly<...> type alias.
-- GaugeCard: extracted Status type alias for 'ok' | 'warn' | 'danger'.
-  Props is now Readonly<...>.
-- StatsSection: removed two void-operator usages.
-- Dockerfile: merged the runtime apt-get install RUN with the
-  consecutive mkdir/chown RUN to reduce the layer count.
+Roadmap
+- README roadmap split into Done (Exports v0.1.7) and Planned
+  (per-process breakdown, password-reset CLI, CSV export, PWA, email
+  dispatcher, multi-host fan-out).
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
