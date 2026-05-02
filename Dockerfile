@@ -6,7 +6,7 @@
 # This rewrite uses the same Docker volumes/port for migration compatibility.
 
 # ---------- Stage 1: Build ----------
-FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:25-alpine AS builder
 
 WORKDIR /app
 
@@ -25,7 +25,7 @@ RUN npm prune --production && npm cache clean --force
 
 
 # ---------- Stage 2: Runtime ----------
-FROM node:22-alpine
+FROM node:25-alpine
 
 WORKDIR /app
 
