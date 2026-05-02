@@ -1,0 +1,55 @@
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+dist
+dist-ssr
+*.local
+
+# Editor / IDE
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.code-workspace
+
+# AI tools
+.claude
+.claude.*
+CLAUDE.md
+.cursor
+.aider*
+.mcp.json
+
+# Database / data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Env (sensitive)
+.env
+.env.*
+!.env.example
+
+# Logs (root-only — must NOT match src/components/logs/)
+/logs
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
+._*
+
+# Backups
+*.backup
+*.bak
+*~
+
+# Tokens / secrets
+*.token
+*secret*
+*.key
+*.pem

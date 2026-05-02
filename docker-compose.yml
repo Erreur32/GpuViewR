@@ -1,0 +1,61 @@
+# ===========================================
+# GpuViewR — Docker Compose
+# ===========================================
+#
+# Prerequisites:
+#   1. NVIDIA Container Toolkit installed on the host
+#      https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#   2. Create .env:  echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
+#   3. Start:        docker compose up -d
+#   4. Open:         http://localhost:3010   (first user becomes admin)
+#
+# Update:
+#   ./update.sh              # pull latest, backup data, restart
+#   ./update.sh --check      # check for new image without applying
+#   ./update.sh --rollback   # restore previous image and data
+# ===========================================
+
+services:
+  gpuviewr:
+    image: ghcr.io/erreur32/gpuviewr:latest
+    # Uncomment to build locally instead of pulling:
+    # build: .
+    container_name: gpuviewr
+    restart: unless-stopped
+
+    # Host port 7510 → container port 3015. Override via DASHBOARD_PORT in .env.
+    ports:
+      - "${DASHBOARD_PORT:-7510}:3015"
+
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 3015
+      CONTAINER_NAME: gpuviewr
+      HOST_IP: ${HOST_IP:-}
+      TZ: ${TZ:-Europe/Paris}
+      GPU_TICK_MS: ${GPU_TICK_MS:-1000}
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+      # PUBLIC_URL: https://gpu.example.com
+
+    volumes:
+      - ./data:/app/data
+      # Backward-compat with bigsk1/gpu-monitor users — these are read-only
+      # references; new metrics go into ./data/gpuviewr.db. Optional.
+      # - ./history:/app/legacy/history:ro
+      # - ./logs:/app/legacy/logs:ro
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility]
+    runtime: nvidia
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

@@ -1,0 +1,94 @@
+# ============================================================================
+# GpuViewR — example docker-compose for end users
+# ============================================================================
+#
+# Drop this file in any directory (no need to clone the repo) and run:
+#
+#   1. echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
+#      echo "HOST_IP=$(hostname -I | awk '{print $1}')" >> .env   # optional
+#
+#   2. docker compose -f docker-compose.example.yml up -d
+#
+#   3. open http://localhost:7510   (or whatever DASHBOARD_PORT you set)
+#
+#   4. The first user you register through the UI becomes admin.
+#
+# Prerequisites:
+#   * NVIDIA Container Toolkit installed on the host
+#     https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#   * Docker Engine 23+ with the Compose plugin
+#
+# Updates:
+#   * Pull and restart:  docker compose -f docker-compose.example.yml pull && \
+#                        docker compose -f docker-compose.example.yml up -d
+#   * Or grab update.sh from the repo and use it for backup + rollback support.
+# ============================================================================
+
+services:
+  gpuviewr:
+    image: ghcr.io/erreur32/gpuviewr:latest
+    container_name: gpuviewr
+    restart: unless-stopped
+
+    # Host port 7510 → container port 3015. Override DASHBOARD_PORT in .env
+    # if 7510 collides with another service on your host.
+    ports:
+      - "${DASHBOARD_PORT:-7510}:3015"
+
+    environment:
+      # Required — generate with: openssl rand -base64 32
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required, see header for generation command}
+
+      # Container port (must match the right-hand port mapping above).
+      PORT: 3015
+
+      # Shown in the boot banner. If unset, GpuViewR auto-detects a LAN IP,
+      # but inside Docker that may resolve to the bridge gateway (172.x.x.x).
+      # Set HOST_IP=<your LAN IP> to make the printed URL openable from the LAN.
+      HOST_IP: ${HOST_IP:-}
+
+      # Used by the boot banner.
+      CONTAINER_NAME: gpuviewr
+
+      TZ: ${TZ:-Europe/Paris}
+
+      # How often nvidia-smi is sampled (ms). Lower = smoother chart, more CPU.
+      GPU_TICK_MS: ${GPU_TICK_MS:-1000}
+
+      # Days of historical metrics to keep in SQLite.
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+
+      # Optional: serve behind a reverse proxy on a public URL.
+      # PUBLIC_URL: https://gpu.example.com
+
+    volumes:
+      # SQLite DB (users + GPU history + alert rules/events) — persistent.
+      - ./data:/app/data
+
+      # Optional: enable browser sound alerts with your own .mp3.
+      # Mount any audio file as /app/dist/alert.mp3 to override the default.
+      # - ./alert.mp3:/app/dist/alert.mp3:ro
+
+    # GPU access — requires the NVIDIA Container Toolkit.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility]
+    runtime: nvidia
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    # Reasonable production logging defaults.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

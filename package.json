@@ -1,0 +1,68 @@
+{
+  "name": "gpuviewr",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Modern real-time NVIDIA GPU monitoring dashboard (React + Vite + Express + WebSocket + uPlot)",
+  "homepage": "https://github.com/Erreur32/GpuViewR",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Erreur32/GpuViewR.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "predev": "lsof -ti:3015 2>/dev/null | xargs -r kill -9; lsof -ti:5181 2>/dev/null | xargs -r kill -9; true",
+    "dev": "concurrently --kill-others -n server,client -c blue,magenta \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:client": "vite",
+    "dev:server": "cross-env NODE_ENV=development tsx watch server/index.ts",
+    "build": "vite build",
+    "start": "cross-env NODE_ENV=production tsx server/index.ts",
+    "preview": "vite preview",
+    "version:bump": "node scripts/bump-version.js",
+    "version:patch": "node scripts/bump-version.js patch",
+    "version:minor": "node scripts/bump-version.js minor",
+    "version:major": "node scripts/bump-version.js major",
+    "test": "tsx --test server/**/*.test.ts"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "better-sqlite3": "^11.5.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.2",
+    "i18next": "^25.8.4",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.555.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-i18next": "^16.5.4",
+    "react-router-dom": "^7.14.0",
+    "tsx": "^4.21.0",
+    "uplot": "^1.6.32",
+    "ws": "^8.18.3",
+    "zustand": "^5.0.9"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

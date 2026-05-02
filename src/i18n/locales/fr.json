@@ -1,0 +1,134 @@
+{
+  "app": {
+    "title": "GpuViewR",
+    "subtitle": "Supervision GPU NVIDIA en temps réel"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "alerts": "Alertes",
+    "logs": "Journaux",
+    "settings": "Réglages"
+  },
+  "auth": {
+    "login": "Connexion",
+    "register": "Créer un compte",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "submit_login": "Se connecter",
+    "submit_register": "Créer le compte admin",
+    "first_user_hint": "Le premier utilisateur devient automatiquement admin",
+    "logout": "Déconnexion",
+    "errors": {
+      "invalid": "Identifiants invalides"
+    }
+  },
+  "dashboard": {
+    "live": "LIVE",
+    "offline": "HORS LIGNE",
+    "no_gpu": "Aucun GPU détecté — vérifiez que nvidia-smi est disponible dans le conteneur.",
+    "history": "Performance en direct",
+    "view_arc": "Jauges",
+    "view_bar": "Barres",
+    "metric": "Métrique",
+    "stats_24h": "Statistiques sur la période",
+    "stats_details": "Tableau détaillé",
+    "min": "Min",
+    "max": "Max",
+    "avg": "Moy.",
+    "metrics": {
+      "temperature": "Température",
+      "utilization": "Utilisation GPU",
+      "memory": "Mémoire",
+      "power": "Puissance",
+      "fan": "Ventilateur",
+      "fan_speed": "Ventilateur",
+      "clock_gpu": "Fréquence GPU",
+      "clock_mem": "Fréquence mémoire"
+    },
+    "ranges": {
+      "5m": "5 min",
+      "15m": "15 min",
+      "1h": "1 h",
+      "6h": "6 h",
+      "24h": "24 h",
+      "3d": "3 j"
+    }
+  },
+  "alerts": {
+    "title": "Alertes",
+    "subtitle": "Définissez des règles et consultez les événements récents",
+    "rules": "Règles",
+    "no_rules": "Aucune règle. Cliquez sur \"Nouvelle règle\" pour en créer une.",
+    "new_rule": "Nouvelle règle",
+    "edit_rule": "Modifier la règle",
+    "rule_name": "Nom",
+    "metric": "Métrique",
+    "condition": "Condition",
+    "above": "Au-dessus",
+    "below": "En dessous",
+    "threshold": "Seuil",
+    "duration_s": "Maintenu (s)",
+    "cooldown_s": "Délai entre alertes (s)",
+    "gpu_filter": "Index GPU (vide = tous)",
+    "all_gpus": "Tous les GPU",
+    "all_gpus_placeholder": "Tous les GPU",
+    "enabled": "Active",
+    "actions": "Actions",
+    "duration": "Durée",
+    "notify": "Notifier",
+    "notify_browser": "Notification navigateur",
+    "notify_sound": "Son",
+    "enable_browser": "Activer les notifications navigateur",
+    "browser_perm_granted": "Notifications navigateur activées",
+    "browser_perm_denied": "Permission refusée",
+    "browser_perm_default": "Permission ignorée",
+    "metrics": {
+      "temperature": "Température",
+      "utilization": "Utilisation",
+      "memory": "Mémoire %",
+      "power": "Puissance",
+      "fan_speed": "Ventilateur"
+    },
+    "saved": "Règle enregistrée",
+    "deleted": "Règle supprimée",
+    "recent_events": "Événements récents",
+    "no_events": "Aucun événement d'alerte."
+  },
+  "logs": {
+    "title": "Journaux serveur",
+    "subtitle": "Activité récente du backend, filtrable",
+    "auto_refresh": "Rafraîchissement auto",
+    "all_scopes": "Tous les scopes",
+    "search_placeholder": "Rechercher dans les messages...",
+    "empty": "Aucune entrée ne correspond aux filtres.",
+    "levels": {
+      "all": "Tout",
+      "info": "Info",
+      "warn": "Alerte",
+      "error": "Erreur",
+      "success": "Succès",
+      "debug": "Debug"
+    }
+  },
+  "settings": {
+    "title": "Réglages",
+    "subtitle": "Personnalisez votre tableau de bord",
+    "theme": "Thème",
+    "dark_themes": "Sombre",
+    "light_themes": "Clair",
+    "gauge_view": "Style des jauges",
+    "gauge_view_help": "Choisissez entre jauges arc et barres horizontales (style Grafana).",
+    "language": "Langue",
+    "lang_more_help": "D'autres langues peuvent être ajoutées dans src/i18n/locales/.",
+    "sound": "Son",
+    "sound_enable": "Jouer un son sur alerte"
+  },
+  "common": {
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "language": "Langue",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "refresh": "Rafraîchir"
+  }
+}
