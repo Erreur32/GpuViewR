@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- README header rebuilt with shields.io badges (version, status, Docker, NVIDIA,
+  React, TypeScript, license, build status, CI status, latest GitHub Release,
+  GHCR image), centered hero block, and a quick navigation row. The version
+  badge is auto-updated by `scripts/update-version.sh` along with the other
+  version markers.
+
 ### Fixed
 - `getPublicUrl()` returned a localhost fallback that fooled the boot banner
   into showing `http://localhost:PORT` instead of the detected LAN IP. It now

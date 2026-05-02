@@ -1,9 +1,30 @@
-# GpuViewR
+# GpuViewR — NVIDIA GPU Dashboard
 
-> **Modern, real-time NVIDIA GPU monitoring dashboard.**
-> Built with **React 19 · Vite · TailwindCSS · uPlot · Express 5 · WebSocket · better-sqlite3**.
+<div align="center">
 
-![GpuViewR](public/gpuviewr.svg)
+<img src="public/gpuviewr.svg" alt="GpuViewR" width="128" height="128" />
+
+![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.0-111827?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-DEVELOPMENT-374151?style=for-the-badge)
+![Docker](https://img.shields.io/badge/Docker-Ready-1f2937?style=for-the-badge&logo=docker&logoColor=38bdf8)
+![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900)
+![React](https://img.shields.io/badge/React-19-111827?style=for-the-badge&logo=react&logoColor=38bdf8)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.8-111827?style=for-the-badge&logo=typescript&logoColor=60a5fa)
+![License](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white)
+
+[![Build](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/docker-publish.yml?style=for-the-badge&logo=github&logoColor=white&label=Build&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/docker-publish.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/ci.yml?style=for-the-badge&logo=github&logoColor=white&label=CI&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Erreur32/GpuViewR?style=for-the-badge&logo=github&logoColor=white&label=Release&color=111827)](https://github.com/Erreur32/GpuViewR/releases)
+[![GHCR](https://img.shields.io/badge/ghcr.io-erreur32%2Fgpuviewr-111827?style=for-the-badge&logo=docker&logoColor=38bdf8)](https://github.com/Erreur32/GpuViewR/pkgs/container/gpuviewr)
+
+**Real-time NVIDIA GPU monitoring dashboard.**
+Built with **React 19 · Vite · TailwindCSS · uPlot · Express 5 · WebSocket · better-sqlite3**.
+
+[Quick start](#quick-start) · [First login](#first-login--there-is-no-default-account) · [Configuration](#configuration) · [Updating](#updating) · [Architecture](#architecture) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Roadmap](#roadmap)
+
+</div>
+
+---
 
 GpuViewR is a from-scratch reimplementation of GPU monitoring, focused on:
 
