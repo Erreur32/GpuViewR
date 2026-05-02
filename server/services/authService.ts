@@ -1,4 +1,4 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { UserRepository, type User } from '../database/models/User.js';

@@ -26,7 +26,7 @@
     "test": "tsx --test server/**/*.test.ts"
   },
   "dependencies": {
-    "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.2",
     "better-sqlite3": "^11.5.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -45,7 +45,6 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
-    "@types/bcrypt": "^5.0.2",
     "@types/better-sqlite3": "^7.6.8",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

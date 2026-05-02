@@ -10,7 +10,8 @@ FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Build tools required to compile better-sqlite3 native module
+# Build tools required to compile better-sqlite3 native module.
+# (bcrypt was replaced by bcryptjs to drop @mapbox/node-pre-gyp + tar — pure JS, no native build for auth.)
 RUN apk add --no-cache python3 make g++
 
 COPY package*.json ./
