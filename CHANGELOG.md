@@ -5,6 +5,40 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.12] - 2026-05-02
+
+Webhook overhaul (Discord / Telegram / Generic), Notification +
+Metrics sub-tabs, and a clearer update-check UX.
+
+### Added
+- **Webhook types**: Generic (JSON POST/PUT), **Discord** (embed) and
+  **Telegram** (HTML message via Bot API). Token / chat ID stored
+  redacted in API responses.
+- **Webhook modes**:
+  - `alerts` — fires on every alertService transition (firing /
+    resolved), with a colored summary embedded in the payload.
+  - `metrics` — periodic push of the latest GPU samples (legacy
+    behavior, still useful as a data sink).
+- **Settings -> Exports tab is now split into two sub-tabs**:
+  - **Notification**: the new Webhook block with type / mode
+    selectors.
+  - **Metrics**: Prometheus, MQTT/HA, InfluxDB. Active sub-tab is
+    persisted in `localStorage`.
+- **Update check** now toasts an explicit result on every manual
+  recheck: "You are up to date", "GpuViewR vX.Y.Z is available", or
+  an error toast — instead of staying silent.
+
+### Fixed
+- Webhook test endpoint now actually checks the remote `response.ok`
+  and surfaces the HTTP status / body excerpt on failure (it used to
+  resolve with `ok: true` even when the remote answered 4xx).
+- Generic webhook strips a user-supplied `Content-Type` header to
+  keep our JSON body intact.
+
+### Inspiration
+- The webhook architecture (type-aware sender, alert-event dispatch)
+  is loosely inspired by the LogviewR `WebhookDispatchService`.
+
 ## [0.1.11] - 2026-05-02
 
 Memory series on the live chart, rolling 90s Live window, and a

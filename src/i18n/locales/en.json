@@ -197,6 +197,14 @@
     "exports_mqtt_ha": "Publish Home Assistant discovery topics",
     "exports_mqtt_help": "Publishes one retained JSON message per GPU on <prefix>/gpu<N>/state. With HA discovery enabled, sensors auto-appear in Home Assistant.",
     "exports_inf_measurement": "Measurement",
+    "exports_sub_notification": "Notification",
+    "exports_sub_metrics": "Metrics",
+    "exports_webhook_type": "Type",
+    "exports_webhook_mode": "Mode",
+    "exports_webhook_mode_alerts": "On alert event",
+    "exports_webhook_mode_metrics": "Periodic metrics",
+    "exports_webhook_mode_alerts_help": "The webhook fires whenever an alert rule transitions to firing or resolved (event-driven).",
+    "exports_webhook_mode_metrics_help": "The webhook posts the latest GPU samples on a fixed interval (data sink mode).",
     "updates": "Updates",
     "updates_enable": "Check for updates automatically",
     "updates_frequency": "Check frequency (hours)",
@@ -219,7 +227,11 @@
     "latest": "Latest",
     "last_check": "Last check",
     "cached": "cached",
-    "recheck": "Check now"
+    "recheck": "Check now",
+    "up_to_date_title": "You are up to date",
+    "up_to_date_subtitle": "GpuViewR v{{version}} is the latest release.",
+    "update_available_title": "GpuViewR {{version}} is available",
+    "check_failed": "Update check failed"
   },
   "common": {
     "loading": "Loading...",

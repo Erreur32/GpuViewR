@@ -108,7 +108,27 @@ export default function UpdateSettings() {
       )}
 
       <div className="flex gap-2 pt-2">
-        <button className="btn-ghost" onClick={() => check(true)} disabled={loading}>
+        <button
+          className="btn-ghost"
+          disabled={loading}
+          onClick={async () => {
+            await check(true);
+            // Provide explicit feedback after a manual recheck so the
+            // user never wonders whether the button did anything: a
+            // "you are up to date" / "update available" / "error" toast
+            // every time.
+            const r = useUpdateStore.getState().result;
+            if (!r) {
+              notify('warn', t('updates.check_failed'));
+            } else if (r.error) {
+              notify('error', t('updates.check_failed'), r.error);
+            } else if (r.updateAvailable) {
+              notify('success', t('updates.update_available_title', { version: r.latestVersion }), r.releaseUrl ?? undefined);
+            } else {
+              notify('success', t('updates.up_to_date_title'), t('updates.up_to_date_subtitle', { version: r.currentVersion }));
+            }
+          }}
+        >
           <RefreshCw className={'w-4 h-4 ' + (loading ? 'animate-spin' : '')} />
           {t('updates.recheck')}
         </button>

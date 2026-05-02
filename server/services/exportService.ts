@@ -34,12 +34,20 @@ export interface InfluxConfig {
   intervalSeconds: number;
 }
 
+export type WebhookType = 'generic' | 'discord' | 'telegram';
+export type WebhookMode = 'metrics' | 'alerts';
+
 export interface WebhookConfig {
   enabled: boolean;
+  type: WebhookType;
+  mode: WebhookMode;
   url: string;
   method: 'POST' | 'PUT';
   headers: Record<string, string>;
   intervalSeconds: number;
+  // Telegram-only
+  token?: string;
+  chatId?: string;
 }
 
 export interface ExportConfigs {
@@ -73,10 +81,14 @@ const DEFAULTS: ExportConfigs = {
   },
   webhook: {
     enabled: false,
+    type: 'generic',
+    mode: 'alerts',
     url: '',
     method: 'POST',
     headers: {},
     intervalSeconds: 30,
+    token: '',
+    chatId: '',
   },
 };
 
@@ -97,6 +109,19 @@ class ExportService {
     }
     gpuCollector.on('sample', (samples: GpuSample[]) => {
       this.latestSamples = samples;
+    });
+    // Forward alert events to webhooks configured in "alerts" mode.
+    // Lazy import to keep the dependency one-way (alertService -> samples
+    // path doesn't loop back through exportService).
+    void import('./alertService.js').then(({ alertService }) => {
+      alertService.on('event', (event: unknown, rule: unknown) => {
+        const c = this.getConfigs();
+        if (c.webhook.enabled && c.webhook.mode === 'alerts') {
+          this.dispatchWebhookAlert(c.webhook, event, rule).catch((err: Error) =>
+            logger.warn('export', `Webhook alert dispatch failed: ${err.message}`),
+          );
+        }
+      });
     });
     this.applyAll();
     logger.info('export', 'Export service initialized');
@@ -119,6 +144,7 @@ class ExportService {
       ...c,
       mqtt: { ...c.mqtt, password: c.mqtt.password ? '••••' : '' },
       influxdb: { ...c.influxdb, token: c.influxdb.token ? '••••' : '' },
+      webhook: { ...c.webhook, token: c.webhook.token ? '••••' : '' },
     };
   }
 
@@ -131,6 +157,10 @@ class ExportService {
     }
     if (kind === 'influxdb') {
       const p = patch as Partial<InfluxConfig>;
+      if (p.token === '••••') delete p.token;
+    }
+    if (kind === 'webhook') {
+      const p = patch as Partial<WebhookConfig>;
       if (p.token === '••••') delete p.token;
     }
     const merged = { ...all[kind], ...patch } as ExportConfigs[K];
@@ -165,7 +195,9 @@ class ExportService {
     } else if (kind === 'influxdb' && c.influxdb.enabled) {
       const ms = Math.max(1, c.influxdb.intervalSeconds) * 1000;
       this.timers.influxdb = setInterval(() => this.pushInflux(c.influxdb), ms);
-    } else if (kind === 'webhook' && c.webhook.enabled) {
+    } else if (kind === 'webhook' && c.webhook.enabled && c.webhook.mode === 'metrics') {
+      // Only schedule periodic pushes in metrics mode. In alerts mode the
+      // webhook is fired by the alertService event listener.
       const ms = Math.max(1, c.webhook.intervalSeconds) * 1000;
       this.timers.webhook = setInterval(() => this.pushWebhook(c.webhook), ms);
     }
@@ -303,19 +335,107 @@ class ExportService {
 
   private async pushWebhook(cfg: WebhookConfig): Promise<void> {
     if (this.latestSamples.length === 0) return;
-    if (!cfg.url) return;
+    const body = {
+      source: 'gpuviewr',
+      timestamp: new Date().toISOString(),
+      samples: this.latestSamples,
+    };
+    await this.sendWebhook(cfg, body, this.metricsSummary());
+  }
+
+  // Build a short, human-readable digest used by Discord embeds and
+  // Telegram messages so a "metrics" push reads as a useful summary.
+  private metricsSummary(): string {
+    if (this.latestSamples.length === 0) return 'No GPU samples available.';
+    return this.latestSamples
+      .map((s) => {
+        const memTotal = s.memory_total ?? 0;
+        const memPct = memTotal > 0 ? Math.round((s.memory_used / memTotal) * 100) : null;
+        const memSeg = memPct !== null ? ` · MEM ${memPct}%` : '';
+        return `GPU #${s.gpu_index} ${s.name} · ${s.utilization ?? '-'}% · ${s.temperature}°C · ${Math.round(s.power)}W${memSeg}`;
+      })
+      .join('\n');
+  }
+
+  private async dispatchWebhookAlert(cfg: WebhookConfig, event: unknown, rule: unknown): Promise<void> {
+    // alertService event payload: { id, rule_name, gpu_index, metric, threshold, observed, state, message, triggered_at }
+    const e = event as {
+      rule_name: string;
+      gpu_index: number;
+      metric: string;
+      threshold: number;
+      observed: number;
+      state: 'firing' | 'resolved';
+      message: string;
+      triggered_at: number;
+    };
+    const r = rule as { notify_browser?: boolean; notify_sound?: boolean };
+    const body = {
+      source: 'gpuviewr',
+      kind: 'alert',
+      event: e,
+      rule: r,
+      timestamp: new Date(e.triggered_at * 1000).toISOString(),
+    };
+    const summary = `${e.state === 'firing' ? '🚨' : '✅'} ${e.rule_name} (GPU #${e.gpu_index}) — ${e.metric} ${e.observed} ${e.state === 'firing' ? '>=' : '<'} ${e.threshold}`;
+    await this.sendWebhook(cfg, body, summary, e.state === 'firing' ? 0xe74c3c : 0x2ecc71);
+  }
+
+  // Generic sender. Routes to type-specific senders for Discord and
+  // Telegram, falls back to plain JSON POST/PUT for "generic".
+  private async sendWebhook(cfg: WebhookConfig, body: object, summary: string, color = 0x3498db): Promise<void> {
+    if (!cfg.url && cfg.type !== 'telegram') {
+      logger.warn('export', 'Webhook URL is empty');
+      return;
+    }
     try {
-      await fetch(cfg.url, {
-        method: cfg.method,
-        headers: { 'Content-Type': 'application/json', ...cfg.headers },
-        body: JSON.stringify({
-          source: 'gpuviewr',
-          timestamp: new Date().toISOString(),
-          samples: this.latestSamples,
-        }),
-      });
+      let res: Response;
+      if (cfg.type === 'discord') {
+        res = await fetch(cfg.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            embeds: [{
+              title: 'GpuViewR',
+              description: summary,
+              color,
+              timestamp: new Date().toISOString(),
+            }],
+          }),
+        });
+      } else if (cfg.type === 'telegram') {
+        if (!cfg.token || !cfg.chatId) {
+          logger.warn('export', 'Telegram webhook missing token or chatId');
+          return;
+        }
+        res = await fetch(`https://api.telegram.org/bot${encodeURIComponent(cfg.token)}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: cfg.chatId,
+            text: summary,
+            parse_mode: 'HTML',
+          }),
+        });
+      } else {
+        // Strip a user-supplied Content-Type to keep our JSON body intact.
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        for (const [k, v] of Object.entries(cfg.headers ?? {})) {
+          if (k.toLowerCase() !== 'content-type') headers[k] = v;
+        }
+        res = await fetch(cfg.url, {
+          method: cfg.method,
+          headers,
+          body: JSON.stringify(body),
+        });
+      }
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}${txt ? `: ${txt.slice(0, 200)}` : ''}`);
+      }
     } catch (err) {
-      logger.warn('export', `Webhook POST failed: ${(err as Error).message}`);
+      logger.warn('export', `Webhook (${cfg.type}) failed: ${(err as Error).message}`);
+      throw err;
     }
   }
 
@@ -327,9 +447,24 @@ class ExportService {
         return { ok: true, message: 'Prometheus is pull-based; scrape /metrics to test.' };
       }
       if (kind === 'webhook') {
-        if (!c.webhook.url) return { ok: false, message: 'Webhook URL is empty.' };
-        await this.pushWebhook(c.webhook);
-        return { ok: true, message: 'Webhook test request sent.' };
+        const w = c.webhook;
+        if (w.type === 'telegram') {
+          if (!w.token || !w.chatId) return { ok: false, message: 'Telegram webhook needs both token and chatId.' };
+        } else if (!w.url) {
+          return { ok: false, message: 'Webhook URL is empty.' };
+        }
+        // Send a representative payload regardless of the configured mode.
+        if (w.mode === 'alerts' || w.type !== 'generic') {
+          await this.sendWebhook(w, {
+            source: 'gpuviewr',
+            kind: 'test',
+            timestamp: new Date().toISOString(),
+            samples: this.latestSamples.slice(0, 1),
+          }, `🧪 GpuViewR webhook test — ${this.latestSamples.length} GPU(s) reporting.`);
+        } else {
+          await this.pushWebhook(w);
+        }
+        return { ok: true, message: 'Webhook test sent and accepted by the remote endpoint.' };
       }
       if (kind === 'influxdb') {
         if (!c.influxdb.token || !c.influxdb.org) return { ok: false, message: 'InfluxDB token/org missing.' };

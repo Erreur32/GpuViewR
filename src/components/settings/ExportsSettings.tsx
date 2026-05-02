@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Activity, Database, Webhook, RefreshCw, Save, PlayCircle } from 'lucide-react';
+import { Send, Activity, Database, Webhook, RefreshCw, Save, PlayCircle, BellRing, BarChart3 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
+
+type SubTab = 'notification' | 'metrics';
 
 interface PrometheusConfig { enabled: boolean }
 interface MqttConfig {
@@ -14,9 +16,18 @@ interface InfluxConfig {
   enabled: boolean; url: string; token: string; org: string; bucket: string;
   measurement: string; intervalSeconds: number;
 }
+type WebhookType = 'generic' | 'discord' | 'telegram';
+type WebhookMode = 'metrics' | 'alerts';
 interface WebhookConfig {
-  enabled: boolean; url: string; method: 'POST' | 'PUT';
-  headers: Record<string, string>; intervalSeconds: number;
+  enabled: boolean;
+  type: WebhookType;
+  mode: WebhookMode;
+  url: string;
+  method: 'POST' | 'PUT';
+  headers: Record<string, string>;
+  intervalSeconds: number;
+  token?: string;
+  chatId?: string;
 }
 interface AllConfigs {
   prometheus: PrometheusConfig;
@@ -30,6 +41,14 @@ export default function ExportsSettings() {
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
   const [cfg, setCfg] = useState<AllConfigs | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sub, setSub] = useState<SubTab>(() => {
+    const saved = localStorage.getItem('gpuviewr.exportsSubTab') as SubTab | null;
+    return saved ?? 'notification';
+  });
+  const selectSub = (id: SubTab) => {
+    setSub(id);
+    localStorage.setItem('gpuviewr.exportsSubTab', id);
+  };
 
   const load = () => {
     api<AllConfigs>('/exports').then(setCfg).catch((e: Error) => notify('error', t('common.error'), e.message));
@@ -78,10 +97,38 @@ export default function ExportsSettings() {
         {t('settings.exports_help')}
       </p>
 
-      <PrometheusBlock cfg={cfg.prometheus} disabled={!isAdmin || busy} onSave={(p) => save('prometheus', p)} />
-      <MqttBlock cfg={cfg.mqtt} disabled={!isAdmin || busy} onSave={(p) => save('mqtt', p)} onTest={() => testIt('mqtt')} />
-      <InfluxBlock cfg={cfg.influxdb} disabled={!isAdmin || busy} onSave={(p) => save('influxdb', p)} onTest={() => testIt('influxdb')} />
-      <WebhookBlock cfg={cfg.webhook} disabled={!isAdmin || busy} onSave={(p) => save('webhook', p)} onTest={() => testIt('webhook')} />
+      <div role="tablist" className="seg flex-wrap">
+        <button
+          role="tab"
+          aria-selected={sub === 'notification'}
+          aria-pressed={sub === 'notification'}
+          className="seg-btn inline-flex items-center gap-2"
+          onClick={() => selectSub('notification')}
+        >
+          <BellRing className="w-4 h-4" /> {t('settings.exports_sub_notification')}
+        </button>
+        <button
+          role="tab"
+          aria-selected={sub === 'metrics'}
+          aria-pressed={sub === 'metrics'}
+          className="seg-btn inline-flex items-center gap-2"
+          onClick={() => selectSub('metrics')}
+        >
+          <BarChart3 className="w-4 h-4" /> {t('settings.exports_sub_metrics')}
+        </button>
+      </div>
+
+      {sub === 'notification' && (
+        <WebhookBlock cfg={cfg.webhook} disabled={!isAdmin || busy} onSave={(p) => save('webhook', p)} onTest={() => testIt('webhook')} />
+      )}
+
+      {sub === 'metrics' && (
+        <div className="space-y-4">
+          <PrometheusBlock cfg={cfg.prometheus} disabled={!isAdmin || busy} onSave={(p) => save('prometheus', p)} />
+          <MqttBlock cfg={cfg.mqtt} disabled={!isAdmin || busy} onSave={(p) => save('mqtt', p)} onTest={() => testIt('mqtt')} />
+          <InfluxBlock cfg={cfg.influxdb} disabled={!isAdmin || busy} onSave={(p) => save('influxdb', p)} onTest={() => testIt('influxdb')} />
+        </div>
+      )}
     </section>
   );
 }
@@ -206,20 +253,100 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
   const { t } = useTranslation();
   const [s, setS] = useState(cfg);
   useEffect(() => { setS(cfg); }, [cfg]);
+  const placeholderForType: Record<WebhookType, string> = {
+    generic:  'https://example.com/hook',
+    discord:  'https://discord.com/api/webhooks/...',
+    telegram: '',
+  };
   return (
     <Block icon={<Webhook className="w-4 h-4" />} title="Webhook">
       <Toggle label={t('settings.exports_enabled')} checked={s.enabled} onChange={(v) => setS({ ...s, enabled: v })} disabled={disabled} />
-      <Field label="URL" value={s.url} onChange={(v) => setS({ ...s, url: v })} disabled={disabled} placeholder="https://example.com/hook" />
+
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="label">Method</label>
-          <select className="input" value={s.method} disabled={disabled} onChange={(e) => setS({ ...s, method: e.target.value as 'POST' | 'PUT' })}>
-            <option value="POST">POST</option>
-            <option value="PUT">PUT</option>
+          <label className="label">{t('settings.exports_webhook_type')}</label>
+          <select
+            className="input"
+            value={s.type}
+            disabled={disabled}
+            onChange={(e) => setS({ ...s, type: e.target.value as WebhookType })}
+          >
+            <option value="generic">Generic (JSON)</option>
+            <option value="discord">Discord</option>
+            <option value="telegram">Telegram</option>
           </select>
         </div>
-        <Field label={t('settings.exports_interval')} value={String(s.intervalSeconds)} onChange={(v) => setS({ ...s, intervalSeconds: Number.parseInt(v, 10) || 30 })} disabled={disabled} type="number" />
+        <div>
+          <label className="label">{t('settings.exports_webhook_mode')}</label>
+          <select
+            className="input"
+            value={s.mode}
+            disabled={disabled}
+            onChange={(e) => setS({ ...s, mode: e.target.value as WebhookMode })}
+          >
+            <option value="alerts">{t('settings.exports_webhook_mode_alerts')}</option>
+            <option value="metrics">{t('settings.exports_webhook_mode_metrics')}</option>
+          </select>
+        </div>
       </div>
+
+      <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
+        {s.mode === 'alerts'
+          ? t('settings.exports_webhook_mode_alerts_help')
+          : t('settings.exports_webhook_mode_metrics_help')}
+      </p>
+
+      {s.type !== 'telegram' && (
+        <Field
+          label="URL"
+          value={s.url}
+          onChange={(v) => setS({ ...s, url: v })}
+          disabled={disabled}
+          placeholder={placeholderForType[s.type]}
+        />
+      )}
+
+      {s.type === 'telegram' && (
+        <div className="grid grid-cols-2 gap-2">
+          <Field
+            label="Bot Token"
+            value={s.token ?? ''}
+            onChange={(v) => setS({ ...s, token: v })}
+            disabled={disabled}
+            type="password"
+            placeholder="123:ABC-..."
+          />
+          <Field
+            label="Chat ID"
+            value={s.chatId ?? ''}
+            onChange={(v) => setS({ ...s, chatId: v })}
+            disabled={disabled}
+            placeholder="-1001234567890"
+          />
+        </div>
+      )}
+
+      {s.type === 'generic' && (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="label">Method</label>
+            <select className="input" value={s.method} disabled={disabled} onChange={(e) => setS({ ...s, method: e.target.value as 'POST' | 'PUT' })}>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+            </select>
+          </div>
+          {s.mode === 'metrics' && (
+            <Field
+              label={t('settings.exports_interval')}
+              value={String(s.intervalSeconds)}
+              onChange={(v) => setS({ ...s, intervalSeconds: Number.parseInt(v, 10) || 30 })}
+              disabled={disabled}
+              type="number"
+            />
+          )}
+        </div>
+      )}
+
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
           <Save className="w-4 h-4" /> {t('common.save')}

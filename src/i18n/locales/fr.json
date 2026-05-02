@@ -197,6 +197,14 @@
     "exports_mqtt_ha": "Publier la découverte Home Assistant",
     "exports_mqtt_help": "Publie un message JSON retain par GPU sur <prefix>/gpu<N>/state. Avec la découverte HA activée, les capteurs apparaissent automatiquement dans Home Assistant.",
     "exports_inf_measurement": "Measurement",
+    "exports_sub_notification": "Notification",
+    "exports_sub_metrics": "Metrics",
+    "exports_webhook_type": "Type",
+    "exports_webhook_mode": "Mode",
+    "exports_webhook_mode_alerts": "Sur événement d'alerte",
+    "exports_webhook_mode_metrics": "Métriques périodiques",
+    "exports_webhook_mode_alerts_help": "Le webhook est déclenché à chaque transition d'une règle d'alerte (firing / resolved).",
+    "exports_webhook_mode_metrics_help": "Le webhook envoie les derniers échantillons GPU à intervalle fixe (mode data sink).",
     "updates": "Mises à jour",
     "updates_enable": "Vérifier automatiquement les mises à jour",
     "updates_frequency": "Fréquence de vérification (heures)",
@@ -219,7 +227,11 @@
     "latest": "Dernière",
     "last_check": "Dernière vérification",
     "cached": "cache",
-    "recheck": "Vérifier"
+    "recheck": "Vérifier",
+    "up_to_date_title": "Vous êtes à jour",
+    "up_to_date_subtitle": "GpuViewR v{{version}} est la dernière version.",
+    "update_available_title": "GpuViewR {{version}} est disponible",
+    "check_failed": "Échec de la vérification"
   },
   "common": {
     "loading": "Chargement...",

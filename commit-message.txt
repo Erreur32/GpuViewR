@@ -1,17 +1,13 @@
-release: v0.1.11 - memory series, rolling Live, real logo, live footer
+release: v0.1.12 - webhook overhaul, Notification/Metrics sub-tabs, update check UX
 
-- Live chart: new memory % series (4th curve, cyan / --gv-info)
-  with chip, gradient fill, threshold line and cursor tooltip.
-- Chart presets get a 4th color slot; settings get a 4th color
-  picker and a 4th threshold field for memory.
-- Live range is now a rolling 90s window (LIVE_WINDOW_S = 90s),
-  in sync with parseRange('live') on the server. Points slide off
-  the left tick by tick.
-- Cursor tooltip offset further from the pointer.
-- Header and login page show the real /GPUViewR.png logo.
-- New live AppFooter: WS status pill (with pulse), GPU count,
-  aggregate util/temp/power, live clock (24h/12h aware), GitHub
-  link, dynamic version.
-- Frontend version sourced from package.json via Vite-injected
-  __APP_VERSION__ (declared in src/vite-env.d.ts). Header / Footer
-  use it; update-version.sh no longer rewrites Header.tsx.
+- Webhook now supports Generic (JSON), Discord (embed) and Telegram
+  (Bot API) with two modes: 'alerts' (fired on alertService events)
+  and 'metrics' (periodic push of latest samples).
+- Webhook test actually checks the remote HTTP status and reports
+  the body excerpt on failure. Generic webhook protects its
+  Content-Type header.
+- Settings > Exports tab split into two sub-tabs: Notification
+  (webhook) and Metrics (Prometheus, MQTT/HA, InfluxDB).
+- Update check (recheck button) always toasts the result: up to
+  date / update available / failure.
+- Token / chat ID secrets masked in webhook config API responses.
