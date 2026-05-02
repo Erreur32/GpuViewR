@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Thermometer, Activity, MemoryStick, Zap } from 'lucide-react';
+import { Thermometer, Activity, MemoryStick, Zap, Fan } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useUiStore } from '../../store/uiStore';
 import { useGpuStore } from '../../store/gpuStore';
@@ -13,6 +13,7 @@ interface StatsResponse {
     util_min: number; util_max: number; util_avg: number;
     mem_min: number; mem_max: number; mem_avg: number;
     pow_min: number; pow_max: number; pow_avg: number;
+    fan_min: number | null; fan_max: number | null; fan_avg: number | null;
   } | null;
 }
 
@@ -107,12 +108,20 @@ export default function StatsSection({ gpuIndex }: Props) {
       avg: s?.pow_avg ?? live?.power,
       status: statusFor(s?.pow_avg ?? live?.power, 250, 350),
     },
+    {
+      key: 'fan',
+      icon: <Fan className="w-4 h-4" />, unit: '%',
+      min: blend(s?.fan_min, live?.fan_speed, 'min'),
+      max: blend(s?.fan_max, live?.fan_speed, 'max'),
+      avg: s?.fan_avg ?? live?.fan_speed,
+      status: statusFor(s?.fan_avg ?? live?.fan_speed, 75, 90),
+    },
   ].map((r) => ({ ...r, color: colorForStatus(r.status as Status) }));
 
   return (
     <div className="space-y-4">
       {/* Cards (always visible) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {rows.map((row) => (
           <div
             key={row.key}

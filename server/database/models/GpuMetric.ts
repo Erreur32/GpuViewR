@@ -83,7 +83,8 @@ export const GpuMetricRepository = {
            MIN(temperature) as temp_min, MAX(temperature) as temp_max, AVG(temperature) as temp_avg,
            MIN(utilization) as util_min, MAX(utilization) as util_max, AVG(utilization) as util_avg,
            MIN(memory_used) as mem_min,  MAX(memory_used) as mem_max,  AVG(memory_used) as mem_avg,
-           MIN(power)       as pow_min,  MAX(power)       as pow_max,  AVG(power)       as pow_avg
+           MIN(power)       as pow_min,  MAX(power)       as pow_max,  AVG(power)       as pow_avg,
+           MIN(fan_speed)   as fan_min,  MAX(fan_speed)   as fan_max,  AVG(fan_speed)   as fan_avg
          FROM gpu_metrics
          WHERE gpu_index = ? AND timestamp_epoch >= ?`
       )

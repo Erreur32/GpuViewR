@@ -13,19 +13,19 @@ type TabId = 'general' | 'theme' | 'exports' | 'database' | 'updates' | 'about';
 interface ChartPreset {
   id: string;
   label: string;
-  colors: { util: string; temp: string; pow: string; mem: string };
+  colors: { util: string; temp: string; pow: string; mem: string; fan: string };
 }
 
-// Curated, well-balanced palettes. Each preset maps the 4 dashboard
-// metrics (utilization / temperature / power / memory) to a coherent
+// Curated, well-balanced palettes. Each preset maps the 5 dashboard
+// metrics (utilization / temperature / power / memory / fan) to a coherent
 // color scheme that plays well with both dark and light themes and
 // the gradient area fill underneath the lines.
 const CHART_PRESETS: ChartPreset[] = [
-  { id: 'cyber',  label: 'Cyber',    colors: { util: '#22d3ee', temp: '#f472b6', pow: '#a3e635', mem: '#a78bfa' } },
-  { id: 'sunset', label: 'Sunset',   colors: { util: '#fb7185', temp: '#fbbf24', pow: '#ec4899', mem: '#f97316' } },
-  { id: 'aurora', label: 'Aurora',   colors: { util: '#34d399', temp: '#06b6d4', pow: '#a78bfa', mem: '#f472b6' } },
-  { id: 'royal',  label: 'Royal',    colors: { util: '#6366f1', temp: '#a855f7', pow: '#3b82f6', mem: '#06b6d4' } },
-  { id: 'mono',   label: 'Graphite', colors: { util: '#9ca3af', temp: '#e5e7eb', pow: '#64748b', mem: '#475569' } },
+  { id: 'cyber',  label: 'Cyber',    colors: { util: '#22d3ee', temp: '#f472b6', pow: '#a3e635', mem: '#a78bfa', fan: '#fbbf24' } },
+  { id: 'sunset', label: 'Sunset',   colors: { util: '#fb7185', temp: '#fbbf24', pow: '#ec4899', mem: '#f97316', fan: '#22d3ee' } },
+  { id: 'aurora', label: 'Aurora',   colors: { util: '#34d399', temp: '#06b6d4', pow: '#a78bfa', mem: '#f472b6', fan: '#fbbf24' } },
+  { id: 'royal',  label: 'Royal',    colors: { util: '#6366f1', temp: '#a855f7', pow: '#3b82f6', mem: '#06b6d4', fan: '#14b8a6' } },
+  { id: 'mono',   label: 'Graphite', colors: { util: '#9ca3af', temp: '#e5e7eb', pow: '#64748b', mem: '#475569', fan: '#94a3b8' } },
 ];
 
 const LANGUAGES = [
@@ -47,6 +47,7 @@ export default function SettingsPage() {
     setChartColor('temp' as ChartSeriesKey, preset.colors.temp);
     setChartColor('pow' as ChartSeriesKey, preset.colors.pow);
     setChartColor('mem' as ChartSeriesKey, preset.colors.mem);
+    setChartColor('fan' as ChartSeriesKey, preset.colors.fan);
   };
   const [tab, setTab] = useState<TabId>(() => {
     const saved = localStorage.getItem('gpuviewr.settingsTab') as TabId | null;
@@ -144,7 +145,8 @@ export default function SettingsPage() {
                 const active = chartColors.util === p.colors.util
                   && chartColors.temp === p.colors.temp
                   && chartColors.pow === p.colors.pow
-                  && chartColors.mem === p.colors.mem;
+                  && chartColors.mem === p.colors.mem
+                  && chartColors.fan === p.colors.fan;
                 return (
                   <button
                     key={p.id}
@@ -161,7 +163,7 @@ export default function SettingsPage() {
                     <div
                       className="h-8 rounded-md"
                       style={{
-                        background: `linear-gradient(90deg, ${p.colors.util} 0%, ${p.colors.util} 25%, ${p.colors.temp} 25%, ${p.colors.temp} 50%, ${p.colors.pow} 50%, ${p.colors.pow} 75%, ${p.colors.mem} 75%, ${p.colors.mem} 100%)`,
+                        background: `linear-gradient(90deg, ${p.colors.util} 0%, ${p.colors.util} 20%, ${p.colors.temp} 20%, ${p.colors.temp} 40%, ${p.colors.pow} 40%, ${p.colors.pow} 60%, ${p.colors.mem} 60%, ${p.colors.mem} 80%, ${p.colors.fan} 80%, ${p.colors.fan} 100%)`,
                         boxShadow: active ? `0 0 12px color-mix(in srgb, ${p.colors.util} 50%, transparent)` : 'none',
                       }}
                     />
@@ -170,7 +172,7 @@ export default function SettingsPage() {
               })}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
               <ColorPicker
                 label={t('dashboard.metrics.utilization')}
                 value={chartColors.util}
@@ -194,6 +196,12 @@ export default function SettingsPage() {
                 value={chartColors.mem}
                 onChange={(c) => setChartColor('mem' as ChartSeriesKey, c)}
                 onClear={() => setChartColor('mem' as ChartSeriesKey, null)}
+              />
+              <ColorPicker
+                label={t('dashboard.metrics.fan')}
+                value={chartColors.fan}
+                onChange={(c) => setChartColor('fan' as ChartSeriesKey, c)}
+                onClear={() => setChartColor('fan' as ChartSeriesKey, null)}
               />
             </div>
           </section>
@@ -237,7 +245,7 @@ export default function SettingsPage() {
               />
               {t('settings.thresholds_enable')}
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1" aria-disabled={!chartThresholdsEnabled}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1" aria-disabled={!chartThresholdsEnabled}>
               <ThresholdField
                 label={t('dashboard.metrics.utilization')}
                 unit="%"
@@ -272,6 +280,15 @@ export default function SettingsPage() {
                 placeholder={DEFAULT_THRESHOLDS.mem}
                 disabled={!chartThresholdsEnabled}
                 onChange={(v) => setChartThreshold('mem' as ChartSeriesKey, v)}
+                clearLabel={t('settings.thresholds_clear')}
+              />
+              <ThresholdField
+                label={t('dashboard.metrics.fan')}
+                unit="%"
+                value={chartThresholds.fan}
+                placeholder={DEFAULT_THRESHOLDS.fan}
+                disabled={!chartThresholdsEnabled}
+                onChange={(v) => setChartThreshold('fan' as ChartSeriesKey, v)}
                 clearLabel={t('settings.thresholds_clear')}
               />
             </div>

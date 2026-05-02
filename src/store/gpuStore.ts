@@ -25,6 +25,7 @@ interface Series {
   utilization: (number | null)[];
   memory_used: number[];
   power: number[];
+  fan_speed: (number | null)[];
 }
 
 export interface HistoryRow {
@@ -34,6 +35,7 @@ export interface HistoryRow {
   memory_used: number;
   memory_total: number | null;
   power: number;
+  fan_speed: number | null;
 }
 
 interface HistoryEntry {
@@ -57,7 +59,7 @@ interface GpuState {
 }
 
 function emptySeries(): Series {
-  return { t: [], temperature: [], utilization: [], memory_used: [], power: [] };
+  return { t: [], temperature: [], utilization: [], memory_used: [], power: [], fan_speed: [] };
 }
 
 export const useGpuStore = create<GpuState>((set, get) => ({
@@ -97,6 +99,7 @@ export const useGpuStore = create<GpuState>((set, get) => ({
           utilization: prev.utilization.slice(start).concat(s.utilization),
           memory_used: prev.memory_used.slice(start).concat(s.memory_used),
           power: prev.power.slice(start).concat(s.power),
+          fan_speed: prev.fan_speed.slice(start).concat(s.fan_speed),
         };
         series.set(s.gpu_index, next);
       }

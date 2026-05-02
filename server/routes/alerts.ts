@@ -63,6 +63,52 @@ router.delete('/rules/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Curated, classic presets users can seed in one click. They land
+// disabled so the user reviews thresholds for their own GPU before
+// arming them. Re-using a preset id duplicates it (we don't dedupe
+// on name) — fine for now since the user can delete unwanted rows.
+const ALERT_PRESETS = [
+  { id: 'temp_critical',  name: 'Temperature critical',     metric: 'temperature' as AlertMetric, condition: 'above'  as AlertCondition, threshold: 85,  duration_s: 30,  cooldown_s: 300, notify_sound: 1 },
+  { id: 'temp_high',      name: 'Temperature high',         metric: 'temperature' as AlertMetric, condition: 'above'  as AlertCondition, threshold: 80,  duration_s: 60,  cooldown_s: 300, notify_sound: 0 },
+  { id: 'mem_saturated',  name: 'VRAM saturated',           metric: 'memory'      as AlertMetric, condition: 'above'  as AlertCondition, threshold: 95,  duration_s: 60,  cooldown_s: 300, notify_sound: 0 },
+  { id: 'mem_high',       name: 'VRAM high',                metric: 'memory'      as AlertMetric, condition: 'above'  as AlertCondition, threshold: 85,  duration_s: 120, cooldown_s: 600, notify_sound: 0 },
+  { id: 'power_high',     name: 'Power draw high',          metric: 'power'       as AlertMetric, condition: 'above'  as AlertCondition, threshold: 350, duration_s: 60,  cooldown_s: 600, notify_sound: 0 },
+  { id: 'util_sustained', name: 'Sustained 100% utilization',metric: 'utilization' as AlertMetric, condition: 'above'  as AlertCondition, threshold: 98,  duration_s: 300, cooldown_s: 900, notify_sound: 0 },
+  { id: 'fan_runaway',    name: 'Fan runaway',              metric: 'fan_speed'   as AlertMetric, condition: 'above'  as AlertCondition, threshold: 90,  duration_s: 60,  cooldown_s: 600, notify_sound: 1 },
+  { id: 'fan_stalled',    name: 'Fan stalled',              metric: 'fan_speed'   as AlertMetric, condition: 'below'  as AlertCondition, threshold: 5,   duration_s: 60,  cooldown_s: 600, notify_sound: 1 },
+  { id: 'idle_anomaly',   name: 'GPU idle anomaly',         metric: 'utilization' as AlertMetric, condition: 'below'  as AlertCondition, threshold: 1,   duration_s: 600, cooldown_s: 1800, notify_sound: 0 },
+];
+
+router.get('/presets', (_req, res) => {
+  res.json({ presets: ALERT_PRESETS });
+});
+
+router.post('/presets/install', requireAdmin, (req, res) => {
+  const ids: unknown = req.body?.ids;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids must be a non-empty array' });
+  }
+  const created = [];
+  for (const id of ids) {
+    const p = ALERT_PRESETS.find((x) => x.id === id);
+    if (!p) continue;
+    created.push(AlertRuleRepo.create({
+      name: p.name,
+      metric: p.metric,
+      condition: p.condition,
+      threshold: p.threshold,
+      duration_s: p.duration_s,
+      gpu_index: null,
+      enabled: 0, // installed disabled — user reviews then enables
+      notify_browser: 1,
+      notify_sound: p.notify_sound as 0 | 1,
+      cooldown_s: p.cooldown_s,
+    }));
+  }
+  alertService.invalidateCache();
+  res.json({ created });
+});
+
 router.get('/events', (req, res) => {
   const limit = Math.min(500, Math.max(1, Number.parseInt(String(req.query.limit || '100'), 10)));
   res.json({ events: AlertEventRepo.list(limit) });

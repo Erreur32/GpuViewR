@@ -3,7 +3,7 @@ import { applyTheme, getTheme } from '../lib/themes';
 
 export type GaugeView = 'arc' | 'bar';
 export type Range = 'live' | '5m' | '15m' | '1h' | '6h' | '24h' | '3d';
-export type ChartSeriesKey = 'util' | 'temp' | 'pow' | 'mem';
+export type ChartSeriesKey = 'util' | 'temp' | 'pow' | 'mem' | 'fan';
 export type ChartColors = Partial<Record<ChartSeriesKey, string>>;
 export type TimeFormat = '24h' | '12h';
 export type ChartThresholds = Partial<Record<ChartSeriesKey, number>>;
@@ -13,6 +13,17 @@ export const DEFAULT_THRESHOLDS: Required<ChartThresholds> = {
   temp: 83,
   pow: 350,
   mem: 90,
+  fan: 90,
+};
+
+// Default palette ("Royal") applied on first run when the user has no
+// custom chart colors yet. Mirrors the Royal preset in SettingsPage.
+const ROYAL_DEFAULT_COLORS: Required<ChartColors> = {
+  util: '#6366f1',
+  temp: '#a855f7',
+  pow: '#3b82f6',
+  mem: '#06b6d4',
+  fan: '#14b8a6',
 };
 
 interface UiState {
@@ -25,6 +36,7 @@ interface UiState {
   timeFormat: TimeFormat;
   chartThresholds: ChartThresholds;
   chartThresholdsEnabled: boolean;
+  chartPaletteInitialized: boolean;
 
   setThemeId: (id: string) => void;
   setGaugeView: (v: GaugeView) => void;
@@ -50,6 +62,7 @@ const KEYS = {
   timeFormat: 'gpuviewr.time_format',
   chartThresholds: 'gpuviewr.chart_thresholds',
   chartThresholdsEnabled: 'gpuviewr.chart_thresholds_enabled',
+  chartPaletteInitialized: 'gpuviewr.chart_palette_initialized',
 };
 
 function readLS(key: string, fallback: string): string {
@@ -78,7 +91,7 @@ function readChartThresholds(): ChartThresholds {
     const obj = JSON.parse(raw) as ChartThresholds;
     if (typeof obj !== 'object' || obj === null) return { ...DEFAULT_THRESHOLDS };
     const out: ChartThresholds = {};
-    for (const k of ['util', 'temp', 'pow', 'mem'] as ChartSeriesKey[]) {
+    for (const k of ['util', 'temp', 'pow', 'mem', 'fan'] as ChartSeriesKey[]) {
       const v = obj[k];
       if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
     }
@@ -98,6 +111,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   timeFormat: '24h',
   chartThresholds: { ...DEFAULT_THRESHOLDS },
   chartThresholdsEnabled: true,
+  chartPaletteInitialized: false,
 
   setThemeId: (id) => {
     const t = getTheme(id);
@@ -165,10 +179,23 @@ export const useUiStore = create<UiState>((set, get) => ({
     const timeFormat = (readLS(KEYS.timeFormat, '24h') as TimeFormat) || '24h';
     const chartThresholds = readChartThresholds();
     const chartThresholdsEnabled = readLS(KEYS.chartThresholdsEnabled, '1') === '1';
+    // First run: seed the chart palette with "Royal" so the dashboard ships
+    // with a polished look out of the box. Honors any pre-existing custom
+    // color the user might have picked before this default landed.
+    let initialized = readLS(KEYS.chartPaletteInitialized, '0') === '1';
+    let effectiveColors = chartColors;
+    if (!initialized) {
+      effectiveColors = { ...ROYAL_DEFAULT_COLORS, ...chartColors };
+      try {
+        localStorage.setItem(KEYS.chartColors, JSON.stringify(effectiveColors));
+        localStorage.setItem(KEYS.chartPaletteInitialized, '1');
+      } catch { /* ignore quota / disabled storage */ }
+      initialized = true;
+    }
     applyTheme(themeId);
     set({
-      themeId, gaugeView, range, soundEnabled: sound, chartColors, timeFormat,
-      chartThresholds, chartThresholdsEnabled,
+      themeId, gaugeView, range, soundEnabled: sound, chartColors: effectiveColors, timeFormat,
+      chartThresholds, chartThresholdsEnabled, chartPaletteInitialized: initialized,
     });
   },
 }));

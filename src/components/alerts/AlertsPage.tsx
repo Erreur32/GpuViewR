@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, Bell, Volume2, VolumeX, Edit3 } from 'lucide-react';
+import { Plus, Trash2, Bell, Volume2, VolumeX, Edit3, Sparkles } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
@@ -56,6 +56,7 @@ export default function AlertsPage() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [events, setEvents] = useState<AlertEvent[]>([]);
   const [editing, setEditing] = useState<Partial<Rule> | null>(null);
+  const [presetsOpen, setPresetsOpen] = useState(false);
 
   async function load() {
     const r = await api<{ rules: Rule[] }>('/alerts/rules');
@@ -131,9 +132,14 @@ export default function AlertsPage() {
             <Bell className="w-4 h-4" /> {t('alerts.enable_browser')}
           </button>
           {isAdmin && (
-            <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}>
-              <Plus className="w-4 h-4" /> {t('alerts.new_rule')}
-            </button>
+            <>
+              <button className="btn-ghost" onClick={() => setPresetsOpen(true)}>
+                <Sparkles className="w-4 h-4" /> {t('alerts.presets')}
+              </button>
+              <button className="btn-primary" onClick={() => setEditing({ ...EMPTY })}>
+                <Plus className="w-4 h-4" /> {t('alerts.new_rule')}
+              </button>
+            </>
           )}
         </div>
       </header>
@@ -242,6 +248,129 @@ export default function AlertsPage() {
       </section>
 
       {editing && <RuleModal rule={editing} onClose={() => setEditing(null)} onSave={save} setRule={setEditing} />}
+      {presetsOpen && (
+        <PresetsModal
+          onClose={() => setPresetsOpen(false)}
+          onInstalled={async () => { setPresetsOpen(false); await load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+interface Preset {
+  id: string;
+  name: string;
+  metric: Metric;
+  condition: Condition;
+  threshold: number;
+  duration_s: number;
+  cooldown_s: number;
+  notify_sound: 0 | 1;
+}
+
+function PresetsModal({ onClose, onInstalled }: Readonly<{ onClose: () => void; onInstalled: () => void | Promise<void> }>) {
+  const { t } = useTranslation();
+  const [presets, setPresets] = useState<Preset[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api<{ presets: Preset[] }>('/alerts/presets')
+      .then((r) => {
+        setPresets(r.presets);
+        // Default selection: useful sane ones, user can untick anything.
+        setSelected(new Set(r.presets.map((p) => p.id)));
+      })
+      .catch(() => setPresets([]));
+  }, []);
+
+  const toggle = (id: string) => {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const install = async () => {
+    if (selected.size === 0) return;
+    setBusy(true);
+    try {
+      await api('/alerts/presets/install', {
+        method: 'POST',
+        body: JSON.stringify({ ids: Array.from(selected) }),
+      });
+      notify('success', t('alerts.presets_installed'));
+      await onInstalled();
+    } catch (err) {
+      notify('error', t('common.error'), (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="card p-5 w-full max-w-2xl space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Sparkles className="w-4 h-4" /> {t('alerts.presets_title')}
+          </h2>
+          <p className="text-xs mt-1" style={{ color: 'var(--gv-text-muted)' }}>
+            {t('alerts.presets_help')}
+          </p>
+        </div>
+
+        <ul className="divide-y max-h-[55vh] overflow-y-auto" style={{ borderColor: 'var(--gv-border)' }}>
+          {presets.map((p) => {
+            const checked = selected.has(p.id);
+            return (
+              <li key={p.id} className="py-2.5 flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={checked}
+                  onChange={() => toggle(p.id)}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm">{p.name}</div>
+                  <div className="text-xs tabular-nums" style={{ color: 'var(--gv-text-muted)' }}>
+                    {t(`alerts.metrics.${p.metric}`)} {p.condition === 'above' ? '≥' : '≤'} {p.threshold}
+                    {' · '}{t('alerts.duration')} {p.duration_s}s
+                    {' · '}{t('alerts.cooldown_s')} {p.cooldown_s}s
+                    {p.notify_sound ? ' · 🔊' : ''}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+          {presets.length === 0 && (
+            <li className="py-4 text-center text-sm" style={{ color: 'var(--gv-text-muted)' }}>
+              {t('common.loading')}
+            </li>
+          )}
+        </ul>
+
+        <div className="flex justify-between items-center gap-2 pt-1">
+          <span className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+            {t('alerts.presets_disabled_note')}
+          </span>
+          <div className="flex gap-2">
+            <button type="button" className="btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={install}
+              disabled={busy || selected.size === 0}
+            >
+              <Plus className="w-4 h-4" />
+              {t('alerts.presets_install', { count: selected.size })}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

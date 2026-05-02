@@ -107,7 +107,13 @@
     "saved": "Règle enregistrée",
     "deleted": "Règle supprimée",
     "recent_events": "Événements récents",
-    "no_events": "Aucun événement d'alerte."
+    "no_events": "Aucun événement d'alerte.",
+    "presets": "Préréglages",
+    "presets_title": "Préréglages d'alertes courants",
+    "presets_help": "Sélectionnez les alertes GPU classiques à ajouter. Elles arrivent désactivées : vérifiez les seuils avant de les activer.",
+    "presets_install": "Ajouter {{count}}",
+    "presets_installed": "Préréglages ajoutés (désactivés).",
+    "presets_disabled_note": "Les règles ajoutées sont désactivées — vérifiez puis activez chacune."
   },
   "logs": {
     "title": "Journaux serveur",

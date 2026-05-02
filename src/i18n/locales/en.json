@@ -107,7 +107,13 @@
     "saved": "Rule saved",
     "deleted": "Rule deleted",
     "recent_events": "Recent events",
-    "no_events": "No alert events yet."
+    "no_events": "No alert events yet.",
+    "presets": "Presets",
+    "presets_title": "Common alert presets",
+    "presets_help": "Pick the classic GPU alerts you want to add. They land disabled so you can tweak thresholds before arming them.",
+    "presets_install": "Add {{count}}",
+    "presets_installed": "Presets added (disabled).",
+    "presets_disabled_note": "Added rules start disabled — review and enable each one."
   },
   "logs": {
     "title": "Server logs",

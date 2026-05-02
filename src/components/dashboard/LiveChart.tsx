@@ -22,6 +22,7 @@ interface CursorValues {
   temperature: number | null;
   power: number | null;
   memory: number | null;
+  fan: number | null;
 }
 
 type ChipProps = Readonly<{
@@ -52,12 +53,12 @@ export default function LiveChart({ gpuIndex }: Props) {
   const setHistoryCache = useGpuStore((s) => s.setHistory);
   const [historic, setHistoric] = useState<HistoryRow[]>(() => cachedHistory?.rows ?? []);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null, memory: null });
+  const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null, memory: null, fan: null });
   const [tip, setTip] = useState<{ left: number; top: number; flipX: boolean; flipY: boolean; show: boolean }>(
     { left: 0, top: 0, flipX: false, flipY: false, show: false },
   );
   const [pinned, setPinned] = useState<boolean>(false);
-  const [visible, setVisible] = useState<{ util: boolean; temp: boolean; pow: boolean; mem: boolean }>({ util: true, temp: true, pow: true, mem: true });
+  const [visible, setVisible] = useState<{ util: boolean; temp: boolean; pow: boolean; mem: boolean; fan: boolean }>({ util: true, temp: true, pow: true, mem: true, fan: true });
 
   // uPlot needs latest props inside its hooks; keep refs to avoid rebuilding the
   // chart on every threshold/visibility/format change.
@@ -70,10 +71,10 @@ export default function LiveChart({ gpuIndex }: Props) {
   useEffect(() => { visibleRef.current = visible; }, [visible]);
   useEffect(() => { timeFormatRef.current = timeFormat; plotRef.current?.redraw(false); }, [timeFormat]);
 
-  const toggleSeries = (key: 'util' | 'temp' | 'pow' | 'mem') => {
+  const toggleSeries = (key: 'util' | 'temp' | 'pow' | 'mem' | 'fan') => {
     setVisible((v) => {
       const next = { ...v, [key]: !v[key] };
-      const idxMap = { util: 1, temp: 2, pow: 3, mem: 4 } as const;
+      const idxMap = { util: 1, temp: 2, pow: 3, mem: 4, fan: 5 } as const;
       plotRef.current?.setSeries(idxMap[key], { show: next[key] });
       return next;
     });
@@ -111,6 +112,7 @@ export default function LiveChart({ gpuIndex }: Props) {
     const warn = chartColors.temp ?? (root.getPropertyValue('--gv-warn').trim() || '#f59e0b');
     const ok = chartColors.pow ?? (root.getPropertyValue('--gv-ok').trim() || '#10b981');
     const info = chartColors.mem ?? (root.getPropertyValue('--gv-info').trim() || '#06b6d4');
+    const fanColor = chartColors.fan ?? '#14b8a6';
 
     const opts: uPlot.Options = {
       width: containerRef.current.clientWidth,
@@ -155,6 +157,7 @@ export default function LiveChart({ gpuIndex }: Props) {
         { label: t('dashboard.metrics.temperature'), stroke: warn, width: 2, scale: '%', fill: makeGradient(warn) },
         { label: t('dashboard.metrics.power'), stroke: ok, width: 2, scale: 'W', fill: makeGradient(ok) },
         { label: t('dashboard.metrics.memory'), stroke: info, width: 2, scale: '%', fill: makeGradient(info) },
+        { label: t('dashboard.metrics.fan'), stroke: fanColor, width: 2, scale: '%', fill: makeGradient(fanColor) },
       ],
       // We render our own legend chip row below the chart, so disable the
       // built-in legend (which only shows values on hover and clutters the layout).
@@ -167,7 +170,7 @@ export default function LiveChart({ gpuIndex }: Props) {
             const left = u.cursor.left ?? -1;
             const top = u.cursor.top ?? -1;
             if (idx === null || idx === undefined || left < 0 || top < 0) {
-              setCursor({ t: null, utilization: null, temperature: null, power: null, memory: null });
+              setCursor({ t: null, utilization: null, temperature: null, power: null, memory: null, fan: null });
               setTip((prev) => (prev.show ? { ...prev, show: false } : prev));
             } else {
               setCursor({
@@ -176,6 +179,7 @@ export default function LiveChart({ gpuIndex }: Props) {
                 temperature: (u.data[2]?.[idx] as number | undefined) ?? null,
                 power: (u.data[3]?.[idx] as number | undefined) ?? null,
                 memory: (u.data[4]?.[idx] as number | undefined) ?? null,
+                fan: (u.data[5]?.[idx] as number | undefined) ?? null,
               });
               // Flip the tooltip horizontally / vertically when it would
               // overflow the chart, so it sticks naturally next to the
@@ -216,12 +220,13 @@ export default function LiveChart({ gpuIndex }: Props) {
             if (vis.temp) drawLine(th.temp, '%', warn);
             if (vis.pow) drawLine(th.pow, 'W', ok);
             if (vis.mem) drawLine(th.mem, '%', info);
+            if (vis.fan) drawLine(th.fan, '%', fanColor);
             ctx.restore();
           },
         ],
       },
     };
-    plotRef.current = new uPlot(opts, [[], [], [], [], []] as unknown as AlignedData, containerRef.current);
+    plotRef.current = new uPlot(opts, [[], [], [], [], [], []] as unknown as AlignedData, containerRef.current);
 
     const ro = new ResizeObserver(() => {
       if (containerRef.current && plotRef.current) {
@@ -231,7 +236,7 @@ export default function LiveChart({ gpuIndex }: Props) {
     ro.observe(containerRef.current);
     return () => { ro.disconnect(); plotRef.current?.destroy(); plotRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, themeId, chartColors.util, chartColors.temp, chartColors.pow, chartColors.mem]);
+  }, [t, themeId, chartColors.util, chartColors.temp, chartColors.pow, chartColors.mem, chartColors.fan]);
 
   // Push merged data (history + live) to chart, computing memory % from
   // memory_used / memory_total. In "Live" mode we keep only the rolling
@@ -244,6 +249,7 @@ export default function LiveChart({ gpuIndex }: Props) {
     const liveTemp = series?.temperature ?? [];
     const livePow = series?.power ?? [];
     const liveMemUsed = series?.memory_used ?? [];
+    const liveFan = series?.fan_speed ?? [];
     const memTotalLive = latestSample?.memory_total ?? null;
 
     const lastHistEpoch = historic.length > 0 ? historic[historic.length - 1].timestamp_epoch : -Infinity;
@@ -252,6 +258,7 @@ export default function LiveChart({ gpuIndex }: Props) {
     const tempArr: number[] = [];
     const powArr: number[] = [];
     const memArr: (number | null)[] = [];
+    const fanArr: (number | null)[] = [];
 
     const memPct = (used: number, total: number | null): number | null => {
       if (total === null || total <= 0) return null;
@@ -264,6 +271,7 @@ export default function LiveChart({ gpuIndex }: Props) {
       tempArr.push(h.temperature);
       powArr.push(h.power);
       memArr.push(memPct(h.memory_used, h.memory_total));
+      fanArr.push(h.fan_speed);
     }
     for (let i = 0; i < liveT.length; i++) {
       if (liveT[i] > lastHistEpoch) {
@@ -272,6 +280,7 @@ export default function LiveChart({ gpuIndex }: Props) {
         tempArr.push(liveTemp[i]);
         powArr.push(livePow[i]);
         memArr.push(memPct(liveMemUsed[i] ?? 0, memTotalLive));
+        fanArr.push(liveFan[i] ?? null);
       }
     }
 
@@ -285,10 +294,11 @@ export default function LiveChart({ gpuIndex }: Props) {
         tempArr.splice(0, drop);
         powArr.splice(0, drop);
         memArr.splice(0, drop);
+        fanArr.splice(0, drop);
       }
     }
 
-    plotRef.current.setData([tArr, utilArr, tempArr, powArr, memArr] as AlignedData);
+    plotRef.current.setData([tArr, utilArr, tempArr, powArr, memArr, fanArr] as AlignedData);
   }, [historic, series, range, latestSample?.memory_total]);
 
   // What the legend shows: the cursor value if hovering/pinned, else the live latest sample.
@@ -299,9 +309,10 @@ export default function LiveChart({ gpuIndex }: Props) {
     temp: number | null;
     pow: number | null;
     mem: number | null;
+    fan: number | null;
   }>(() => {
     if (cursor.t !== null) {
-      return { live: false, t: cursor.t, util: cursor.utilization, temp: cursor.temperature, pow: cursor.power, mem: cursor.memory };
+      return { live: false, t: cursor.t, util: cursor.utilization, temp: cursor.temperature, pow: cursor.power, mem: cursor.memory, fan: cursor.fan };
     }
     if (latestSample) {
       const memTotal = latestSample.memory_total;
@@ -313,9 +324,10 @@ export default function LiveChart({ gpuIndex }: Props) {
         temp: latestSample.temperature,
         pow: latestSample.power,
         mem: memPct,
+        fan: latestSample.fan_speed,
       };
     }
-    return { live: true, t: null, util: null, temp: null, pow: null, mem: null };
+    return { live: true, t: null, util: null, temp: null, pow: null, mem: null, fan: null };
   }, [cursor, latestSample]);
 
   return (
@@ -364,6 +376,16 @@ export default function LiveChart({ gpuIndex }: Props) {
             onColorChange={(c) => setChartColor('mem', c)}
             onColorReset={() => setChartColor('mem', null)}
             isCustom={!!chartColors.mem}
+          />
+          <Chip
+            colorVar={chartColors.fan ?? '#14b8a6'}
+            label={t('dashboard.metrics.fan')}
+            value={fmt(display.fan, '%')}
+            active={visible.fan}
+            onClick={() => toggleSeries('fan')}
+            onColorChange={(c) => setChartColor('fan', c)}
+            onColorReset={() => setChartColor('fan', null)}
+            isCustom={!!chartColors.fan}
           />
           <span
             className="text-[10px] px-2 py-0.5 rounded-full"
@@ -451,6 +473,15 @@ export default function LiveChart({ gpuIndex }: Props) {
                   {t('dashboard.metrics.memory')}
                 </span>
                 <span className="font-semibold tabular-nums">{fmt(cursor.memory, '%')}</span>
+              </div>
+            )}
+            {visible.fan && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.fan ?? '#14b8a6' }} />
+                  {t('dashboard.metrics.fan')}
+                </span>
+                <span className="font-semibold tabular-nums">{fmt(cursor.fan, '%')}</span>
               </div>
             )}
           </div>
