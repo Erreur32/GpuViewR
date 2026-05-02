@@ -21,7 +21,6 @@
 # Updates:
 #   * Pull and restart:  docker compose -f docker-compose.example.yml pull && \
 #                        docker compose -f docker-compose.example.yml up -d
-#   * Or grab update.sh from the repo and use it for backup + rollback support.
 # ============================================================================
 
 services:

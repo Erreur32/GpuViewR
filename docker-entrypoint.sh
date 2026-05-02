@@ -21,4 +21,5 @@ if ! command -v nvidia-smi >/dev/null 2>&1; then
     echo "  Container will start but the dashboard will show no GPU."
 fi
 
-exec su-exec node "$@"
+exec gosu node "$@"
+

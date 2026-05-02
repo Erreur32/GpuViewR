@@ -4,7 +4,7 @@
 
 <img src="public/gpuviewr.svg" alt="GpuViewR" width="128" height="128" />
 
-![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.1-111827?style=for-the-badge)
+![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.3-111827?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-DEVELOPMENT-374151?style=for-the-badge)
 ![Docker](https://img.shields.io/badge/Docker-Ready-1f2937?style=for-the-badge&logo=docker&logoColor=38bdf8)
 ![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900)
@@ -41,7 +41,7 @@
 - 🌍 **i18n**: English / French out of the box
 - 🔐 **Authentication**: first user becomes admin (bcryptjs + JWT)
 - 🔢 **Multi-GPU**: automatic tabs when 2+ devices are detected
-- 🐳 **Single Docker image**: multi-arch (amd64 / arm64), Node 22 Alpine
+- 🐳 **Single Docker image**: multi-arch (amd64 / arm64), Node 22 Debian slim
 
 ---
 
@@ -116,7 +116,7 @@ packaging strategy.
 
 <tr><td>🔄 <b>Update flow</b></td>
 <td>Manual <code>docker compose pull</code></td>
-<td>In-app <b>update banner</b> (GitHub + GHCR check) + <code>update.sh</code> with auto-backup &amp; rollback</td></tr>
+<td>In-app <b>update banner</b> (GitHub + GHCR check) + standard Docker Compose update commands</td></tr>
 
 <tr><td>🐳 <b>Image</b></td>
 <td>Single-stage Python image</td>
@@ -277,10 +277,6 @@ with:
 ```bash
 docker compose pull && docker compose up -d
 ```
-
-A copy of the `update.sh` helper (with `--check` and `--rollback` and
-automatic data backups) is shipped in the repo for power users; see
-[`Docs/CONTRIBUTING.md`](Docs/CONTRIBUTING.md).
 
 ---
 

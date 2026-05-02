@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowUpCircle, X, ExternalLink, RefreshCw, ClipboardCopy, Check } from 'lucide-react';
 import { useUpdateStore } from '../../store/updateStore';
 
-const UPDATE_COMMAND = './update.sh';
+const UPDATE_COMMAND = 'docker compose pull && docker compose up -d';
 
 export default function UpdateBanner() {
   const { t } = useTranslation();
@@ -105,9 +105,8 @@ export default function UpdateBanner() {
                 </button>
               </div>
               <ul className="mt-3 text-xs space-y-1" style={{ color: 'var(--gv-text-muted)' }}>
-                <li>• <code>./update.sh</code>: {t('updates.help_pull')}</li>
-                <li>• <code>./update.sh --check</code>: {t('updates.help_check')}</li>
-                <li>• <code>./update.sh --rollback</code>: {t('updates.help_rollback')}</li>
+                <li>• <code>docker compose pull</code>: {t('updates.help_pull')}</li>
+                <li>• <code>docker compose up -d</code>: {t('updates.help_restart')}</li>
               </ul>
             </section>
 

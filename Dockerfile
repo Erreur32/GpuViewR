@@ -1,18 +1,23 @@
 # ===========================================
-# GpuViewR: Node 22 Alpine (multi-stage)
+# GpuViewR: Node 22 Debian slim (multi-stage)
 # ===========================================
 # Original gpu-monitor packaging strategy © bigsk1 (MIT)
 #   https://github.com/bigsk1/gpu-monitor
 # This rewrite uses the same Docker volumes/port for migration compatibility.
 
 # ---------- Stage 1: Build ----------
-FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
 # Build tools required to compile better-sqlite3 native module.
-# (bcrypt was replaced by bcryptjs to drop @mapbox/node-pre-gyp + tar: pure JS, no native build for auth.)
-RUN apk add --no-cache python3 make g++
+# We build on glibc to keep runtime compatibility with nvidia-smi (also glibc).
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 RUN NO_UPDATE_NOTIFIER=1 npm ci --loglevel=error --no-fund
@@ -25,15 +30,21 @@ RUN npm prune --production && npm cache clean --force
 
 
 # ---------- Stage 2: Runtime ----------
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 
 WORKDIR /app
 
 # Runtime needs:
-#  su-exec : drop privileges in entrypoint
+#  gosu    : drop privileges in entrypoint
 #  tzdata  : honor TZ env var
 #  We do NOT bundle nvidia-smi: it's mounted/exposed by the NVIDIA container toolkit.
-RUN apk add --no-cache su-exec tzdata
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    gosu \
+    tzdata \
+    wget \
+    ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /app/data && chown -R node:node /app
 

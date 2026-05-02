@@ -10,9 +10,7 @@
 #   4. Open:         http://localhost:3010   (first user becomes admin)
 #
 # Update:
-#   ./update.sh              # pull latest, backup data, restart
-#   ./update.sh --check      # check for new image without applying
-#   ./update.sh --rollback   # restore previous image and data
+#   docker compose pull && docker compose up -d
 # ===========================================
 
 services:

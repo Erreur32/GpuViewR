@@ -18,7 +18,6 @@ npm run dev
 - `server/`: Express + WebSocket backend (TypeScript, run via `tsx`)
 - `src/`: React 19 frontend
 - `Dockerfile` / `docker-entrypoint.sh` / `docker-compose.yml`
-- `update.sh`: end-user auto-update (pull / backup / restart)
 - `scripts/`
   - `update-version.sh`: bump version across the repo (with optional tag-push)
   - `check-docker-build.js`: local sanity build of the Docker image
@@ -72,7 +71,8 @@ git push origin v0.2.0
 
 Pushing a `v*.*.*` tag triggers the `docker-publish.yml` workflow which
 builds and pushes the multi-arch image to GHCR. End users running an older
-version will then see the in-app update banner and can run `./update.sh`.
+version will then see the in-app update banner and can run the standard
+Docker Compose update command (`docker compose pull && docker compose up -d`).
 
 ### Convenience npm scripts
 

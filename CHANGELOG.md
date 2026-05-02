@@ -123,6 +123,19 @@ Docker image, multi-arch (amd64 + arm64), Node 22 Alpine.
   TypeScript, license, Build, CI, CodeQL, Scorecard, SonarCloud, Snyk,
   Release, GHCR.
 
+## [0.1.2] - 2026-05-02
+
+### Fixed
+- Docker image base switched from **Alpine (musl)** to **Debian slim (glibc)** to
+  ensure `nvidia-smi` injected by the NVIDIA Container Toolkit is executable inside
+  the container (fixes "GPU not detected" when device nodes are present but
+  `nvidia-smi` cannot start).
+
+### Changed
+- Removed the `update.sh` helper; the UI and documentation now recommend the
+  standard Docker Compose update flow:
+  `docker compose pull && docker compose up -d`.
+
 ### Credits
 - Project foundation inspired by [bigsk1/gpu-monitor](https://github.com/bigsk1/gpu-monitor):
   original data collection approach, SQLite schema, Docker packaging.
