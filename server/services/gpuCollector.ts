@@ -25,7 +25,7 @@ export interface GpuSample {
   uuid: string | null;
   driver_version: string | null;
   temperature: number;
-  utilization: number;
+  utilization: number | null;
   memory_used: number;
   memory_total: number | null;
   power: number;
@@ -127,7 +127,7 @@ class GpuCollector extends EventEmitter {
         uuid: parts[2] || null,
         driver_version: parts[3] || null,
         temperature: num(parts[4]),
-        utilization: num(parts[5]),
+        utilization: numOrNull(parts[5]),
         memory_used: num(parts[6]),
         memory_total: numOrNull(parts[7]),
         power: numOrNull(parts[8]) ?? 0,

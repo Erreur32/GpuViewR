@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useUiStore, type Range } from '../../store/uiStore';
 
-const RANGES: Range[] = ['5m', '15m', '1h', '6h', '24h', '3d'];
+const RANGES: Range[] = ['1m', '2m', '5m', '15m', '1h', '6h', '24h', '3d'];
 
 export default function RangeSelector() {
   const { t } = useTranslation();

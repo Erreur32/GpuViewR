@@ -6,7 +6,7 @@ export interface GpuSample {
   uuid: string | null;
   driver_version: string | null;
   temperature: number;
-  utilization: number;
+  utilization: number | null;
   memory_used: number;
   memory_total: number | null;
   power: number;
@@ -22,7 +22,7 @@ const MAX_POINTS = 600; // ~10 minutes at 1Hz
 interface Series {
   t: number[];
   temperature: number[];
-  utilization: number[];
+  utilization: (number | null)[];
   memory_used: number[];
   power: number[];
 }

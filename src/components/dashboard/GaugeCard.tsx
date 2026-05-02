@@ -5,6 +5,7 @@ interface Props {
   label: string;
   value: number;
   displayValue?: string;
+  displaySubValue?: string;
   unit: string;
   max: number;
   warn?: number;
@@ -33,7 +34,7 @@ function colorFor(status: 'ok' | 'warn' | 'danger'): string {
 }
 
 export default function GaugeCard({
-  label, value, displayValue, unit, max, warn, danger, icon, history, ts, variant = 'arc',
+  label, value, displayValue, displaySubValue, unit, max, warn, danger, icon, history, ts, variant = 'arc',
 }: Props) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
   const status = statusFor(value, warn, danger);
@@ -79,19 +80,19 @@ export default function GaugeCard({
       </div>
 
       {variant === 'arc' ? (
-        <ArcGauge pct={pct} colorVar={colorVar} value={value} unit={unit} max={max} displayValue={displayValue} warn={warn} danger={danger} status={status} />
+        <ArcGauge pct={pct} colorVar={colorVar} value={value} unit={unit} max={max} displayValue={displayValue} displaySubValue={displaySubValue} warn={warn} danger={danger} status={status} />
       ) : (
-        <BarGauge pct={pct} colorVar={colorVar} value={value} unit={unit} max={max} displayValue={displayValue} status={status} />
+        <BarGauge pct={pct} colorVar={colorVar} value={value} unit={unit} max={max} displayValue={displayValue} displaySubValue={displaySubValue} status={status} />
       )}
     </div>
   );
 }
 
 function ArcGauge({
-  pct, colorVar, value, unit, max, displayValue, warn, danger, status,
+  pct, colorVar, value, unit, max, displayValue, displaySubValue, warn, danger, status,
 }: {
   pct: number; colorVar: string; value: number; unit: string; max: number;
-  displayValue?: string; warn?: number; danger?: number; status: 'ok' | 'warn' | 'danger';
+  displayValue?: string; displaySubValue?: string; warn?: number; danger?: number; status: 'ok' | 'warn' | 'danger';
 }) {
   const radius = 52;
   const circ = 2 * Math.PI * radius * 0.75;
@@ -150,7 +151,11 @@ function ArcGauge({
         >
           {displayValue ?? `${value.toFixed(value < 10 ? 1 : 0)}${unit}`}
         </div>
-        {!displayValue && (
+        {displaySubValue ? (
+          <div className="text-[10px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+            {displaySubValue}
+          </div>
+        ) : !displayValue && (
           <div className="text-[10px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
             / {max}{unit}
           </div>
@@ -161,10 +166,10 @@ function ArcGauge({
 }
 
 function BarGauge({
-  pct, colorVar, value, unit, max, displayValue, status,
+  pct, colorVar, value, unit, max, displayValue, displaySubValue, status,
 }: {
   pct: number; colorVar: string; value: number; unit: string; max: number;
-  displayValue?: string; status: 'ok' | 'warn' | 'danger';
+  displayValue?: string; displaySubValue?: string; status: 'ok' | 'warn' | 'danger';
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -172,7 +177,7 @@ function BarGauge({
         <span className="text-2xl font-bold tabular-nums leading-none" style={{ color: colorVar }}>
           {displayValue ?? `${value.toFixed(value < 10 ? 1 : 0)}${unit}`}
         </span>
-        <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>/ {max}{unit}</span>
+        <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>{displaySubValue ?? `/ ${max}${unit}`}</span>
       </div>
       <div
         className="relative h-3 w-full rounded-full overflow-hidden"

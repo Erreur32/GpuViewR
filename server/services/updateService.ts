@@ -192,23 +192,21 @@ export const updateService = {
 
     let releaseNotes: string | null = null;
     let releaseUrl: string | null = null;
-    if (updateAvailable) {
-      try {
-        const relRes = await fetch(
-          `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/v${latestVersion}`,
-          { headers },
-        );
-        if (relRes.ok) {
-          const release = (await relRes.json()) as { body?: string; html_url?: string };
-          if (release.body) releaseNotes = trim(release.body, RELEASE_NOTES_MAX);
-          if (release.html_url) releaseUrl = release.html_url;
-        }
-      } catch {
-        // ignore: fall back to local CHANGELOG
+    try {
+      const relRes = await fetch(
+        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/v${latestVersion}`,
+        { headers },
+      );
+      if (relRes.ok) {
+        const release = (await relRes.json()) as { body?: string; html_url?: string };
+        if (release.body) releaseNotes = trim(release.body, RELEASE_NOTES_MAX);
+        if (release.html_url) releaseUrl = release.html_url;
       }
-      if (!releaseNotes) releaseNotes = readChangelogSection(latestVersion);
-      if (!releaseUrl) releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/v${latestVersion}`;
+    } catch {
+      // ignore: fall back to local CHANGELOG
     }
+    if (!releaseNotes) releaseNotes = readChangelogSection(latestVersion);
+    if (!releaseUrl) releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/v${latestVersion}`;
 
     const message = !updateAvailable
       ? `You are running the latest version (${currentVersion}).`

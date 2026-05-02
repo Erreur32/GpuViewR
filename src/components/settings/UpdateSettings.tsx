@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, ArrowUpCircle, Check } from 'lucide-react';
+import { RefreshCw, ArrowUpCircle, Check, ExternalLink } from 'lucide-react';
 import { useUpdateStore } from '../../store/updateStore';
 import { notify } from '../../store/toastStore';
 import { useAuthStore } from '../../store/authStore';
@@ -82,6 +82,25 @@ export default function UpdateSettings() {
             <div style={{ color: 'var(--gv-warn)' }}>{t('common.error')}: {result.error}</div>
           )}
         </div>
+      )}
+
+      {result?.releaseNotes && (
+        <section className="pt-2">
+          <h3 className="text-xs uppercase tracking-wider mb-2 flex items-center justify-between" style={{ color: 'var(--gv-text-muted)' }}>
+            <span>{t('updates.release_notes')} {result.latestVersion ? `· v${result.latestVersion}` : ''}</span>
+            {result.releaseUrl && (
+              <a className="inline-flex items-center gap-1 hover:underline normal-case tracking-normal"
+                 style={{ color: 'var(--gv-accent)' }}
+                 href={result.releaseUrl} target="_blank" rel="noreferrer">
+                {t('updates.view_on_github')} <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </h3>
+          <pre className="rounded-xl p-3 text-xs whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-auto"
+               style={{ background: 'var(--gv-surface-alt)', color: 'var(--gv-text)' }}>
+            {result.releaseNotes}
+          </pre>
+        </section>
       )}
 
       <div className="flex gap-2 pt-2">

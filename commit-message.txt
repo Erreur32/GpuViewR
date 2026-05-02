@@ -1,29 +1,35 @@
-release: v0.1.4, dashboard UX polish
+release: v0.1.5, interactive legend + util N/A fix
 
-Gauges
-- Drop the outer glow drop-shadow on arc rings. The arc now uses a
-  subtle gradient stroke and shows thin tick marks at the warn and
-  danger thresholds so the bands are visible at a glance.
-- 600 ms cubic-bezier ease-out animation instead of a snap, so updates
-  read as a real-time meter.
-- Each gauge header gets a small live-tick dot that flashes on every
-  WebSocket sample. Confirms freshness even when the metric is steady
-  (idle GPU, stable temp, etc.).
+Live chart
+- Util / Temp / Power chips below the chart are clickable again to
+  hide / show each series. Hidden series get dimmed opacity and a
+  struck-through label. Restores the toggle behavior expected from a
+  chart legend (the previous build dropped it when uPlot's built-in
+  legend was disabled).
+- Two new short ranges 1m and 2m for real-time monitoring (in addition
+  to 5m / 15m / 1h / 6h / 24h / 3d). Server parseRange also accepts a
+  seconds suffix now.
 
-Chart legend
-- The built-in uPlot legend (which only showed values on hover and was
-  empty the rest of the time) is replaced by a row of always-visible
-  chips above the plot.
-- Cursor over the plot: chips show the value at the cursor and a
-  timestamp pill replaces the LIVE badge.
-- Cursor outside the plot: chips switch back to the latest WebSocket
-  sample and the LIVE badge returns.
-- Clicking the plot toggles a pin / unpin freeze on the cursor.
+GPU utilization N/A
+- nvidia-smi --query-gpu=utilization.gpu returns [N/A] on a number of
+  consumer / container / MIG / vGPU configs. The collector used to coerce
+  that to 0, which poisoned the Min / Avg / Max stats card and the live
+  gauge with a fake 0% reading.
+- Utilization is now nullable end-to-end (GpuSample, GpuMetric row,
+  zustand store, LiveChart, gauges). Null renders as N/A on the gauge
+  and as a dash on the stats card instead of a misleading 0%.
 
-Stats panel
-- Polls /api/gpu/stats every 5 s instead of only on range / GPU change.
-- Blends the latest live sample into min / max / avg so the cards stay
-  in sync with the live gauges between SQLite flushes (the collector
-  flushes its 1-Hz buffer once a minute).
+Memory gauge
+- The memory card now shows the used value on the main line (e.g.
+  "4 MiB") and "/ 8 192 MiB" on a secondary line, matching the layout
+  of the temperature / utilization / power gauges. Driven by a new
+  displaySubValue prop on GaugeCard.
+
+Settings > Updates
+- The latest version's release notes (from the GitHub release with a
+  fallback to local CHANGELOG.md) now show directly in Settings >
+  Updates, even when you are already on the latest version. Includes a
+  "View on GitHub" link. updateService.runCheck fetches release notes
+  unconditionally so the panel can render them.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>

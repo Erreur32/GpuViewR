@@ -5,7 +5,7 @@ export interface GpuMetric {
   timestamp: string;
   timestamp_epoch: number;
   temperature: number;
-  utilization: number;
+  utilization: number | null;
   memory_used: number;
   memory_total: number | null;
   power: number;

@@ -5,6 +5,39 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-05-02
+
+Live chart usability and accurate utilization handling.
+
+### Added
+- **Interactive chart legend**: the Util / Temp / Power chips below the
+  live chart are now clickable to hide / show each series. The chip dims
+  and the label is struck-through when the series is hidden. Restores
+  the toggle behavior expected from a chart legend.
+- **Short ranges**: `1 min` and `2 min` join `5m / 15m / 1h / 6h / 24h /
+  3d` for finer real-time monitoring. Server `parseRange` also accepts a
+  `s` (seconds) suffix.
+- **Settings > Updates**: the latest version's release notes (from the
+  GitHub release, fallback to `CHANGELOG.md`) are now shown directly in
+  the Updates panel, even when you are already on the latest version.
+  Includes a "View on GitHub" link.
+
+### Fixed
+- **GPU utilization showing 0%** when `nvidia-smi` reports `[N/A]` for
+  `utilization.gpu` (common on consumer cards in container/MIG/vGPU
+  configs). The collector previously coerced `[N/A]` to `0`, which then
+  poisoned Min / Avg / Max stats and the live gauge. Utilization is now
+  nullable end-to-end (server, SQLite row type, store, UI) and displays
+  `N/A` / `-` instead of a misleading `0%`.
+- **Memory gauge layout**: the memory card now shows the used value on
+  the main line (e.g. `4 MiB`) and `/ 8 192 MiB` on a secondary line,
+  matching the layout of the other gauges. Driven by a new
+  `displaySubValue` prop on `GaugeCard`.
+
+### Changed
+- `updateService.runCheck` now fetches release notes for the latest
+  tagged version unconditionally so the Settings panel can display them.
+
 ## [0.1.4] - 2026-05-02
 
 UX polish on the dashboard. The gauges feel live, the chart legend is

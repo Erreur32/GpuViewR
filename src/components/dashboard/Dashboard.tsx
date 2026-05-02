@@ -89,20 +89,22 @@ export default function Dashboard() {
         <GaugeCard
           variant={gaugeView}
           label={t('dashboard.metrics.utilization')}
-          value={active.utilization}
+          value={active.utilization ?? 0}
+          displayValue={active.utilization === null ? 'N/A' : undefined}
           unit="%"
           max={100}
           warn={85}
           danger={95}
           icon={<Activity className="w-4 h-4" />}
-          history={series?.utilization}
+          history={series?.utilization?.map((v) => v ?? 0)}
           ts={active.timestamp_epoch}
         />
         <GaugeCard
           variant={gaugeView}
           label={t('dashboard.metrics.memory')}
           value={memPct}
-          displayValue={`${fmt(active.memory_used)} / ${active.memory_total ? fmt(active.memory_total) : '?'} MiB`}
+          displayValue={`${fmt(active.memory_used)} MiB`}
+          displaySubValue={`/ ${active.memory_total ? fmt(active.memory_total) : '?'} MiB`}
           unit=""
           max={100}
           warn={80}

@@ -33,10 +33,12 @@ router.get('/stats', (req, res) => {
 });
 
 function parseRange(input: string): number {
-  const m = /^(\d+(?:\.\d+)?)(m|h|d)$/.exec(input);
+  const m = /^(\d+(?:\.\d+)?)(s|m|h|d)$/.exec(input);
   if (!m) return 3600;
   const n = parseFloat(m[1]);
   switch (m[2]) {
+    case 's':
+      return Math.max(1, Math.floor(n));
     case 'm':
       return Math.floor(n * 60);
     case 'h':

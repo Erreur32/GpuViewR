@@ -48,6 +48,8 @@
       "clock_mem": "Fréquence mémoire"
     },
     "ranges": {
+      "1m": "1 min",
+      "2m": "2 min",
       "5m": "5 min",
       "15m": "15 min",
       "1h": "1 h",

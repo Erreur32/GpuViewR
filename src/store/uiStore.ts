@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { applyTheme, getTheme } from '../lib/themes';
 
 export type GaugeView = 'arc' | 'bar';
-export type Range = '5m' | '15m' | '1h' | '6h' | '24h' | '3d';
+export type Range = '1m' | '2m' | '5m' | '15m' | '1h' | '6h' | '24h' | '3d';
 
 interface UiState {
   themeId: string;

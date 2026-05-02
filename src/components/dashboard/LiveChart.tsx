@@ -10,7 +10,7 @@ interface Props { gpuIndex: number; }
 interface HistoryRow {
   timestamp_epoch: number;
   temperature: number;
-  utilization: number;
+  utilization: number | null;
   power: number;
 }
 
@@ -19,6 +19,14 @@ interface CursorValues {
   utilization: number | null;
   temperature: number | null;
   power: number | null;
+}
+
+interface ChipProps {
+  colorVar: string;
+  label: string;
+  value: string;
+  active: boolean;
+  onClick: () => void;
 }
 
 export default function LiveChart({ gpuIndex }: Props) {
@@ -33,6 +41,16 @@ export default function LiveChart({ gpuIndex }: Props) {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null });
   const [pinned, setPinned] = useState<boolean>(false);
+  const [visible, setVisible] = useState<{ util: boolean; temp: boolean; pow: boolean }>({ util: true, temp: true, pow: true });
+
+  const toggleSeries = (key: 'util' | 'temp' | 'pow') => {
+    setVisible((v) => {
+      const next = { ...v, [key]: !v[key] };
+      const idxMap = { util: 1, temp: 2, pow: 3 } as const;
+      plotRef.current?.setSeries(idxMap[key], { show: next[key] });
+      return next;
+    });
+  };
 
   // Fetch history when range changes
   useEffect(() => {
@@ -171,16 +189,22 @@ export default function LiveChart({ gpuIndex }: Props) {
             colorVar="var(--gv-accent)"
             label={t('dashboard.metrics.utilization')}
             value={fmt(display.util, '%')}
+            active={visible.util}
+            onClick={() => toggleSeries('util')}
           />
           <Chip
             colorVar="var(--gv-warn)"
             label={t('dashboard.metrics.temperature')}
             value={fmt(display.temp, '°C')}
+            active={visible.temp}
+            onClick={() => toggleSeries('temp')}
           />
           <Chip
             colorVar="var(--gv-ok)"
             label={t('dashboard.metrics.power')}
             value={fmt(display.pow, ' W')}
+            active={visible.pow}
+            onClick={() => toggleSeries('pow')}
           />
           <span
             className="text-[10px] px-2 py-0.5 rounded-full"
@@ -214,18 +238,28 @@ export default function LiveChart({ gpuIndex }: Props) {
   );
 }
 
-function Chip({ colorVar, label, value }: { colorVar: string; label: string; value: string }) {
+function Chip({ colorVar, label, value, active, onClick }: ChipProps) {
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded transition-opacity"
+      style={{ opacity: active ? 1 : 0.4, cursor: 'pointer', background: 'transparent', border: 'none' }}
+      title={active ? 'Click to hide' : 'Click to show'}
+    >
       <span
         className="inline-block w-2 h-2 rounded-full"
-        style={{ background: colorVar, boxShadow: `0 0 6px ${colorVar}` }}
+        style={{
+          background: colorVar,
+          boxShadow: active ? `0 0 6px ${colorVar}` : 'none',
+        }}
       />
-      <span style={{ color: 'var(--gv-text-muted)' }}>{label}</span>
+      <span style={{ color: 'var(--gv-text-muted)', textDecoration: active ? 'none' : 'line-through' }}>{label}</span>
       <span className="font-semibold tabular-nums" style={{ color: 'var(--gv-text)' }}>
         {value}
       </span>
-    </span>
+    </button>
   );
 }
 

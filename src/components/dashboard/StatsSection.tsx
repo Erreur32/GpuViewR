@@ -48,8 +48,8 @@ export default function StatsSection({ gpuIndex }: Props) {
   // sample into min/max so the user never sees a "frozen" max while temp keeps
   // climbing on the gauges.
   const live = useGpuStore((s) => s.latest.get(gpuIndex));
-  const blend = (db: number | undefined | null, current: number | undefined, kind: 'min' | 'max'): number | undefined | null => {
-    if (current === undefined) return db;
+  const blend = (db: number | undefined | null, current: number | undefined | null, kind: 'min' | 'max'): number | undefined | null => {
+    if (current === undefined || current === null) return db;
     if (db === undefined || db === null) return current;
     return kind === 'min' ? Math.min(db, current) : Math.max(db, current);
   };
