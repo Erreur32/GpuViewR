@@ -5,6 +5,42 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-05-02
+
+UX polish on the dashboard. The gauges feel live, the chart legend is
+always populated, and the stats panel stays in sync with the live samples.
+
+### Changed
+- **Gauges**: removed the harsh outer drop-shadow glow on the arc rings.
+  The arc now uses a subtle gradient stroke and shows two thin tick marks
+  at the warn and danger thresholds so the bands are visible at a glance.
+  Animation moved to a 600 ms cubic-bezier ease-out so changes feel like a
+  real-time meter rather than a snap.
+- **Gauge state colors** stay green / amber / red but the threshold ticks
+  make the boundaries explicit (warn at 75 °C / 85 % util / 80 % mem / 250 W,
+  danger at 85 °C / 95 % util / 92 % mem / 350 W).
+- **Live tick indicator** added to each gauge header: a small dot that
+  flashes briefly each time a new WebSocket sample lands. Confirms at a
+  glance that the value is live, even when the metric itself is steady (idle
+  GPU, stable temperature, etc.).
+- **Chart legend** rebuilt as a row of always-visible chips above the
+  plot. Each chip shows the metric color, label, and current value.
+  - When the cursor is over the plot: chips show the value at the cursor
+    and a timestamp pill replaces the LIVE badge.
+  - When the cursor leaves the plot: chips switch back to the latest
+    WebSocket sample and the LIVE badge returns.
+  - Clicking the plot pins / unpins the cursor (toggle live freeze).
+- **Stats panel** now polls `/api/gpu/stats` every 5 s instead of only
+  re-fetching on range / GPU change, and blends the latest live sample into
+  the displayed `min` / `max` / `avg`. The collector flushes its 1-Hz
+  buffer to SQLite once a minute, so this blend keeps the cards in sync
+  with the gauges between flushes.
+
+### Fixed
+- Built-in uPlot legend was disabled (it only showed values during hover
+  and stayed empty otherwise). Replaced by the always-visible chip row
+  above.
+
 ## [0.1.1] - 2026-05-02
 
 First public release of GpuViewR. From-scratch rewrite of

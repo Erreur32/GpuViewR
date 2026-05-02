@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import Sparkline from './Sparkline';
 
 interface Props {
@@ -12,25 +12,44 @@ interface Props {
   icon?: ReactNode;
   history?: number[];
   variant?: 'arc' | 'bar';
+  /** Epoch (s) of the latest sample for this metric. Drives the live "tick" pulse. */
+  ts?: number;
+}
+
+/**
+ * Maps a percentage (0..100) to a state with smooth thresholds.
+ * Used to color gauges by health rather than by hard thresholds only.
+ */
+function statusFor(value: number, warn?: number, danger?: number): 'ok' | 'warn' | 'danger' {
+  if (danger !== undefined && value >= danger) return 'danger';
+  if (warn !== undefined && value >= warn) return 'warn';
+  return 'ok';
+}
+
+function colorFor(status: 'ok' | 'warn' | 'danger'): string {
+  return status === 'danger' ? 'var(--gv-danger)'
+       : status === 'warn'   ? 'var(--gv-warn)'
+       : 'var(--gv-ok)';
 }
 
 export default function GaugeCard({
-  label,
-  value,
-  displayValue,
-  unit,
-  max,
-  warn,
-  danger,
-  icon,
-  history,
-  variant = 'arc',
+  label, value, displayValue, unit, max, warn, danger, icon, history, ts, variant = 'arc',
 }: Props) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
-  const status: 'ok' | 'warn' | 'danger' =
-    danger !== undefined && value >= danger ? 'danger' : warn !== undefined && value >= warn ? 'warn' : 'ok';
+  const status = statusFor(value, warn, danger);
+  const colorVar = colorFor(status);
 
-  const colorVar = status === 'danger' ? 'var(--gv-danger)' : status === 'warn' ? 'var(--gv-warn)' : 'var(--gv-ok)';
+  // Live tick: brief flash on each new sample so the user perceives the live update.
+  const [flash, setFlash] = useState(false);
+  const lastTs = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (ts !== undefined && ts !== lastTs.current) {
+      lastTs.current = ts;
+      setFlash(true);
+      const id = setTimeout(() => setFlash(false), 220);
+      return () => clearTimeout(id);
+    }
+  }, [ts]);
 
   return (
     <div className="card card-hover p-4 flex flex-col gap-3">
@@ -38,6 +57,15 @@ export default function GaugeCard({
         <span className="inline-flex items-center gap-1.5 uppercase tracking-wider font-medium">
           {icon}
           <span>{label}</span>
+          <span
+            className="inline-block w-1.5 h-1.5 rounded-full transition-opacity duration-300"
+            style={{
+              background: colorVar,
+              opacity: flash ? 1 : 0.45,
+              boxShadow: flash ? `0 0 6px ${colorVar}` : 'none',
+            }}
+            title="Live"
+          />
         </span>
         {history && history.length > 1 && (
           <Sparkline
@@ -51,44 +79,79 @@ export default function GaugeCard({
       </div>
 
       {variant === 'arc' ? (
-        <ArcGauge pct={pct} colorVar={colorVar} value={value} unit={unit} max={max} displayValue={displayValue} />
+        <ArcGauge pct={pct} colorVar={colorVar} value={value} unit={unit} max={max} displayValue={displayValue} warn={warn} danger={danger} status={status} />
       ) : (
-        <BarGauge pct={pct} colorVar={colorVar} value={value} unit={unit} max={max} displayValue={displayValue} />
+        <BarGauge pct={pct} colorVar={colorVar} value={value} unit={unit} max={max} displayValue={displayValue} status={status} />
       )}
     </div>
   );
 }
 
 function ArcGauge({
-  pct, colorVar, value, unit, max, displayValue,
-}: { pct: number; colorVar: string; value: number; unit: string; max: number; displayValue?: string }) {
+  pct, colorVar, value, unit, max, displayValue, warn, danger, status,
+}: {
+  pct: number; colorVar: string; value: number; unit: string; max: number;
+  displayValue?: string; warn?: number; danger?: number; status: 'ok' | 'warn' | 'danger';
+}) {
   const radius = 52;
   const circ = 2 * Math.PI * radius * 0.75;
   const offset = circ - (pct / 100) * circ;
+
+  // Threshold tick marks on the arc (warn + danger), so the user can see the bands at a glance.
+  const ticks: { pct: number; color: string }[] = [];
+  if (warn !== undefined) ticks.push({ pct: Math.min(100, (warn / max) * 100), color: 'var(--gv-warn)' });
+  if (danger !== undefined) ticks.push({ pct: Math.min(100, (danger / max) * 100), color: 'var(--gv-danger)' });
+
   return (
     <div className="relative w-full aspect-square max-w-[160px] mx-auto">
       <svg viewBox="0 0 120 120" className="w-full h-full -rotate-[135deg]">
+        <defs>
+          <linearGradient id={`gaugeGrad-${status}`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stopColor={colorVar} stopOpacity="0.55" />
+            <stop offset="100%" stopColor={colorVar} stopOpacity="1" />
+          </linearGradient>
+        </defs>
+        {/* track */}
         <circle
-          cx="60" cy="60" r={radius} fill="none" strokeWidth="9"
+          cx="60" cy="60" r={radius} fill="none" strokeWidth="8"
           stroke="var(--gv-border)"
           strokeDasharray={`${circ} ${2 * Math.PI * radius}`}
           strokeLinecap="round"
         />
+        {/* threshold ticks */}
+        {ticks.map((t) => {
+          const a = (t.pct / 100) * circ;
+          return (
+            <circle
+              key={t.color + t.pct}
+              cx="60" cy="60" r={radius} fill="none" strokeWidth="2"
+              stroke={t.color}
+              strokeDasharray={`2 ${2 * Math.PI * radius - 2}`}
+              strokeDashoffset={-a}
+              strokeLinecap="butt"
+              opacity="0.55"
+            />
+          );
+        })}
+        {/* value arc */}
         <circle
-          cx="60" cy="60" r={radius} fill="none" strokeWidth="9"
-          stroke={colorVar}
+          cx="60" cy="60" r={radius} fill="none" strokeWidth="8"
+          stroke={`url(#gaugeGrad-${status})`}
           strokeDasharray={`${circ} ${2 * Math.PI * radius}`}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          style={{ filter: `drop-shadow(0 0 10px ${colorVar})`, transition: 'stroke-dashoffset 300ms ease-out, stroke 300ms' }}
+          style={{ transition: 'stroke-dashoffset 600ms cubic-bezier(0.2, 0.8, 0.2, 1), stroke 300ms' }}
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <div className="text-2xl font-bold tabular-nums" style={{ color: colorVar }}>
+        <div
+          className="text-2xl font-bold tabular-nums leading-none"
+          style={{ color: colorVar }}
+        >
           {displayValue ?? `${value.toFixed(value < 10 ? 1 : 0)}${unit}`}
         </div>
         {!displayValue && (
-          <div className="text-[10px] mt-0.5" style={{ color: 'var(--gv-text-dim)' }}>
+          <div className="text-[10px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
             / {max}{unit}
           </div>
         )}
@@ -98,25 +161,31 @@ function ArcGauge({
 }
 
 function BarGauge({
-  pct, colorVar, value, unit, max, displayValue,
-}: { pct: number; colorVar: string; value: number; unit: string; max: number; displayValue?: string }) {
+  pct, colorVar, value, unit, max, displayValue, status,
+}: {
+  pct: number; colorVar: string; value: number; unit: string; max: number;
+  displayValue?: string; status: 'ok' | 'warn' | 'danger';
+}) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <span className="text-2xl font-bold tabular-nums" style={{ color: colorVar }}>
+        <span className="text-2xl font-bold tabular-nums leading-none" style={{ color: colorVar }}>
           {displayValue ?? `${value.toFixed(value < 10 ? 1 : 0)}${unit}`}
         </span>
         <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>/ {max}{unit}</span>
       </div>
-      <div className="relative h-3 w-full rounded-full overflow-hidden" style={{ background: 'var(--gv-surface-alt)' }}>
+      <div
+        className="relative h-3 w-full rounded-full overflow-hidden"
+        style={{ background: 'var(--gv-surface-alt)' }}
+      >
         <div
           className="absolute inset-y-0 left-0 rounded-full"
           style={{
             width: `${pct}%`,
-            background: `linear-gradient(90deg, color-mix(in srgb, ${colorVar} 60%, transparent), ${colorVar})`,
-            boxShadow: `0 0 14px ${colorVar}`,
-            transition: 'width 300ms ease-out, background 300ms',
+            background: `linear-gradient(90deg, color-mix(in srgb, ${colorVar} 55%, transparent), ${colorVar})`,
+            transition: 'width 600ms cubic-bezier(0.2, 0.8, 0.2, 1), background 300ms',
           }}
+          aria-label={`${status} ${pct.toFixed(0)}%`}
         />
       </div>
       <div className="flex justify-between text-[10px] tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>

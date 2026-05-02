@@ -1,14 +1,29 @@
-release: v0.1.2
+release: v0.1.4, dashboard UX polish
 
-This release fixes NVIDIA runtime compatibility by switching the Docker base
-image from Alpine (musl) to Debian slim (glibc), so `nvidia-smi` injected by
-the NVIDIA Container Toolkit is executable inside the container.
+Gauges
+- Drop the outer glow drop-shadow on arc rings. The arc now uses a
+  subtle gradient stroke and shows thin tick marks at the warn and
+  danger thresholds so the bands are visible at a glance.
+- 600 ms cubic-bezier ease-out animation instead of a snap, so updates
+  read as a real-time meter.
+- Each gauge header gets a small live-tick dot that flashes on every
+  WebSocket sample. Confirms freshness even when the metric is steady
+  (idle GPU, stable temp, etc.).
 
-It also removes the `update.sh` helper and standardizes update instructions
-around Docker Compose (`docker compose pull && docker compose up -d`).
+Chart legend
+- The built-in uPlot legend (which only showed values on hover and was
+  empty the rest of the time) is replaced by a row of always-visible
+  chips above the plot.
+- Cursor over the plot: chips show the value at the cursor and a
+  timestamp pill replaces the LIVE badge.
+- Cursor outside the plot: chips switch back to the latest WebSocket
+  sample and the LIVE badge returns.
+- Clicking the plot toggles a pin / unpin freeze on the cursor.
 
-Changes
-- Docker runtime base is now Debian slim (glibc) to support `nvidia-smi`.
-- Removed `update.sh`; UI/docs now show standard Compose update commands.
+Stats panel
+- Polls /api/gpu/stats every 5 s instead of only on range / GPU change.
+- Blends the latest live sample into min / max / avg so the cards stay
+  in sync with the live gauges between SQLite flushes (the collector
+  flushes its 1-Hz buffer once a minute).
 
-See CHANGELOG.md for details.
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import uPlot, { type AlignedData } from 'uplot';
 import { useTranslation } from 'react-i18next';
 import { useGpuStore } from '../../store/gpuStore';
@@ -14,6 +14,13 @@ interface HistoryRow {
   power: number;
 }
 
+interface CursorValues {
+  t: number | null;
+  utilization: number | null;
+  temperature: number | null;
+  power: number | null;
+}
+
 export default function LiveChart({ gpuIndex }: Props) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -21,8 +28,11 @@ export default function LiveChart({ gpuIndex }: Props) {
   const themeId = useUiStore((s) => s.themeId);
   const range = useUiStore((s) => s.range);
   const series = useGpuStore((s) => s.series.get(gpuIndex));
+  const latestSample = useGpuStore((s) => s.latest.get(gpuIndex));
   const [historic, setHistoric] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null });
+  const [pinned, setPinned] = useState<boolean>(false);
 
   // Fetch history when range changes
   useEffect(() => {
@@ -67,8 +77,28 @@ export default function LiveChart({ gpuIndex }: Props) {
         { label: t('dashboard.metrics.temperature'), stroke: warn, width: 2, scale: '%' },
         { label: t('dashboard.metrics.power'), stroke: ok, width: 2, scale: 'W' },
       ],
-      legend: { show: true, live: true },
+      // We render our own legend chip row below the chart, so disable the
+      // built-in legend (which only shows values on hover and clutters the layout).
+      legend: { show: false },
       cursor: { drag: { x: true, y: false } },
+      hooks: {
+        setCursor: [
+          (u) => {
+            const idx = u.cursor.idx;
+            if (idx === null || idx === undefined) {
+              // Mouse left the plot, fall back to "live" mode (latest values).
+              setCursor({ t: null, utilization: null, temperature: null, power: null });
+            } else {
+              setCursor({
+                t: u.data[0]?.[idx] ?? null,
+                utilization: (u.data[1]?.[idx] as number | undefined) ?? null,
+                temperature: (u.data[2]?.[idx] as number | undefined) ?? null,
+                power: (u.data[3]?.[idx] as number | undefined) ?? null,
+              });
+            }
+          },
+        ],
+      },
     };
     plotRef.current = new uPlot(opts, [[], [], [], []] as unknown as AlignedData, containerRef.current);
 
@@ -113,23 +143,105 @@ export default function LiveChart({ gpuIndex }: Props) {
     plotRef.current.setData([tArr, utilArr, tempArr, powArr] as AlignedData);
   }, [historic, series]);
 
+  // What the legend shows: the cursor value if hovering/pinned, else the live latest sample.
+  const display = useMemo<{ live: boolean; t: number | null; util: number | null; temp: number | null; pow: number | null }>(() => {
+    if (cursor.t !== null) {
+      return { live: false, t: cursor.t, util: cursor.utilization, temp: cursor.temperature, pow: cursor.power };
+    }
+    if (latestSample) {
+      return {
+        live: true,
+        t: latestSample.timestamp_epoch,
+        util: latestSample.utilization,
+        temp: latestSample.temperature,
+        pow: latestSample.power,
+      };
+    }
+    return { live: true, t: null, util: null, temp: null, pow: null };
+  }, [cursor, latestSample]);
+
   return (
     <div className="card p-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
           {t('dashboard.history')}
         </h3>
-        {loadingHistory && (
-          <span className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>{t('common.loading')}</span>
-        )}
+        <div className="flex items-center gap-3 text-xs">
+          <Chip
+            colorVar="var(--gv-accent)"
+            label={t('dashboard.metrics.utilization')}
+            value={fmt(display.util, '%')}
+          />
+          <Chip
+            colorVar="var(--gv-warn)"
+            label={t('dashboard.metrics.temperature')}
+            value={fmt(display.temp, '°C')}
+          />
+          <Chip
+            colorVar="var(--gv-ok)"
+            label={t('dashboard.metrics.power')}
+            value={fmt(display.pow, ' W')}
+          />
+          <span
+            className="text-[10px] px-2 py-0.5 rounded-full"
+            style={{
+              color: display.live ? 'var(--gv-ok)' : 'var(--gv-text-muted)',
+              background: display.live
+                ? 'color-mix(in srgb, var(--gv-ok) 14%, transparent)'
+                : 'var(--gv-surface-alt)',
+              border: '1px solid ' + (display.live
+                ? 'color-mix(in srgb, var(--gv-ok) 30%, transparent)'
+                : 'var(--gv-border)'),
+            }}
+            title={display.t ? new Date(display.t * 1000).toLocaleString() : ''}
+          >
+            {display.live ? t('dashboard.live') : fmtTime(display.t)}
+          </span>
+        </div>
       </div>
-      <div ref={containerRef} className="w-full" />
+      <div
+        ref={containerRef}
+        className="w-full select-none"
+        onClick={() => setPinned((p) => !p)}
+        title={pinned ? t('dashboard.click_unpin') : t('dashboard.click_pin')}
+      />
+      {loadingHistory && (
+        <div className="mt-2 text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+          {t('common.loading')}
+        </div>
+      )}
     </div>
   );
 }
 
+function Chip({ colorVar, label, value }: { colorVar: string; label: string; value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className="inline-block w-2 h-2 rounded-full"
+        style={{ background: colorVar, boxShadow: `0 0 6px ${colorVar}` }}
+      />
+      <span style={{ color: 'var(--gv-text-muted)' }}>{label}</span>
+      <span className="font-semibold tabular-nums" style={{ color: 'var(--gv-text)' }}>
+        {value}
+      </span>
+    </span>
+  );
+}
+
+function fmt(v: number | null, unit: string): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '-';
+  return v.toLocaleString(undefined, { maximumFractionDigits: v < 10 ? 1 : 0 }) + unit;
+}
+
+function fmtTime(epoch: number | null): string {
+  if (!epoch) return '-';
+  const d = new Date(epoch * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function hexAlpha(hex: string, a: number): string {
-  // Accepts #rrggbb or named/var fallback
   if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);

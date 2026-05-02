@@ -84,6 +84,7 @@ export default function Dashboard() {
           danger={85}
           icon={<Thermometer className="w-4 h-4" />}
           history={series?.temperature}
+          ts={active.timestamp_epoch}
         />
         <GaugeCard
           variant={gaugeView}
@@ -95,6 +96,7 @@ export default function Dashboard() {
           danger={95}
           icon={<Activity className="w-4 h-4" />}
           history={series?.utilization}
+          ts={active.timestamp_epoch}
         />
         <GaugeCard
           variant={gaugeView}
@@ -107,6 +109,7 @@ export default function Dashboard() {
           danger={92}
           icon={<MemoryStick className="w-4 h-4" />}
           history={series?.memory_used}
+          ts={active.timestamp_epoch}
         />
         <GaugeCard
           variant={gaugeView}
@@ -118,6 +121,7 @@ export default function Dashboard() {
           danger={350}
           icon={<Zap className="w-4 h-4" />}
           history={series?.power}
+          ts={active.timestamp_epoch}
         />
       </div>
 

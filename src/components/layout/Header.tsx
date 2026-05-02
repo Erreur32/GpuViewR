@@ -4,7 +4,7 @@ import { Cpu, LogOut, BellRing, FileText, Settings, LayoutDashboard } from 'luci
 import { useAuthStore } from '../../store/authStore';
 import { useGpuStore } from '../../store/gpuStore';
 
-const VERSION = 'v0.1.3';
+const VERSION = 'v0.1.4';
 
 export default function Header() {
   const { t } = useTranslation();

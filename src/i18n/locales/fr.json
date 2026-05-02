@@ -25,6 +25,8 @@
   "dashboard": {
     "live": "LIVE",
     "offline": "HORS LIGNE",
+    "click_pin": "Cliquer pour figer la valeur sur le curseur",
+    "click_unpin": "Cliquer pour reprendre les valeurs live",
     "no_gpu": "Aucun GPU détecté: vérifiez que nvidia-smi est disponible dans le conteneur.",
     "history": "Performance en direct",
     "view_arc": "Jauges",
