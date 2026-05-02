@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="public/gpuviewr.svg" alt="GpuViewR" width="128" height="128" />
+<img src="public/GPUViewR.png" alt="GpuViewR" width="128" height="128" />
 
 ![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.6-111827?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-DEVELOPMENT-374151?style=for-the-badge)
