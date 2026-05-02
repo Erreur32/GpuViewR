@@ -16,7 +16,7 @@ router.get('/current', (_req, res) => {
 });
 
 router.get('/history', (req, res) => {
-  const gpuIndex = parseInt(String(req.query.gpu || '0'), 10);
+  const gpuIndex = Number.parseInt(String(req.query.gpu || '0'), 10);
   const range = String(req.query.range || '1h');
   const seconds = parseRange(range);
   const since = Math.floor(Date.now() / 1000) - seconds;
@@ -25,7 +25,7 @@ router.get('/history', (req, res) => {
 });
 
 router.get('/stats', (req, res) => {
-  const gpuIndex = parseInt(String(req.query.gpu || '0'), 10);
+  const gpuIndex = Number.parseInt(String(req.query.gpu || '0'), 10);
   const range = String(req.query.range || '24h');
   const seconds = parseRange(range);
   const since = Math.floor(Date.now() / 1000) - seconds;
@@ -37,7 +37,7 @@ function parseRange(input: string): number {
   if (input === 'live') return 50;
   const m = /^(\d+(?:\.\d+)?)(s|m|h|d)$/.exec(input);
   if (!m) return 3600;
-  const n = parseFloat(m[1]);
+  const n = Number.parseFloat(m[1]);
   switch (m[2]) {
     case 's':
       return Math.max(1, Math.floor(n));

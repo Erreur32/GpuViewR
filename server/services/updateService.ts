@@ -100,8 +100,8 @@ export const updateService = {
 
   /** Public version-comparison helper (semver x.y.z, missing parts treated as 0). */
   compareVersions(a: string, b: string): number {
-    const pa = a.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
-    const pb = b.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+    const pa = a.replace(/^v/, '').split('.').map((n) => Number.parseInt(n, 10) || 0);
+    const pb = b.replace(/^v/, '').split('.').map((n) => Number.parseInt(n, 10) || 0);
     for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
       const ai = pa[i] || 0;
       const bi = pb[i] || 0;

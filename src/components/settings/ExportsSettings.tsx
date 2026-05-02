@@ -151,7 +151,7 @@ function MqttBlock({ cfg, disabled, onSave, onTest }: Readonly<{
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Field label={t('settings.exports_mqtt_prefix')} value={s.topicPrefix} onChange={(v) => setS({ ...s, topicPrefix: v })} disabled={disabled} />
-        <Field label={t('settings.exports_interval')} value={String(s.intervalSeconds)} onChange={(v) => setS({ ...s, intervalSeconds: parseInt(v, 10) || 10 })} disabled={disabled} type="number" />
+        <Field label={t('settings.exports_interval')} value={String(s.intervalSeconds)} onChange={(v) => setS({ ...s, intervalSeconds: Number.parseInt(v, 10) || 10 })} disabled={disabled} type="number" />
       </div>
       <Toggle label={t('settings.exports_mqtt_ha')} checked={s.haDiscovery} onChange={(v) => setS({ ...s, haDiscovery: v })} disabled={disabled} />
       <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
@@ -186,7 +186,7 @@ function InfluxBlock({ cfg, disabled, onSave, onTest }: Readonly<{
       <Field label="Token" value={s.token} onChange={(v) => setS({ ...s, token: v })} disabled={disabled} type="password" />
       <div className="grid grid-cols-2 gap-2">
         <Field label={t('settings.exports_inf_measurement')} value={s.measurement} onChange={(v) => setS({ ...s, measurement: v })} disabled={disabled} />
-        <Field label={t('settings.exports_interval')} value={String(s.intervalSeconds)} onChange={(v) => setS({ ...s, intervalSeconds: parseInt(v, 10) || 10 })} disabled={disabled} type="number" />
+        <Field label={t('settings.exports_interval')} value={String(s.intervalSeconds)} onChange={(v) => setS({ ...s, intervalSeconds: Number.parseInt(v, 10) || 10 })} disabled={disabled} type="number" />
       </div>
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
@@ -218,7 +218,7 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
             <option value="PUT">PUT</option>
           </select>
         </div>
-        <Field label={t('settings.exports_interval')} value={String(s.intervalSeconds)} onChange={(v) => setS({ ...s, intervalSeconds: parseInt(v, 10) || 30 })} disabled={disabled} type="number" />
+        <Field label={t('settings.exports_interval')} value={String(s.intervalSeconds)} onChange={(v) => setS({ ...s, intervalSeconds: Number.parseInt(v, 10) || 30 })} disabled={disabled} type="number" />
       </div>
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>

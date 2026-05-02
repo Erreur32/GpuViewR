@@ -1,6 +1,5 @@
 import { useTranslation } from 'react-i18next';
 import { Thermometer, Activity, MemoryStick, Zap, LayoutGrid, BarChart3 } from 'lucide-react';
-import { useGpuStream } from '../../lib/useGpuStream';
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
 import GaugeCard from './GaugeCard';
@@ -13,8 +12,6 @@ import UpdateBanner from '../ui/UpdateBanner';
 
 export default function Dashboard() {
   const { t } = useTranslation();
-  useGpuStream();
-
   const latest = useGpuStore((s) => s.latest);
   const seriesMap = useGpuStore((s) => s.series);
   const samples = Array.from(latest.values()).sort((a, b) => a.gpu_index - b.gpu_index);

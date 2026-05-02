@@ -1,12 +1,12 @@
 import 'dotenv/config';
 
 export const config = {
-  port: parseInt(process.env.PORT || '3015', 10),
+  port: Number.parseInt(process.env.PORT || '3015', 10),
   jwtSecret: process.env.JWT_SECRET || '',
   publicUrl: process.env.PUBLIC_URL || '',
   tz: process.env.TZ || 'UTC',
-  gpuTickMs: parseInt(process.env.GPU_TICK_MS || '1000', 10),
-  retentionDays: parseInt(process.env.RETENTION_DAYS || '7', 10),
+  gpuTickMs: Number.parseInt(process.env.GPU_TICK_MS || '1000', 10),
+  retentionDays: Number.parseInt(process.env.RETENTION_DAYS || '7', 10),
   dataDir: process.env.DATA_DIR || './data',
   nodeEnv: process.env.NODE_ENV || 'development',
 };

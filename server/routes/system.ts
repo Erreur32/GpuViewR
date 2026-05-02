@@ -111,7 +111,7 @@ router.get('/', (_req, res) => {
 
 function getRetentionDays(): number {
   const stored = AppConfigRepo.get(RETENTION_KEY);
-  const n = stored ? parseInt(stored, 10) : NaN;
+  const n = stored ? Number.parseInt(stored, 10) : NaN;
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_RETENTION_DAYS;
 }
 
@@ -145,7 +145,7 @@ router.get('/db', (_req, res) => {
 });
 
 router.put('/db/retention', requireAdmin, (req, res) => {
-  const days = parseInt(String((req.body as { days?: unknown })?.days ?? ''), 10);
+  const days = Number.parseInt(String((req.body as { days?: unknown })?.days ?? ''), 10);
   if (!Number.isFinite(days) || days < 1 || days > 365) {
     return res.status(400).json({ error: 'days must be an integer between 1 and 365' });
   }

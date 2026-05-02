@@ -68,9 +68,9 @@ function parse(out: string): GpuProcess[] {
     if (!line) continue;
     const parts = line.split(',').map((p) => p.trim());
     if (parts.length < 4) continue;
-    const pid = parseInt(parts[0], 10);
+    const pid = Number.parseInt(parts[0], 10);
     if (!Number.isFinite(pid)) continue;
-    const used = parseInt(parts[3], 10);
+    const used = Number.parseInt(parts[3], 10);
     procs.push({
       pid,
       process_name: parts[1] || 'unknown',

@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
 
   let processes = enriched;
   if (typeof filterRaw === 'string' && filterRaw !== '') {
-    const idx = parseInt(filterRaw, 10);
+    const idx = Number.parseInt(filterRaw, 10);
     if (Number.isFinite(idx)) {
       processes = enriched.filter((p) => p.gpu_index === idx);
     }

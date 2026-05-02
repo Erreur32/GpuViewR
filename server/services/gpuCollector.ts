@@ -38,13 +38,13 @@ export interface GpuSample {
 }
 
 function num(v: string): number {
-  const n = parseFloat(v);
+  const n = Number.parseFloat(v);
   return Number.isFinite(n) ? n : 0;
 }
 
 function numOrNull(v: string): number | null {
   if (!v || v.trim() === '' || v.includes('N/A') || v.includes('Not Supported')) return null;
-  const n = parseFloat(v);
+  const n = Number.parseFloat(v);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -193,7 +193,7 @@ export function startRetentionJob(): void {
     try {
       // Lazy require to avoid a circular import at module load.
       const stored = AppConfigRepo.get('retention_days');
-      const n = stored ? parseInt(stored, 10) : NaN;
+      const n = stored ? Number.parseInt(stored, 10) : NaN;
       if (Number.isFinite(n) && n > 0) days = n;
     } catch {
       // ignore: keep env default

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Github, ExternalLink, Bell, BellOff, ChevronDown, Loader2 } from 'lucide-react';
+import { Github, ExternalLink, ChevronDown, Loader2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useUpdateStore } from '../../store/updateStore';
 
@@ -83,11 +83,13 @@ function renderBody(body: string): React.ReactNode {
 
 export default function AboutSettings() {
   const { t } = useTranslation();
-  const { result, bannerEnabled, setBannerEnabled, hydrate, check } = useUpdateStore();
+  const { result, hydrate, check } = useUpdateStore();
   const [raw, setRaw] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState(0);
-  const [open, setOpen] = useState(false);
+  // Changelog is opened by default in the About tab so the user lands
+  // on the release notes immediately. They can still collapse it.
+  const [open, setOpen] = useState(true);
 
   useEffect(() => {
     hydrate();
@@ -111,21 +113,48 @@ export default function AboutSettings() {
   return (
     <div className="space-y-6">
       <section className="card p-5 space-y-4">
-        <div className="flex items-center gap-4 flex-wrap">
-          <img src="/gpuviewr.svg" alt="GpuViewR" width={56} height={56} className="rounded-lg"
-               style={{ background: 'var(--gv-surface-alt)', padding: 6, border: '1px solid var(--gv-border)' }} />
-          <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-bold leading-tight">GpuViewR</h2>
-            <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>
-              {t('settings.about_tagline')}
-            </p>
-            <div className="text-xs mt-1" style={{ color: 'var(--gv-text-dim)' }}>
-              {t('settings.about_version')}: <span className="font-mono">{result?.currentVersion ?? '-'}</span>
-              {result?.latestVersion && result.latestVersion !== result.currentVersion && (
-                <> · {t('settings.about_latest')}: <span className="font-mono" style={{ color: 'var(--gv-accent)' }}>{result.latestVersion}</span></>
-              )}
-            </div>
+        <div className="flex justify-center">
+          <img
+            src="/GpuViewR-Ban.png"
+            alt="GpuViewR"
+            className="rounded-xl max-w-full h-auto"
+            style={{ maxHeight: 220, border: '1px solid var(--gv-border)' }}
+          />
+        </div>
+
+        <div className="text-center">
+          <h2 className="text-2xl font-bold leading-tight">GpuViewR</h2>
+          <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>
+            {t('settings.about_tagline')}
+          </p>
+          <div className="text-xs mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+            {t('settings.about_version')}: <span className="font-mono">{result?.currentVersion ?? '-'}</span>
+            {result?.latestVersion && result.latestVersion !== result.currentVersion && (
+              <> · {t('settings.about_latest')}: <span className="font-mono" style={{ color: 'var(--gv-accent)' }}>{result.latestVersion}</span></>
+            )}
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
+          <a href="https://github.com/Erreur32/GpuViewR/releases" target="_blank" rel="noreferrer">
+            <img alt="Release" src="https://img.shields.io/github/v/release/Erreur32/GpuViewR?style=for-the-badge&logo=github&logoColor=white&label=Release&color=111827" />
+          </a>
+          <img alt="Docker" src="https://img.shields.io/badge/Docker-Ready-1f2937?style=for-the-badge&logo=docker&logoColor=38bdf8" />
+          <img alt="NVIDIA" src="https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900" />
+          <a href="https://github.com/Erreur32/GpuViewR/blob/main/LICENSE" target="_blank" rel="noreferrer">
+            <img alt="License" src="https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white" />
+          </a>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
+          <a href="https://scorecard.dev/viewer/?uri=github.com/Erreur32/GpuViewR" target="_blank" rel="noreferrer">
+            <img alt="OSSF Scorecard" src="https://img.shields.io/ossf-scorecard/github.com/Erreur32/GpuViewR?style=for-the-badge&label=Scorecard" />
+          </a>
+          <a href="https://github.com/Erreur32/GpuViewR/security/code-scanning" target="_blank" rel="noreferrer">
+            <img alt="CodeQL" src="https://img.shields.io/badge/CodeQL-active-brightgreen?style=for-the-badge&logo=github" />
+          </a>
+          <a href="https://sonarcloud.io/summary/overall?id=Erreur32_GpuViewR2" target="_blank" rel="noreferrer">
+            <img alt="SonarCloud" src="https://img.shields.io/sonar/quality_gate/Erreur32_GpuViewR2?server=https%3A%2F%2Fsonarcloud.io&style=for-the-badge&logo=sonarcloud&logoColor=white&label=Sonar" />
+          </a>
         </div>
 
         <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('settings.about_description')}</p>
@@ -153,18 +182,6 @@ export default function AboutSettings() {
           <span style={{ color: 'var(--gv-text-dim)' }}>·</span>
           <span>MIT License</span>
         </div>
-      </section>
-
-      <section className="card p-5 space-y-3">
-        <h2 className="font-semibold flex items-center gap-2">
-          {bannerEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
-          {t('settings.about_banner_title')}
-        </h2>
-        <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>{t('settings.about_banner_help')}</p>
-        <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
-          <input type="checkbox" checked={bannerEnabled} onChange={(e) => setBannerEnabled(e.target.checked)} />
-          {t('settings.about_banner_enable')}
-        </label>
       </section>
 
       <section className="card p-5 space-y-3">

@@ -34,7 +34,7 @@ router.post('/rules', requireAdmin, (req, res) => {
 });
 
 router.patch('/rules/:id', requireAdmin, (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
   const body = req.body || {};
   const err = validate(body, true);
@@ -57,14 +57,14 @@ router.patch('/rules/:id', requireAdmin, (req, res) => {
 });
 
 router.delete('/rules/:id', requireAdmin, (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = Number.parseInt(req.params.id, 10);
   AlertRuleRepo.delete(id);
   alertService.invalidateCache();
   res.json({ ok: true });
 });
 
 router.get('/events', (req, res) => {
-  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || '100'), 10)));
+  const limit = Math.min(500, Math.max(1, Number.parseInt(String(req.query.limit || '100'), 10)));
   res.json({ events: AlertEventRepo.list(limit) });
 });
 
@@ -88,7 +88,7 @@ function validate(body: Record<string, unknown>, partial = false): string | null
 }
 
 function int(v: unknown, fallback: number): number {
-  const n = parseInt(String(v ?? ''), 10);
+  const n = Number.parseInt(String(v ?? ''), 10);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 

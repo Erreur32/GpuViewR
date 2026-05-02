@@ -1,7 +1,13 @@
 import { Outlet } from 'react-router-dom';
 import Header from './Header';
+import { useGpuStream } from '../../lib/useGpuStream';
 
 export default function AppLayout() {
+  // Keep the GPU WebSocket open for the whole authenticated session so
+  // history accumulates in the store even while the user is on Settings,
+  // Alerts or Logs. Without this the chart shows a gap covering the
+  // time spent off the dashboard.
+  useGpuStream();
   return (
     <div className="min-h-screen flex flex-col">
       <Header />

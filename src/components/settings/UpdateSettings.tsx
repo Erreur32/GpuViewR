@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, ArrowUpCircle, Check, ExternalLink } from 'lucide-react';
+import { RefreshCw, ArrowUpCircle, Check, ExternalLink, Bell, BellOff } from 'lucide-react';
 import { useUpdateStore } from '../../store/updateStore';
 import { notify } from '../../store/toastStore';
 import { useAuthStore } from '../../store/authStore';
@@ -8,11 +8,14 @@ import { useAuthStore } from '../../store/authStore';
 export default function UpdateSettings() {
   const { t } = useTranslation();
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
-  const { config, result, loading, loadConfig, saveConfig, check } = useUpdateStore();
+  const {
+    config, result, loading, loadConfig, saveConfig, check,
+    bannerEnabled, setBannerEnabled, hydrate,
+  } = useUpdateStore();
   const [enabled, setEnabled] = useState<boolean>(true);
   const [hours, setHours] = useState<number>(24);
 
-  useEffect(() => { void loadConfig(); void check(false); }, [loadConfig, check]);
+  useEffect(() => { hydrate(); void loadConfig(); void check(false); }, [hydrate, loadConfig, check]);
   useEffect(() => {
     if (!config) return;
     setEnabled(config.enabled);
@@ -29,6 +32,7 @@ export default function UpdateSettings() {
   };
 
   return (
+    <div className="space-y-6">
     <section className="card p-5 space-y-3">
       <h2 className="font-semibold flex items-center gap-2">
         <ArrowUpCircle className="w-4 h-4" /> {t('settings.updates')}
@@ -58,7 +62,7 @@ export default function UpdateSettings() {
           className="input max-w-[160px]"
           value={hours}
           disabled={!isAdmin || !enabled}
-          onChange={(e) => setHours(parseInt(e.target.value, 10) || 24)}
+          onChange={(e) => setHours(Number.parseInt(e.target.value, 10) || 24)}
         />
         <p className="text-xs mt-1" style={{ color: 'var(--gv-text-dim)' }}>
           {t('settings.updates_frequency_help')}
@@ -116,5 +120,18 @@ export default function UpdateSettings() {
         )}
       </div>
     </section>
+
+    <section className="card p-5 space-y-3">
+      <h2 className="font-semibold flex items-center gap-2">
+        {bannerEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+        {t('settings.about_banner_title')}
+      </h2>
+      <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>{t('settings.about_banner_help')}</p>
+      <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" checked={bannerEnabled} onChange={(e) => setBannerEnabled(e.target.checked)} />
+        {t('settings.about_banner_enable')}
+      </label>
+    </section>
+    </div>
   );
 }

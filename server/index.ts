@@ -65,7 +65,7 @@ async function bootstrap(): Promise<void> {
   const publicUrl = getPublicUrl();
   if (publicUrl) allowedOrigins.add(publicUrl);
   if (config.nodeEnv !== 'production') {
-    const vitePort = parseInt(process.env.VITE_PORT || '5181', 10);
+    const vitePort = Number.parseInt(process.env.VITE_PORT || '5181', 10);
     allowedOrigins.add(`http://localhost:${vitePort}`);
     allowedOrigins.add(`http://127.0.0.1:${vitePort}`);
   }
@@ -144,10 +144,10 @@ function printBoot(): void {
   // In Docker, DASHBOARD_PORT is the host port mapped to the container's PORT.
   // The banner must show that *external* port to be openable from a browser
   // (the container-internal port: config.port: would be unreachable from the host).
-  const dashboardPort = parseInt(process.env.DASHBOARD_PORT || String(config.port), 10);
+  const dashboardPort = Number.parseInt(process.env.DASHBOARD_PORT || String(config.port), 10);
 
   // In dev, the user opens Vite (5181 by default); in Docker prod, Express serves dist/ directly.
-  const vitePort = parseInt(process.env.VITE_PORT || '5181', 10);
+  const vitePort = Number.parseInt(process.env.VITE_PORT || '5181', 10);
 
   let frontendWeb: string;
   let frontendLocal: string;

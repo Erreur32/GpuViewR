@@ -290,15 +290,15 @@ function RuleModal({
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="label">{t('alerts.threshold')}</label>
-            <input type="number" step="0.1" className="input" value={rule.threshold ?? 0} onChange={(e) => update({ threshold: parseFloat(e.target.value) })} />
+            <input type="number" step="0.1" className="input" value={rule.threshold ?? 0} onChange={(e) => update({ threshold: Number.parseFloat(e.target.value) })} />
           </div>
           <div>
             <label className="label">{t('alerts.duration_s')}</label>
-            <input type="number" min="0" className="input" value={rule.duration_s ?? 0} onChange={(e) => update({ duration_s: parseInt(e.target.value, 10) })} />
+            <input type="number" min="0" className="input" value={rule.duration_s ?? 0} onChange={(e) => update({ duration_s: Number.parseInt(e.target.value, 10) })} />
           </div>
           <div>
             <label className="label">{t('alerts.cooldown_s')}</label>
-            <input type="number" min="0" className="input" value={rule.cooldown_s ?? 300} onChange={(e) => update({ cooldown_s: parseInt(e.target.value, 10) })} />
+            <input type="number" min="0" className="input" value={rule.cooldown_s ?? 300} onChange={(e) => update({ cooldown_s: Number.parseInt(e.target.value, 10) })} />
           </div>
         </div>
 
@@ -309,7 +309,7 @@ function RuleModal({
             className="input"
             placeholder={t('alerts.all_gpus_placeholder')}
             value={rule.gpu_index ?? ''}
-            onChange={(e) => update({ gpu_index: e.target.value === '' ? null : parseInt(e.target.value, 10) })}
+            onChange={(e) => update({ gpu_index: e.target.value === '' ? null : Number.parseInt(e.target.value, 10) })}
           />
         </div>
 

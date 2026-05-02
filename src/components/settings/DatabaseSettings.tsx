@@ -97,7 +97,7 @@ export default function DatabaseSettings() {
             className="input max-w-[120px]"
             value={retention}
             disabled={!isAdmin || busy}
-            onChange={(e) => setRetention(parseInt(e.target.value, 10) || 7)}
+            onChange={(e) => setRetention(Number.parseInt(e.target.value, 10) || 7)}
           />
           <span className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>{t('settings.db_retention_unit')}</span>
           {isAdmin && (
