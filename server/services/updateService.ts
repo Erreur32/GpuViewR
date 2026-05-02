@@ -54,7 +54,16 @@ export const updateService = {
         frequencyHours: DEFAULT_FREQUENCY_HOURS,
       });
     }
-    logger.info('updates', `Update checker ready (enabled=${this.getConfig().enabled})`);
+    // Invalidate the cache if the running version no longer matches what was
+    // cached (e.g. after a version bump): otherwise the panel keeps showing the
+    // old "current" / "latest" pair until the cache TTL elapses.
+    const cached = AppConfigRepo.getJson<CachedEnvelope>(CACHE_KEY);
+    const current = this.getCurrentVersion();
+    if (cached && cached.result.currentVersion !== current) {
+      AppConfigRepo.set(CACHE_KEY, '');
+      logger.info('updates', `Version changed (${cached.result.currentVersion} → ${current}), update cache invalidated.`);
+    }
+    logger.info('updates', `Update checker ready (enabled=${this.getConfig().enabled}, current=${current})`);
   },
 
   getConfig(): UpdateCheckConfig {

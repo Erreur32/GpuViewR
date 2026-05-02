@@ -1,7 +1,9 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import Sparkline from './Sparkline';
 
-interface Props {
+type Status = 'ok' | 'warn' | 'danger';
+
+type Props = Readonly<{
   label: string;
   value: number;
   displayValue?: string;
@@ -15,19 +17,15 @@ interface Props {
   variant?: 'arc' | 'bar';
   /** Epoch (s) of the latest sample for this metric. Drives the live "tick" pulse. */
   ts?: number;
-}
+}>;
 
-/**
- * Maps a percentage (0..100) to a state with smooth thresholds.
- * Used to color gauges by health rather than by hard thresholds only.
- */
-function statusFor(value: number, warn?: number, danger?: number): 'ok' | 'warn' | 'danger' {
+function statusFor(value: number, warn?: number, danger?: number): Status {
   if (danger !== undefined && value >= danger) return 'danger';
   if (warn !== undefined && value >= warn) return 'warn';
   return 'ok';
 }
 
-function colorFor(status: 'ok' | 'warn' | 'danger'): string {
+function colorFor(status: Status): string {
   return status === 'danger' ? 'var(--gv-danger)'
        : status === 'warn'   ? 'var(--gv-warn)'
        : 'var(--gv-ok)';
@@ -92,7 +90,7 @@ function ArcGauge({
   pct, colorVar, value, unit, max, displayValue, displaySubValue, warn, danger, status,
 }: {
   pct: number; colorVar: string; value: number; unit: string; max: number;
-  displayValue?: string; displaySubValue?: string; warn?: number; danger?: number; status: 'ok' | 'warn' | 'danger';
+  displayValue?: string; displaySubValue?: string; warn?: number; danger?: number; status: Status;
 }) {
   const radius = 52;
   const circ = 2 * Math.PI * radius * 0.75;
@@ -169,7 +167,7 @@ function BarGauge({
   pct, colorVar, value, unit, max, displayValue, displaySubValue, status,
 }: {
   pct: number; colorVar: string; value: number; unit: string; max: number;
-  displayValue?: string; displaySubValue?: string; status: 'ok' | 'warn' | 'danger';
+  displayValue?: string; displaySubValue?: string; status: Status;
 }) {
   return (
     <div className="flex flex-col gap-2">

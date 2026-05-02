@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, Bell, Volume2, Edit3 } from 'lucide-react';
+import { Plus, Trash2, Bell, Volume2, VolumeX, Edit3 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
+import { useUiStore } from '../../store/uiStore';
 import { notify } from '../../store/toastStore';
 
 type Metric = 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed';
@@ -50,6 +51,8 @@ const EMPTY: Omit<Rule, 'id'> = {
 export default function AlertsPage() {
   const { t } = useTranslation();
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
+  const soundEnabled = useUiStore((s) => s.soundEnabled);
+  const setSoundEnabled = useUiStore((s) => s.setSoundEnabled);
   const [rules, setRules] = useState<Rule[]>([]);
   const [events, setEvents] = useState<AlertEvent[]>([]);
   const [editing, setEditing] = useState<Partial<Rule> | null>(null);
@@ -112,6 +115,18 @@ export default function AlertsPage() {
           <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('alerts.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="btn-ghost"
+            aria-pressed={soundEnabled}
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            title={soundEnabled ? t('alerts.sound_disable') : t('alerts.sound_enable')}
+          >
+            {soundEnabled
+              ? <Volume2 className="w-4 h-4" style={{ color: 'var(--gv-ok)' }} />
+              : <VolumeX className="w-4 h-4" style={{ color: 'var(--gv-text-dim)' }} />}
+            {soundEnabled ? t('alerts.sound_on') : t('alerts.sound_off')}
+          </button>
           <button className="btn-ghost" onClick={requestBrowserPerm}>
             <Bell className="w-4 h-4" /> {t('alerts.enable_browser')}
           </button>

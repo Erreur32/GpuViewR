@@ -24,6 +24,11 @@ export function initializeDatabase(): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('synchronous = NORMAL');
   db.pragma('foreign_keys = ON');
+  // Read perf: 64 MiB page cache + 256 MiB mmap. Cheap on modern hosts and
+  // avoids re-reading the same metric pages from disk for repeat range queries.
+  db.pragma('cache_size = -65536');
+  db.pragma('mmap_size = 268435456');
+  db.pragma('temp_store = MEMORY');
 
   // Schema: kept compatible with bigsk1/gpu-monitor's gpu_metrics table
   // so existing histories can be imported (see Docs/MIGRATION.md).
@@ -42,7 +47,7 @@ export function initializeDatabase(): Database.Database {
       timestamp TEXT NOT NULL,
       timestamp_epoch INTEGER NOT NULL,
       temperature REAL NOT NULL,
-      utilization REAL NOT NULL,
+      utilization REAL,
       memory_used REAL NOT NULL,
       memory_total REAL,
       power REAL NOT NULL,
@@ -66,6 +71,44 @@ export function initializeDatabase(): Database.Database {
       last_seen INTEGER NOT NULL
     );
   `);
+
+  // Migrate existing tables created with NOT NULL on utilization (pre-0.1.6).
+  // Some drivers report utilization.gpu as [N/A]: we now store NULL so the UI
+  // can show "N/A" instead of a fake 0%. SQLite has no DROP NOT NULL: rebuild.
+  const cols = db
+    .prepare("PRAGMA table_info(gpu_metrics)")
+    .all() as Array<{ name: string; notnull: number }>;
+  const utilCol = cols.find((c) => c.name === 'utilization');
+  if (utilCol && utilCol.notnull === 1) {
+    logger.info('DB', 'Migrating gpu_metrics: relaxing utilization NOT NULL...');
+    db.exec(`
+      BEGIN;
+      CREATE TABLE gpu_metrics_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        gpu_index INTEGER NOT NULL DEFAULT 0,
+        timestamp TEXT NOT NULL,
+        timestamp_epoch INTEGER NOT NULL,
+        temperature REAL NOT NULL,
+        utilization REAL,
+        memory_used REAL NOT NULL,
+        memory_total REAL,
+        power REAL NOT NULL,
+        fan_speed REAL,
+        clock_graphics REAL,
+        clock_memory REAL
+      );
+      INSERT INTO gpu_metrics_new
+        SELECT id, gpu_index, timestamp, timestamp_epoch, temperature,
+               utilization, memory_used, memory_total, power, fan_speed,
+               clock_graphics, clock_memory FROM gpu_metrics;
+      DROP TABLE gpu_metrics;
+      ALTER TABLE gpu_metrics_new RENAME TO gpu_metrics;
+      CREATE INDEX idx_gpu_metrics_epoch ON gpu_metrics(timestamp_epoch);
+      CREATE INDEX idx_gpu_metrics_gpu_epoch ON gpu_metrics(gpu_index, timestamp_epoch);
+      COMMIT;
+    `);
+    logger.success('DB', 'gpu_metrics migration complete.');
+  }
 
   logger.success('DB', 'Schema ready');
   return db;

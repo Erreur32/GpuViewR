@@ -9,10 +9,7 @@ export default function AppLayout() {
         <Outlet />
       </main>
       <footer className="text-center text-xs py-4" style={{ color: 'var(--gv-text-dim)' }}>
-        GpuViewR · inspired by{' '}
-        <a className="hover:underline" href="https://github.com/bigsk1/gpu-monitor" target="_blank" rel="noreferrer">
-          bigsk1/gpu-monitor
-        </a>
+        GpuViewR
       </footer>
     </div>
   );

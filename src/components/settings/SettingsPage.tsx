@@ -1,8 +1,9 @@
 import { useTranslation } from 'react-i18next';
-import { Moon, LayoutGrid, BarChart3, Volume2, Languages } from 'lucide-react';
+import { Moon, LayoutGrid, BarChart3, Languages, Clock } from 'lucide-react';
 import { useUiStore } from '../../store/uiStore';
 import { THEMES } from '../../lib/themes';
 import UpdateSettings from './UpdateSettings';
+import DatabaseSettings from './DatabaseSettings';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -11,7 +12,7 @@ const LANGUAGES = [
 
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();
-  const { themeId, setThemeId, gaugeView, setGaugeView, soundEnabled, setSoundEnabled } = useUiStore();
+  const { themeId, setThemeId, gaugeView, setGaugeView, timeFormat, setTimeFormat } = useUiStore();
 
   const setLang = (code: string) => {
     i18n.changeLanguage(code);
@@ -64,18 +65,14 @@ export default function SettingsPage() {
       </section>
 
       <section className="card p-5 space-y-3">
-        <h2 className="font-semibold flex items-center gap-2"><Volume2 className="w-4 h-4" /> {t('settings.sound')}</h2>
-        <label className="inline-flex items-center gap-2 cursor-pointer text-sm">
-          <input type="checkbox" checked={soundEnabled} onChange={(e) => setSoundEnabled(e.target.checked)} className="sr-only peer" />
-          <span className="w-10 h-5 rounded-full transition-colors relative" style={{
-            background: soundEnabled ? 'var(--gv-accent)' : 'var(--gv-surface-alt)',
-          }}>
-            <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform"
-                  style={{ transform: soundEnabled ? 'translateX(20px)' : 'translateX(0)' }} />
-          </span>
-          {t('settings.sound_enable')}
-        </label>
+        <h2 className="font-semibold flex items-center gap-2"><Clock className="w-4 h-4" /> {t('settings.time_format')}</h2>
+        <div className="seg">
+          <button className="seg-btn" aria-pressed={timeFormat === '24h'} onClick={() => setTimeFormat('24h')}>24h</button>
+          <button className="seg-btn" aria-pressed={timeFormat === '12h'} onClick={() => setTimeFormat('12h')}>12h (AM/PM)</button>
+        </div>
       </section>
+
+      <DatabaseSettings />
 
       <UpdateSettings />
     </div>

@@ -7,6 +7,7 @@ import Dashboard from './components/dashboard/Dashboard';
 import AlertsPage from './components/alerts/AlertsPage';
 import LogsPage from './components/logs/LogsPage';
 import SettingsPage from './components/settings/SettingsPage';
+import SystemPage from './components/system/SystemPage';
 import AppLayout from './components/layout/AppLayout';
 import Toaster from './components/ui/Toaster';
 
@@ -36,6 +37,7 @@ export default function App() {
         >
           <Route path="/" element={<Dashboard />} />
           <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/system" element={<SystemPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

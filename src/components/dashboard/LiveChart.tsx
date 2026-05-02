@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
 import { api } from '../../lib/api';
+import { fmtClock, fmtDateTime } from '../../lib/time';
 
 interface Props { gpuIndex: number; }
 
@@ -21,13 +22,16 @@ interface CursorValues {
   power: number | null;
 }
 
-interface ChipProps {
+type ChipProps = Readonly<{
   colorVar: string;
   label: string;
   value: string;
   active: boolean;
   onClick: () => void;
-}
+  onColorChange: (color: string) => void;
+  onColorReset: () => void;
+  isCustom: boolean;
+}>;
 
 export default function LiveChart({ gpuIndex }: Props) {
   const { t } = useTranslation();
@@ -35,6 +39,9 @@ export default function LiveChart({ gpuIndex }: Props) {
   const plotRef = useRef<uPlot | null>(null);
   const themeId = useUiStore((s) => s.themeId);
   const range = useUiStore((s) => s.range);
+  const chartColors = useUiStore((s) => s.chartColors);
+  const setChartColor = useUiStore((s) => s.setChartColor);
+  const timeFormat = useUiStore((s) => s.timeFormat);
   const series = useGpuStore((s) => s.series.get(gpuIndex));
   const latestSample = useGpuStore((s) => s.latest.get(gpuIndex));
   const [historic, setHistoric] = useState<HistoryRow[]>([]);
@@ -71,9 +78,9 @@ export default function LiveChart({ gpuIndex }: Props) {
     const root = getComputedStyle(document.documentElement);
     const grid = root.getPropertyValue('--gv-chart-grid').trim() || 'rgba(148,163,184,0.08)';
     const muted = root.getPropertyValue('--gv-text-muted').trim() || '#94a3b8';
-    const accent = root.getPropertyValue('--gv-accent').trim() || '#2f7bff';
-    const warn = root.getPropertyValue('--gv-warn').trim() || '#f59e0b';
-    const ok = root.getPropertyValue('--gv-ok').trim() || '#10b981';
+    const accent = chartColors.util ?? (root.getPropertyValue('--gv-accent').trim() || '#2f7bff');
+    const warn = chartColors.temp ?? (root.getPropertyValue('--gv-warn').trim() || '#f59e0b');
+    const ok = chartColors.pow ?? (root.getPropertyValue('--gv-ok').trim() || '#10b981');
 
     const opts: uPlot.Options = {
       width: containerRef.current.clientWidth,
@@ -128,7 +135,7 @@ export default function LiveChart({ gpuIndex }: Props) {
     ro.observe(containerRef.current);
     return () => { ro.disconnect(); plotRef.current?.destroy(); plotRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, themeId]);
+  }, [t, themeId, chartColors.util, chartColors.temp, chartColors.pow]);
 
   // Push merged data (history + live) to chart
   useEffect(() => {
@@ -186,25 +193,34 @@ export default function LiveChart({ gpuIndex }: Props) {
         </h3>
         <div className="flex items-center gap-3 text-xs">
           <Chip
-            colorVar="var(--gv-accent)"
+            colorVar={chartColors.util ?? 'var(--gv-accent)'}
             label={t('dashboard.metrics.utilization')}
             value={fmt(display.util, '%')}
             active={visible.util}
             onClick={() => toggleSeries('util')}
+            onColorChange={(c) => setChartColor('util', c)}
+            onColorReset={() => setChartColor('util', null)}
+            isCustom={!!chartColors.util}
           />
           <Chip
-            colorVar="var(--gv-warn)"
+            colorVar={chartColors.temp ?? 'var(--gv-warn)'}
             label={t('dashboard.metrics.temperature')}
             value={fmt(display.temp, '°C')}
             active={visible.temp}
             onClick={() => toggleSeries('temp')}
+            onColorChange={(c) => setChartColor('temp', c)}
+            onColorReset={() => setChartColor('temp', null)}
+            isCustom={!!chartColors.temp}
           />
           <Chip
-            colorVar="var(--gv-ok)"
+            colorVar={chartColors.pow ?? 'var(--gv-ok)'}
             label={t('dashboard.metrics.power')}
             value={fmt(display.pow, ' W')}
             active={visible.pow}
             onClick={() => toggleSeries('pow')}
+            onColorChange={(c) => setChartColor('pow', c)}
+            onColorReset={() => setChartColor('pow', null)}
+            isCustom={!!chartColors.pow}
           />
           <span
             className="text-[10px] px-2 py-0.5 rounded-full"
@@ -217,16 +233,25 @@ export default function LiveChart({ gpuIndex }: Props) {
                 ? 'color-mix(in srgb, var(--gv-ok) 30%, transparent)'
                 : 'var(--gv-border)'),
             }}
-            title={display.t ? new Date(display.t * 1000).toLocaleString() : ''}
+            title={display.t ? fmtDateTime(display.t, timeFormat) : ''}
           >
-            {display.live ? t('dashboard.live') : fmtTime(display.t)}
+            {display.live ? t('dashboard.live') : fmtClock(display.t, timeFormat)}
           </span>
         </div>
       </div>
       <div
         ref={containerRef}
-        className="w-full select-none"
+        role="button"
+        tabIndex={0}
+        aria-pressed={pinned}
+        className="w-full select-none cursor-pointer"
         onClick={() => setPinned((p) => !p)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setPinned((p) => !p);
+          }
+        }}
         title={pinned ? t('dashboard.click_unpin') : t('dashboard.click_pin')}
       />
       {loadingHistory && (
@@ -238,41 +263,65 @@ export default function LiveChart({ gpuIndex }: Props) {
   );
 }
 
-function Chip({ colorVar, label, value, active, onClick }: ChipProps) {
+function Chip({ colorVar, label, value, active, onClick, onColorChange, onColorReset, isCustom }: ChipProps) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
+    <span
       className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded transition-opacity"
-      style={{ opacity: active ? 1 : 0.4, cursor: 'pointer', background: 'transparent', border: 'none' }}
-      title={active ? 'Click to hide' : 'Click to show'}
+      style={{ opacity: active ? 1 : 0.4 }}
     >
-      <span
-        className="inline-block w-2 h-2 rounded-full"
-        style={{
-          background: colorVar,
-          boxShadow: active ? `0 0 6px ${colorVar}` : 'none',
-        }}
-      />
-      <span style={{ color: 'var(--gv-text-muted)', textDecoration: active ? 'none' : 'line-through' }}>{label}</span>
-      <span className="font-semibold tabular-nums" style={{ color: 'var(--gv-text)' }}>
-        {value}
-      </span>
-    </button>
+      <label
+        className="inline-flex relative cursor-pointer"
+        title="Pick color"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span
+          className="inline-block w-2.5 h-2.5 rounded-full"
+          style={{
+            background: colorVar,
+            boxShadow: active ? `0 0 6px ${colorVar}` : 'none',
+            border: isCustom ? '1px solid var(--gv-text)' : 'none',
+          }}
+        />
+        <input
+          type="color"
+          aria-label={`${label} color`}
+          className="sr-only"
+          onChange={(e) => onColorChange(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </label>
+      {isCustom && (
+        <button
+          type="button"
+          aria-label={`Reset ${label} color`}
+          title="Reset color"
+          onClick={(e) => { e.stopPropagation(); onColorReset(); }}
+          className="text-[9px] leading-none px-1 rounded"
+          style={{ color: 'var(--gv-text-dim)', background: 'transparent', border: '1px solid var(--gv-border)' }}
+        >
+          ×
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        className="inline-flex items-center gap-1.5"
+        style={{ cursor: 'pointer', background: 'transparent', border: 'none' }}
+        title={active ? 'Click to hide' : 'Click to show'}
+      >
+        <span style={{ color: 'var(--gv-text-muted)', textDecoration: active ? 'none' : 'line-through' }}>{label}</span>
+        <span className="font-semibold tabular-nums" style={{ color: 'var(--gv-text)' }}>
+          {value}
+        </span>
+      </button>
+    </span>
   );
 }
 
 function fmt(v: number | null, unit: string): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return '-';
   return v.toLocaleString(undefined, { maximumFractionDigits: v < 10 ? 1 : 0 }) + unit;
-}
-
-function fmtTime(epoch: number | null): string {
-  if (!epoch) return '-';
-  const d = new Date(epoch * 1000);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function hexAlpha(hex: string, a: number): string {

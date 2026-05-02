@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { GpuDeviceRepository, GpuMetricRepository, type GpuMetric } from '../database/models/GpuMetric.js';
+import { AppConfigRepo } from '../database/models/AppConfig.js';
 
 const QUERY_FIELDS = [
   'index',
@@ -186,8 +187,19 @@ export const gpuCollector = new GpuCollector();
 export function startRetentionJob(): void {
   const oneHour = 60 * 60 * 1000;
   setInterval(() => {
-    const cutoff = Math.floor(Date.now() / 1000) - config.retentionDays * 86400;
+    // Prefer the runtime-configurable retention (Settings UI), fall back to
+    // the env-driven default if no value has been set.
+    let days = config.retentionDays;
+    try {
+      // Lazy require to avoid a circular import at module load.
+      const stored = AppConfigRepo.get('retention_days');
+      const n = stored ? parseInt(stored, 10) : NaN;
+      if (Number.isFinite(n) && n > 0) days = n;
+    } catch {
+      // ignore: keep env default
+    }
+    const cutoff = Math.floor(Date.now() / 1000) - days * 86400;
     const removed = GpuMetricRepository.pruneOlderThan(cutoff);
-    if (removed > 0) logger.info('gpu', `Retention: pruned ${removed} rows older than ${config.retentionDays}d`);
+    if (removed > 0) logger.info('gpu', `Retention: pruned ${removed} rows older than ${days}d`);
   }, oneHour);
 }

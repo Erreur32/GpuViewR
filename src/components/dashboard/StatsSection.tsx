@@ -23,7 +23,9 @@ interface Props {
 export default function StatsSection({ gpuIndex }: Props) {
   const { t } = useTranslation();
   const range = useUiStore((s) => s.range);
-  const latestEpoch = useGpuStore((s) => s.latest.get(gpuIndex)?.timestamp_epoch);
+  // Subscribe so this component re-renders on every WebSocket tick. The value
+  // itself is unused; the subscription is the point.
+  useGpuStore((s) => s.latest.get(gpuIndex)?.timestamp_epoch);
   const [data, setData] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -55,41 +57,57 @@ export default function StatsSection({ gpuIndex }: Props) {
   };
 
   const s = data?.stats ?? null;
-  const liveMemPct = live?.memory_total ? (live.memory_used / live.memory_total) * 100 : undefined;
-  // We pass the blended values to the rows below; epoch is referenced just so
-  // React re-renders this component on every WebSocket tick.
-  void latestEpoch;
+  const memTotal = live?.memory_total ?? null;
+
+  type Status = 'ok' | 'warn' | 'danger';
+  const statusFor = (avg: number | null | undefined, warn: number, danger: number): Status => {
+    if (avg === null || avg === undefined || !Number.isFinite(avg)) return 'ok';
+    if (avg >= danger) return 'danger';
+    if (avg >= warn) return 'warn';
+    return 'ok';
+  };
+  const colorForStatus = (st: Status): string =>
+    st === 'danger' ? 'var(--gv-danger)' : st === 'warn' ? 'var(--gv-warn)' : 'var(--gv-ok)';
+
+  // Convert memory MiB avg to pct so the same warn/danger thresholds (% of total)
+  // can drive the state color of the memory card.
+  const memAvg = s?.mem_avg ?? live?.memory_used;
+  const memAvgPct = memTotal && memAvg != null ? (memAvg / memTotal) * 100 : null;
+
   const rows = [
     {
       key: 'temperature',
-      icon: <Thermometer className="w-4 h-4" />, color: 'var(--gv-warn)', unit: '°C',
+      icon: <Thermometer className="w-4 h-4" />, unit: '°C',
       min: blend(s?.temp_min, live?.temperature, 'min'),
       max: blend(s?.temp_max, live?.temperature, 'max'),
       avg: s?.temp_avg ?? live?.temperature,
+      status: statusFor(s?.temp_avg ?? live?.temperature, 75, 85),
     },
     {
       key: 'utilization',
-      icon: <Activity className="w-4 h-4" />, color: 'var(--gv-accent)', unit: '%',
+      icon: <Activity className="w-4 h-4" />, unit: '%',
       min: blend(s?.util_min, live?.utilization, 'min'),
       max: blend(s?.util_max, live?.utilization, 'max'),
       avg: s?.util_avg ?? live?.utilization,
+      status: statusFor(s?.util_avg ?? live?.utilization, 85, 95),
     },
     {
       key: 'memory',
-      icon: <MemoryStick className="w-4 h-4" />, color: 'var(--gv-info)', unit: ' MiB',
+      icon: <MemoryStick className="w-4 h-4" />, unit: ' MiB',
       min: blend(s?.mem_min, live?.memory_used, 'min'),
       max: blend(s?.mem_max, live?.memory_used, 'max'),
-      avg: s?.mem_avg ?? live?.memory_used,
+      avg: memAvg,
+      status: statusFor(memAvgPct, 80, 92),
     },
     {
       key: 'power',
-      icon: <Zap className="w-4 h-4" />, color: 'var(--gv-ok)', unit: ' W',
+      icon: <Zap className="w-4 h-4" />, unit: ' W',
       min: blend(s?.pow_min, live?.power, 'min'),
       max: blend(s?.pow_max, live?.power, 'max'),
       avg: s?.pow_avg ?? live?.power,
+      status: statusFor(s?.pow_avg ?? live?.power, 250, 350),
     },
-  ];
-  void liveMemPct; // reserved if we add a "% memory" row later
+  ].map((r) => ({ ...r, color: colorForStatus(r.status as Status) }));
 
   return (
     <div className="space-y-4">

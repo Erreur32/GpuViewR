@@ -22,6 +22,7 @@ import healthRoutes from './routes/health.js';
 import alertsRoutes from './routes/alerts.js';
 import logsRoutes from './routes/logs.js';
 import updatesRoutes from './routes/updates.js';
+import systemRoutes from './routes/system.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,6 +54,7 @@ async function bootstrap(): Promise<void> {
   app.use('/api/alerts', alertsRoutes);
   app.use('/api/logs', logsRoutes);
   app.use('/api/updates', updatesRoutes);
+  app.use('/api/system', systemRoutes);
 
   const distDir = path.resolve(__dirname, '..', 'dist');
   if (fs.existsSync(distDir)) {

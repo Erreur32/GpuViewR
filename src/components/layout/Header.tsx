@@ -1,15 +1,13 @@
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Cpu, LogOut, BellRing, FileText, Settings, LayoutDashboard } from 'lucide-react';
+import { Cpu, LogOut, BellRing, FileText, Settings, LayoutDashboard, Server } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
-import { useGpuStore } from '../../store/gpuStore';
 
-const VERSION = 'v0.1.5';
+const VERSION = 'v0.1.6';
 
 export default function Header() {
   const { t } = useTranslation();
   const { user, logout } = useAuthStore();
-  const connected = useGpuStore((s) => s.connected);
 
   return (
     <header className="sticky top-0 z-30 border-b backdrop-blur-xl"
@@ -34,28 +32,12 @@ export default function Header() {
         <nav className="flex items-center gap-1 ml-2">
           <NavItem to="/"        icon={<LayoutDashboard className="w-4 h-4" />} label={t('nav.dashboard')} end />
           <NavItem to="/alerts"  icon={<BellRing className="w-4 h-4" />}        label={t('nav.alerts')} />
+          <NavItem to="/system"  icon={<Server className="w-4 h-4" />}          label={t('nav.system')} />
           <NavItem to="/logs"    icon={<FileText className="w-4 h-4" />}        label={t('nav.logs')} />
           <NavItem to="/settings" icon={<Settings className="w-4 h-4" />}       label={t('nav.settings')} />
         </nav>
 
         <div className="flex items-center gap-2 ml-auto">
-          <span
-            className={
-              'inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold border'
-            }
-            style={{
-              background: connected ? 'color-mix(in srgb, var(--gv-ok) 12%, transparent)' : 'color-mix(in srgb, var(--gv-text) 6%, transparent)',
-              color: connected ? 'var(--gv-ok)' : 'var(--gv-text-muted)',
-              borderColor: connected ? 'color-mix(in srgb, var(--gv-ok) 35%, transparent)' : 'var(--gv-border)',
-            }}
-          >
-            <span
-              className={'w-2 h-2 rounded-full ' + (connected ? 'live-dot' : '')}
-              style={{ background: connected ? 'var(--gv-ok)' : 'var(--gv-text-dim)' }}
-            />
-            {connected ? t('dashboard.live') : t('dashboard.offline')}
-          </span>
-
           {user && (
             <button className="btn-ghost" onClick={logout} title={t('auth.logout')}>
               <LogOut className="w-4 h-4" />

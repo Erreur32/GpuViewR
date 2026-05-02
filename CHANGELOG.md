@@ -5,6 +5,77 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-05-02
+
+System tab, DB management UI, per-series chart colors, time format,
+sound toggle relocation, schema migration and SonarCloud fixes.
+
+### Added
+- **System tab** in the header (next to Alerts) showing host hardware
+  and runtime info: OS / kernel / arch / hostname / uptime / loadavg,
+  CPU model + cores + base clock, memory total/used/free with a usage
+  bar, Node process info (version, PID, RSS, uptime), and per-GPU
+  details (UUID, driver, memory, temperature, utilization, power, fan,
+  clocks). Polls `/api/system` every 10 s.
+- **Database settings** in Settings: live stats (rows, file size on
+  disk including WAL/SHM, oldest/newest sample, journal mode, pages),
+  configurable retention (1-365 days, persisted in `app_config`,
+  honored by the hourly retention job), admin-only purge buttons (purge
+  beyond retention, wipe all) followed by `VACUUM` to reclaim disk.
+- **Per-series chart colors**: each chip below the live chart now hosts
+  a clickable color swatch opening the native color picker. Custom
+  colors persist in `localStorage` and feed both the chart strokes/fill
+  and the chip indicators. A small `×` next to each customized chip
+  resets that color back to the theme default.
+- **Time format toggle (24h / 12h)** in Settings, applied to the live
+  chip timestamp and tooltip on the chart. New `src/lib/time.ts`
+  exposes `fmtClock` and `fmtDateTime` helpers.
+- **Stats card state colors**: the 4 stats cards (Temp / Util / Mem /
+  Power) tint themselves green/amber/red based on the average value
+  over the selected period. Memory avg is converted to pct using live
+  `memory_total`. Healthy periods read all-green, warn/danger stand
+  out at a glance.
+- **Release notes in Settings > Updates**: the panel now displays the
+  latest tagged version's release notes (GitHub release, fallback to
+  local `CHANGELOG.md`) even when you are already up to date, with a
+  "View on GitHub" link.
+
+### Changed
+- **Sound toggle moved** from Settings to the Alerts page header (next
+  to "Enable browser notifications") since it gates alert sounds. Now
+  shows `Sound ON` / `Sound OFF` with a mute icon.
+- **Header**: removed the global LIVE / OFFLINE pill (per-gauge live
+  indicators on the dashboard already convey freshness).
+- **Footer**: removed the "inspired by bigsk1/gpu-monitor" line. The
+  credit remains in the README only.
+- **Update checker**: the cached check result is invalidated at boot if
+  the running version no longer matches the cached `currentVersion`.
+  Previously, after a version bump, the panel kept showing the old
+  current/latest pair until the cache TTL elapsed.
+
+### Fixed
+- **GPU utilization stored as 0** when `nvidia-smi` reports `[N/A]`.
+  Schema migrated: `gpu_metrics.utilization` now allows NULL (SQLite
+  table-rebuild migration runs at boot if the column still has the old
+  NOT NULL constraint). Live samples and historical reads now expose
+  `null` and the UI renders `N/A` / `-` instead of a fake 0%.
+- LiveChart: chart container is keyboard-accessible (role=button,
+  tabIndex, Enter/Space toggle pin/unpin) instead of a click-only div.
+- LiveChart: `ChipProps` is a `Readonly<…>` type alias instead of an
+  interface.
+- GaugeCard: extracted `Status` type alias (used in `statusFor`,
+  `colorFor`, ArcGauge, BarGauge). `Props` is now `Readonly<…>`.
+- StatsSection: removed two `void`-operator usages. The render-on-tick
+  hook subscription is now a bare `useGpuStore(...)` call.
+- Dockerfile: merged the runtime `apt-get install` RUN with the
+  consecutive `mkdir -p /app/data && chown` RUN to reduce layer count.
+
+### Performance
+- SQLite tuned: `cache_size = -65536` (~64 MiB page cache), `mmap_size
+  = 256 MiB`, `temp_store = MEMORY`. Existing pragmas (`WAL`,
+  `synchronous = NORMAL`) and indexes (`timestamp_epoch`,
+  `(gpu_index, timestamp_epoch)`) unchanged.
+
 ## [0.1.5] - 2026-05-02
 
 Live chart usability and accurate utilization handling.

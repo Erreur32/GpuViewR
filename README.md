@@ -4,7 +4,7 @@
 
 <img src="public/gpuviewr.svg" alt="GpuViewR" width="128" height="128" />
 
-![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.5-111827?style=for-the-badge)
+![GpuViewR](https://img.shields.io/badge/GpuViewR-v0.1.6-111827?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-DEVELOPMENT-374151?style=for-the-badge)
 ![Docker](https://img.shields.io/badge/Docker-Ready-1f2937?style=for-the-badge&logo=docker&logoColor=38bdf8)
 ![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900)

@@ -44,9 +44,8 @@ RUN apt-get update \
     tzdata \
     wget \
     ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-
-RUN mkdir -p /app/data && chown -R node:node /app
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /app/data && chown -R node:node /app
 
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
