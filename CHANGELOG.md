@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   GHCR image), centered hero block, and a quick navigation row. The version
   badge is auto-updated by `scripts/update-version.sh` along with the other
   version markers.
+- README polish: removed the `xdg-open` line from the Docker quick-start (URL
+  is now shown as a comment), removed the duplicate `update.sh` bullet from
+  the user-facing feature list (it's already covered in the *Updating*
+  section), made the License badge clickable (links to LICENSE), and expanded
+  the License section with the dual copyright block.
+- Architecture tree now references `scripts/update-version.sh` (was the
+  removed `bump-version.js`).
 
 ### Fixed
 - `getPublicUrl()` returned a localhost fallback that fooled the boot banner

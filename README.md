@@ -10,7 +10,7 @@
 ![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900)
 ![React](https://img.shields.io/badge/React-19-111827?style=for-the-badge&logo=react&logoColor=38bdf8)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-111827?style=for-the-badge&logo=typescript&logoColor=60a5fa)
-![License](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white)
+[![License](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white)](LICENSE)
 
 [![Build](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/docker-publish.yml?style=for-the-badge&logo=github&logoColor=white&label=Build&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/docker-publish.yml)
 [![CI](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/ci.yml?style=for-the-badge&logo=github&logoColor=white&label=CI&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/ci.yml)
@@ -39,7 +39,6 @@ GpuViewR is a from-scratch reimplementation of GPU monitoring, focused on:
 - 🔐 **Authentication** — first user becomes admin (bcrypt + JWT)
 - 🔢 **Multi-GPU** — automatic tabs when 2+ devices are detected
 - 🐳 **Single Docker image** — multi-arch (amd64 / arm64), Node 22 Alpine
-- 🔄 **One-command updates** — `./update.sh` (with `--check` and `--rollback`)
 
 ---
 
@@ -87,7 +86,7 @@ echo "HOST_IP=$(hostname -I | awk '{print $1}')" >> .env
 docker compose up -d
 
 # 4. Open the dashboard
-xdg-open http://localhost:7510
+#    http://localhost:7510
 ```
 
 The first time you connect, the login page automatically switches to **"Create
@@ -255,7 +254,7 @@ GpuViewR/
 │   ├── docker-publish.yml        # multi-arch GHCR build & push
 │   └── ci.yml                    # build smoke test
 ├── scripts/
-│   ├── bump-version.js           # bump package.json + Header.tsx + README
+│   ├── update-version.sh         # bump version across files (with --tag-push)
 │   └── check-docker-build.js     # local image-size sanity check
 └── Docs/
     ├── MIGRATION.md              # migrate from bigsk1/gpu-monitor
@@ -334,4 +333,18 @@ emitted and a green toast confirms it.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Original copyright © 2024 bigsk1.
+GpuViewR is licensed under the **MIT License** — see the [LICENSE](LICENSE) file
+for the full text.
+
+```
+Copyright (c) 2024 bigsk1   — original gpu-monitor project
+                              https://github.com/bigsk1/gpu-monitor
+Copyright (c) 2026 Erreur32 — GpuViewR rewrite
+                              https://github.com/Erreur32/GpuViewR
+```
+
+Both copyright notices must remain in the LICENSE file. You are free to use,
+copy, modify, merge, publish, distribute, sublicense, and sell copies of the
+software, subject to the license terms.
+
+[![License](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white)](LICENSE)
