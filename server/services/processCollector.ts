@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { logger } from '../utils/logger.js';
 import { spawnNvidiaSmi } from '../utils/nvidiaSmi.js';
 
@@ -61,6 +63,23 @@ class ProcessCollector {
   }
 }
 
+// nvidia-smi returns "[Not Found]" when it cannot stat /proc/<pid>/exe (e.g.
+// the process lives in another PID namespace, or we lack permission). Try
+// reading procfs ourselves before giving up — works for host processes when
+// the container shares the host PID namespace (pid: host).
+function resolveName(pid: number): string | null {
+  try {
+    const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+    const argv0 = cmdline.split('\0')[0];
+    if (argv0) return basename(argv0);
+  } catch { /* fall through */ }
+  try {
+    const comm = readFileSync(`/proc/${pid}/comm`, 'utf8').trim();
+    if (comm) return comm;
+  } catch { /* ignore */ }
+  return null;
+}
+
 function parse(out: string): GpuProcess[] {
   const procs: GpuProcess[] = [];
   for (const raw of out.split('\n')) {
@@ -71,9 +90,13 @@ function parse(out: string): GpuProcess[] {
     const pid = Number.parseInt(parts[0], 10);
     if (!Number.isFinite(pid)) continue;
     const used = Number.parseInt(parts[3], 10);
+    let name = parts[1] || '';
+    if (!name || name === '[Not Found]' || name === '-' || name.toLowerCase() === 'n/a') {
+      name = resolveName(pid) || 'unknown';
+    }
     procs.push({
       pid,
-      process_name: parts[1] || 'unknown',
+      process_name: name,
       gpu_uuid: parts[2] || '',
       used_memory: Number.isFinite(used) ? used : 0,
     });

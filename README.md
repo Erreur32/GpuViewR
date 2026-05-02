@@ -307,15 +307,12 @@ GpuViewR is licensed under the **MIT License**, see the [LICENSE](LICENSE) file
 for the full text.
 
 ```
-Copyright (c) 2024 bigsk1    original gpu-monitor project
-                              https://github.com/bigsk1/gpu-monitor
 Copyright (c) 2026 Erreur32  GpuViewR rewrite
                               https://github.com/Erreur32/GpuViewR
 ```
 
-Both copyright notices must remain in the LICENSE file. You are free to use,
-copy, modify, merge, publish, distribute, sublicense, and sell copies of the
-software, subject to the license terms.
+You are free to use, copy, modify, merge, publish, distribute, sublicense,
+and sell copies of the software, subject to the license terms.
 
 [![License](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white)](LICENSE)
 

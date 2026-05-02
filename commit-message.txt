@@ -1,9 +1,11 @@
-release: v0.1.14 - README screenshot, PNG favicon
+release: v0.1.15 - better GPU process name detection, license cleanup
 
-- README: new "Screenshot" section embedding
-  public/gpuviewr_screnshot.png, plus a matching link in the
-  table of contents at the top of the page.
-- index.html: switch the browser favicon from the small SVG to
-  /gpuviewr_logo.png so the tab icon matches the in-app logo.
-  The PNG is intentionally oversized for now; a properly sized
-  favicon will come later.
+- processCollector: when nvidia-smi reports "[Not Found]" (or
+  empty / "-" / "N/A") for a compute-app process_name, fall back
+  to reading /proc/<pid>/cmdline (basename of argv0) and then
+  /proc/<pid>/comm before labeling the row "unknown". Resolves
+  rows that used to stay stuck on "[Not Found]" forever.
+  Requires the container to share the host PID namespace
+  (`pid: host` in docker-compose.yml) for host-side processes.
+- LICENSE & README: drop the legacy bigsk1/gpu-monitor copyright
+  block from both the LICENSE file and the README license excerpt.
