@@ -5,6 +5,29 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13] - 2026-05-02
+
+UX polish: cleaner Updates tab, smarter chart tooltip, deterministic
+"Check now" feedback.
+
+### Changed
+- **Updates tab**: dropped the redundant inline release-notes preview
+  (the About tab is now the only place with the full changelog
+  viewer). Replaced with a compact link card "Release notes · vX.Y.Z
+  → View on GitHub".
+- **Chart tooltip** is now anchored to the cursor with a flipping
+  diagonal offset: it appears top-right of the cursor by default, but
+  flips to the left when close to the right edge and below when close
+  to the top, so it never overlaps the pointer or gets clipped.
+
+### Fixed
+- "Check now" button always shows a toast (4-6s):
+  - `success` "You are up to date" / "GpuViewR vX.Y.Z is available"
+  - `error` / `warn` with the failure reason
+  Reads the value freshly returned by `check(true)` instead of
+  re-reading the store, so a transient API failure no longer leaves
+  the user staring at a silent button.
+
 ## [0.1.12] - 2026-05-02
 
 Webhook overhaul (Discord / Telegram / Generic), Notification +

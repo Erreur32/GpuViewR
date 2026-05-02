@@ -27,7 +27,7 @@ interface UpdateState {
   dismissed: string | null;
   bannerEnabled: boolean;
 
-  check: (force?: boolean) => Promise<void>;
+  check: (force?: boolean) => Promise<UpdateResult | null>;
   loadConfig: () => Promise<void>;
   saveConfig: (patch: Partial<UpdateConfig>) => Promise<void>;
   dismiss: (version: string) => void;
@@ -51,8 +51,9 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     try {
       const r = await api<{ result: UpdateResult }>(`/updates/check${force ? '?force=true' : ''}`);
       set({ result: r.result });
+      return r.result;
     } catch {
-      // Ignore: UI surfaces nothing rather than scaring the user with a transient failure.
+      return null;
     } finally {
       set({ loading: false });
     }

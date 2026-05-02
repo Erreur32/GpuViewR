@@ -88,23 +88,28 @@ export default function UpdateSettings() {
         </div>
       )}
 
-      {result?.releaseNotes && (
-        <section className="pt-2">
-          <h3 className="text-xs uppercase tracking-wider mb-2 flex items-center justify-between" style={{ color: 'var(--gv-text-muted)' }}>
-            <span>{t('updates.release_notes')} {result.latestVersion ? `· v${result.latestVersion}` : ''}</span>
-            {result.releaseUrl && (
-              <a className="inline-flex items-center gap-1 hover:underline normal-case tracking-normal"
-                 style={{ color: 'var(--gv-accent)' }}
-                 href={result.releaseUrl} target="_blank" rel="noreferrer">
-                {t('updates.view_on_github')} <ExternalLink className="w-3 h-3" />
-              </a>
-            )}
-          </h3>
-          <pre className="rounded-xl p-3 text-xs whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-auto"
-               style={{ background: 'var(--gv-surface-alt)', color: 'var(--gv-text)' }}>
-            {result.releaseNotes}
-          </pre>
-        </section>
+      {result?.releaseUrl && (
+        <div
+          className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-xs"
+          style={{
+            background: 'var(--gv-surface-alt)',
+            border: '1px solid var(--gv-border)',
+            color: 'var(--gv-text-muted)',
+          }}
+        >
+          <span>
+            {t('updates.release_notes')}{result.latestVersion ? ` · v${result.latestVersion}` : ''}
+          </span>
+          <a
+            className="inline-flex items-center gap-1 hover:underline"
+            style={{ color: 'var(--gv-accent)' }}
+            href={result.releaseUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('updates.view_on_github')} <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
       )}
 
       <div className="flex gap-2 pt-2">
@@ -112,20 +117,24 @@ export default function UpdateSettings() {
           className="btn-ghost"
           disabled={loading}
           onClick={async () => {
-            await check(true);
-            // Provide explicit feedback after a manual recheck so the
-            // user never wonders whether the button did anything: a
-            // "you are up to date" / "update available" / "error" toast
-            // every time.
-            const r = useUpdateStore.getState().result;
+            // Use the value freshly returned by check(); reading the
+            // store right after may pick up a stale snapshot if the
+            // request failed silently.
+            const r = await check(true);
             if (!r) {
-              notify('warn', t('updates.check_failed'));
+              notify('warn', t('updates.check_failed'), undefined, 6000);
             } else if (r.error) {
-              notify('error', t('updates.check_failed'), r.error);
+              notify('error', t('updates.check_failed'), r.error, 6000);
             } else if (r.updateAvailable) {
-              notify('success', t('updates.update_available_title', { version: r.latestVersion }), r.releaseUrl ?? undefined);
+              notify('success',
+                t('updates.update_available_title', { version: r.latestVersion ?? '' }),
+                r.releaseUrl ?? undefined,
+                6000);
             } else {
-              notify('success', t('updates.up_to_date_title'), t('updates.up_to_date_subtitle', { version: r.currentVersion }));
+              notify('success',
+                t('updates.up_to_date_title'),
+                t('updates.up_to_date_subtitle', { version: r.currentVersion }),
+                4000);
             }
           }}
         >

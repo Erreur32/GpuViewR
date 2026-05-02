@@ -1,13 +1,12 @@
-release: v0.1.12 - webhook overhaul, Notification/Metrics sub-tabs, update check UX
+release: v0.1.13 - cleaner Updates tab, smarter tooltip, deterministic check feedback
 
-- Webhook now supports Generic (JSON), Discord (embed) and Telegram
-  (Bot API) with two modes: 'alerts' (fired on alertService events)
-  and 'metrics' (periodic push of latest samples).
-- Webhook test actually checks the remote HTTP status and reports
-  the body excerpt on failure. Generic webhook protects its
-  Content-Type header.
-- Settings > Exports tab split into two sub-tabs: Notification
-  (webhook) and Metrics (Prometheus, MQTT/HA, InfluxDB).
-- Update check (recheck button) always toasts the result: up to
-  date / update available / failure.
-- Token / chat ID secrets masked in webhook config API responses.
+- Updates tab: drop the inline release-notes <pre> block (About tab
+  is the only changelog viewer now). Replaced with a compact link
+  card "Release notes - vX.Y.Z -> View on GitHub".
+- Chart tooltip is anchored on the cursor with a flipping diagonal
+  offset (top-right by default, flips to the left near the right
+  edge, below near the top) so it never overlaps the pointer or
+  gets clipped.
+- updateStore.check() returns the result so the UI can branch on
+  the actual value. "Check now" always toasts: up-to-date,
+  available, or a failure reason.

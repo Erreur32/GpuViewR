@@ -53,7 +53,9 @@ export default function LiveChart({ gpuIndex }: Props) {
   const [historic, setHistoric] = useState<HistoryRow[]>(() => cachedHistory?.rows ?? []);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null, memory: null });
-  const [tip, setTip] = useState<{ left: number; top: number; show: boolean }>({ left: 0, top: 0, show: false });
+  const [tip, setTip] = useState<{ left: number; top: number; flipX: boolean; flipY: boolean; show: boolean }>(
+    { left: 0, top: 0, flipX: false, flipY: false, show: false },
+  );
   const [pinned, setPinned] = useState<boolean>(false);
   const [visible, setVisible] = useState<{ util: boolean; temp: boolean; pow: boolean; mem: boolean }>({ util: true, temp: true, pow: true, mem: true });
 
@@ -175,7 +177,18 @@ export default function LiveChart({ gpuIndex }: Props) {
                 power: (u.data[3]?.[idx] as number | undefined) ?? null,
                 memory: (u.data[4]?.[idx] as number | undefined) ?? null,
               });
-              setTip({ left, top, show: true });
+              // Flip the tooltip horizontally / vertically when it would
+              // overflow the chart, so it sticks naturally next to the
+              // cursor instead of being clipped or placed far from it.
+              const w = u.over.clientWidth;
+              const h = u.over.clientHeight;
+              setTip({
+                left,
+                top,
+                flipX: left > w - 200,
+                flipY: top < 110,
+                show: true,
+              });
             }
           },
         ],
@@ -389,15 +402,16 @@ export default function LiveChart({ gpuIndex }: Props) {
           <div
             className="pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md text-[11px] shadow-lg backdrop-blur-sm"
             style={{
-              // Offset the tooltip clear of the cursor so it never sits
-              // behind the mouse pointer (was 12 / -8, too tight on
-              // some pointer skins).
-              left: tip.left + 22,
-              top: Math.max(0, tip.top - 28),
+              // Anchor the tooltip on the cursor and use translate to
+              // place it diagonally clear of the pointer. flipX/flipY
+              // mirror it when close to the right / top edges.
+              left: tip.left,
+              top: tip.top,
+              transform: `translate(${tip.flipX ? 'calc(-100% - 14px)' : '14px'}, ${tip.flipY ? '14px' : 'calc(-100% - 14px)'})`,
               background: 'color-mix(in srgb, var(--gv-surface) 92%, transparent)',
               border: '1px solid var(--gv-border)',
               color: 'var(--gv-text)',
-              minWidth: 160,
+              minWidth: 180,
             }}
           >
             <div className="font-semibold tabular-nums mb-1" style={{ color: 'var(--gv-text-muted)' }}>
