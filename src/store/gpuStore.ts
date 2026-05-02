@@ -27,12 +27,30 @@ interface Series {
   power: number[];
 }
 
+export interface HistoryRow {
+  timestamp_epoch: number;
+  temperature: number;
+  utilization: number | null;
+  power: number;
+}
+
+interface HistoryEntry {
+  rows: HistoryRow[];
+  fetchedAt: number;
+}
+
 interface GpuState {
   connected: boolean;
   latest: Map<number, GpuSample>;
   series: Map<number, Series>;
+  // Cache of fetched chart history, keyed by `${gpuIndex}|${range}`.
+  // Survives Dashboard unmounts so the chart paints immediately on
+  // return instead of flashing empty while the API request is in-flight.
+  history: Map<string, HistoryEntry>;
   setConnected: (c: boolean) => void;
   ingest: (samples: GpuSample[]) => void;
+  setHistory: (gpuIndex: number, range: string, rows: HistoryRow[]) => void;
+  getHistory: (gpuIndex: number, range: string) => HistoryRow[] | null;
   reset: () => void;
 }
 
@@ -40,12 +58,25 @@ function emptySeries(): Series {
   return { t: [], temperature: [], utilization: [], memory_used: [], power: [] };
 }
 
-export const useGpuStore = create<GpuState>((set) => ({
+export const useGpuStore = create<GpuState>((set, get) => ({
   connected: false,
   latest: new Map(),
   series: new Map(),
+  history: new Map(),
 
   setConnected: (c) => set({ connected: c }),
+
+  setHistory: (gpuIndex, range, rows) =>
+    set((state) => {
+      const next = new Map(state.history);
+      next.set(`${gpuIndex}|${range}`, { rows, fetchedAt: Date.now() });
+      return { history: next };
+    }),
+
+  getHistory: (gpuIndex, range) => {
+    const entry = get().history.get(`${gpuIndex}|${range}`);
+    return entry ? entry.rows : null;
+  },
 
   ingest: (samples) =>
     set((state) => {
@@ -70,5 +101,5 @@ export const useGpuStore = create<GpuState>((set) => ({
       return { latest, series };
     }),
 
-  reset: () => set({ latest: new Map(), series: new Map() }),
+  reset: () => set({ latest: new Map(), series: new Map(), history: new Map() }),
 }));

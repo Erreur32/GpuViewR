@@ -5,6 +5,43 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-05-02
+
+Polish on top of v0.1.9: navigation no longer interrupts the live
+chart, new "Custom" tab for theme/gauge/curve colors, About is
+prettier, plus a sweep of Sonar fixes.
+
+### Added
+- New **"Custom" tab** in Settings (renamed from "Theme") that groups
+  the dark / light theme picker, the gauge style toggle (moved from
+  General), and a brand new **Chart curves** card with five curated
+  presets (Cyber, Sunset, Aurora, Royal, Graphite) plus per-metric
+  color pickers and a "Reset to theme" action.
+- About tab uses the real `/GPUViewR.png` logo, ships the same
+  Release / Docker / NVIDIA / MIT / Scorecard / CodeQL / SonarCloud
+  badges as the README, and opens straight on an expanded changelog
+  viewer with proper colored markdown rendering (headings, lists,
+  inline code, fences, separators).
+- Updates tab gets a dedicated **Update banner** card with the
+  show/hide toggle (persisted as `gpuviewr.update_banner_enabled`).
+- `gpuStore` now caches fetched chart history per `gpuIndex|range`
+  so the live chart paints instantly when the user returns to the
+  Dashboard from any other tab.
+
+### Changed
+- The dashboard WebSocket (`useGpuStream`) is now mounted on
+  `AppLayout` instead of `Dashboard`. Live samples keep flowing into
+  the store while the user is on Settings / Alerts / Logs, so the
+  live chart no longer shows a blank gap on return.
+- Brand assets are now standardized: `GPUViewR.png` is the square
+  logo (used in About thumbnail), `GpuViewR-Ban.png` is the wide
+  banner (README hero), `gpuviewr.svg` for crisp rendering.
+
+### Security / Code quality
+- Sweep `parseInt` / `parseFloat` -> `Number.parseInt` /
+  `Number.parseFloat` across `server/` and `src/`
+  (Sonar `typescript:S7773`).
+
 ## [0.1.9] - 2026-05-02
 
 Settings, chart polish, per-process GPU table, security hardening.

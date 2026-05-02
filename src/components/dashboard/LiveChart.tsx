@@ -8,12 +8,7 @@ import { fmtClock, fmtDateTime } from '../../lib/time';
 
 interface Props { gpuIndex: number; }
 
-interface HistoryRow {
-  timestamp_epoch: number;
-  temperature: number;
-  utilization: number | null;
-  power: number;
-}
+import type { HistoryRow } from '../../store/gpuStore';
 
 interface CursorValues {
   t: number | null;
@@ -46,7 +41,9 @@ export default function LiveChart({ gpuIndex }: Props) {
   const chartThresholdsEnabled = useUiStore((s) => s.chartThresholdsEnabled);
   const series = useGpuStore((s) => s.series.get(gpuIndex));
   const latestSample = useGpuStore((s) => s.latest.get(gpuIndex));
-  const [historic, setHistoric] = useState<HistoryRow[]>([]);
+  const cachedHistory = useGpuStore((s) => s.history.get(`${gpuIndex}|${range}`));
+  const setHistoryCache = useGpuStore((s) => s.setHistory);
+  const [historic, setHistoric] = useState<HistoryRow[]>(() => cachedHistory?.rows ?? []);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null });
   const [tip, setTip] = useState<{ left: number; top: number; show: boolean }>({ left: 0, top: 0, show: false });
@@ -73,16 +70,25 @@ export default function LiveChart({ gpuIndex }: Props) {
     });
   };
 
-  // Fetch history when range changes
+  // Fetch history when gpu/range changes. We hydrate `historic` from the
+  // gpuStore cache synchronously so the chart paints instantly on mount
+  // (no flash of empty data while the API call is in flight), then the
+  // fetch refreshes the cache and the local state.
   useEffect(() => {
     let cancelled = false;
+    const cached = useGpuStore.getState().getHistory(gpuIndex, range);
+    if (cached) setHistoric(cached);
     setLoadingHistory(true);
     api<{ history: HistoryRow[] }>(`/gpu/history?gpu=${gpuIndex}&range=${range}`)
-      .then((r) => { if (!cancelled) setHistoric(r.history); })
-      .catch(() => { if (!cancelled) setHistoric([]); })
+      .then((r) => {
+        if (cancelled) return;
+        setHistoric(r.history);
+        setHistoryCache(gpuIndex, range, r.history);
+      })
+      .catch(() => { if (!cancelled && !cached) setHistoric([]); })
       .finally(() => { if (!cancelled) setLoadingHistory(false); });
     return () => { cancelled = true; };
-  }, [gpuIndex, range]);
+  }, [gpuIndex, range, setHistoryCache]);
 
   // Build / rebuild chart on theme change
   useEffect(() => {

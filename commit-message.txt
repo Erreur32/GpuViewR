@@ -1,33 +1,14 @@
-release: v0.1.9 - About tab, processes, Live filter, security hardening
+release: v0.1.10 - Custom tab, history cache, About polish, persistent WS
 
-Settings
-- About tab with logo, version, features, GitHub links, MIT and
-  embedded changelog viewer (GET /api/info/changelog).
-- Tabbed Settings (General / Exports / Database / Updates / About).
-- Chart thresholds card (toggle + per-metric value + clear + reset).
-- Update banner is now permanently dismissible (toggle in About tab).
-
-Chart
-- Cursor tooltip with date/time and visible curve values.
-- Gradient area fills (util, temp, pow).
-- Live (50s) range replacing 1m / 2m, with auto-migration.
-- X-axis honors 24h / 12h preference.
-- gpuStore.ingest is now immutable so live ticks always render.
-
-GPU
-- Per-process GPU table (PID / process / VRAM) polling
-  /api/processes[?gpu=<i>], cached 1.5s server-side.
-
-Layout
-- max-w-7xl -> max-w-[1600px] on header / main / Settings.
-
-Security
-- Rate limiting on /api, /api/auth and /metrics (express-rate-limit),
-  trust proxy = 1.
-- Prometheus label escaping (backslash, quote, newline).
-- MQTT clientId via crypto.randomBytes.
-- HTTPS placeholder for the InfluxDB URL field.
-- Paired onKeyDown for the chart color picker label.
-- SECURITY.md with disclosure flow.
-- Dockerfile: apt-get upgrade in both stages, FROM pinned to digest.
-- CI actions pinned to commit SHAs, release.yml minimal token perms.
+- New "Custom" tab in Settings: theme picker, gauge style (moved from
+  General) and a Chart curves card with 5 presets (Cyber, Sunset,
+  Aurora, Royal, Graphite) plus per-metric color pickers.
+- About tab: real /GPUViewR.png logo, README-style badges, colored
+  changelog renderer, expanded by default.
+- Updates tab: new "Update banner" card with show/hide toggle.
+- gpuStore caches chart history per gpu|range so the live chart
+  paints instantly when returning to the Dashboard from another tab.
+- useGpuStream lifted to AppLayout so the WebSocket stays open while
+  the user is on Settings / Alerts / Logs.
+- Sonar S7773: parseInt / parseFloat -> Number.parseInt /
+  Number.parseFloat sweep across server and src.

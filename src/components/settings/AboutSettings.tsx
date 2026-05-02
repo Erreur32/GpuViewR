@@ -35,13 +35,19 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
   while ((m = INLINE_RE.exec(text)) !== null) {
     if (m.index > lastIdx) out.push(text.slice(lastIdx, m.index));
     if (m[2] !== undefined) {
-      out.push(<strong key={`${keyBase}-b${i++}`} style={{ color: 'var(--gv-accent)' }}>{m[2]}</strong>);
+      out.push(
+        <strong key={`${keyBase}-b${i++}`} className="font-semibold" style={{ color: 'var(--gv-warn)' }}>{m[2]}</strong>,
+      );
     } else if (m[3] !== undefined) {
       out.push(
         <code
           key={`${keyBase}-c${i++}`}
-          className="px-1 rounded text-[0.78rem]"
-          style={{ background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}
+          className="px-1.5 py-0.5 rounded font-mono text-[0.75rem]"
+          style={{
+            background: 'var(--gv-surface-alt)',
+            border: '1px solid var(--gv-border)',
+            color: 'var(--gv-ok)',
+          }}
         >{m[3]}</code>,
       );
     }
@@ -54,30 +60,89 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
 function renderBody(body: string): React.ReactNode {
   const out: React.ReactNode[] = [];
   let listBuf: React.ReactNode[] = [];
+  let fenceBuf: string[] | null = null;
   let key = 0;
   const flushList = () => {
     if (listBuf.length) {
-      out.push(<ul key={`ul-${key++}`} className="list-disc pl-5 my-1.5 space-y-0.5">{listBuf}</ul>);
+      out.push(<ul key={`ul-${key++}`} className="list-disc pl-5 my-2 space-y-1">{listBuf}</ul>);
       listBuf = [];
     }
   };
+  const flushFence = () => {
+    if (fenceBuf) {
+      out.push(
+        <pre
+          key={`pre-${key++}`}
+          className="rounded-lg p-3 my-3 overflow-x-auto text-xs font-mono"
+          style={{
+            background: 'var(--gv-surface-alt)',
+            border: '1px solid var(--gv-border)',
+            borderLeft: '3px solid var(--gv-accent)',
+            color: 'var(--gv-text)',
+          }}
+        ><code>{fenceBuf.join('\n')}</code></pre>,
+      );
+      fenceBuf = null;
+    }
+  };
+
   for (const raw of body.split(/\n/)) {
     const line = raw.trimEnd();
+
+    if (line.startsWith('```')) {
+      if (fenceBuf) flushFence();
+      else { flushList(); fenceBuf = []; }
+      continue;
+    }
+    if (fenceBuf) { fenceBuf.push(line); continue; }
+
     if (line.startsWith('### ')) {
       flushList();
-      out.push(<h4 key={`h-${key++}`} className="text-sm font-semibold mt-3 mb-1" style={{ color: 'var(--gv-accent)' }}>{renderInline(line.slice(4), `h${key}`)}</h4>);
+      out.push(
+        <h4
+          key={`h3-${key++}`}
+          className="text-sm font-semibold mt-3 mb-1.5 pb-0.5"
+          style={{
+            color: 'var(--gv-accent)',
+            borderBottom: '1px solid color-mix(in srgb, var(--gv-accent) 25%, transparent)',
+          }}
+        >{renderInline(line.slice(4), `h3${key}`)}</h4>,
+      );
+      continue;
+    }
+    if (line.startsWith('#### ')) {
+      flushList();
+      out.push(
+        <h5 key={`h4-${key++}`} className="text-xs font-semibold mt-2 mb-1" style={{ color: 'var(--gv-ok)' }}>
+          {renderInline(line.slice(5), `h4${key}`)}
+        </h5>,
+      );
+      continue;
+    }
+    if (line.trim() === '---') {
+      flushList();
+      out.push(<hr key={`hr-${key++}`} style={{ borderColor: 'var(--gv-border)' }} className="my-3" />);
       continue;
     }
     if (/^[-*]\s+/.test(line)) {
-      listBuf.push(<li key={`li-${key++}`} className="text-xs">{renderInline(line.replace(/^[-*]\s+/, ''), `li${key}`)}</li>);
+      listBuf.push(
+        <li key={`li-${key++}`} className="text-xs leading-relaxed" style={{ color: 'var(--gv-text)' }}>
+          {renderInline(line.replace(/^[-*]\s+/, ''), `li${key}`)}
+        </li>,
+      );
       continue;
     }
     flushList();
     if (line.trim()) {
-      out.push(<p key={`p-${key++}`} className="text-xs my-1.5" style={{ color: 'var(--gv-text-muted)' }}>{renderInline(line, `p${key}`)}</p>);
+      out.push(
+        <p key={`p-${key++}`} className="text-xs my-1.5 leading-relaxed" style={{ color: 'var(--gv-text-muted)' }}>
+          {renderInline(line, `p${key}`)}
+        </p>,
+      );
     }
   }
   flushList();
+  flushFence();
   return <>{out}</>;
 }
 
@@ -113,25 +178,26 @@ export default function AboutSettings() {
   return (
     <div className="space-y-6">
       <section className="card p-5 space-y-4">
-        <div className="flex justify-center">
+        <div className="flex items-center gap-4 flex-wrap">
           <img
-            src="/GpuViewR-Ban.png"
-            alt="GpuViewR"
-            className="rounded-xl max-w-full h-auto"
-            style={{ maxHeight: 220, border: '1px solid var(--gv-border)' }}
+            src="/GPUViewR.png"
+            alt="GpuViewR logo"
+            width={72}
+            height={72}
+            className="rounded-xl flex-shrink-0"
+            style={{ background: 'var(--gv-surface-alt)', padding: 4, border: '1px solid var(--gv-border)' }}
           />
-        </div>
-
-        <div className="text-center">
-          <h2 className="text-2xl font-bold leading-tight">GpuViewR</h2>
-          <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>
-            {t('settings.about_tagline')}
-          </p>
-          <div className="text-xs mt-1" style={{ color: 'var(--gv-text-dim)' }}>
-            {t('settings.about_version')}: <span className="font-mono">{result?.currentVersion ?? '-'}</span>
-            {result?.latestVersion && result.latestVersion !== result.currentVersion && (
-              <> · {t('settings.about_latest')}: <span className="font-mono" style={{ color: 'var(--gv-accent)' }}>{result.latestVersion}</span></>
-            )}
+          <div className="flex-1 min-w-0">
+            <h2 className="text-2xl font-bold leading-tight" style={{ color: 'var(--gv-text)' }}>GpuViewR</h2>
+            <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>
+              {t('settings.about_tagline')}
+            </p>
+            <div className="text-xs mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+              {t('settings.about_version')}: <span className="font-mono" style={{ color: 'var(--gv-text)' }}>{result?.currentVersion ?? '-'}</span>
+              {result?.latestVersion && result.latestVersion !== result.currentVersion && (
+                <> · {t('settings.about_latest')}: <span className="font-mono font-semibold" style={{ color: 'var(--gv-accent)' }}>{result.latestVersion}</span></>
+              )}
+            </div>
           </div>
         </div>
 
