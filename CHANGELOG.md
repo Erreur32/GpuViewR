@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Replaced **bcrypt** with **bcryptjs** (pure JS, API-compatible) to remove
+  the transitive `@mapbox/node-pre-gyp` → `tar` chain. Dependabot was
+  unable to apply the `tar` security advisory because `bcrypt@5.1.1` pinned
+  `tar@^6.x` while the advisory required `tar@7.5.11`. bcryptjs has no
+  native build, no `node-pre-gyp`, and no `tar` dependency — `npm ls tar`
+  is now empty.
+- Added security & quality CI workflows (mirroring LogviewR):
+  - `codeql.yml` — JavaScript/TypeScript SAST (push, PR, weekly schedule)
+  - `scorecard.yml` — OpenSSF Scorecard (publishes to scorecard.dev)
+  - `snyk.yml` — Snyk Code (SAST), Snyk Open Source (deps), Snyk Container
+    (Docker image), severity ≥ high
+  - `sonarcloud.yml` — SonarCloud quality gate (uses `sonar-project.properties`)
+- Added `.github/dependabot.yml`: weekly grouped npm bumps + GitHub Actions
+  + Docker base image, all on Monday morning Europe/Paris.
+- Added `.github/workflows/SETUP.md` documenting how to wire the SNYK_TOKEN
+  and SONAR_TOKEN secrets and how to enable each scanner.
+- README header gained badges for CodeQL, OpenSSF Scorecard, SonarCloud, and
+  Snyk so the security posture is visible at a glance.
+
 ### Documentation
 - README header rebuilt with shields.io badges (version, status, Docker, NVIDIA,
   React, TypeScript, license, build status, CI status, latest GitHub Release,
@@ -18,8 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the user-facing feature list (it's already covered in the *Updating*
   section), made the License badge clickable (links to LICENSE), and expanded
   the License section with the dual copyright block.
-- Architecture tree now references `scripts/update-version.sh` (was the
-  removed `bump-version.js`).
+- Removed the *Architecture* file-tree section from the README — it was
+  developer-facing noise that drifted out of sync with the codebase. The
+  tree is still reachable via `Docs/CONTRIBUTING.md` and the source itself.
 
 ### Fixed
 - `getPublicUrl()` returned a localhost fallback that fooled the boot banner

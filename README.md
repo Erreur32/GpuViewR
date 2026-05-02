@@ -14,13 +14,17 @@
 
 [![Build](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/docker-publish.yml?style=for-the-badge&logo=github&logoColor=white&label=Build&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/docker-publish.yml)
 [![CI](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/ci.yml?style=for-the-badge&logo=github&logoColor=white&label=CI&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/ci.yml)
+[![CodeQL](https://img.shields.io/badge/CodeQL-active-brightgreen?style=for-the-badge&logo=github)](https://github.com/Erreur32/GpuViewR/security/code-scanning)
+[![OSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/Erreur32/GpuViewR?style=for-the-badge&label=Scorecard)](https://scorecard.dev/viewer/?uri=github.com/Erreur32/GpuViewR)
+[![SonarCloud](https://img.shields.io/sonar/quality_gate/Erreur32_GpuViewR?server=https%3A%2F%2Fsonarcloud.io&style=for-the-badge&logo=sonarcloud&logoColor=white&label=Sonar)](https://sonarcloud.io/summary/overall?id=Erreur32_GpuViewR)
+[![Snyk](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/snyk.yml?style=for-the-badge&logo=snyk&logoColor=white&label=Snyk&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/snyk.yml)
 [![Release](https://img.shields.io/github/v/release/Erreur32/GpuViewR?style=for-the-badge&logo=github&logoColor=white&label=Release&color=111827)](https://github.com/Erreur32/GpuViewR/releases)
 [![GHCR](https://img.shields.io/badge/ghcr.io-erreur32%2Fgpuviewr-111827?style=for-the-badge&logo=docker&logoColor=38bdf8)](https://github.com/Erreur32/GpuViewR/pkgs/container/gpuviewr)
 
 **Real-time NVIDIA GPU monitoring dashboard.**
 Built with **React 19 · Vite · TailwindCSS · uPlot · Express 5 · WebSocket · better-sqlite3**.
 
-[Quick start](#quick-start) · [First login](#first-login--there-is-no-default-account) · [Configuration](#configuration) · [Updating](#updating) · [Architecture](#architecture) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Roadmap](#roadmap)
+[Quick start](#quick-start) · [First login](#first-login--there-is-no-default-account) · [Configuration](#configuration) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Roadmap](#roadmap)
 
 </div>
 
@@ -53,19 +57,104 @@ packaging strategy. GpuViewR keeps the data model compatible so existing
 gpu-monitor users can migrate without losing their history (see
 [`Docs/MIGRATION.md`](Docs/MIGRATION.md)).
 
-What changed in GpuViewR:
+### What changed in GpuViewR
 
-| Original `gpu-monitor` | GpuViewR |
-|---|---|
-| Bash collection script | TypeScript collector (Node / Express) |
-| Polling JSON every 5–30 s | WebSocket streaming every 1 s |
-| Monolithic 1183-line HTML | React 19 + Vite + Tailwind components |
-| Chart.js 3.7 | uPlot (40 KB, streaming-optimized) |
-| No authentication | Login + JWT + bcrypt |
-| Single GPU only | Multi-GPU ready |
-| One static look | 5 themes + arc/bar gauge toggle |
-| No alerts | Full alerts subsystem with sustain + cooldown |
-| Manual updates | `update.sh` with backup + rollback |
+<table>
+<thead>
+<tr>
+  <th width="22%">Area</th>
+  <th width="36%"><sub>🪦</sub> Original <code>gpu-monitor</code></th>
+  <th width="42%"><sub>🚀</sub> GpuViewR</th>
+</tr>
+</thead>
+<tbody>
+
+<tr>
+  <td>📡 <b>Data transport</b></td>
+  <td>Polling <code>gpu_current_stats.json</code> every <b>5 s</b>, chart every <b>30 s</b></td>
+  <td><b>WebSocket</b> streaming every <b>1 s</b>, auto-reconnect with backoff</td>
+</tr>
+
+<tr>
+  <td>⚙️ <b>Collector</b></td>
+  <td>Bash script (≈ 630 lines), <code>nvidia-smi</code> + intermediate JSON files</td>
+  <td>TypeScript service, <code>nvidia-smi</code> spawned from Node, batched DB writes</td>
+</tr>
+
+<tr>
+  <td>💾 <b>Storage</b></td>
+  <td>SQLite (single GPU column), 24 h retention</td>
+  <td>SQLite WAL + index per GPU, <b>7 d retention</b> (configurable)</td>
+</tr>
+
+<tr>
+  <td>🎨 <b>Frontend</b></td>
+  <td>One <code>gpu-stats.html</code> file, <b>1 183 lines</b> of inline HTML+CSS+JS</td>
+  <td><b>React 19</b> + Vite + TailwindCSS, modular components, ~25 KB gzip</td>
+</tr>
+
+<tr>
+  <td>📊 <b>Charts</b></td>
+  <td>Chart.js <b>3.7</b> (≈ 195 KB)</td>
+  <td><b>uPlot</b> (≈ 40 KB), built for live time-series</td>
+</tr>
+
+<tr>
+  <td>🌈 <b>Theming</b></td>
+  <td>One fixed dark palette</td>
+  <td><b>5 themes</b> (3 dark + 2 light) via CSS variables, theme picker in Settings</td>
+</tr>
+
+<tr>
+  <td>📐 <b>Gauges</b></td>
+  <td>Static horizontal bars</td>
+  <td><b>Arc rings or Grafana-style bars</b>, switchable; sparklines on every card</td>
+</tr>
+
+<tr>
+  <td>🔢 <b>Multi-GPU</b></td>
+  <td>Single GPU only</td>
+  <td><b>Multi-GPU</b> with auto tabs when ≥ 2 devices detected</td>
+</tr>
+
+<tr>
+  <td>🔐 <b>Authentication</b></td>
+  <td>None — anyone with the URL gets in</td>
+  <td><b>bcrypt + JWT</b>, first user becomes admin (no default credentials)</td>
+</tr>
+
+<tr>
+  <td>🔔 <b>Alerts</b></td>
+  <td>Threshold + browser notification (front-end only)</td>
+  <td>DB-backed rules, <b>sustain + cooldown</b> evaluator, in-app toasts, browser notifications, optional sound</td>
+</tr>
+
+<tr>
+  <td>📜 <b>Server logs</b></td>
+  <td>Plain log file</td>
+  <td><b>Filterable Logs page</b> (level / scope / search) + auto-refresh</td>
+</tr>
+
+<tr>
+  <td>🌍 <b>i18n</b></td>
+  <td>English only</td>
+  <td><b>EN / FR</b> shipped, scaffolded for more locales</td>
+</tr>
+
+<tr>
+  <td>🔄 <b>Update flow</b></td>
+  <td>Manual <code>docker compose pull && up -d</code></td>
+  <td>In-app <b>update banner</b> (GitHub + GHCR check) and <code>update.sh</code> helper with auto-backup &amp; rollback</td>
+</tr>
+
+<tr>
+  <td>🐳 <b>Image</b></td>
+  <td>Single-stage Python image</td>
+  <td><b>Multi-stage Node 22 Alpine</b>, multi-arch <b>amd64 + arm64</b>, healthcheck included</td>
+</tr>
+
+</tbody>
+</table>
 
 Original work © bigsk1 — see [LICENSE](LICENSE) for the full notice.
 
@@ -160,106 +249,6 @@ complete list.
 | `GPU_TICK_MS` | `1000` | How often `nvidia-smi` is sampled. |
 | `RETENTION_DAYS` | `7` | How long historical metrics are kept. |
 | `DATA_DIR` | `./data` | Where the SQLite DB lives. |
-
----
-
-## Updating
-
-GpuViewR has **two complementary update mechanisms**:
-
-### 1. In-app update notice
-
-The server polls GitHub once per `frequencyHours` (default: 24 h) and verifies
-the matching Docker image is actually published on GHCR. When an update is
-ready, every authenticated user sees a banner on the dashboard:
-
-- **"Details"** opens a modal with release notes (pulled from GitHub Releases,
-  falling back to the local `CHANGELOG.md`) and the exact command to run.
-- **"Copy update command"** copies `./update.sh` to the clipboard.
-- The dismiss button hides that specific version's banner only.
-
-Admin-only knobs in `Settings → Updates`: enable/disable the checker, change
-the polling frequency (1 h … 7 days). The result is cached so polling never
-hits GitHub more often than the configured frequency.
-
-### 2. `update.sh` helper
-
-```bash
-./update.sh             # backup data, pull latest, restart
-./update.sh --check     # report whether a newer image is available
-./update.sh --rollback  # restore the previous image AND data backup
-```
-
-`update.sh` automatically:
-
-- Tags the current image as `:previous` before pulling
-- Tar-gzips the `data/` directory into `backups/data-YYYYMMDD-HHMMSS.tar.gz`
-- Trims to the 10 most recent backups
-- Prunes dangling images at the end
-
-CI / GitHub: `.github/workflows/docker-publish.yml` builds and pushes
-multi-arch images (`linux/amd64`, `linux/arm64`) to GHCR on every push to
-`main` and on every `v*.*.*` tag.
-
----
-
-## Architecture
-
-```
-GpuViewR/
-├── server/                       # Express + WebSocket backend
-│   ├── index.ts                  # entrypoint (banner, port check, routes)
-│   ├── config.ts                 # env config
-│   ├── database/
-│   │   ├── connection.ts         # SQLite (better-sqlite3, WAL mode)
-│   │   └── models/
-│   │       ├── User.ts
-│   │       ├── GpuMetric.ts      # schema-compatible with bigsk1/gpu-monitor
-│   │       └── Alert.ts
-│   ├── services/
-│   │   ├── gpuCollector.ts       # spawn nvidia-smi, parse CSV, persist
-│   │   ├── gpuStreamWS.ts        # WebSocket broadcaster (samples + alerts)
-│   │   ├── authService.ts        # bcrypt + JWT
-│   │   └── alertService.ts       # sustained-duration evaluator with cooldown
-│   ├── routes/                   # /api/auth /api/gpu /api/alerts /api/logs /api/health
-│   ├── middleware/               # auth, errorHandler
-│   └── utils/
-│       ├── logger.ts             # ring buffer + console + EventEmitter
-│       └── banner.ts             # boot banner + port-availability check
-├── src/                          # React 19 frontend
-│   ├── main.tsx
-│   ├── App.tsx                   # router + auth guard
-│   ├── components/
-│   │   ├── login/                # LoginPage (auto switches to "Create admin")
-│   │   ├── layout/               # Header (sticky), AppLayout (Outlet)
-│   │   ├── dashboard/            # GaugeCard, Sparkline, LiveChart, RangeSelector,
-│   │   │                          # GpuTabs, StatsSection, Dashboard
-│   │   ├── alerts/               # AlertsPage (rules + events + modal editor)
-│   │   ├── logs/                 # LogsPage (filters + auto-refresh)
-│   │   ├── settings/             # SettingsPage (themes, gauges, language, sound)
-│   │   └── ui/                   # Toaster
-│   ├── store/                    # zustand: auth, gpu, ui, toast
-│   ├── lib/
-│   │   ├── api.ts                # fetch wrapper with bearer auth
-│   │   ├── themes.ts             # 5 themes via CSS variables
-│   │   └── useGpuStream.ts       # WebSocket hook (auto-reconnect with backoff)
-│   ├── i18n/                     # react-i18next + locales/{en,fr}.json
-│   └── styles/index.css          # tailwind + theme tokens + animations
-├── public/                       # static assets (logo, alert sound)
-├── Dockerfile                    # multi-stage Node 22 Alpine
-├── docker-compose.yml            # runtime: nvidia, GHCR image
-├── docker-entrypoint.sh          # drops privileges to "node"
-├── update.sh                     # auto-update (backup + rollback)
-├── .github/workflows/
-│   ├── docker-publish.yml        # multi-arch GHCR build & push
-│   └── ci.yml                    # build smoke test
-├── scripts/
-│   ├── update-version.sh         # bump version across files (with --tag-push)
-│   └── check-docker-build.js     # local image-size sanity check
-└── Docs/
-    ├── MIGRATION.md              # migrate from bigsk1/gpu-monitor
-    └── CONTRIBUTING.md
-```
 
 ---
 
