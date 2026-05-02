@@ -53,21 +53,19 @@ export const useGpuStore = create<GpuState>((set) => ({
       const series = new Map(state.series);
       for (const s of samples) {
         latest.set(s.gpu_index, s);
-        const cur = series.get(s.gpu_index) ?? emptySeries();
-        cur.t.push(s.timestamp_epoch);
-        cur.temperature.push(s.temperature);
-        cur.utilization.push(s.utilization);
-        cur.memory_used.push(s.memory_used);
-        cur.power.push(s.power);
-        if (cur.t.length > MAX_POINTS) {
-          const drop = cur.t.length - MAX_POINTS;
-          cur.t.splice(0, drop);
-          cur.temperature.splice(0, drop);
-          cur.utilization.splice(0, drop);
-          cur.memory_used.splice(0, drop);
-          cur.power.splice(0, drop);
-        }
-        series.set(s.gpu_index, cur);
+        const prev = series.get(s.gpu_index) ?? emptySeries();
+        // Immutable update: create new arrays so subscribers see a new
+        // reference. Mutating in place caused the chart to miss live
+        // points until the user changed the range and forced a re-render.
+        const start = prev.t.length + 1 > MAX_POINTS ? prev.t.length + 1 - MAX_POINTS : 0;
+        const next: Series = {
+          t: prev.t.slice(start).concat(s.timestamp_epoch),
+          temperature: prev.temperature.slice(start).concat(s.temperature),
+          utilization: prev.utilization.slice(start).concat(s.utilization),
+          memory_used: prev.memory_used.slice(start).concat(s.memory_used),
+          power: prev.power.slice(start).concat(s.power),
+        };
+        series.set(s.gpu_index, next);
       }
       return { latest, series };
     }),
