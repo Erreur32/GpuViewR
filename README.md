@@ -1,4 +1,4 @@
-# GpuViewR — NVIDIA GPU Dashboard
+# GpuViewR: NVIDIA GPU Dashboard
 
 <div align="center">
 
@@ -31,17 +31,17 @@
 
 ## Features
 
-- ⚡ **Real-time** — WebSocket streaming, 1 s tick (no JSON polling)
-- 🎨 **Modern UI** — Tailwind, 5 built-in themes (3 dark + 2 light), responsive mobile-first
-- 📈 **Fast charts** — uPlot for smooth time-series streaming
-- 🔘 **Switchable gauges** — arc rings or Grafana-style horizontal bars
+- ⚡ **Real-time**: WebSocket streaming, 1 s tick (no JSON polling)
+- 🎨 **Modern UI**: Tailwind, 5 built-in themes (3 dark + 2 light), responsive mobile-first
+- 📈 **Fast charts**: uPlot for smooth time-series streaming
+- 🔘 **Switchable gauges**: arc rings or Grafana-style horizontal bars
 - ✨ **Sparklines** in every gauge card
-- 🔔 **Alerts engine** — sustained-duration thresholds, cooldown, browser notifications, optional sound
-- 📜 **Filterable server logs** — level / scope / search, live auto-refresh
-- 🌍 **i18n** — English / French out of the box
-- 🔐 **Authentication** — first user becomes admin (bcryptjs + JWT)
-- 🔢 **Multi-GPU** — automatic tabs when 2+ devices are detected
-- 🐳 **Single Docker image** — multi-arch (amd64 / arm64), Node 22 Alpine
+- 🔔 **Alerts engine**: sustained-duration thresholds, cooldown, browser notifications, optional sound
+- 📜 **Filterable server logs**: level / scope / search, live auto-refresh
+- 🌍 **i18n**: English / French out of the box
+- 🔐 **Authentication**: first user becomes admin (bcryptjs + JWT)
+- 🔢 **Multi-GPU**: automatic tabs when 2+ devices are detected
+- 🐳 **Single Docker image**: multi-arch (amd64 / arm64), Node 22 Alpine
 
 ---
 
@@ -54,7 +54,7 @@ The original project provided the foundation: GPU data collection approach via
 packaging strategy.
 
 <details>
-<summary><b>What changed in GpuViewR</b> — click to expand</summary>
+<summary><b>What changed in GpuViewR</b> (click to expand)</summary>
 
 <table>
 <thead>
@@ -99,7 +99,7 @@ packaging strategy.
 <td><b>Multi-GPU</b> with auto tabs when ≥ 2 devices detected</td></tr>
 
 <tr><td>🔐 <b>Authentication</b></td>
-<td>None — anyone with the URL gets in</td>
+<td>None (anyone with the URL gets in)</td>
 <td><b>bcryptjs + JWT</b>, first user becomes admin</td></tr>
 
 <tr><td>🔔 <b>Alerts</b></td>
@@ -126,7 +126,7 @@ packaging strategy.
 </table>
 </details>
 
-Original work © bigsk1 — see [LICENSE](LICENSE).
+Original work © bigsk1 (see [LICENSE](LICENSE)).
 
 ---
 
@@ -139,7 +139,7 @@ Original work © bigsk1 — see [LICENSE](LICENSE).
   installed (so containers can see `nvidia-smi`).
 - Docker Engine 23+ with the Compose plugin.
 
-### Step 1 — create your `.env`
+### Step 1: create your `.env`
 
 ```bash
 mkdir -p ~/gpuviewr && cd ~/gpuviewr
@@ -155,7 +155,7 @@ echo "HOST_IP=$(hostname -I | awk '{print $1}')" >> .env
 # echo "TZ=Europe/Paris"       >> .env
 ```
 
-### Step 2 — drop in this `docker-compose.yml`
+### Step 2: drop in this `docker-compose.yml`
 
 Save it next to your `.env`:
 
@@ -208,7 +208,7 @@ services:
 > A ready-to-copy version is also available in
 > [`docker-compose.example.yml`](docker-compose.example.yml).
 
-### Step 3 — start it
+### Step 3: start it
 
 ```bash
 docker compose up -d
@@ -222,7 +222,7 @@ The boot banner prints the URL to open. With defaults that's
 > Docker maps the **host port `7510`** to the container's `3015`. You always
 > open the dashboard on the **host port** (`7510` by default, or whatever
 > you set in `DASHBOARD_PORT`). The `3015` you see in the banner is a
-> reminder of the internal port — not the URL to use from your browser.
+> reminder of the internal port, not the URL to use from your browser.
 
 ---
 
@@ -230,7 +230,7 @@ The boot banner prints the URL to open. With defaults that's
 
 GpuViewR ships **without** any pre-baked credentials.
 
-1. Open the dashboard URL — the login page detects an empty database and
+1. Open the dashboard URL. The login page detects an empty database and
    switches to **"Create admin account"**.
 2. Pick your own `username` (≥ 3 chars) and `password` (≥ 8 chars).
 3. The first user is granted role `admin` automatically. Subsequent
@@ -254,10 +254,10 @@ All settings are read from `.env`.
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `JWT_SECRET` | — | **Required.** Secret for signing JWTs. `openssl rand -base64 32` |
+| `JWT_SECRET` | _none_ | **Required.** Secret for signing JWTs. `openssl rand -base64 32` |
 | `DASHBOARD_PORT` | `7510` | Host port mapped to the container. Open this in your browser. |
 | `HOST_IP` | _auto_ | LAN IP shown in the boot banner. Auto-detected if unset; recommended in Docker. |
-| `PUBLIC_URL` | — | Set when you serve GpuViewR behind a reverse proxy. |
+| `PUBLIC_URL` | _none_ | Set when you serve GpuViewR behind a reverse proxy. |
 | `TZ` | `Europe/Paris` | Container timezone. |
 | `GPU_TICK_MS` | `1000` | How often `nvidia-smi` is sampled. |
 | `RETENTION_DAYS` | `7` | How long historical metrics are kept in SQLite. |
@@ -279,7 +279,7 @@ docker compose pull && docker compose up -d
 ```
 
 A copy of the `update.sh` helper (with `--check` and `--rollback` and
-automatic data backups) is shipped in the repo for power users — see
+automatic data backups) is shipped in the repo for power users; see
 [`Docs/CONTRIBUTING.md`](Docs/CONTRIBUTING.md).
 
 ---
@@ -317,7 +317,7 @@ Define rules in **Alerts → New rule** (admin only). Each rule has:
 | Notify browser | Native `Notification` API |
 | Notify sound | Plays a short tone |
 
-When a rule fires, GpuViewR pushes an `alert` frame on the same WebSocket —
+When a rule fires, GpuViewR pushes an `alert` frame on the same WebSocket -
 the UI shows a toast immediately and (optionally) raises a browser
 notification. When the metric returns into range, a `resolved` event is
 emitted and a green toast confirms it.
@@ -336,13 +336,13 @@ emitted and a green toast confirms it.
 
 ## License
 
-GpuViewR is licensed under the **MIT License** — see the [LICENSE](LICENSE) file
+GpuViewR is licensed under the **MIT License**, see the [LICENSE](LICENSE) file
 for the full text.
 
 ```
-Copyright (c) 2024 bigsk1   — original gpu-monitor project
+Copyright (c) 2024 bigsk1    original gpu-monitor project
                               https://github.com/bigsk1/gpu-monitor
-Copyright (c) 2026 Erreur32 — GpuViewR rewrite
+Copyright (c) 2026 Erreur32  GpuViewR rewrite
                               https://github.com/Erreur32/GpuViewR
 ```
 

@@ -48,7 +48,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       const r = await api<{ result: UpdateResult }>(`/updates/check${force ? '?force=true' : ''}`);
       set({ result: r.result });
     } catch {
-      // Ignore — UI surfaces nothing rather than scaring the user with a transient failure.
+      // Ignore: UI surfaces nothing rather than scaring the user with a transient failure.
     } finally {
       set({ loading: false });
     }

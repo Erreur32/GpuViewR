@@ -71,7 +71,7 @@ export default function UpdateSettings() {
           <div>
             {t('updates.latest')}:{' '}
             <strong style={{ color: result.updateAvailable ? 'var(--gv-accent)' : 'var(--gv-text)' }}>
-              {result.latestVersion ?? '—'}
+              {result.latestVersion ?? '-'}
             </strong>
           </div>
           <div className="opacity-70">

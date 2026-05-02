@@ -1,4 +1,4 @@
-// Theme registry — extend by adding entries here. Tokens map to CSS variables
+// Theme registry: extend by adding entries here. Tokens map to CSS variables
 // applied on <html> via useTheme().
 export type ThemeMode = 'dark' | 'light';
 

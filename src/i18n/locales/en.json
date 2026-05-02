@@ -25,7 +25,7 @@
   "dashboard": {
     "live": "LIVE",
     "offline": "OFFLINE",
-    "no_gpu": "No GPU detected — check that nvidia-smi is available in the container.",
+    "no_gpu": "No GPU detected: check that nvidia-smi is available in the container.",
     "history": "Live performance",
     "view_arc": "Gauges",
     "view_bar": "Bars",
@@ -130,7 +130,7 @@
   },
   "updates": {
     "available_title": "GpuViewR {{version}} is available",
-    "available_subtitle": "You are running {{current}} — latest is {{latest}}.",
+    "available_subtitle": "You are running {{current}}: latest is {{latest}}.",
     "see_details": "Details",
     "copy_command": "Copy update command",
     "modal_title": "Update to GpuViewR {{version}}",

@@ -1,5 +1,5 @@
 # ===========================================
-# GpuViewR — Docker Compose
+# GpuViewR: Docker Compose
 # ===========================================
 #
 # Prerequisites:
@@ -40,7 +40,7 @@ services:
 
     volumes:
       - ./data:/app/data
-      # Backward-compat with bigsk1/gpu-monitor users — these are read-only
+      # Backward-compat with bigsk1/gpu-monitor users: these are read-only
       # references; new metrics go into ./data/gpuviewr.db. Optional.
       # - ./history:/app/legacy/history:ro
       # - ./logs:/app/legacy/logs:ro

@@ -1,10 +1,10 @@
-# GitHub setup — security & quality workflows
+# GitHub setup: security & quality workflows
 
 This document describes the one-time setup required for the GpuViewR security
 and quality workflows. **Open the matching settings page on github.com and
 follow the steps below.**
 
-All steps are **independent** — you can enable any subset. The workflows are
+All steps are **independent**: you can enable any subset. The workflows are
 already committed; the only work left is configuring secrets and signing up
 to the third-party services.
 
@@ -15,9 +15,9 @@ to the third-party services.
 Dependabot is configured via [`.github/dependabot.yml`](dependabot.yml). It
 will open pull requests for:
 
-- npm dependencies — weekly Monday 06:00 Europe/Paris (minor + patch grouped)
-- GitHub Actions — weekly Monday 06:30 Europe/Paris
-- Docker base image (Node 22 Alpine) — weekly Monday 06:45 Europe/Paris
+- npm dependencies: weekly Monday 06:00 Europe/Paris (minor + patch grouped)
+- GitHub Actions: weekly Monday 06:30 Europe/Paris
+- Docker base image (Node 22 Alpine): weekly Monday 06:45 Europe/Paris
 
 ### Enable security updates
 
@@ -32,7 +32,7 @@ Sometimes Dependabot can't resolve a security advisory because of a
 transitive lock (e.g. a deep dependency pinning an older version). When that
 happens, Dependabot reports `security_update_not_possible`. The fix is
 usually to swap the offending top-level package for a maintained
-alternative — see how `bcrypt` was replaced by `bcryptjs` in our history.
+alternative: see how `bcrypt` was replaced by `bcryptjs` in our history.
 
 ---
 
@@ -67,9 +67,9 @@ The Scorecard badge in the README links to the public dashboard.
 
 [`snyk.yml`](snyk.yml) runs three scans on every push/PR:
 
-- **Snyk Code** (SAST) — TypeScript code patterns
-- **Snyk Open Source** — npm dependency vulnerabilities (severity ≥ high)
-- **Snyk Container** — Docker image scan (severity ≥ high, excluding base
+- **Snyk Code** (SAST): TypeScript code patterns
+- **Snyk Open Source**: npm dependency vulnerabilities (severity ≥ high)
+- **Snyk Container**: Docker image scan (severity ≥ high, excluding base
   image vulns)
 
 ### Setup
@@ -80,7 +80,7 @@ The Scorecard badge in the README links to the public dashboard.
    New repository secret**
    - Name: `SNYK_TOKEN`
    - Value: paste the token from Snyk
-4. Push (or re-run the failed workflow) — the Snyk badge in the README
+4. Push (or re-run the failed workflow): the Snyk badge in the README
    should turn green
 
 The workflow uses `continue-on-error: true` everywhere, so a missing secret
@@ -108,8 +108,8 @@ run a code-quality scan and publish the result to
    - Value: paste the token from SonarCloud
 6. (Optional) On the SonarCloud project page, **Administration →
    Analysis Method**, disable "Automatic Analysis" so the GitHub Actions
-   run is the only source — avoids duplicate quality gate decisions.
-7. Push — the SonarCloud quality-gate badge should appear green.
+   run is the only source: avoids duplicate quality gate decisions.
+7. Push: the SonarCloud quality-gate badge should appear green.
 
 The `sonar.projectKey` is `Erreur32_GpuViewR` and the organization is
 `erreur32`. Change them if you fork.
@@ -133,4 +133,4 @@ once or trigger manually from the **Actions** tab to reactivate.
 
 The workflows guard the upload step with `if: always() && hashFiles(...)`.
 If the SARIF was never produced (e.g. missing `SNYK_TOKEN`), the upload step
-is silently skipped — that's the intended behavior.
+is silently skipped: that's the intended behavior.

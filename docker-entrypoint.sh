@@ -1,5 +1,5 @@
 #!/bin/sh
-# GpuViewR — entrypoint
+# GpuViewR: entrypoint
 # Runs as root to fix permissions on /app/data, then drops to the node user.
 set -e
 

@@ -17,7 +17,7 @@ if (!config.jwtSecret || config.jwtSecret.length < 16) {
       'JWT_SECRET is required in production. Generate one with: openssl rand -base64 32'
     );
   }
-  console.warn('[config] JWT_SECRET is missing or too short — using a dev fallback. DO NOT use in production.');
+  console.warn('[config] JWT_SECRET is missing or too short: using a dev fallback. DO NOT use in production.');
   config.jwtSecret = 'dev-only-insecure-secret-change-me-please-________________';
 }
 

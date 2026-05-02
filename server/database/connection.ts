@@ -25,7 +25,7 @@ export function initializeDatabase(): Database.Database {
   db.pragma('synchronous = NORMAL');
   db.pragma('foreign_keys = ON');
 
-  // Schema — kept compatible with bigsk1/gpu-monitor's gpu_metrics table
+  // Schema: kept compatible with bigsk1/gpu-monitor's gpu_metrics table
   // so existing histories can be imported (see Docs/MIGRATION.md).
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (

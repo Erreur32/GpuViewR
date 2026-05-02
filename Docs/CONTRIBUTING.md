@@ -15,14 +15,14 @@ npm run dev
 
 ## Project structure
 
-- `server/` — Express + WebSocket backend (TypeScript, run via `tsx`)
-- `src/` — React 19 frontend
+- `server/`: Express + WebSocket backend (TypeScript, run via `tsx`)
+- `src/`: React 19 frontend
 - `Dockerfile` / `docker-entrypoint.sh` / `docker-compose.yml`
-- `update.sh` — end-user auto-update (pull / backup / restart)
+- `update.sh`: end-user auto-update (pull / backup / restart)
 - `scripts/`
-  - `update-version.sh` — bump version across the repo (with optional tag-push)
-  - `check-docker-build.js` — local sanity build of the Docker image
-- `Docs/` — extra documentation
+  - `update-version.sh`: bump version across the repo (with optional tag-push)
+  - `check-docker-build.js`: local sanity build of the Docker image
+- `Docs/`: extra documentation
 
 ## Conventions
 
@@ -36,7 +36,7 @@ npm run dev
 
 The release flow is automated by `scripts/update-version.sh`. From the repo root:
 
-### Quick path — bump + commit + tag + push in one command
+### Quick path: bump + commit + tag + push in one command
 
 ```bash
 ./scripts/update-version.sh 0.2.0 --tag-push
@@ -54,7 +54,7 @@ The script will:
 4. Create the annotated tag `vX.Y.Z`.
 5. Push both the branch and the tag to `origin`.
 
-### Manual path — bump first, then commit / tag / push yourself
+### Manual path: bump first, then commit / tag / push yourself
 
 ```bash
 ./scripts/update-version.sh 0.2.0

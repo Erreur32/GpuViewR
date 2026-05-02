@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# GpuViewR — auto-update script
+# GpuViewR: auto-update script
 # Usage:
 #   ./update.sh             pull latest image, backup data, restart
 #   ./update.sh --check     check whether a newer image is available
@@ -56,7 +56,7 @@ cmd_rollback() {
   local last_backup
   last_backup="$(ls -1t "${BACKUP_ROOT}"/data-*.tar.gz 2>/dev/null | head -n1 || true)"
   if [ -z "${last_backup}" ]; then
-    warn "No data backup found — rolling back image only"
+    warn "No data backup found: rolling back image only"
   else
     info "Restoring data from ${last_backup}"
     rm -rf "${DATA_DIR}"
@@ -78,7 +78,7 @@ cmd_update() {
     tar -czf "${stamp}" "${DATA_DIR}"
     ok "Backup written to ${stamp}"
   else
-    warn "Data dir empty — no backup needed"
+    warn "Data dir empty: no backup needed"
   fi
 
   if docker image inspect "${IMAGE}" >/dev/null 2>&1; then

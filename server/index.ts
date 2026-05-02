@@ -102,7 +102,7 @@ function printBoot(): void {
 
   // In Docker, DASHBOARD_PORT is the host port mapped to the container's PORT.
   // The banner must show that *external* port to be openable from a browser
-  // (the container-internal port — config.port — would be unreachable from the host).
+  // (the container-internal port: config.port: would be unreachable from the host).
   const dashboardPort = parseInt(process.env.DASHBOARD_PORT || String(config.port), 10);
 
   // In dev, the user opens Vite (5181 by default); in Docker prod, Express serves dist/ directly.
@@ -114,7 +114,7 @@ function printBoot(): void {
   let wsUrl: string;
 
   if (publicUrl && isProd) {
-    // Reverse-proxy / public domain configured — use it for everything.
+    // Reverse-proxy / public domain configured: use it for everything.
     frontendWeb = publicUrl;
     frontendLocal = publicUrl;
     backendApi = publicUrl;
@@ -127,13 +127,13 @@ function printBoot(): void {
     backendApi = frontendWeb;
     wsUrl = frontendWeb.replace(/^http/, 'ws') + '/ws/gpu';
   } else if (isProd) {
-    // Bare-metal `npm start` — Express serves the bundle directly on PORT.
+    // Bare-metal `npm start`: Express serves the bundle directly on PORT.
     frontendWeb = `http://${ip}:${config.port}`;
     frontendLocal = `http://localhost:${config.port}`;
     backendApi = frontendWeb;
     wsUrl = frontendWeb.replace(/^http/, 'ws') + '/ws/gpu';
   } else {
-    // npm run dev — Vite on VITE_PORT, backend on config.port, both on the dev box.
+    // npm run dev: Vite on VITE_PORT, backend on config.port, both on the dev box.
     frontendWeb = `http://${ip}:${vitePort}`;
     frontendLocal = `http://localhost:${vitePort}`;
     backendApi = `http://${ip}:${config.port}`;

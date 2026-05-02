@@ -5,13 +5,13 @@
 #          ./scripts/update-version.sh <new_version> --tag-push
 #
 # Updated files:
-#   1. package.json                            — "version" field
-#   2. package-lock.json                       — root + packages."".version
-#   3. src/components/layout/Header.tsx        — VERSION constant
-#   4. README.md                               — GpuViewR-vX.Y.Z badges & links
+#   1. package.json                           : "version" field
+#   2. package-lock.json                      : root + packages."".version
+#   3. src/components/layout/Header.tsx       : VERSION constant
+#   4. README.md                              : GpuViewR-vX.Y.Z badges & links
 #
 # Commit message file (should be edited before committing):
-#      commit-message.txt — used by git commit -F commit-message.txt
+#      commit-message.txt: used by git commit -F commit-message.txt
 #
 # Options:
 #   --tag-push   After bump, commit using commit-message.txt, create tag, push branch & tag.
@@ -113,7 +113,7 @@ SEMVER_PATTERN='[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*'
 CURRENT_ESC=$(echo "$CURRENT" | sed 's/\./\\./g')
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  VERSION UPDATES — skip if version already matches
+#  VERSION UPDATES: skip if version already matches
 # ═════════════════════════════════════════════════════════════════════════════
 
 if [ "$NEW" != "$CURRENT" ]; then
@@ -142,7 +142,7 @@ else
   echo -e "  ${Y}○${R} package-lock.json                  ${Y}(not found, run npm install later)${R}"
 fi
 
-# ── 3. src/components/layout/Header.tsx — VERSION constant ──────────────────
+# ── 3. src/components/layout/Header.tsx: VERSION constant ──────────────────
 if [ -f "$HEADER_TSX" ]; then
   sedi "$HEADER_TSX" "s/const VERSION = 'v${SEMVER_PATTERN}';/const VERSION = 'v$NEW';/"
   echo -e "  ${G}✓${R} src/components/layout/Header.tsx   ${C}(VERSION = 'v$NEW')${R}"
@@ -150,7 +150,7 @@ else
   echo -e "  ${RED}✗${R} src/components/layout/Header.tsx   ${RED}(file not found)${R}"
 fi
 
-# ── 4. README.md — badges and release links ────────────────────────────────
+# ── 4. README.md: badges and release links ────────────────────────────────
 if [ -f "$ROOT_README" ]; then
   # GpuViewR-vX.Y.Z (badge style, optional 'v' prefix)
   sedi "$ROOT_README" "s/GpuViewR-v\\?${SEMVER_PATTERN}/GpuViewR-v$NEW/g"
@@ -163,7 +163,7 @@ else
   echo -e "  ${RED}✗${R} README.md                          ${RED}(file not found)${R}"
 fi
 
-# ── 5. sonar-project.properties — projectVersion ────────────────────────────
+# ── 5. sonar-project.properties: projectVersion ────────────────────────────
 if [ -f "$SONAR_PROPS" ]; then
   sedi "$SONAR_PROPS" "s/sonar\.projectVersion=.*/sonar.projectVersion=$NEW/"
   echo -e "  ${G}✓${R} sonar-project.properties           ${C}(sonar.projectVersion=$NEW)${R}"
@@ -171,14 +171,14 @@ else
   echo -e "  ${Y}○${R} sonar-project.properties           ${Y}(not found, skipped)${R}"
 fi
 
-# ── commit-message.txt — show status ────────────────────────────────────────
+# ── commit-message.txt: show status ────────────────────────────────────────
 echo ""
 echo -e "  ${B}── Commit message file ──${R}"
 if [ -f "$COMMIT_MSG_FILE" ]; then
   if grep -q "v${NEW}" "$COMMIT_MSG_FILE" 2>/dev/null; then
-    echo -e "  ${G}✓${R} commit-message.txt       ${C}(already contains v${NEW} — ready to use)${R}"
+    echo -e "  ${G}✓${R} commit-message.txt       ${C}(already contains v${NEW}: ready to use)${R}"
   else
-    echo -e "  ${Y}⚠${R} commit-message.txt       ${Y}(exists but does NOT mention v${NEW} — update it!)${R}"
+    echo -e "  ${Y}⚠${R} commit-message.txt       ${Y}(exists but does NOT mention v${NEW}: update it!)${R}"
   fi
 else
   cat > "$COMMIT_MSG_FILE" << CMEOF
@@ -187,7 +187,7 @@ release: v${NEW}
 - <change 1>
 - <change 2>
 CMEOF
-  echo -e "  ${G}✓${R} commit-message.txt       ${C}(generated template — edit before committing)${R}"
+  echo -e "  ${G}✓${R} commit-message.txt       ${C}(generated template: edit before committing)${R}"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
@@ -221,7 +221,7 @@ do_commit_tag_push() {
   local tag_name="v$NEW"
 
   if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-    echo -e "  ${B}Uncommitted changes found — committing...${R}"
+    echo -e "  ${B}Uncommitted changes found: committing...${R}"
     git add -A
 
     if [ -f "$COMMIT_MSG_FILE" ] && grep -q "v${NEW}\|${NEW}" "$COMMIT_MSG_FILE" 2>/dev/null; then
@@ -230,11 +230,11 @@ do_commit_tag_push() {
     else
       git commit -m "release: v$NEW" || { echo -e "${RED}Commit failed.${R}"; return 1; }
       echo -e "  ${G}✓${R} Committed with generic message ${C}\"release: v$NEW\"${R}"
-      echo -e "  ${Y}⚠${R} ${Y}commit-message.txt was missing or outdated — used fallback message${R}"
+      echo -e "  ${Y}⚠${R} ${Y}commit-message.txt was missing or outdated: used fallback message${R}"
     fi
     echo ""
   else
-    echo -e "  ${G}✓${R} Working tree clean — no commit needed."
+    echo -e "  ${G}✓${R} Working tree clean: no commit needed."
     echo ""
   fi
 
@@ -253,7 +253,7 @@ do_commit_tag_push() {
   echo -e "  ${G}✓${R} Branch ${C}${branch}${R} pushed."
 
   if git ls-remote origin "refs/tags/$tag_name" 2>/dev/null | grep -q .; then
-    echo -e "  ${Y}○${R} Tag ${C}${tag_name}${R} already exists on remote — skip."
+    echo -e "  ${Y}○${R} Tag ${C}${tag_name}${R} already exists on remote: skip."
   else
     echo -e "  ${B}Pushing tag ${C}${tag_name}${R} ...${R}"
     if ! git push origin "$tag_name"; then

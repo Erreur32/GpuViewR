@@ -66,7 +66,7 @@ class GpuCollector extends EventEmitter {
     if (this.timer) return;
     this.checkNvidiaSmi();
     if (!this.nvidiaSmiAvailable) {
-      logger.warn('gpu', 'nvidia-smi not available — collector disabled (UI will show no data)');
+      logger.warn('gpu', 'nvidia-smi not available: collector disabled (UI will show no data)');
       return;
     }
     logger.success('gpu', `Collector started (tick=${config.gpuTickMs}ms)`);

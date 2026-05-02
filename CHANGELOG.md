@@ -5,7 +5,7 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.1] — 2026-05-02
+## [0.1.1] - 2026-05-02
 
 First public release of GpuViewR. From-scratch rewrite of
 [bigsk1/gpu-monitor](https://github.com/bigsk1/gpu-monitor) using a modern
@@ -33,14 +33,14 @@ Docker image, multi-arch (amd64 + arm64), Node 22 Alpine.
   the transitive `@mapbox/node-pre-gyp` → `tar` chain. Dependabot was
   unable to apply the `tar` security advisory because `bcrypt@5.1.1` pinned
   `tar@^6.x` while the advisory required `tar@7.5.11`. bcryptjs has no
-  native build, no `node-pre-gyp`, and no `tar` dependency — `npm ls tar`
+  native build, no `node-pre-gyp`, and no `tar` dependency: `npm ls tar`
   is now empty.
 - Added security & quality CI workflows:
-  - `codeql.yml` — JavaScript/TypeScript SAST (push, PR, weekly schedule)
-  - `scorecard.yml` — OpenSSF Scorecard (publishes to scorecard.dev)
-  - `snyk.yml` — Snyk Code (SAST), Snyk Open Source (deps), Snyk Container
+  - `codeql.yml`: JavaScript/TypeScript SAST (push, PR, weekly schedule)
+  - `scorecard.yml`: OpenSSF Scorecard (publishes to scorecard.dev)
+  - `snyk.yml`: Snyk Code (SAST), Snyk Open Source (deps), Snyk Container
     (Docker image), severity ≥ high
-  - `sonarcloud.yml` — SonarCloud quality gate (uses `sonar-project.properties`)
+  - `sonarcloud.yml`: SonarCloud quality gate (uses `sonar-project.properties`)
 - Added `.github/dependabot.yml`: weekly grouped npm bumps + GitHub Actions
   + Docker base image, all on Monday morning Europe/Paris.
 - Added `.github/workflows/SETUP.md` documenting how to wire `SNYK_TOKEN`
@@ -69,7 +69,7 @@ Docker image, multi-arch (amd64 + arm64), Node 22 Alpine.
   transport, Collector, Storage, Frontend, Charts, Theming, Gauges,
   Multi-GPU, Authentication, Alerts, Server logs, i18n, Update flow,
   Image).
-- Removed the *Architecture* file-tree section from the README — it was
+- Removed the *Architecture* file-tree section from the README: it was
   developer-facing noise that drifted out of sync each time a file moved.
 - Default ports moved off the originals to avoid collisions with sibling
   Docker stacks (probed against the host first):
@@ -124,7 +124,7 @@ Docker image, multi-arch (amd64 + arm64), Node 22 Alpine.
   Release, GHCR.
 
 ### Credits
-- Project foundation inspired by [bigsk1/gpu-monitor](https://github.com/bigsk1/gpu-monitor)
-  — original data collection approach, SQLite schema, Docker packaging.
+- Project foundation inspired by [bigsk1/gpu-monitor](https://github.com/bigsk1/gpu-monitor):
+  original data collection approach, SQLite schema, Docker packaging.
 - Boot banner, release script and CI workflow patterns mirrored from
   [Erreur32/LogviewR](https://github.com/Erreur32/LogviewR).

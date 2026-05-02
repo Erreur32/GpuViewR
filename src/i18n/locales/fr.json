@@ -25,7 +25,7 @@
   "dashboard": {
     "live": "LIVE",
     "offline": "HORS LIGNE",
-    "no_gpu": "Aucun GPU détecté — vérifiez que nvidia-smi est disponible dans le conteneur.",
+    "no_gpu": "Aucun GPU détecté: vérifiez que nvidia-smi est disponible dans le conteneur.",
     "history": "Performance en direct",
     "view_arc": "Jauges",
     "view_bar": "Barres",
@@ -130,7 +130,7 @@
   },
   "updates": {
     "available_title": "GpuViewR {{version}} est disponible",
-    "available_subtitle": "Vous utilisez {{current}} — la dernière version est {{latest}}.",
+    "available_subtitle": "Vous utilisez {{current}}: la dernière version est {{latest}}.",
     "see_details": "Détails",
     "copy_command": "Copier la commande",
     "modal_title": "Mise à jour vers GpuViewR {{version}}",

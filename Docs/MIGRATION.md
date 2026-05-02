@@ -3,7 +3,7 @@
 GpuViewR is a from-scratch reimplementation but preserves the **`gpu_metrics`
 SQLite schema** so existing histories can be imported optionally.
 
-## Option A — Fresh start (recommended)
+## Option A: Fresh start (recommended)
 
 Simplest path. Stop the old container, start GpuViewR, register the first user.
 
@@ -16,11 +16,11 @@ cd ~/GpuViewR
 docker compose up -d
 ```
 
-Open `http://localhost:3010` — register the first account (becomes admin).
+Open `http://localhost:3010`: register the first account (becomes admin).
 You lose the old historical data, but you start clean on the new schema
 (extra columns: gpu_index, fan_speed, clocks).
 
-## Option B — Import old history
+## Option B: Import old history
 
 The old DB lives at `<old-dir>/history/gpu_metrics.db`. Run the importer once:
 
@@ -51,7 +51,7 @@ DETACH DATABASE legacy;
 SQL
 ```
 
-Then start GpuViewR — your old history is now visible in the dashboard.
+Then start GpuViewR: your old history is now visible in the dashboard.
 
 ## Port and environment changes
 

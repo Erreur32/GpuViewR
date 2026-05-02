@@ -69,7 +69,7 @@ export default function Dashboard() {
       <header className="flex items-baseline gap-3 flex-wrap">
         <h2 className="text-xl font-semibold" style={{ color: 'var(--gv-text)' }}>{active.name}</h2>
         <span className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
-          GPU #{active.gpu_index} · driver {active.driver_version || '—'}
+          GPU #{active.gpu_index} · driver {active.driver_version || '-'}
         </span>
       </header>
 

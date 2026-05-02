@@ -115,6 +115,6 @@ function Cell({ label, value, unit, loading, bold }: { label: string; value: num
 }
 
 function fmt(v: number | undefined | null, unit: string): string {
-  if (v === undefined || v === null) return '—';
+  if (v === undefined || v === null) return '-';
   return v.toLocaleString(undefined, { maximumFractionDigits: v < 10 ? 1 : 0 }) + unit;
 }

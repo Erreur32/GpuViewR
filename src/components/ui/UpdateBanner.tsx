@@ -71,7 +71,7 @@ export default function UpdateBanner() {
 
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Stat label={t('updates.current')} value={result.currentVersion} />
-              <Stat label={t('updates.latest')} value={result.latestVersion ?? '—'} accent />
+              <Stat label={t('updates.latest')} value={result.latestVersion ?? '-'} accent />
             </div>
 
             <section>
@@ -105,9 +105,9 @@ export default function UpdateBanner() {
                 </button>
               </div>
               <ul className="mt-3 text-xs space-y-1" style={{ color: 'var(--gv-text-muted)' }}>
-                <li>• <code>./update.sh</code> — {t('updates.help_pull')}</li>
-                <li>• <code>./update.sh --check</code> — {t('updates.help_check')}</li>
-                <li>• <code>./update.sh --rollback</code> — {t('updates.help_rollback')}</li>
+                <li>• <code>./update.sh</code>: {t('updates.help_pull')}</li>
+                <li>• <code>./update.sh --check</code>: {t('updates.help_check')}</li>
+                <li>• <code>./update.sh --rollback</code>: {t('updates.help_rollback')}</li>
               </ul>
             </section>
 

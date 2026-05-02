@@ -39,7 +39,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const r = await api<{ hasUsers: boolean }>('/auth/status');
       set({ hasUsers: r.hasUsers });
     } catch {
-      // ignore — if API unreachable the login page will surface it
+      // ignore: if API unreachable the login page will surface it
     }
   },
 

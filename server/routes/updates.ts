@@ -5,7 +5,7 @@ import { updateService } from '../services/updateService.js';
 const router = Router();
 router.use(requireAuth);
 
-/** GET /api/updates/check — returns latest available version (cached unless ?force=true). */
+/** GET /api/updates/check: returns latest available version (cached unless ?force=true). */
 router.get('/check', async (req, res, next) => {
   try {
     const force = req.query.force === 'true';
@@ -16,12 +16,12 @@ router.get('/check', async (req, res, next) => {
   }
 });
 
-/** GET /api/updates/config — current update-checker config (enabled / frequency). */
+/** GET /api/updates/config: current update-checker config (enabled / frequency). */
 router.get('/config', (_req, res) => {
   res.json({ config: updateService.getConfig() });
 });
 
-/** PATCH /api/updates/config — admin-only, change enabled or frequencyHours. */
+/** PATCH /api/updates/config: admin-only, change enabled or frequencyHours. */
 router.patch('/config', requireAdmin, (req, res) => {
   const body = req.body || {};
   const patch: Partial<{ enabled: boolean; frequencyHours: number }> = {};

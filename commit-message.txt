@@ -1,4 +1,4 @@
-release: v0.1.1 — first public release
+release: v0.1.1, first public release
 
 GpuViewR is a from-scratch rewrite of bigsk1/gpu-monitor with a modern
 TypeScript stack (React 19 + Vite + TailwindCSS + uPlot on the front;

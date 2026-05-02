@@ -13,7 +13,7 @@ import { logger } from '../utils/logger.js';
 interface RuleState {
   /** epoch (s) at which the threshold first became crossed; 0 = not crossed */
   crossedSince: number;
-  /** epoch (s) at which we last fired — for cooldown */
+  /** epoch (s) at which we last fired: for cooldown */
   lastFired: number;
   /** currently in firing state */
   firing: boolean;

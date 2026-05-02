@@ -9,7 +9,7 @@ export interface AlertRule {
   metric: AlertMetric;
   condition: AlertCondition;
   threshold: number;
-  /** Sustain duration in seconds — value must stay above/below threshold for this long */
+  /** Sustain duration in seconds: value must stay above/below threshold for this long */
   duration_s: number;
   gpu_index: number | null; // null = all GPUs
   enabled: 0 | 1;

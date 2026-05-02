@@ -41,7 +41,7 @@ data/
 .env.*
 !.env.example
 
-# Logs (root-only — must NOT match src/components/logs/)
+# Logs (root-only: must NOT match src/components/logs/)
 /logs
 *.log
 

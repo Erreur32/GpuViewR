@@ -204,7 +204,7 @@ export const updateService = {
           if (release.html_url) releaseUrl = release.html_url;
         }
       } catch {
-        // ignore — fall back to local CHANGELOG
+        // ignore: fall back to local CHANGELOG
       }
       if (!releaseNotes) releaseNotes = readChangelogSection(latestVersion);
       if (!releaseUrl) releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/v${latestVersion}`;

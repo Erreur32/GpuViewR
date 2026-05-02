@@ -1,5 +1,5 @@
 # ============================================================================
-# GpuViewR — example docker-compose for end users
+# GpuViewR: example docker-compose for end users
 # ============================================================================
 #
 # Drop this file in any directory (no need to clone the repo) and run:
@@ -36,13 +36,13 @@ services:
       - "${DASHBOARD_PORT:-7510}:3015"
 
     environment:
-      # Required — generate with: openssl rand -base64 32
+      # Required: generate with: openssl rand -base64 32
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required, see header for generation command}
 
       # Container port (must match the right-hand port mapping above).
       PORT: 3015
 
-      # Host port mapped to the container — used by the boot banner so the
+      # Host port mapped to the container: used by the boot banner so the
       # printed URL is openable from the host. Defaults to 7510.
       DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
 
@@ -66,14 +66,14 @@ services:
       # PUBLIC_URL: https://gpu.example.com
 
     volumes:
-      # SQLite DB (users + GPU history + alert rules/events) — persistent.
+      # SQLite DB (users + GPU history + alert rules/events): persistent.
       - ./data:/app/data
 
       # Optional: enable browser sound alerts with your own .mp3.
       # Mount any audio file as /app/dist/alert.mp3 to override the default.
       # - ./alert.mp3:/app/dist/alert.mp3:ro
 
-    # GPU access — requires the NVIDIA Container Toolkit.
+    # GPU access: requires the NVIDIA Container Toolkit.
     deploy:
       resources:
         reservations:

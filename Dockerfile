@@ -1,5 +1,5 @@
 # ===========================================
-# GpuViewR — Node 22 Alpine (multi-stage)
+# GpuViewR: Node 22 Alpine (multi-stage)
 # ===========================================
 # Original gpu-monitor packaging strategy © bigsk1 (MIT)
 #   https://github.com/bigsk1/gpu-monitor
@@ -11,7 +11,7 @@ FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 WORKDIR /app
 
 # Build tools required to compile better-sqlite3 native module.
-# (bcrypt was replaced by bcryptjs to drop @mapbox/node-pre-gyp + tar — pure JS, no native build for auth.)
+# (bcrypt was replaced by bcryptjs to drop @mapbox/node-pre-gyp + tar: pure JS, no native build for auth.)
 RUN apk add --no-cache python3 make g++
 
 COPY package*.json ./

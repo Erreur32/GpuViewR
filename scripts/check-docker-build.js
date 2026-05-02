@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Local sanity check before pushing — runs `docker build` and reports image size.
+ * Local sanity check before pushing: runs `docker build` and reports image size.
  * Usage: node scripts/check-docker-build.js
  */
 import { spawnSync } from 'child_process';
@@ -19,8 +19,8 @@ const inspect = spawnSync('docker', ['image', 'inspect', TAG, '--format', '{{.Si
 });
 const size = parseInt((inspect.stdout || '0').trim(), 10);
 const mb = (size / 1024 / 1024).toFixed(1);
-console.log(`✓ Build OK — image size: ${mb} MB (${TAG})`);
+console.log(`✓ Build OK: image size: ${mb} MB (${TAG})`);
 
 if (size > 250 * 1024 * 1024) {
-  console.warn(`! Image is larger than 250 MB — consider trimming dependencies`);
+  console.warn(`! Image is larger than 250 MB: consider trimming dependencies`);
 }
