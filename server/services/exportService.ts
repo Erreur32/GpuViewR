@@ -5,6 +5,93 @@ import { AppConfigRepo, ensureAppConfigSchema } from '../database/models/AppConf
 import { logger } from '../utils/logger.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Exporter "what's published" catalogs
+//
+// These three constants are the single source of truth for the data each
+// exporter publishes. They drive both the actual publishing code (so we don't
+// drift) AND the dispatch-info panel surfaced in the UI.
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface PrometheusMetricSpec {
+  name: string;
+  help: string;
+  type: 'gauge' | 'counter';
+  unit: string;
+}
+
+export const PROMETHEUS_METRICS: readonly PrometheusMetricSpec[] = [
+  { name: 'gpuviewr_gpu_temperature_celsius', help: 'GPU core temperature (°C)', type: 'gauge', unit: '°C' },
+  { name: 'gpuviewr_gpu_utilization_ratio',   help: 'GPU compute utilization (0-1)', type: 'gauge', unit: 'ratio' },
+  { name: 'gpuviewr_gpu_memory_used_bytes',   help: 'GPU memory used (bytes)', type: 'gauge', unit: 'bytes' },
+  { name: 'gpuviewr_gpu_memory_total_bytes',  help: 'GPU memory total (bytes)', type: 'gauge', unit: 'bytes' },
+  { name: 'gpuviewr_gpu_power_watts',         help: 'GPU power draw (W)', type: 'gauge', unit: 'W' },
+  { name: 'gpuviewr_gpu_fan_speed_ratio',     help: 'GPU fan speed (0-1)', type: 'gauge', unit: 'ratio' },
+  { name: 'gpuviewr_gpu_clock_graphics_hz',   help: 'GPU graphics clock (Hz)', type: 'gauge', unit: 'Hz' },
+  { name: 'gpuviewr_gpu_clock_memory_hz',     help: 'GPU memory clock (Hz)', type: 'gauge', unit: 'Hz' },
+] as const;
+
+export const MQTT_PAYLOAD_KEYS = [
+  'name', 'temperature', 'utilization', 'memory_used', 'memory_total',
+  'power', 'fan_speed', 'clock_graphics', 'clock_memory', 'timestamp',
+] as const;
+
+export interface HaSensorSpec { key: string; name: string; unit: string; cls?: string }
+export const MQTT_HA_SENSORS: readonly HaSensorSpec[] = [
+  { key: 'temperature',    name: 'Temperature',  unit: '°C',  cls: 'temperature' },
+  { key: 'utilization',    name: 'Utilization',  unit: '%' },
+  { key: 'memory_used',    name: 'Memory used',  unit: 'MiB' },
+  { key: 'power',          name: 'Power',        unit: 'W',   cls: 'power' },
+  { key: 'fan_speed',      name: 'Fan speed',    unit: '%' },
+  { key: 'clock_graphics', name: 'GPU clock',    unit: 'MHz' },
+  { key: 'clock_memory',   name: 'Memory clock', unit: 'MHz' },
+] as const;
+
+export const INFLUX_TAG_KEYS = ['gpu_index', 'name', 'uuid'] as const;
+export const INFLUX_FIELD_KEYS = [
+  'temperature', 'utilization', 'memory_used', 'memory_total',
+  'power', 'fan_speed', 'clock_graphics', 'clock_memory',
+] as const;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Dispatch info — what the UI's "what's being sent" panel renders
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface PrometheusDispatchInfo {
+  enabled: boolean;
+  endpoint: { method: 'GET'; path: string; url: string };
+  metrics: PrometheusMetricSpec[];
+}
+export interface MqttDispatchInfo {
+  enabled: boolean;
+  broker: string;
+  connected: boolean;
+  intervalSeconds: number;
+  stateTopicPattern: string;
+  resolvedStateTopics: string[];
+  payloadKeys: readonly string[];
+  haDiscovery:
+    | { enabled: false }
+    | {
+        enabled: true;
+        configTopicPattern: string;
+        sensors: HaSensorSpec[];
+      };
+}
+export interface InfluxDispatchInfo {
+  enabled: boolean;
+  writeUrl: string;
+  measurement: string;
+  intervalSeconds: number;
+  tagKeys: readonly string[];
+  fieldKeys: readonly string[];
+}
+export interface DispatchInfo {
+  prometheus: PrometheusDispatchInfo;
+  mqtt: MqttDispatchInfo;
+  influxdb: InfluxDispatchInfo;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -175,6 +262,64 @@ class ExportService {
     return this.latestSamples;
   }
 
+  /**
+   * Describe what each exporter is currently publishing so the Settings UI
+   * can show the active endpoint + exact list of metrics/topics/fields.
+   * `origin` is the request-side base URL (e.g. "http://gpuviewr.lan:3015"),
+   * used to build the Prometheus scrape URL since the server does not know
+   * its own externally-visible host on its own.
+   */
+  getDispatchInfo(origin: string): DispatchInfo {
+    const c = this.getConfigs();
+    const sampleIndices = this.latestSamples.map((s) => s.gpu_index);
+
+    const stateTopicPattern = `${c.mqtt.topicPrefix}/gpu<N>/state`;
+    const resolvedStateTopics = sampleIndices.map(
+      (i) => `${c.mqtt.topicPrefix}/gpu${i}/state`,
+    );
+
+    const writeUrl = c.influxdb.url
+      ? `${c.influxdb.url.replace(/\/$/, '')}/api/v2/write?org=${encodeURIComponent(c.influxdb.org)}&bucket=${encodeURIComponent(c.influxdb.bucket)}&precision=s`
+      : '';
+
+    const promPath = '/metrics';
+    return {
+      prometheus: {
+        enabled: c.prometheus.enabled,
+        endpoint: {
+          method: 'GET',
+          path: promPath,
+          url: origin ? `${origin.replace(/\/$/, '')}${promPath}` : promPath,
+        },
+        metrics: [...PROMETHEUS_METRICS],
+      },
+      mqtt: {
+        enabled: c.mqtt.enabled,
+        broker: c.mqtt.url,
+        connected: !!this.mqttClient?.connected,
+        intervalSeconds: c.mqtt.intervalSeconds,
+        stateTopicPattern,
+        resolvedStateTopics,
+        payloadKeys: MQTT_PAYLOAD_KEYS,
+        haDiscovery: c.mqtt.haDiscovery
+          ? {
+              enabled: true,
+              configTopicPattern: 'homeassistant/sensor/gpuviewr_gpu<N>_<key>/config',
+              sensors: [...MQTT_HA_SENSORS],
+            }
+          : { enabled: false },
+      },
+      influxdb: {
+        enabled: c.influxdb.enabled,
+        writeUrl,
+        measurement: c.influxdb.measurement,
+        intervalSeconds: c.influxdb.intervalSeconds,
+        tagKeys: INFLUX_TAG_KEYS,
+        fieldKeys: INFLUX_FIELD_KEYS,
+      },
+    };
+  }
+
   // ────────────────────────────────────────────────────────────────────────
   // Apply / lifecycle
   // ────────────────────────────────────────────────────────────────────────
@@ -243,6 +388,8 @@ class ExportService {
     if (!this.mqttClient || !this.mqttClient.connected) return;
     for (const s of this.latestSamples) {
       const base = `${cfg.topicPrefix}/gpu${s.gpu_index}`;
+      // Keys must stay in sync with MQTT_PAYLOAD_KEYS (drives the Settings
+      // "what's being sent" panel).
       const payload = {
         name: s.name,
         temperature: s.temperature,
@@ -520,18 +667,12 @@ function buildInfluxLine(measurement: string, s: GpuSample): string {
 /** Build the Prometheus exposition (text/plain; version=0.0.4). */
 export function renderPrometheus(samples: GpuSample[]): string {
   const lines: string[] = [];
-  const help = (n: string, h: string, t: string) => {
-    lines.push(`# HELP ${n} ${h}`);
-    lines.push(`# TYPE ${n} ${t}`);
-  };
-  help('gpuviewr_gpu_temperature_celsius', 'GPU core temperature (°C)', 'gauge');
-  help('gpuviewr_gpu_utilization_ratio', 'GPU compute utilization (0-1)', 'gauge');
-  help('gpuviewr_gpu_memory_used_bytes', 'GPU memory used (bytes)', 'gauge');
-  help('gpuviewr_gpu_memory_total_bytes', 'GPU memory total (bytes)', 'gauge');
-  help('gpuviewr_gpu_power_watts', 'GPU power draw (W)', 'gauge');
-  help('gpuviewr_gpu_fan_speed_ratio', 'GPU fan speed (0-1)', 'gauge');
-  help('gpuviewr_gpu_clock_graphics_hz', 'GPU graphics clock (Hz)', 'gauge');
-  help('gpuviewr_gpu_clock_memory_hz', 'GPU memory clock (Hz)', 'gauge');
+  // HELP/TYPE block driven by PROMETHEUS_METRICS so the dispatch-info panel
+  // and the actual exposition stay in lockstep.
+  for (const m of PROMETHEUS_METRICS) {
+    lines.push(`# HELP ${m.name} ${m.help}`);
+    lines.push(`# TYPE ${m.name} ${m.type}`);
+  }
 
   // Prometheus label-value escaping: backslash → \\, quote → \", newline → \n.
   // Order matters: escape backslashes first, otherwise we'd escape the

@@ -200,19 +200,16 @@ emitted and a green toast confirms it.
   - **InfluxDB v2** line-protocol push (configurable URL / org / bucket / token)
   - **Webhook** JSON push (POST/PUT, configurable URL, headers, interval)
   - Each exporter toggleable from `Settings > Exports & integrations`, with a "Send test" action
+- [x] **Per-process GPU usage breakdown** (v0.1.9, refined in v0.1.15) —
+  live PID / process name / VRAM table on the dashboard, polled every
+  2.5s via `GET /api/processes[?gpu=<i>]`, backed by a `nvidia-smi
+  --query-compute-apps` collector
+- [x] **Fan curve + fan stats** (v0.1.16)
 
 ### Planned
 
-- **Per-process GPU usage breakdown** — list the processes currently
-  using each GPU (PID, command name, used VRAM, compute %) via
-  `nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv`,
-  with a live table on the dashboard and optional alerts on a watched
-  process
-- Password reset CLI
-- CSV export of historical metrics
-- PWA (installable on mobile, offline shell)
-- Email alert dispatcher (browser + in-app already supported; webhook covers most external dispatch)
-- Multi-host fan-out (one GpuViewR aggregating remote agents)
+- **Multi-host fan-out** — one GpuViewR aggregating remote agents
+  (agent↔hub protocol, auth, shared schema)
 
 ---
 

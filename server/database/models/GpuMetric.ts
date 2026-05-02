@@ -76,6 +76,30 @@ export const GpuMetricRepository = {
       .all(gpuIndex, sinceEpoch) as GpuMetric[];
   },
 
+  /**
+   * Streaming variant for CSV export. Pass gpuIndex=null to fetch every GPU
+   * (ordered by gpu_index then time so all rows for one GPU stay grouped).
+   * Uses better-sqlite3 .iterate() so memory stays bounded for multi-day
+   * exports.
+   */
+  historyIterate(gpuIndex: number | null, sinceEpoch: number): IterableIterator<GpuMetric> {
+    const db = getDatabase();
+    const stmt = gpuIndex === null
+      ? db.prepare(
+          `SELECT * FROM gpu_metrics
+           WHERE timestamp_epoch >= ?
+           ORDER BY gpu_index ASC, timestamp_epoch ASC`,
+        )
+      : db.prepare(
+          `SELECT * FROM gpu_metrics
+           WHERE gpu_index = ? AND timestamp_epoch >= ?
+           ORDER BY timestamp_epoch ASC`,
+        );
+    return (gpuIndex === null
+      ? stmt.iterate(sinceEpoch)
+      : stmt.iterate(gpuIndex, sinceEpoch)) as IterableIterator<GpuMetric>;
+  },
+
   stats(gpuIndex: number, sinceEpoch: number) {
     return getDatabase()
       .prepare(

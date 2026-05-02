@@ -31,6 +31,13 @@ export default function AppFooter() {
   const aggPower = samples.length > 0
     ? Math.round(samples.reduce((acc, s) => acc + s.power, 0))
     : null;
+  // Average fan speed across GPUs that report it; skip if none expose fan_speed
+  // (some datacenter / mobile GPUs return null here, in which case we just hide
+  // the field rather than showing a misleading 0%).
+  const fanSamples = samples.filter((s) => s.fan_speed !== null && s.fan_speed !== undefined) as Array<{ fan_speed: number }>;
+  const aggFan = fanSamples.length > 0
+    ? Math.round(fanSamples.reduce((acc, s) => acc + s.fan_speed, 0) / fanSamples.length)
+    : null;
 
   return (
     <footer
@@ -77,7 +84,11 @@ export default function AppFooter() {
           {aggUtil !== null && (
             <Pill
               icon={<Activity className="w-3 h-3" style={{ color: 'var(--gv-accent)' }} />}
-              label={`${aggUtil}% · ${aggTemp}°C · ${aggPower}W`}
+              label={
+                aggFan !== null
+                  ? `${aggTemp}°C · ${aggUtil}% · ${aggFan}% · ${aggPower}W`
+                  : `${aggTemp}°C · ${aggUtil}% · ${aggPower}W`
+              }
               title={t('footer.aggregate_help')}
             />
           )}

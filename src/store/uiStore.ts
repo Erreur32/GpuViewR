@@ -57,6 +57,7 @@ const KEYS = {
   theme: 'gpuviewr.theme',
   view: 'gpuviewr.gauge_view',
   range: 'gpuviewr.range',
+  selectedGpu: 'gpuviewr.selected_gpu',
   sound: 'gpuviewr.sound',
   chartColors: 'gpuviewr.chart_colors',
   timeFormat: 'gpuviewr.time_format',
@@ -127,7 +128,10 @@ export const useUiStore = create<UiState>((set, get) => ({
     localStorage.setItem(KEYS.range, r);
     set({ range: r });
   },
-  setSelectedGpu: (i) => set({ selectedGpu: i }),
+  setSelectedGpu: (i) => {
+    try { localStorage.setItem(KEYS.selectedGpu, String(i)); } catch { /* ignore */ }
+    set({ selectedGpu: i });
+  },
   setSoundEnabled: (v) => {
     localStorage.setItem(KEYS.sound, v ? '1' : '0');
     set({ soundEnabled: v });
@@ -175,6 +179,8 @@ export const useUiStore = create<UiState>((set, get) => ({
       ? (rawRange as Range)
       : ((rawRange === '1m' || rawRange === '2m') ? 'live' : '1h');
     const sound = readLS(KEYS.sound, '0') === '1';
+    const rawGpu = Number.parseInt(readLS(KEYS.selectedGpu, '0'), 10);
+    const selectedGpu = Number.isFinite(rawGpu) && rawGpu >= 0 ? rawGpu : 0;
     const chartColors = readChartColors();
     const timeFormat = (readLS(KEYS.timeFormat, '24h') as TimeFormat) || '24h';
     const chartThresholds = readChartThresholds();
@@ -194,7 +200,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     }
     applyTheme(themeId);
     set({
-      themeId, gaugeView, range, soundEnabled: sound, chartColors: effectiveColors, timeFormat,
+      themeId, gaugeView, range, selectedGpu, soundEnabled: sound, chartColors: effectiveColors, timeFormat,
       chartThresholds, chartThresholdsEnabled, chartPaletteInitialized: initialized,
     });
   },

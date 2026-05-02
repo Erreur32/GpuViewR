@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Thermometer, Activity, MemoryStick, Zap, LayoutGrid, BarChart3 } from 'lucide-react';
+import { Thermometer, Activity, MemoryStick, Zap, Fan, LayoutGrid, BarChart3 } from 'lucide-react';
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
 import GaugeCard from './GaugeCard';
@@ -71,7 +71,7 @@ export default function Dashboard() {
         </span>
       </header>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <GaugeCard
           variant={gaugeView}
           label={t('dashboard.metrics.temperature')}
@@ -109,6 +109,19 @@ export default function Dashboard() {
           danger={92}
           icon={<MemoryStick className="w-4 h-4" />}
           history={series?.memory_used}
+          ts={active.timestamp_epoch}
+        />
+        <GaugeCard
+          variant={gaugeView}
+          label={t('dashboard.metrics.fan')}
+          value={active.fan_speed ?? 0}
+          displayValue={active.fan_speed === null || active.fan_speed === undefined ? 'N/A' : undefined}
+          unit="%"
+          max={100}
+          warn={75}
+          danger={90}
+          icon={<Fan className="w-4 h-4" />}
+          history={series?.fan_speed?.map((v) => v ?? 0)}
           ts={active.timestamp_epoch}
         />
         <GaugeCard

@@ -24,6 +24,48 @@ router.get('/history', (req, res) => {
   res.json({ gpuIndex, range, count: rows.length, history: rows });
 });
 
+// Streaming CSV export. `gpu=all` exports every GPU; otherwise a single GPU
+// index. Streamed via better-sqlite3 iterate() so memory stays bounded even
+// for multi-day exports.
+const CSV_COLUMNS = [
+  'gpu_index', 'timestamp', 'timestamp_epoch', 'temperature', 'utilization',
+  'memory_used', 'memory_total', 'power', 'fan_speed', 'clock_graphics', 'clock_memory',
+] as const;
+
+router.get('/history.csv', (req, res) => {
+  const gpuParam = String(req.query.gpu ?? '0');
+  const range = String(req.query.range ?? '24h');
+  const seconds = parseRange(range);
+  const since = Math.floor(Date.now() / 1000) - seconds;
+  const gpuIndex = gpuParam === 'all' ? null : Number.parseInt(gpuParam, 10);
+  if (gpuIndex !== null && !Number.isFinite(gpuIndex)) {
+    return res.status(400).json({ error: 'Invalid gpu parameter' });
+  }
+
+  const filename = `gpuviewr-${gpuParam === 'all' ? 'all' : `gpu${gpuIndex}`}-${range}-${Math.floor(Date.now() / 1000)}.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Cache-Control', 'no-store');
+  // Excel needs the BOM to read UTF-8 cleanly; harmless for everything else.
+  res.write('﻿');
+  res.write(CSV_COLUMNS.join(',') + '\n');
+
+  const iter = GpuMetricRepository.historyIterate(gpuIndex, since);
+  for (const row of iter) {
+    const r = row as unknown as Record<string, unknown>;
+    res.write(CSV_COLUMNS.map((c) => csvField(r[c])).join(',') + '\n');
+  }
+  res.end();
+});
+
+function csvField(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  const s = typeof v === 'string' ? v : String(v);
+  // Quote when the value contains a CSV special char; double internal quotes.
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 router.get('/stats', (req, res) => {
   const gpuIndex = Number.parseInt(String(req.query.gpu || '0'), 10);
   const range = String(req.query.range || '24h');

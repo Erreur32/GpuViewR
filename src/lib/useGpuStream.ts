@@ -41,7 +41,7 @@ function playAlertSound() {
 function maybeNotifyBrowser(title: string, body: string) {
   if (typeof Notification === 'undefined') return;
   if (Notification.permission === 'granted') {
-    try { new Notification(title, { body, icon: '/gpuviewr.svg' }); } catch { /* ignore */ }
+    try { new Notification(title, { body, icon: '/GPUViewR.png' }); } catch { /* ignore */ }
   }
 }
 

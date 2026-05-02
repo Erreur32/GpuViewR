@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import uPlot, { type AlignedData } from 'uplot';
 import { useTranslation } from 'react-i18next';
+import { Download } from 'lucide-react';
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
+import { notify } from '../../store/toastStore';
 import { api } from '../../lib/api';
 import { fmtClock, fmtDateTime } from '../../lib/time';
 
@@ -333,20 +335,13 @@ export default function LiveChart({ gpuIndex }: Props) {
   return (
     <div className="card p-4">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
-          {t('dashboard.history')}
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
+            {t('dashboard.history')}
+          </h3>
+          <CsvExportButton gpuIndex={gpuIndex} range={range} />
+        </div>
         <div className="flex items-center gap-3 text-xs">
-          <Chip
-            colorVar={chartColors.util ?? 'var(--gv-accent)'}
-            label={t('dashboard.metrics.utilization')}
-            value={fmt(display.util, '%')}
-            active={visible.util}
-            onClick={() => toggleSeries('util')}
-            onColorChange={(c) => setChartColor('util', c)}
-            onColorReset={() => setChartColor('util', null)}
-            isCustom={!!chartColors.util}
-          />
           <Chip
             colorVar={chartColors.temp ?? 'var(--gv-warn)'}
             label={t('dashboard.metrics.temperature')}
@@ -358,14 +353,14 @@ export default function LiveChart({ gpuIndex }: Props) {
             isCustom={!!chartColors.temp}
           />
           <Chip
-            colorVar={chartColors.pow ?? 'var(--gv-ok)'}
-            label={t('dashboard.metrics.power')}
-            value={fmt(display.pow, ' W')}
-            active={visible.pow}
-            onClick={() => toggleSeries('pow')}
-            onColorChange={(c) => setChartColor('pow', c)}
-            onColorReset={() => setChartColor('pow', null)}
-            isCustom={!!chartColors.pow}
+            colorVar={chartColors.util ?? 'var(--gv-accent)'}
+            label={t('dashboard.metrics.utilization')}
+            value={fmt(display.util, '%')}
+            active={visible.util}
+            onClick={() => toggleSeries('util')}
+            onColorChange={(c) => setChartColor('util', c)}
+            onColorReset={() => setChartColor('util', null)}
+            isCustom={!!chartColors.util}
           />
           <Chip
             colorVar={chartColors.mem ?? 'var(--gv-info)'}
@@ -386,6 +381,16 @@ export default function LiveChart({ gpuIndex }: Props) {
             onColorChange={(c) => setChartColor('fan', c)}
             onColorReset={() => setChartColor('fan', null)}
             isCustom={!!chartColors.fan}
+          />
+          <Chip
+            colorVar={chartColors.pow ?? 'var(--gv-ok)'}
+            label={t('dashboard.metrics.power')}
+            value={fmt(display.pow, ' W')}
+            active={visible.pow}
+            onClick={() => toggleSeries('pow')}
+            onColorChange={(c) => setChartColor('pow', c)}
+            onColorReset={() => setChartColor('pow', null)}
+            isCustom={!!chartColors.pow}
           />
           <span
             className="text-[10px] px-2 py-0.5 rounded-full"
@@ -439,15 +444,6 @@ export default function LiveChart({ gpuIndex }: Props) {
             <div className="font-semibold tabular-nums mb-1" style={{ color: 'var(--gv-text-muted)' }}>
               {fmtDateTime(cursor.t, timeFormat)}
             </div>
-            {visible.util && (
-              <div className="flex items-center justify-between gap-3">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.util ?? 'var(--gv-accent)' }} />
-                  {t('dashboard.metrics.utilization')}
-                </span>
-                <span className="font-semibold tabular-nums">{fmt(cursor.utilization, '%')}</span>
-              </div>
-            )}
             {visible.temp && (
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-1.5">
@@ -457,13 +453,13 @@ export default function LiveChart({ gpuIndex }: Props) {
                 <span className="font-semibold tabular-nums">{fmt(cursor.temperature, '°C')}</span>
               </div>
             )}
-            {visible.pow && (
+            {visible.util && (
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.pow ?? 'var(--gv-ok)' }} />
-                  {t('dashboard.metrics.power')}
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.util ?? 'var(--gv-accent)' }} />
+                  {t('dashboard.metrics.utilization')}
                 </span>
-                <span className="font-semibold tabular-nums">{fmt(cursor.power, ' W')}</span>
+                <span className="font-semibold tabular-nums">{fmt(cursor.utilization, '%')}</span>
               </div>
             )}
             {visible.mem && (
@@ -484,6 +480,15 @@ export default function LiveChart({ gpuIndex }: Props) {
                 <span className="font-semibold tabular-nums">{fmt(cursor.fan, '%')}</span>
               </div>
             )}
+            {visible.pow && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.pow ?? 'var(--gv-ok)' }} />
+                  {t('dashboard.metrics.power')}
+                </span>
+                <span className="font-semibold tabular-nums">{fmt(cursor.power, ' W')}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -493,6 +498,53 @@ export default function LiveChart({ gpuIndex }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+function CsvExportButton({ gpuIndex, range }: Readonly<{ gpuIndex: number; range: string }>) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const onClick = async () => {
+    setBusy(true);
+    try {
+      const token = localStorage.getItem('gpuviewr.token') || '';
+      const res = await fetch(`/api/gpu/history.csv?gpu=${gpuIndex}&range=${encodeURIComponent(range)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Prefer the server-suggested filename so date/range/gpu are preserved.
+      const dispo = res.headers.get('content-disposition') || '';
+      const m = /filename="([^"]+)"/.exec(dispo);
+      const fallback = `gpuviewr-gpu${gpuIndex}-${range}.csv`;
+      const filename = m ? m[1] : fallback;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      // Surface failures via the global toast store so the user gets feedback
+      // instead of a silent broken click.
+      notify('error', t('common.error'), (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      className="btn-ghost text-xs inline-flex items-center gap-1"
+      onClick={onClick}
+      disabled={busy}
+      title={t('dashboard.export_csv_help')}
+    >
+      <Download className="w-3.5 h-3.5" />
+      {busy ? '…' : 'CSV'}
+    </button>
   );
 }
 

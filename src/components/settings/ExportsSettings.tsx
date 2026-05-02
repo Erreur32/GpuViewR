@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Activity, Database, Webhook, RefreshCw, Save, PlayCircle, BellRing, BarChart3 } from 'lucide-react';
+import { Send, Activity, Database, Webhook, RefreshCw, Save, PlayCircle, BellRing, BarChart3, Eye } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
@@ -36,10 +36,46 @@ interface AllConfigs {
   webhook: WebhookConfig;
 }
 
+interface PrometheusDispatchInfo {
+  enabled: boolean;
+  endpoint: { method: 'GET'; path: string; url: string };
+  metrics: Array<{ name: string; help: string; type: 'gauge' | 'counter'; unit: string }>;
+}
+interface MqttDispatchInfo {
+  enabled: boolean;
+  broker: string;
+  connected: boolean;
+  intervalSeconds: number;
+  stateTopicPattern: string;
+  resolvedStateTopics: string[];
+  payloadKeys: string[];
+  haDiscovery:
+    | { enabled: false }
+    | {
+        enabled: true;
+        configTopicPattern: string;
+        sensors: Array<{ key: string; name: string; unit: string; cls?: string }>;
+      };
+}
+interface InfluxDispatchInfo {
+  enabled: boolean;
+  writeUrl: string;
+  measurement: string;
+  intervalSeconds: number;
+  tagKeys: string[];
+  fieldKeys: string[];
+}
+interface DispatchInfo {
+  prometheus: PrometheusDispatchInfo;
+  mqtt: MqttDispatchInfo;
+  influxdb: InfluxDispatchInfo;
+}
+
 export default function ExportsSettings() {
   const { t } = useTranslation();
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
   const [cfg, setCfg] = useState<AllConfigs | null>(null);
+  const [info, setInfo] = useState<DispatchInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [sub, setSub] = useState<SubTab>(() => {
     const saved = localStorage.getItem('gpuviewr.exportsSubTab') as SubTab | null;
@@ -52,6 +88,9 @@ export default function ExportsSettings() {
 
   const load = () => {
     api<AllConfigs>('/exports').then(setCfg).catch((e: Error) => notify('error', t('common.error'), e.message));
+    // Best-effort; the dispatch panel just stays empty if this fails (e.g. on a
+    // build before the route shipped). Don't surface an error toast for it.
+    api<DispatchInfo>('/exports/info').then(setInfo).catch(() => setInfo(null));
   };
   useEffect(() => { load(); }, []);
 
@@ -124,9 +163,9 @@ export default function ExportsSettings() {
 
       {sub === 'metrics' && (
         <div className="space-y-4">
-          <PrometheusBlock cfg={cfg.prometheus} disabled={!isAdmin || busy} onSave={(p) => save('prometheus', p)} />
-          <MqttBlock cfg={cfg.mqtt} disabled={!isAdmin || busy} onSave={(p) => save('mqtt', p)} onTest={() => testIt('mqtt')} />
-          <InfluxBlock cfg={cfg.influxdb} disabled={!isAdmin || busy} onSave={(p) => save('influxdb', p)} onTest={() => testIt('influxdb')} />
+          <PrometheusBlock cfg={cfg.prometheus} info={info?.prometheus} disabled={!isAdmin || busy} onSave={(p) => save('prometheus', p)} />
+          <MqttBlock cfg={cfg.mqtt} info={info?.mqtt} disabled={!isAdmin || busy} onSave={(p) => save('mqtt', p)} onTest={() => testIt('mqtt')} />
+          <InfluxBlock cfg={cfg.influxdb} info={info?.influxdb} disabled={!isAdmin || busy} onSave={(p) => save('influxdb', p)} onTest={() => testIt('influxdb')} />
         </div>
       )}
     </section>
@@ -163,8 +202,8 @@ function Block({ icon, title, children }: Readonly<{ icon: React.ReactNode; titl
   );
 }
 
-function PrometheusBlock({ cfg, disabled, onSave }: Readonly<{
-  cfg: PrometheusConfig; disabled?: boolean; onSave: (c: PrometheusConfig) => void;
+function PrometheusBlock({ cfg, info, disabled, onSave }: Readonly<{
+  cfg: PrometheusConfig; info?: PrometheusDispatchInfo; disabled?: boolean; onSave: (c: PrometheusConfig) => void;
 }>) {
   const { t } = useTranslation();
   const [enabled, setEnabled] = useState(cfg.enabled);
@@ -178,12 +217,25 @@ function PrometheusBlock({ cfg, disabled, onSave }: Readonly<{
       <button className="btn-primary" disabled={disabled} onClick={() => onSave({ enabled })}>
         <Save className="w-4 h-4" /> {t('common.save')}
       </button>
+      {cfg.enabled && info && (
+        <DispatchPanel
+          rows={[
+            { label: t('settings.exports_info_endpoint'), value: <code>{info.endpoint.method} {info.endpoint.url}</code> },
+            { label: t('settings.exports_info_metrics_count'), value: String(info.metrics.length) },
+          ]}
+          listTitle={t('settings.exports_info_metrics')}
+          listItems={info.metrics.map((m) => ({
+            primary: <code>{m.name}</code>,
+            secondary: `${m.help} · ${m.type}`,
+          }))}
+        />
+      )}
     </Block>
   );
 }
 
-function MqttBlock({ cfg, disabled, onSave, onTest }: Readonly<{
-  cfg: MqttConfig; disabled?: boolean; onSave: (c: MqttConfig) => void; onTest: () => void;
+function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
+  cfg: MqttConfig; info?: MqttDispatchInfo; disabled?: boolean; onSave: (c: MqttConfig) => void; onTest: () => void;
 }>) {
   const { t } = useTranslation();
   const [s, setS] = useState(cfg);
@@ -212,12 +264,47 @@ function MqttBlock({ cfg, disabled, onSave, onTest }: Readonly<{
           <PlayCircle className="w-4 h-4" /> {t('settings.exports_test')}
         </button>
       </div>
+      {cfg.enabled && info && (
+        <DispatchPanel
+          rows={[
+            { label: t('settings.exports_info_broker'), value: <code>{info.broker || '—'}</code> },
+            {
+              label: t('settings.exports_info_status'),
+              value: (
+                <span style={{ color: info.connected ? 'var(--gv-ok)' : 'var(--gv-warn)' }}>
+                  {info.connected ? t('settings.exports_info_connected') : t('settings.exports_info_disconnected')}
+                </span>
+              ),
+            },
+            { label: t('settings.exports_info_interval'), value: `${info.intervalSeconds}s` },
+            { label: t('settings.exports_info_topic_pattern'), value: <code>{info.stateTopicPattern}</code> },
+            ...(info.resolvedStateTopics.length > 0
+              ? [{ label: t('settings.exports_info_resolved_topics'), value: <code>{info.resolvedStateTopics.join(', ')}</code> }]
+              : []),
+          ]}
+          listTitle={t('settings.exports_info_payload_keys')}
+          listItems={info.payloadKeys.map((k) => ({ primary: <code>{k}</code> }))}
+          extra={info.haDiscovery.enabled ? (
+            <DispatchPanel
+              rows={[
+                { label: t('settings.exports_info_ha_topic_pattern'), value: <code>{info.haDiscovery.configTopicPattern}</code> },
+              ]}
+              listTitle={t('settings.exports_info_ha_sensors')}
+              listItems={info.haDiscovery.sensors.map((s) => ({
+                primary: <code>{s.key}</code>,
+                secondary: `${s.name} · ${s.unit}${s.cls ? ` · class=${s.cls}` : ''}`,
+              }))}
+              embedded
+            />
+          ) : undefined}
+        />
+      )}
     </Block>
   );
 }
 
-function InfluxBlock({ cfg, disabled, onSave, onTest }: Readonly<{
-  cfg: InfluxConfig; disabled?: boolean; onSave: (c: InfluxConfig) => void; onTest: () => void;
+function InfluxBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
+  cfg: InfluxConfig; info?: InfluxDispatchInfo; disabled?: boolean; onSave: (c: InfluxConfig) => void; onTest: () => void;
 }>) {
   const { t } = useTranslation();
   const [s, setS] = useState(cfg);
@@ -243,6 +330,18 @@ function InfluxBlock({ cfg, disabled, onSave, onTest }: Readonly<{
           <PlayCircle className="w-4 h-4" /> {t('settings.exports_test')}
         </button>
       </div>
+      {cfg.enabled && info && (
+        <DispatchPanel
+          rows={[
+            { label: t('settings.exports_info_write_url'), value: <code className="break-all">{info.writeUrl || '—'}</code> },
+            { label: t('settings.exports_inf_measurement'), value: <code>{info.measurement}</code> },
+            { label: t('settings.exports_info_interval'), value: `${info.intervalSeconds}s` },
+            { label: t('settings.exports_info_tag_keys'), value: <code>{info.tagKeys.join(', ')}</code> },
+          ]}
+          listTitle={t('settings.exports_info_field_keys')}
+          listItems={info.fieldKeys.map((k) => ({ primary: <code>{k}</code> }))}
+        />
+      )}
     </Block>
   );
 }
@@ -335,16 +434,27 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
               <option value="PUT">PUT</option>
             </select>
           </div>
-          {s.mode === 'metrics' && (
-            <Field
-              label={t('settings.exports_interval')}
-              value={String(s.intervalSeconds)}
-              onChange={(v) => setS({ ...s, intervalSeconds: Number.parseInt(v, 10) || 30 })}
-              disabled={disabled}
-              type="number"
-            />
-          )}
         </div>
+      )}
+
+      {/* Interval applies to every webhook type in metrics mode (the
+          server schedules the push regardless of generic/discord/telegram). */}
+      {s.mode === 'metrics' && (
+        <Field
+          label={t('settings.exports_interval')}
+          value={String(s.intervalSeconds)}
+          onChange={(v) => setS({ ...s, intervalSeconds: Number.parseInt(v, 10) || 30 })}
+          disabled={disabled}
+          type="number"
+        />
+      )}
+
+      {s.type === 'generic' && (
+        <HeadersEditor
+          headers={s.headers ?? {}}
+          disabled={disabled}
+          onChange={(next) => setS({ ...s, headers: next })}
+        />
       )}
 
       <div className="flex gap-2">
@@ -356,6 +466,133 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
         </button>
       </div>
     </Block>
+  );
+}
+
+function HeadersEditor({ headers, disabled, onChange }: Readonly<{
+  headers: Record<string, string>;
+  disabled?: boolean;
+  onChange: (next: Record<string, string>) => void;
+}>) {
+  const { t } = useTranslation();
+  // Render as an ordered array internally so the user can have multiple in-flight
+  // edits with empty keys without React reordering rows under them.
+  const entries = Object.entries(headers);
+  const update = (idx: number, key: string, value: string) => {
+    const next: Record<string, string> = {};
+    entries.forEach(([k, v], i) => {
+      const useK = i === idx ? key : k;
+      const useV = i === idx ? value : v;
+      if (useK.trim()) next[useK] = useV;
+    });
+    onChange(next);
+  };
+  const add = () => {
+    // Append a placeholder pair the user can fill in.
+    const next = { ...headers, '': '' };
+    onChange(next);
+  };
+  const remove = (idx: number) => {
+    const next: Record<string, string> = {};
+    entries.forEach(([k, v], i) => { if (i !== idx && k.trim()) next[k] = v; });
+    onChange(next);
+  };
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <label className="label">{t('settings.exports_webhook_headers')}</label>
+        <button
+          type="button"
+          className="btn-ghost text-xs"
+          disabled={disabled}
+          onClick={add}
+        >
+          + {t('settings.exports_webhook_headers_add')}
+        </button>
+      </div>
+      {entries.length === 0 && (
+        <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+          {t('settings.exports_webhook_headers_empty')}
+        </p>
+      )}
+      {entries.map(([k, v], i) => (
+        <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+          <input
+            type="text"
+            className="input"
+            value={k}
+            disabled={disabled}
+            placeholder="X-Header-Name"
+            onChange={(e) => update(i, e.target.value, v)}
+          />
+          <input
+            type="text"
+            className="input"
+            value={v}
+            disabled={disabled}
+            placeholder="value"
+            onChange={(e) => update(i, k, e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn-ghost text-xs"
+            disabled={disabled}
+            onClick={() => remove(i)}
+            aria-label={t('settings.exports_webhook_headers_remove')}
+            title={t('settings.exports_webhook_headers_remove')}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DispatchPanel({ rows, listTitle, listItems, extra, embedded }: Readonly<{
+  rows: Array<{ label: string; value: React.ReactNode }>;
+  listTitle: string;
+  listItems: Array<{ primary: React.ReactNode; secondary?: string }>;
+  extra?: React.ReactNode;
+  embedded?: boolean;
+}>) {
+  const { t } = useTranslation();
+  return (
+    <details
+      className="rounded-lg p-3 text-xs"
+      style={{
+        background: embedded ? 'transparent' : 'var(--gv-surface)',
+        border: '1px dashed var(--gv-border)',
+      }}
+    >
+      <summary
+        className="cursor-pointer select-none flex items-center gap-2 font-medium"
+        style={{ color: 'var(--gv-text-muted)' }}
+      >
+        <Eye className="w-3.5 h-3.5" />
+        {t('settings.exports_info_title')}
+      </summary>
+      <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+        {rows.map((r) => (
+          <div key={r.label} className="contents">
+            <dt style={{ color: 'var(--gv-text-dim)' }}>{r.label}</dt>
+            <dd style={{ color: 'var(--gv-text)' }}>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="mt-3">
+        <div style={{ color: 'var(--gv-text-dim)' }} className="mb-1">{listTitle}</div>
+        <ul className="space-y-0.5">
+          {listItems.map((item, i) => (
+            <li key={i} className="flex items-baseline gap-2">
+              <span>{item.primary}</span>
+              {item.secondary && <span style={{ color: 'var(--gv-text-dim)' }}>— {item.secondary}</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+      {extra && <div className="mt-3">{extra}</div>}
+    </details>
   );
 }
 

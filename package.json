@@ -23,7 +23,8 @@
     "preview": "vite preview",
     "version:bump": "./scripts/update-version.sh",
     "version:tag-push": "./scripts/update-version.sh",
-    "test": "tsx --test server/**/*.test.ts"
+    "test": "tsx --test server/**/*.test.ts",
+    "user:reset-password": "tsx scripts/reset-password.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

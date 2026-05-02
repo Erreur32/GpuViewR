@@ -101,20 +101,20 @@ export default function StatsSection({ gpuIndex }: Props) {
       status: statusFor(memAvgPct, 80, 92),
     },
     {
-      key: 'power',
-      icon: <Zap className="w-4 h-4" />, unit: ' W',
-      min: blend(s?.pow_min, live?.power, 'min'),
-      max: blend(s?.pow_max, live?.power, 'max'),
-      avg: s?.pow_avg ?? live?.power,
-      status: statusFor(s?.pow_avg ?? live?.power, 250, 350),
-    },
-    {
       key: 'fan',
       icon: <Fan className="w-4 h-4" />, unit: '%',
       min: blend(s?.fan_min, live?.fan_speed, 'min'),
       max: blend(s?.fan_max, live?.fan_speed, 'max'),
       avg: s?.fan_avg ?? live?.fan_speed,
       status: statusFor(s?.fan_avg ?? live?.fan_speed, 75, 90),
+    },
+    {
+      key: 'power',
+      icon: <Zap className="w-4 h-4" />, unit: ' W',
+      min: blend(s?.pow_min, live?.power, 'min'),
+      max: blend(s?.pow_max, live?.power, 'max'),
+      avg: s?.pow_avg ?? live?.power,
+      status: statusFor(s?.pow_avg ?? live?.power, 250, 350),
     },
   ].map((r) => ({ ...r, color: colorForStatus(r.status as Status) }));
 

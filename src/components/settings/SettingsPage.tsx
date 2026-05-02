@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Moon, LayoutGrid, BarChart3, Languages, Clock, Sliders, Share2, Database, RefreshCw, Activity, Info, Palette, RotateCcw } from 'lucide-react';
+import { Moon, LayoutGrid, BarChart3, Languages, Clock, Sliders, Share2, Database, RefreshCw, Activity, Info, Palette, RotateCcw, Volume2, VolumeX, Bell, BellOff, BellRing } from 'lucide-react';
 import { useUiStore, DEFAULT_THRESHOLDS, type ChartSeriesKey } from '../../store/uiStore';
 import { THEMES } from '../../lib/themes';
 import UpdateSettings from './UpdateSettings';
@@ -40,6 +40,7 @@ export default function SettingsPage() {
     chartThresholds, chartThresholdsEnabled,
     setChartThreshold, setChartThresholdsEnabled, resetChartThresholds,
     chartColors, setChartColor, resetChartColors,
+    soundEnabled, setSoundEnabled,
   } = useUiStore();
 
   const applyChartPreset = (preset: ChartPreset) => {
@@ -224,6 +225,11 @@ export default function SettingsPage() {
             </p>
           </section>
 
+          <NotificationsSection
+            soundEnabled={soundEnabled}
+            setSoundEnabled={setSoundEnabled}
+          />
+
           <section className="card p-5 space-y-3">
             <h2 className="font-semibold flex items-center gap-2"><Clock className="w-4 h-4" /> {t('settings.time_format')}</h2>
             <div className="seg">
@@ -311,6 +317,101 @@ export default function SettingsPage() {
       {tab === 'updates' && <UpdateSettings />}
       {tab === 'about' && <AboutSettings />}
     </div>
+  );
+}
+
+function NotificationsSection({
+  soundEnabled, setSoundEnabled,
+}: Readonly<{ soundEnabled: boolean; setSoundEnabled: (v: boolean) => void }>) {
+  const { t } = useTranslation();
+  // The Notification API is window-scoped, so the permission state can change
+  // outside React (other tab, browser settings). We poll on focus to refresh
+  // the status badge without forcing a full reload.
+  const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>(() => {
+    if (typeof Notification === 'undefined') return 'unsupported';
+    return Notification.permission;
+  });
+  useEffect(() => {
+    if (typeof Notification === 'undefined') return;
+    const onFocus = () => setPerm(Notification.permission);
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
+
+  const ask = async () => {
+    if (typeof Notification === 'undefined') return;
+    const result = await Notification.requestPermission();
+    setPerm(result);
+  };
+
+  return (
+    <section className="card p-5 space-y-3">
+      <h2 className="font-semibold flex items-center gap-2">
+        <BellRing className="w-4 h-4" /> {t('settings.notifications')}
+      </h2>
+      <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
+        {t('settings.notifications_help')}
+      </p>
+
+      <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+        <input
+          type="checkbox"
+          checked={soundEnabled}
+          onChange={(e) => setSoundEnabled(e.target.checked)}
+          className="sr-only peer"
+        />
+        <span className="w-10 h-5 rounded-full transition-colors relative" style={{
+          background: soundEnabled ? 'var(--gv-accent)' : 'var(--gv-surface-alt)',
+        }}>
+          <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+                style={{ transform: soundEnabled ? 'translateX(20px)' : 'translateX(0)' }} />
+        </span>
+        {soundEnabled
+          ? <span className="inline-flex items-center gap-1.5"><Volume2 className="w-4 h-4" /> {t('settings.sound_on')}</span>
+          : <span className="inline-flex items-center gap-1.5"><VolumeX className="w-4 h-4" /> {t('settings.sound_off')}</span>}
+      </label>
+
+      <div className="flex items-center gap-2 flex-wrap pt-1">
+        <span className="text-sm inline-flex items-center gap-1.5" style={{ color: 'var(--gv-text-muted)' }}>
+          {perm === 'granted' ? <Bell className="w-4 h-4" style={{ color: 'var(--gv-ok)' }} /> : <BellOff className="w-4 h-4" />}
+          {t('settings.browser_notifs')}:
+        </span>
+        <PermissionBadge perm={perm} />
+        {perm === 'default' && (
+          <button type="button" className="btn-primary text-xs" onClick={ask}>
+            {t('settings.browser_notifs_enable')}
+          </button>
+        )}
+        {perm === 'denied' && (
+          <span className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+            {t('settings.browser_notifs_denied_help')}
+          </span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PermissionBadge({ perm }: Readonly<{ perm: NotificationPermission | 'unsupported' }>) {
+  const { t } = useTranslation();
+  const map: Record<typeof perm, { label: string; color: string }> = {
+    granted: { label: t('settings.browser_notifs_granted'), color: 'var(--gv-ok)' },
+    default: { label: t('settings.browser_notifs_default'), color: 'var(--gv-warn)' },
+    denied: { label: t('settings.browser_notifs_denied'), color: 'var(--gv-danger)' },
+    unsupported: { label: t('settings.browser_notifs_unsupported'), color: 'var(--gv-text-dim)' },
+  };
+  const info = map[perm];
+  return (
+    <span
+      className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+      style={{
+        color: info.color,
+        background: `color-mix(in srgb, ${info.color} 14%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${info.color} 30%, transparent)`,
+      }}
+    >
+      {info.label}
+    </span>
   );
 }
 
