@@ -189,19 +189,6 @@ emitted and a green toast confirms it.
 
 ## Roadmap
 
-### Done
-
-- [x] **Exports & integrations** (v0.1.7)
-  - **Prometheus** pull endpoint (`GET /metrics`, `gpuviewr_gpu_*` metrics)
-  - **MQTT** publish per-GPU JSON state (`<prefix>/gpu<N>/state`) with optional **Home Assistant discovery** so sensors auto-register in HA
-  - **InfluxDB v2** line-protocol push (configurable URL / org / bucket / token)
-  - **Webhook** JSON push (POST/PUT, configurable URL, headers, interval)
-  - Each exporter toggleable from `Settings > Exports & integrations`, with a "Send test" action
-- [x] **Per-process GPU usage breakdown** (v0.1.9, refined in v0.1.15) —
-  live PID / process name / VRAM table on the dashboard, polled every
-  2.5s via `GET /api/processes[?gpu=<i>]`, backed by a `nvidia-smi
-  --query-compute-apps` collector
-- [x] **Fan curve + fan stats** (v0.1.16)
 
 ### Planned
 
