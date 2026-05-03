@@ -1,52 +1,29 @@
-release: v0.1.19 - PCIe connectivity, nav tweak, compose fix, ~46 Sonar cleanups
-
-Added:
-- PCIe connectivity for every detected GPU. The collector queries
-  pci.bus_id, pcie.link.gen.{current,max} and pcie.link.width.
-  {current,max} from nvidia-smi. The server derives the effective
-  unidirectional bandwidth (GB/s) from the PCI-SIG per-lane
-  figures (gen 1 to 6).
-- Dashboard PCIe card above the processes table: RX / TX
-  (full-duplex symmetric figures) + link summary, bus id in the
-  header, and a short note that the bandwidth is theoretical.
-- System tab "PCIe connectivity" panel per GPU. Big bandwidth
-  headline, slot + link rows, and an amber "Degraded link" badge
-  with tooltip when the active gen or width is below max.
-
-Changed:
-- System tab moved next to Dashboard in the header
-  (Dashboard / System / Alerts / Logs / Settings).
-- Mock GPU 1 (RTX 3060) now reports PCIe 3.0 x8 so the
-  degraded-link badge is visible in dev without a real GPU.
+release: v0.1.20 - working alert sound, square favicon, public PNG optimisation
 
 Fixed:
-- Docker compose: cap_drop [ALL] alone was too aggressive — the
-  image's entrypoint uses `gosu` to drop privileges to `node`
-  and needs SETUID, SETGID, CHOWN, FOWNER and DAC_OVERRIDE.
-  Without them the container looped on `error: failed switching
-  to "node": operation not permitted`. We now drop ALL caps and
-  cap_add only those five; no-new-privileges:true stays on.
+- Alert sound: replaced public/alert.mp3 (a 107-byte HTML
+  placeholder) with a real MP3 binary so the browser actually
+  decodes and plays it on alert. Browser autoplay policy still
+  requires a user gesture before the first sound — clicking
+  once on the page is enough.
 
-Refactored (SonarCloud, ~46 issues across the new code):
-- Cognitive complexity reductions on alerts.ts PATCH handler,
-  alertService.evaluate, exportService.sendWebhook,
-  exportService.test, updateService.runCheck, logger.query,
-  AboutSettings.renderBody. Each split into helpers.
-- Optional chaining x4 (connection, auth middleware,
-  exportService x2). NaN -> Number.NaN x2.
-  VALID_CONDITIONS / LEVELS turned into Sets with .has().
-  Array sort uses String#localeCompare. Two regex
-  alternations -> character classes. Three nested template
-  literals extracted. Three `void promise()` -> .catch.
-- Top-level `await bootstrap()` replaces the swallowed
-  `void bootstrap()` so unhandled rejections bubble to the
-  runtime (tsconfig already targets ES2022 + ESNext modules).
-- themes.ts: makeTheme() helper deduplicates the six theme
-  entries flagged on the Duplicated-Lines QG.
-- A11y: <div role="group"> swapped for real <fieldset> +
-  sr-only <legend> on the System view-mode picker and Logs
-  level selector. Renamed the local KV helper to InfoField so
-  the React PascalCase rule no longer flags it.
-- Misc readability: replace -> replaceAll, typeof window ->
-  typeof globalThis.window, flipped a couple of negated
-  ternaries.
+Changed:
+- Favicon now points at /logo.png (256x256 square PNG) instead
+  of the 1254x1254 gpuviewr_logo.png. The tab icon renders
+  crisp at native size with no browser-side scaling.
+- Public PNGs optimised with Lanczos downscaling + a light
+  unsharp mask + max PNG compression (no JPEG conversion so
+  screenshot text stays sharp):
+    GPUViewR.png       : 1.32 MB -> 57 KB  (1254  -> 256, -96%)
+    gpuviewr_logo.png  : 1.32 MB -> 57 KB  (1254  -> 256, -96%)
+    GpuViewR-Ban.png   : 1.28 MB -> 522 KB (1983w -> 1256w, -59%)
+    *_screnshot*.png   : ~950 KB -> ~510 KB (2560w -> 1920w, ~-46%)
+    logo.png           : 261 KB  -> 108 KB (836w  -> 512w, -59%)
+    logo_test.png      : 587 KB  -> 213 KB (836w  -> 512w, -64%)
+  Total public/*.png : 6.7 MB -> 1.99 MB (-70%).
+- README image reference moved from the deleted
+  public/gpuviewr_screnshot.png to gpuviewr_screnshot_v1.png.
+
+Note: public/alert.mp3 + the optimised PNGs are baked into the
+runtime Docker image at build time; bumping the tag is what
+gets the new assets to GHCR users.

@@ -5,6 +5,39 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.20] - 2026-05-03
+
+Asset cleanup release: working alert sound, square favicon and a
+70 % reduction of the public PNG payload.
+
+### Fixed
+- **Alert sound** now actually plays. The shipped
+  `public/alert.mp3` was a 107-byte HTML placeholder; replaced
+  with a real MP3 binary so `Audio('/alert.mp3').play()` decodes
+  correctly. Browser autoplay policy still requires a user
+  gesture before the first sound — clicking anywhere on the
+  page once is enough.
+
+### Changed
+- **Favicon** now uses `public/logo.png` (256×256 square PNG)
+  instead of the 1254×1254 `gpuviewr_logo.png`. Tab icon
+  renders crisp at native size with no scaling.
+- **Public PNGs optimized** with Lanczos downscaling +
+  light unsharp mask + max PNG compression, no JPEG
+  conversion so screenshot text stays pixel-sharp:
+  - `GPUViewR.png` / `gpuviewr_logo.png`: 1.32 MB → 57 KB
+    (1254² → 256²), −96 % each.
+  - `GpuViewR-Ban.png`: 1.28 MB → 522 KB (1983×793 →
+    1256×502), −59 %.
+  - `CpuViewR_screnshot.png`, `gpuviewr_screnshot_v1.png`:
+    948–952 KB → 510–519 KB (2560×1277 → 1920×958), −45 %.
+  - `logo.png`, `logo_test.png`: 261 / 587 KB → 108 / 213 KB
+    (836×660 → 512×404), −59 / −64 %.
+  - Total `public/*.png`: 6.7 MB → 1.99 MB (−70 %).
+- README points to `public/gpuviewr_screnshot_v1.png` (the
+  previous `gpuviewr_screnshot.png` was deleted alongside the
+  optimisation pass).
+
 ## [0.1.19] - 2026-05-03
 
 PCIe connectivity panel on the dashboard and the System tab,
