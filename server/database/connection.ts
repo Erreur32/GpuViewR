@@ -79,7 +79,7 @@ export function initializeDatabase(): Database.Database {
     .prepare("PRAGMA table_info(gpu_metrics)")
     .all() as Array<{ name: string; notnull: number }>;
   const utilCol = cols.find((c) => c.name === 'utilization');
-  if (utilCol && utilCol.notnull === 1) {
+  if (utilCol?.notnull === 1) {
     logger.info('DB', 'Migrating gpu_metrics: relaxing utilization NOT NULL...');
     db.exec(`
       BEGIN;

@@ -412,7 +412,7 @@ class ExportService {
   }
 
   private publishMqtt(cfg: MqttConfig): void {
-    if (!this.mqttClient || !this.mqttClient.connected) return;
+    if (!this.mqttClient?.connected) return;
     for (const s of this.latestSamples) {
       const base = `${cfg.topicPrefix}/gpu${s.gpu_index}`;
       // Keys must stay in sync with MQTT_PAYLOAD_KEYS (drives the Settings
@@ -567,7 +567,8 @@ class ExportService {
       if (!res) return; // type-specific guard already logged
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
-        throw new Error(`HTTP ${res.status}${txt ? `: ${txt.slice(0, 200)}` : ''}`);
+        const detail = txt ? `: ${txt.slice(0, 200)}` : '';
+        throw new Error(`HTTP ${res.status}${detail}`);
       }
     } catch (err) {
       logger.warn('export', `Webhook (${cfg.type}) failed: ${(err as Error).message}`);
@@ -665,7 +666,7 @@ class ExportService {
   }
 
   private testMqtt(cfg: MqttConfig): { ok: boolean; message: string } {
-    if (!this.mqttClient || !this.mqttClient.connected) return { ok: false, message: 'MQTT client not connected.' };
+    if (!this.mqttClient?.connected) return { ok: false, message: 'MQTT client not connected.' };
     this.publishMqtt(cfg);
     return { ok: true, message: 'MQTT test publish sent.' };
   }
@@ -731,8 +732,10 @@ export function renderPrometheus(samples: GpuSample[]): string {
   // backslashes we just inserted for quotes.
   const escapeLabel = (v: string) =>
     v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
-  const labels = (s: GpuSample) =>
-    `{gpu="${s.gpu_index}",name="${escapeLabel(s.name)}"${s.uuid ? `,uuid="${escapeLabel(s.uuid)}"` : ''}}`;
+  const labels = (s: GpuSample) => {
+    const uuidPart = s.uuid ? `,uuid="${escapeLabel(s.uuid)}"` : '';
+    return `{gpu="${s.gpu_index}",name="${escapeLabel(s.name)}"${uuidPart}}`;
+  };
 
   for (const s of samples) {
     const l = labels(s);

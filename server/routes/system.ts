@@ -132,13 +132,40 @@ router.get('/', (_req, res) => {
       fan_speed: s.fan_speed,
       clock_graphics: s.clock_graphics,
       clock_memory: s.clock_memory,
+      pci_bus_id: s.pci_bus_id,
+      pcie_gen_current: s.pcie_gen_current,
+      pcie_gen_max: s.pcie_gen_max,
+      pcie_width_current: s.pcie_width_current,
+      pcie_width_max: s.pcie_width_max,
+      // Effective unidirectional bandwidth (GB/s) for the *current* link.
+      // Per-lane figures from PCI-SIG: gen1 0.25, gen2 0.5, gen3 0.985,
+      // gen4 1.969, gen5 3.938 GB/s. Returns null if either current value
+      // is missing (older drivers, virtualised GPUs).
+      pcie_bandwidth_GBps: pcieBandwidthGBps(s.pcie_gen_current, s.pcie_width_current),
+      pcie_bandwidth_max_GBps: pcieBandwidthGBps(s.pcie_gen_max, s.pcie_width_max),
     })),
   });
 });
 
+const PCIE_PER_LANE_GBPS: Record<number, number> = {
+  1: 0.25,
+  2: 0.5,
+  3: 0.985,
+  4: 1.969,
+  5: 3.938,
+  6: 7.563,
+};
+
+function pcieBandwidthGBps(gen: number | null, width: number | null): number | null {
+  if (!gen || !width) return null;
+  const perLane = PCIE_PER_LANE_GBPS[gen];
+  if (!perLane) return null;
+  return Math.round(perLane * width * 100) / 100;
+}
+
 function getRetentionDays(): number {
   const stored = AppConfigRepo.get(RETENTION_KEY);
-  const n = stored ? Number.parseInt(stored, 10) : NaN;
+  const n = stored ? Number.parseInt(stored, 10) : Number.NaN;
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_RETENTION_DAYS;
 }
 

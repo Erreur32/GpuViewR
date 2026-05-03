@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { Thermometer, Activity, MemoryStick, Zap, Fan, LayoutGrid, BarChart3 } from 'lucide-react';
+import { Thermometer, Activity, MemoryStick, Zap, Fan, LayoutGrid, BarChart3, ArrowDownToLine, ArrowUpFromLine, Cable } from 'lucide-react';
+import type { GpuSample } from '../../store/gpuStore';
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
 import GaugeCard from './GaugeCard';
@@ -140,6 +141,8 @@ export default function Dashboard() {
 
       <LiveChart gpuIndex={active.gpu_index} />
 
+      <PcieBandwidthCard sample={active} />
+
       <GpuProcessesTable gpuIndex={active.gpu_index} />
 
       <h3 className="text-sm font-semibold uppercase tracking-wider pt-2" style={{ color: 'var(--gv-text-muted)' }}>
@@ -152,4 +155,102 @@ export default function Dashboard() {
 
 function fmt(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+// PCIe per-lane bandwidth (GB/s) — PCI-SIG figures.
+const PCIE_PER_LANE_GBPS: Record<number, number> = {
+  1: 0.25, 2: 0.5, 3: 0.985, 4: 1.969, 5: 3.938, 6: 7.563,
+};
+
+function pcieBandwidth(gen: number | null | undefined, width: number | null | undefined): number | null {
+  if (!gen || !width) return null;
+  const perLane = PCIE_PER_LANE_GBPS[gen];
+  if (!perLane) return null;
+  return Math.round(perLane * width * 100) / 100;
+}
+
+function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
+  const { t } = useTranslation();
+  const rxTx = pcieBandwidth(sample.pcie_gen_current, sample.pcie_width_current);
+  const max = pcieBandwidth(sample.pcie_gen_max, sample.pcie_width_max);
+  // Hide the card entirely when the driver doesn't expose anything useful.
+  if (rxTx === null && !sample.pci_bus_id) return null;
+
+  const link = sample.pcie_gen_current && sample.pcie_width_current
+    ? `PCIe ${sample.pcie_gen_current}.0 ×${sample.pcie_width_current}`
+    : '-';
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2"
+            style={{ color: 'var(--gv-text-muted)' }}>
+          <Cable className="w-4 h-4" />
+          {t('dashboard.pcie_title')}
+        </h3>
+        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono tabular-nums"
+              style={{ color: 'var(--gv-text-muted)', background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}>
+          {sample.pci_bus_id ?? '-'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <PcieMetric
+          icon={<ArrowDownToLine className="w-4 h-4" />}
+          label={t('dashboard.pcie_rx')}
+          value={rxTx}
+          max={max}
+        />
+        <PcieMetric
+          icon={<ArrowUpFromLine className="w-4 h-4" />}
+          label={t('dashboard.pcie_tx')}
+          value={rxTx}
+          max={max}
+        />
+        <div className="rounded-lg p-2.5"
+             style={{ background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}>
+          <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
+            {t('dashboard.pcie_link')}
+          </div>
+          <div className="text-sm font-semibold tabular-nums mt-0.5" style={{ color: 'var(--gv-text)' }}>
+            {link}
+          </div>
+        </div>
+      </div>
+      <p className="text-[10px] mt-2" style={{ color: 'var(--gv-text-dim)' }}>
+        {t('dashboard.pcie_help')}
+      </p>
+    </div>
+  );
+}
+
+function PcieMetric({ icon, label, value, max }: Readonly<{
+  icon: React.ReactNode; label: string; value: number | null; max: number | null;
+}>) {
+  return (
+    <div
+      className="rounded-lg p-2.5"
+      style={{
+        background: 'color-mix(in srgb, var(--gv-info) 8%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--gv-info) 25%, transparent)',
+      }}
+    >
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider"
+           style={{ color: 'var(--gv-info)' }}>
+        {icon}
+        {label}
+      </div>
+      <div className="flex items-baseline gap-1.5 mt-1">
+        <span className="text-lg font-semibold tabular-nums" style={{ color: 'var(--gv-info)' }}>
+          {value !== null ? value.toFixed(2) : '-'}
+        </span>
+        <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>GB/s</span>
+      </div>
+      {max !== null && value !== null && max > value && (
+        <div className="text-[10px] tabular-nums mt-0.5" style={{ color: 'var(--gv-text-dim)' }}>
+          / max {max.toFixed(2)} GB/s
+        </div>
+      )}
+    </div>
+  );
 }

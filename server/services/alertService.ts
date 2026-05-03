@@ -20,7 +20,7 @@ interface RuleState {
 }
 
 class AlertService extends EventEmitter {
-  private state = new Map<string, RuleState>();
+  private readonly state = new Map<string, RuleState>();
   private cachedRules: AlertRule[] = [];
   private cacheTime = 0;
   private readonly cacheTtl = 5_000;

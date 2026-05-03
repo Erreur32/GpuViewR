@@ -42,7 +42,8 @@ router.get('/history.csv', (req, res) => {
     return res.status(400).json({ error: 'Invalid gpu parameter' });
   }
 
-  const filename = `gpuviewr-${gpuParam === 'all' ? 'all' : `gpu${gpuIndex}`}-${range}-${Math.floor(Date.now() / 1000)}.csv`;
+  const slug = gpuParam === 'all' ? 'all' : `gpu${gpuIndex}`;
+  const filename = `gpuviewr-${slug}-${range}-${Math.floor(Date.now() / 1000)}.csv`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Cache-Control', 'no-store');
@@ -80,7 +81,7 @@ function parseRange(input: string): number {
   // so the history fetch returns just enough rows to seed the rolling
   // scope without overshooting.
   if (input === 'live') return 90;
-  const m = /^(\d+(?:\.\d+)?)(s|m|h|d)$/.exec(input);
+  const m = /^(\d+(?:\.\d+)?)([smhd])$/.exec(input);
   if (!m) return 3600;
   const n = Number.parseFloat(m[1]);
   switch (m[2]) {

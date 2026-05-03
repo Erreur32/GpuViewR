@@ -11,6 +11,11 @@ interface FakeDevice {
   driver: string;
   memTotal: number;
   powerCap: number;
+  pciBusId: string;
+  pcieGen: number;
+  pcieGenMax: number;
+  pcieWidth: number;
+  pcieWidthMax: number;
   // Phase offset so the two GPUs don't move in lockstep.
   phase: number;
 }
@@ -23,6 +28,9 @@ const DEVICES: FakeDevice[] = [
     driver: '550.54.14',
     memTotal: 24576,
     powerCap: 450,
+    pciBusId: '00000000:01:00.0',
+    pcieGen: 4, pcieGenMax: 4,
+    pcieWidth: 16, pcieWidthMax: 16,
     phase: 0,
   },
   {
@@ -32,6 +40,11 @@ const DEVICES: FakeDevice[] = [
     driver: '550.54.14',
     memTotal: 12288,
     powerCap: 170,
+    pciBusId: '00000000:02:00.0',
+    // Intentional degraded link so the UI's "running below max" badge
+    // is exercised in dev.
+    pcieGen: 3, pcieGenMax: 4,
+    pcieWidth: 8, pcieWidthMax: 16,
     phase: Math.PI / 2,
   },
 ];
@@ -83,6 +96,11 @@ export function buildFakeSamples(): GpuSample[] {
       fan_speed: fan,
       clock_graphics: clockGr,
       clock_memory: clockMem,
+      pci_bus_id: d.pciBusId,
+      pcie_gen_current: d.pcieGen,
+      pcie_gen_max: d.pcieGenMax,
+      pcie_width_current: d.pcieWidth,
+      pcie_width_max: d.pcieWidthMax,
       timestamp: iso,
       timestamp_epoch: epoch,
     };

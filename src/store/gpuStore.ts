@@ -13,6 +13,11 @@ export interface GpuSample {
   fan_speed: number | null;
   clock_graphics: number | null;
   clock_memory: number | null;
+  pci_bus_id?: string | null;
+  pcie_gen_current?: number | null;
+  pcie_gen_max?: number | null;
+  pcie_width_current?: number | null;
+  pcie_width_max?: number | null;
   timestamp: string;
   timestamp_epoch: number;
 }

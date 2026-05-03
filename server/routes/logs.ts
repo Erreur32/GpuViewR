@@ -5,11 +5,11 @@ import { logger, type LogLevel } from '../utils/logger.js';
 const router = Router();
 router.use(requireAuth);
 
-const LEVELS: ReadonlyArray<LogLevel | 'all'> = ['all', 'info', 'warn', 'error', 'success', 'debug'];
+const LEVELS: ReadonlySet<LogLevel | 'all'> = new Set(['all', 'info', 'warn', 'error', 'success', 'debug']);
 
 router.get('/', (req, res) => {
   const level = String(req.query.level || 'all') as LogLevel | 'all';
-  if (!LEVELS.includes(level)) return res.status(400).json({ error: 'Invalid level' });
+  if (!LEVELS.has(level)) return res.status(400).json({ error: 'Invalid level' });
 
   const entries = logger.query({
     level,

@@ -80,8 +80,8 @@ export default function Header() {
 
         <nav className="flex items-center gap-1 ml-2">
           <NavItem to="/"        icon={<LayoutDashboard className="w-4 h-4" />} label={t('nav.dashboard')} end />
-          <NavItem to="/alerts"  icon={<BellRing className="w-4 h-4" />}        label={t('nav.alerts')} />
           <NavItem to="/system"  icon={<Server className="w-4 h-4" />}          label={t('nav.system')} />
+          <NavItem to="/alerts"  icon={<BellRing className="w-4 h-4" />}        label={t('nav.alerts')} />
           <NavItem to="/logs"    icon={<FileText className="w-4 h-4" />}        label={t('nav.logs')} />
           <NavItem to="/settings" icon={<Settings className="w-4 h-4" />}       label={t('nav.settings')} />
         </nav>

@@ -19,6 +19,11 @@ const QUERY_FIELDS = [
   'fan.speed',
   'clocks.gr',
   'clocks.mem',
+  'pci.bus_id',
+  'pcie.link.gen.current',
+  'pcie.link.gen.max',
+  'pcie.link.width.current',
+  'pcie.link.width.max',
 ];
 
 export interface GpuSample {
@@ -34,6 +39,11 @@ export interface GpuSample {
   fan_speed: number | null;
   clock_graphics: number | null;
   clock_memory: number | null;
+  pci_bus_id: string | null;
+  pcie_gen_current: number | null;
+  pcie_gen_max: number | null;
+  pcie_width_current: number | null;
+  pcie_width_max: number | null;
   timestamp: string;
   timestamp_epoch: number;
 }
@@ -172,6 +182,11 @@ class GpuCollector extends EventEmitter {
         fan_speed: numOrNull(parts[9]),
         clock_graphics: numOrNull(parts[10]),
         clock_memory: numOrNull(parts[11]),
+        pci_bus_id: parts[12] || null,
+        pcie_gen_current: numOrNull(parts[13]),
+        pcie_gen_max: numOrNull(parts[14]),
+        pcie_width_current: numOrNull(parts[15]),
+        pcie_width_max: numOrNull(parts[16]),
         timestamp: iso,
         timestamp_epoch: epoch,
       };
@@ -230,7 +245,7 @@ export function startRetentionJob(): void {
     try {
       // Lazy require to avoid a circular import at module load.
       const stored = AppConfigRepo.get('retention_days');
-      const n = stored ? Number.parseInt(stored, 10) : NaN;
+      const n = stored ? Number.parseInt(stored, 10) : Number.NaN;
       if (Number.isFinite(n) && n > 0) days = n;
     } catch {
       // ignore: keep env default

@@ -43,6 +43,11 @@ function readVersion(): string {
   }
 }
 
+// Top-level await is supported under Node 22 + ESM ("type": "module" in
+// package.json + "module": "ES2022" in tsconfig). Inlining the boot
+// sequence avoids the function indirection Sonar flagged (S7059) and
+// makes any unhandled rejection bubble up to the runtime instead of the
+// silent `void bootstrap()` swallow we used to have.
 async function bootstrap(): Promise<void> {
   await ensurePortFreeOrExit(config.port, 'backend');
 
@@ -217,4 +222,4 @@ function printBoot(): void {
   logger.info('boot', `WebSocket:      ${wsUrl}`);
 }
 
-void bootstrap();
+await bootstrap();

@@ -7,7 +7,7 @@ const router = Router();
 router.use(requireAuth);
 
 const VALID_METRICS: AlertMetric[] = ['temperature', 'utilization', 'memory', 'power', 'fan_speed'];
-const VALID_CONDITIONS: AlertCondition[] = ['above', 'below'];
+const VALID_CONDITIONS: ReadonlySet<AlertCondition> = new Set(['above', 'below']);
 
 router.get('/rules', (_req, res) => {
   res.json({ rules: AlertRuleRepo.list() });
@@ -158,7 +158,7 @@ function validate(body: Record<string, unknown>, partial = false): string | null
   if (body.metric !== undefined && !VALID_METRICS.includes(body.metric as AlertMetric)) {
     return `metric must be one of ${VALID_METRICS.join(', ')}`;
   }
-  if (body.condition !== undefined && !VALID_CONDITIONS.includes(body.condition as AlertCondition)) {
+  if (body.condition !== undefined && !VALID_CONDITIONS.has(body.condition as AlertCondition)) {
     return `condition must be 'above' or 'below'`;
   }
   if (body.threshold !== undefined && !Number.isFinite(Number(body.threshold))) {

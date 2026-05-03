@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid } from 'lucide-react';
+import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid, Cable, AlertTriangle } from 'lucide-react';
 import { api } from '../../lib/api';
 
 type ViewMode = 'bar' | 'gauge';
@@ -31,6 +31,13 @@ type SystemInfo = Readonly<{
     fan_speed: number | null;
     clock_graphics: number | null;
     clock_memory: number | null;
+    pci_bus_id: string | null;
+    pcie_gen_current: number | null;
+    pcie_gen_max: number | null;
+    pcie_width_current: number | null;
+    pcie_width_max: number | null;
+    pcie_bandwidth_GBps: number | null;
+    pcie_bandwidth_max_GBps: number | null;
   }>;
 }>;
 
@@ -193,6 +200,7 @@ export default function SystemPage() {
                           viewMode={viewMode}
                         />
                       </div>
+                      <PcieSection gpu={g} t={t} />
                     </div>
                   );
                 })}
@@ -201,6 +209,101 @@ export default function SystemPage() {
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+// Dedicated PCIe connectivity panel under each GPU. Highlights the
+// effective bandwidth (most useful number) and flags a degraded link
+// when the current gen/width is below what the GPU + slot support.
+function PcieSection({ gpu, t }: Readonly<{
+  gpu: {
+    pci_bus_id: string | null;
+    pcie_gen_current: number | null;
+    pcie_gen_max: number | null;
+    pcie_width_current: number | null;
+    pcie_width_max: number | null;
+    pcie_bandwidth_GBps: number | null;
+    pcie_bandwidth_max_GBps: number | null;
+  };
+  t: (key: string) => string;
+}>) {
+  // If the driver/runtime didn't expose any PCIe info, hide the section
+  // entirely rather than render rows full of dashes.
+  const hasAny =
+    gpu.pci_bus_id ||
+    gpu.pcie_gen_current !== null ||
+    gpu.pcie_width_current !== null ||
+    gpu.pcie_bandwidth_GBps !== null;
+  if (!hasAny) return null;
+
+  const degraded =
+    gpu.pcie_gen_current !== null && gpu.pcie_gen_max !== null && gpu.pcie_gen_current < gpu.pcie_gen_max
+    || gpu.pcie_width_current !== null && gpu.pcie_width_max !== null && gpu.pcie_width_current < gpu.pcie_width_max;
+
+  const linkText = gpu.pcie_gen_current !== null && gpu.pcie_width_current !== null
+    ? `PCIe ${gpu.pcie_gen_current}.0 ×${gpu.pcie_width_current}`
+    : '-';
+  const linkMaxText = gpu.pcie_gen_max !== null && gpu.pcie_width_max !== null
+    ? `PCIe ${gpu.pcie_gen_max}.0 ×${gpu.pcie_width_max}`
+    : null;
+
+  return (
+    <div
+      className="mt-3 rounded-xl p-3"
+      style={{
+        background: 'color-mix(in srgb, var(--gv-info) 6%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--gv-info) 25%, transparent)',
+      }}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <Cable className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gv-info)' }}>
+          {t('system.pcie_title')}
+        </span>
+        {degraded && (
+          <span
+            className="ml-auto inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium"
+            title={t('system.pcie_degraded_hint')}
+            style={{
+              color: 'var(--gv-warn)',
+              background: 'color-mix(in srgb, var(--gv-warn) 15%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--gv-warn) 35%, transparent)',
+            }}
+          >
+            <AlertTriangle className="w-3 h-3" />
+            {t('system.pcie_degraded')}
+          </span>
+        )}
+      </div>
+
+      {/* Bandwidth headline — the number users actually care about. */}
+      {gpu.pcie_bandwidth_GBps !== null && (
+        <div className="mb-2">
+          <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
+            {t('system.pcie_bandwidth')}
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-xl font-semibold tabular-nums" style={{ color: 'var(--gv-info)' }}>
+              {gpu.pcie_bandwidth_GBps.toFixed(2)}
+            </span>
+            <span className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>GB/s</span>
+            {gpu.pcie_bandwidth_max_GBps !== null && gpu.pcie_bandwidth_max_GBps > gpu.pcie_bandwidth_GBps && (
+              <span className="text-[10px] tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>
+                / max {gpu.pcie_bandwidth_max_GBps.toFixed(2)} GB/s
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <Grid>
+        <KV label={t('system.pcie_slot')} value={gpu.pci_bus_id ?? '-'} mono />
+        <KV
+          label={t('system.pcie_link')}
+          value={linkMaxText && linkMaxText !== linkText ? `${linkText}  (max ${linkMaxText})` : linkText}
+        />
+      </Grid>
     </div>
   );
 }
