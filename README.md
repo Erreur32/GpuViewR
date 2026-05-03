@@ -37,10 +37,7 @@
 
 ## Features
 
-- ⚡ **Real-time**: WebSocket streaming, 1 s tick (no JSON polling)
-- 📜 **Filterable server logs**: level / scope / search, live auto-refresh
 - 🌍 **i18n**: English / French out of the box
-- 🔐 **Authentication**: first user becomes admin (bcryptjs + JWT)
 - 🔢 **Multi-GPU**: automatic tabs when 2+ devices are detected
 - 🐳 **Single Docker image**: multi-arch (amd64 / arm64), Node 22 Debian slim
 
