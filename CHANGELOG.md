@@ -5,6 +5,75 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.19] - 2026-05-03
+
+PCIe connectivity panel on the dashboard and the System tab,
+nav tweak (System next to Dashboard), Docker Compose hardening
+fix, and a large SonarCloud cleanup pass (≈46 issues across
+seven categories).
+
+### Added
+- **PCIe connectivity** for every detected GPU. The collector
+  now queries `pci.bus_id`, `pcie.link.gen.{current,max}` and
+  `pcie.link.width.{current,max}` from `nvidia-smi`. The server
+  derives the effective unidirectional bandwidth (GB/s) from the
+  PCI-SIG per-lane figures (gen 1 → 6).
+- **Dashboard PCIe card** above the processes table: RX / TX
+  (full-duplex symmetric figures) + link summary, with the
+  bus id pinned in the header and a short note explaining the
+  bandwidth is theoretical.
+- **System tab "PCIe connectivity" panel** under each GPU. Big
+  effective-bandwidth headline, slot + link rows, and an amber
+  **Degraded link** badge with a tooltip when the active gen or
+  width is below the GPU/slot maximum.
+
+### Changed
+- Header navigation: System tab moved next to Dashboard
+  (Dashboard / System / Alerts / Logs / Settings).
+- Mock GPU 1 (RTX 3060) now reports a degraded PCIe 3.0 ×8 link
+  so the badge is visible in dev without a real GPU.
+
+### Fixed
+- **Docker compose**: the previous `cap_drop: [ALL]` was too
+  aggressive — the official image's entrypoint uses `gosu` to
+  drop privileges to the `node` user, which needs SETUID,
+  SETGID, CHOWN, FOWNER and DAC_OVERRIDE. Without them the
+  container looped on `error: failed switching to "node":
+  operation not permitted`. We now drop ALL caps and explicitly
+  cap_add the five the boot sequence actually needs;
+  `no-new-privileges:true` stays on.
+
+### Refactored (SonarCloud)
+- 6 cognitive-complexity reductions: `alerts.ts` PATCH handler,
+  `alertService.evaluate`, `exportService.sendWebhook`,
+  `exportService.test`, `updateService.runCheck`,
+  `logger.query`, `AboutSettings.renderBody`.
+- 4 `void promise()` → `.catch(() => {})` so the unhandled-
+  promise intent is explicit (UpdateBanner, UpdateSettings,
+  AboutSettings).
+- 4 optional-chain rewrites (connection, auth middleware,
+  exportService ×2).
+- 3 nested template literals extracted to local consts (gpu.ts
+  CSV filename, exportService HTTP error formatter, Prometheus
+  label assembly).
+- 2 `(s|m|h|d)` regex alternations collapsed to character
+  classes; `Array#sort` in logger now uses `localeCompare`.
+- 2 `NaN` → `Number.NaN`; 2 lookup arrays (`VALID_CONDITIONS`,
+  `LEVELS`) converted to `Set` with `.has()`.
+- `void bootstrap()` replaced with top-level `await
+  bootstrap()` (Node 22 + ESM), so any unhandled rejection
+  bubbles to the runtime instead of being swallowed.
+- `themes.ts`: extracted `makeTheme()` to deduplicate the 6
+  theme entries flagged by Sonar (Duplicated Lines on New
+  Code).
+- A11y / readability polish: `<div role="group">` → real
+  `<fieldset>` + `<legend>` on the System view-mode picker and
+  the Logs level selector; renamed the local `KV` helper to
+  `InfoField` so the React PascalCase rule no longer flags it;
+  `replace(/\W+/g, '')` → `replaceAll`; `typeof window` →
+  `typeof globalThis.window`; flipped a couple of negated
+  ternaries to put the positive branch first.
+
 ## [0.1.18] - 2026-05-03
 
 System tab redesign with bar/gauge switch, per-rule webhook toggle,

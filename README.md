@@ -116,8 +116,18 @@ services:
       # when nvidia-smi returns "[Not Found]" (multi-tenant / hardened setups).
       - /proc:/host/proc:ro
 
-    # Hardening: drop all caps, no privilege escalation.
+    # Hardening: keep only the caps the entrypoint needs. The image's
+    # docker-entrypoint.sh runs as root and uses `gosu` to drop privileges
+    # to the unprivileged `node` user — that requires CHOWN + SETUID +
+    # SETGID, plus DAC_OVERRIDE for the initial chown of /app/data when
+    # the bind-mount is owned by another UID. Everything else is dropped.
     cap_drop: [ALL]
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
     security_opt:
       - no-new-privileges:true
 
