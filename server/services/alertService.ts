@@ -54,37 +54,50 @@ class AlertService extends EventEmitter {
     const rules = this.rules();
     if (rules.length === 0) return;
     const now = Math.floor(Date.now() / 1000);
-
     for (const rule of rules) {
       for (const sample of samples) {
-        if (rule.gpu_index !== null && rule.gpu_index !== sample.gpu_index) continue;
-
-        const observed = readMetric(sample, rule.metric);
-        if (observed === null) continue;
-        const crossed = rule.condition === 'above' ? observed >= rule.threshold : observed <= rule.threshold;
-
-        const key = `${rule.id}:${sample.gpu_index}`;
-        const st: RuleState = this.state.get(key) ?? { crossedSince: 0, lastFired: 0, firing: false };
-
-        if (crossed) {
-          if (st.crossedSince === 0) st.crossedSince = now;
-          const sustained = now - st.crossedSince >= rule.duration_s;
-          const cooled = now - st.lastFired >= rule.cooldown_s;
-          if (sustained && (!st.firing || cooled)) {
-            this.fire(rule, sample, observed, 'firing');
-            st.firing = true;
-            st.lastFired = now;
-          }
-        } else {
-          if (st.firing) {
-            this.fire(rule, sample, observed, 'resolved');
-            st.firing = false;
-          }
-          st.crossedSince = 0;
-        }
-        this.state.set(key, st);
+        this.evaluateOne(rule, sample, now);
       }
     }
+  }
+
+  // Per (rule, sample) tick. Split out of evaluate() so the outer loop
+  // stays a flat 2-level iteration (Sonar S3776).
+  private evaluateOne(rule: AlertRule, sample: GpuSample, now: number): void {
+    if (rule.gpu_index !== null && rule.gpu_index !== sample.gpu_index) return;
+    const observed = readMetric(sample, rule.metric);
+    if (observed === null) return;
+
+    const crossed = rule.condition === 'above'
+      ? observed >= rule.threshold
+      : observed <= rule.threshold;
+
+    const key = `${rule.id}:${sample.gpu_index}`;
+    const st: RuleState = this.state.get(key) ?? { crossedSince: 0, lastFired: 0, firing: false };
+
+    if (crossed) this.handleCrossed(rule, sample, observed, st, now);
+    else this.handleCleared(rule, sample, observed, st);
+
+    this.state.set(key, st);
+  }
+
+  private handleCrossed(rule: AlertRule, sample: GpuSample, observed: number, st: RuleState, now: number): void {
+    if (st.crossedSince === 0) st.crossedSince = now;
+    const sustained = now - st.crossedSince >= rule.duration_s;
+    const cooled = now - st.lastFired >= rule.cooldown_s;
+    if (!sustained) return;
+    if (st.firing && !cooled) return;
+    this.fire(rule, sample, observed, 'firing');
+    st.firing = true;
+    st.lastFired = now;
+  }
+
+  private handleCleared(rule: AlertRule, sample: GpuSample, observed: number, st: RuleState): void {
+    if (st.firing) {
+      this.fire(rule, sample, observed, 'resolved');
+      st.firing = false;
+    }
+    st.crossedSince = 0;
   }
 
   private fire(rule: AlertRule, sample: GpuSample, observed: number, state: 'firing' | 'resolved'): void {

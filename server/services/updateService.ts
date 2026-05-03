@@ -146,82 +146,18 @@ export const updateService = {
   },
 
   async runCheck(currentVersion: string): Promise<UpdateCheckResult> {
-    const headers: Record<string, string> = {
-      'Accept': 'application/vnd.github+json',
-      'User-Agent': 'GpuViewR-UpdateChecker/1.0',
-      'X-GitHub-Api-Version': '2022-11-28',
-    };
-    if (process.env.GITHUB_TOKEN) headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
-
+    const headers = buildGithubHeaders();
     const checkedAt = new Date().toISOString();
-    const fail = (error: string): UpdateCheckResult => ({
-      enabled: true,
-      currentVersion,
-      latestVersion: null,
-      updateAvailable: false,
-      dockerReady: false,
-      releaseNotes: null,
-      releaseUrl: null,
-      checkedAt,
-      message: 'Could not reach the update server.',
-      fromCache: false,
-      error,
-    });
 
-    let latestVersion: string | null = null;
-    try {
-      const tagsRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/tags`, { headers });
-      if (!tagsRes.ok) return fail(`GitHub Tags API ${tagsRes.status}`);
-      const tags = (await tagsRes.json()) as Array<{ name: string }>;
-      const semverTags = tags
-        .map((t) => t.name.replace(/^v/, ''))
-        .filter((n) => /^\d+\.\d+\.\d+$/.test(n))
-        .sort((a, b) => this.compareVersions(b, a));
-      if (semverTags.length === 0) {
-        return {
-          enabled: true,
-          currentVersion,
-          latestVersion: null,
-          updateAvailable: false,
-          dockerReady: false,
-          releaseNotes: null,
-          releaseUrl: null,
-          checkedAt,
-          message: 'No published releases yet.',
-          fromCache: false,
-        };
-      }
-      latestVersion = semverTags[0];
-    } catch (err) {
-      return fail((err as Error).message);
-    }
+    const tagResult = await this.fetchLatestTag(headers);
+    if (tagResult.kind === 'error') return failResult(currentVersion, checkedAt, tagResult.error);
+    if (tagResult.kind === 'empty') return emptyResult(currentVersion, checkedAt);
 
+    const latestVersion = tagResult.tag;
     const updateAvailable = this.compareVersions(latestVersion, currentVersion) > 0;
     const dockerReady = updateAvailable ? await this.dockerImageAvailable(latestVersion) : true;
-
-    let releaseNotes: string | null = null;
-    let releaseUrl: string | null = null;
-    try {
-      const relRes = await fetch(
-        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/v${latestVersion}`,
-        { headers },
-      );
-      if (relRes.ok) {
-        const release = (await relRes.json()) as { body?: string; html_url?: string };
-        if (release.body) releaseNotes = trim(release.body, RELEASE_NOTES_MAX);
-        if (release.html_url) releaseUrl = release.html_url;
-      }
-    } catch {
-      // ignore: fall back to local CHANGELOG
-    }
-    if (!releaseNotes) releaseNotes = readChangelogSection(latestVersion);
-    if (!releaseUrl) releaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/v${latestVersion}`;
-
-    const message = !updateAvailable
-      ? `You are running the latest version (${currentVersion}).`
-      : dockerReady
-        ? `Update available: ${currentVersion} → ${latestVersion}`
-        : `New release ${latestVersion} tagged but the Docker image is not ready yet.`;
+    const { releaseNotes, releaseUrl } = await this.fetchReleaseDetails(latestVersion, headers);
+    const message = buildMessage(currentVersion, latestVersion, updateAvailable, dockerReady);
 
     logger.info('updates', message);
 
@@ -236,6 +172,53 @@ export const updateService = {
       checkedAt,
       message,
       fromCache: false,
+    };
+  },
+
+  // Fetches /tags from GitHub and returns the highest semver-tagged release.
+  // Split out so runCheck() stays a flat sequence of awaits (Sonar S3776).
+  async fetchLatestTag(headers: Record<string, string>): Promise<
+    | { kind: 'tag'; tag: string }
+    | { kind: 'empty' }
+    | { kind: 'error'; error: string }
+  > {
+    try {
+      const tagsRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/tags`, { headers });
+      if (!tagsRes.ok) return { kind: 'error', error: `GitHub Tags API ${tagsRes.status}` };
+      const tags = (await tagsRes.json()) as Array<{ name: string }>;
+      const semverTags = tags
+        .map((t) => t.name.replace(/^v/, ''))
+        .filter((n) => /^\d+\.\d+\.\d+$/.test(n))
+        .sort((a, b) => this.compareVersions(b, a));
+      if (semverTags.length === 0) return { kind: 'empty' };
+      return { kind: 'tag', tag: semverTags[0] };
+    } catch (err) {
+      return { kind: 'error', error: (err as Error).message };
+    }
+  },
+
+  async fetchReleaseDetails(
+    version: string,
+    headers: Record<string, string>,
+  ): Promise<{ releaseNotes: string | null; releaseUrl: string }> {
+    let releaseNotes: string | null = null;
+    let releaseUrl: string | null = null;
+    try {
+      const relRes = await fetch(
+        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/v${version}`,
+        { headers },
+      );
+      if (relRes.ok) {
+        const release = (await relRes.json()) as { body?: string; html_url?: string };
+        if (release.body) releaseNotes = trim(release.body, RELEASE_NOTES_MAX);
+        if (release.html_url) releaseUrl = release.html_url;
+      }
+    } catch {
+      // ignore: fall back to local CHANGELOG
+    }
+    return {
+      releaseNotes: releaseNotes ?? readChangelogSection(version),
+      releaseUrl: releaseUrl ?? `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/v${version}`,
     };
   },
 
@@ -265,6 +248,53 @@ export const updateService = {
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
+}
+
+function buildGithubHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github+json',
+    'User-Agent': 'GpuViewR-UpdateChecker/1.0',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  if (process.env.GITHUB_TOKEN) headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+  return headers;
+}
+
+function failResult(currentVersion: string, checkedAt: string, error: string): UpdateCheckResult {
+  return {
+    enabled: true,
+    currentVersion,
+    latestVersion: null,
+    updateAvailable: false,
+    dockerReady: false,
+    releaseNotes: null,
+    releaseUrl: null,
+    checkedAt,
+    message: 'Could not reach the update server.',
+    fromCache: false,
+    error,
+  };
+}
+
+function emptyResult(currentVersion: string, checkedAt: string): UpdateCheckResult {
+  return {
+    enabled: true,
+    currentVersion,
+    latestVersion: null,
+    updateAvailable: false,
+    dockerReady: false,
+    releaseNotes: null,
+    releaseUrl: null,
+    checkedAt,
+    message: 'No published releases yet.',
+    fromCache: false,
+  };
+}
+
+function buildMessage(current: string, latest: string, updateAvailable: boolean, dockerReady: boolean): string {
+  if (!updateAvailable) return `You are running the latest version (${current}).`;
+  if (dockerReady) return `Update available: ${current} → ${latest}`;
+  return `New release ${latest} tagged but the Docker image is not ready yet.`;
 }
 
 function trim(s: string, max: number): string {

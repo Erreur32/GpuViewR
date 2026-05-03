@@ -563,46 +563,8 @@ class ExportService {
       return;
     }
     try {
-      let res: Response;
-      if (cfg.type === 'discord') {
-        res = await fetch(cfg.url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            embeds: [{
-              title: 'GpuViewR',
-              description: summary,
-              color,
-              timestamp: new Date().toISOString(),
-            }],
-          }),
-        });
-      } else if (cfg.type === 'telegram') {
-        if (!cfg.token || !cfg.chatId) {
-          logger.warn('export', 'Telegram webhook missing token or chatId');
-          return;
-        }
-        res = await fetch(`https://api.telegram.org/bot${encodeURIComponent(cfg.token)}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: cfg.chatId,
-            text: summary,
-            parse_mode: 'HTML',
-          }),
-        });
-      } else {
-        // Strip a user-supplied Content-Type to keep our JSON body intact.
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        for (const [k, v] of Object.entries(cfg.headers ?? {})) {
-          if (k.toLowerCase() !== 'content-type') headers[k] = v;
-        }
-        res = await fetch(cfg.url, {
-          method: cfg.method,
-          headers,
-          body: JSON.stringify(body),
-        });
-      }
+      const res = await this.dispatchWebhook(cfg, body, summary, color);
+      if (!res) return; // type-specific guard already logged
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
         throw new Error(`HTTP ${res.status}${txt ? `: ${txt.slice(0, 200)}` : ''}`);
@@ -613,47 +575,99 @@ class ExportService {
     }
   }
 
+  private dispatchWebhook(cfg: WebhookConfig, body: object, summary: string, color: number): Promise<Response | null> {
+    if (cfg.type === 'discord') return this.sendDiscord(cfg, summary, color);
+    if (cfg.type === 'telegram') return this.sendTelegram(cfg, summary);
+    return this.sendGeneric(cfg, body);
+  }
+
+  private sendDiscord(cfg: WebhookConfig, summary: string, color: number): Promise<Response> {
+    return fetch(cfg.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        embeds: [{
+          title: 'GpuViewR',
+          description: summary,
+          color,
+          timestamp: new Date().toISOString(),
+        }],
+      }),
+    });
+  }
+
+  private async sendTelegram(cfg: WebhookConfig, summary: string): Promise<Response | null> {
+    if (!cfg.token || !cfg.chatId) {
+      logger.warn('export', 'Telegram webhook missing token or chatId');
+      return null;
+    }
+    return fetch(`https://api.telegram.org/bot${encodeURIComponent(cfg.token)}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: cfg.chatId,
+        text: summary,
+        parse_mode: 'HTML',
+      }),
+    });
+  }
+
+  private sendGeneric(cfg: WebhookConfig, body: object): Promise<Response> {
+    // Strip a user-supplied Content-Type to keep our JSON body intact.
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    for (const [k, v] of Object.entries(cfg.headers ?? {})) {
+      if (k.toLowerCase() !== 'content-type') headers[k] = v;
+    }
+    return fetch(cfg.url, {
+      method: cfg.method,
+      headers,
+      body: JSON.stringify(body),
+    });
+  }
+
   /** Test a single exporter with a representative sample. */
   async test(kind: ExporterKind): Promise<{ ok: boolean; message: string }> {
     const c = this.getConfigs();
     try {
-      if (kind === 'prometheus') {
-        return { ok: true, message: 'Prometheus is pull-based; scrape /metrics to test.' };
-      }
-      if (kind === 'webhook') {
-        const w = c.webhook;
-        if (w.type === 'telegram') {
-          if (!w.token || !w.chatId) return { ok: false, message: 'Telegram webhook needs both token and chatId.' };
-        } else if (!w.url) {
-          return { ok: false, message: 'Webhook URL is empty.' };
-        }
-        // Send a representative payload regardless of the configured mode.
-        if (w.mode === 'alerts' || w.type !== 'generic') {
-          await this.sendWebhook(w, {
-            source: 'gpuviewr',
-            kind: 'test',
-            timestamp: new Date().toISOString(),
-            samples: this.latestSamples.slice(0, 1),
-          }, `🧪 GpuViewR webhook test — ${this.latestSamples.length} GPU(s) reporting.`);
-        } else {
-          await this.pushWebhook(w);
-        }
-        return { ok: true, message: 'Webhook test sent and accepted by the remote endpoint.' };
-      }
-      if (kind === 'influxdb') {
-        if (!c.influxdb.token || !c.influxdb.org) return { ok: false, message: 'InfluxDB token/org missing.' };
-        await this.pushInflux(c.influxdb);
-        return { ok: true, message: 'InfluxDB test write sent.' };
-      }
-      if (kind === 'mqtt') {
-        if (!this.mqttClient || !this.mqttClient.connected) return { ok: false, message: 'MQTT client not connected.' };
-        this.publishMqtt(c.mqtt);
-        return { ok: true, message: 'MQTT test publish sent.' };
-      }
+      if (kind === 'prometheus') return { ok: true, message: 'Prometheus is pull-based; scrape /metrics to test.' };
+      if (kind === 'webhook') return await this.testWebhook(c.webhook);
+      if (kind === 'influxdb') return await this.testInflux(c.influxdb);
+      if (kind === 'mqtt') return this.testMqtt(c.mqtt);
       return { ok: false, message: 'Unknown exporter' };
     } catch (err) {
       return { ok: false, message: (err as Error).message };
     }
+  }
+
+  private async testWebhook(w: WebhookConfig): Promise<{ ok: boolean; message: string }> {
+    if (w.type === 'telegram') {
+      if (!w.token || !w.chatId) return { ok: false, message: 'Telegram webhook needs both token and chatId.' };
+    } else if (!w.url) {
+      return { ok: false, message: 'Webhook URL is empty.' };
+    }
+    if (w.mode === 'alerts' || w.type !== 'generic') {
+      await this.sendWebhook(w, {
+        source: 'gpuviewr',
+        kind: 'test',
+        timestamp: new Date().toISOString(),
+        samples: this.latestSamples.slice(0, 1),
+      }, `🧪 GpuViewR webhook test — ${this.latestSamples.length} GPU(s) reporting.`);
+    } else {
+      await this.pushWebhook(w);
+    }
+    return { ok: true, message: 'Webhook test sent and accepted by the remote endpoint.' };
+  }
+
+  private async testInflux(cfg: InfluxConfig): Promise<{ ok: boolean; message: string }> {
+    if (!cfg.token || !cfg.org) return { ok: false, message: 'InfluxDB token/org missing.' };
+    await this.pushInflux(cfg);
+    return { ok: true, message: 'InfluxDB test write sent.' };
+  }
+
+  private testMqtt(cfg: MqttConfig): { ok: boolean; message: string } {
+    if (!this.mqttClient || !this.mqttClient.connected) return { ok: false, message: 'MQTT client not connected.' };
+    this.publishMqtt(cfg);
+    return { ok: true, message: 'MQTT test publish sent.' };
   }
 
   shutdown(): void {

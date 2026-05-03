@@ -13,7 +13,7 @@ export default function UpdateBanner() {
 
   useEffect(() => {
     hydrate();
-    void check(false);
+    check(false).catch(() => { /* ignore */ });
   }, [hydrate, check]);
 
   if (!bannerEnabled) return null;

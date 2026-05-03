@@ -57,93 +57,102 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
   return out;
 }
 
-function renderBody(body: string): React.ReactNode {
-  const out: React.ReactNode[] = [];
-  let listBuf: React.ReactNode[] = [];
-  let fenceBuf: string[] | null = null;
-  let key = 0;
-  const flushList = () => {
-    if (listBuf.length) {
-      out.push(<ul key={`ul-${key++}`} className="list-disc pl-5 my-2 space-y-1">{listBuf}</ul>);
-      listBuf = [];
-    }
-  };
-  const flushFence = () => {
-    if (fenceBuf) {
-      out.push(
-        <pre
-          key={`pre-${key++}`}
-          className="rounded-lg p-3 my-3 overflow-x-auto text-xs font-mono"
-          style={{
-            background: 'var(--gv-surface-alt)',
-            border: '1px solid var(--gv-border)',
-            borderLeft: '3px solid var(--gv-accent)',
-            color: 'var(--gv-text)',
-          }}
-        ><code>{fenceBuf.join('\n')}</code></pre>,
-      );
-      fenceBuf = null;
-    }
-  };
+interface RenderState {
+  out: React.ReactNode[];
+  listBuf: React.ReactNode[];
+  fenceBuf: string[] | null;
+  key: number;
+}
 
+function flushList(s: RenderState): void {
+  if (!s.listBuf.length) return;
+  s.out.push(<ul key={`ul-${s.key++}`} className="list-disc pl-5 my-2 space-y-1">{s.listBuf}</ul>);
+  s.listBuf = [];
+}
+
+function flushFence(s: RenderState): void {
+  if (!s.fenceBuf) return;
+  s.out.push(
+    <pre
+      key={`pre-${s.key++}`}
+      className="rounded-lg p-3 my-3 overflow-x-auto text-xs font-mono"
+      style={{
+        background: 'var(--gv-surface-alt)',
+        border: '1px solid var(--gv-border)',
+        borderLeft: '3px solid var(--gv-accent)',
+        color: 'var(--gv-text)',
+      }}
+    ><code>{s.fenceBuf.join('\n')}</code></pre>,
+  );
+  s.fenceBuf = null;
+}
+
+// Returns true when the line consumed a structural marker (fence toggle,
+// fence body, heading, hr, list item) — i.e. handled and the caller can
+// move on. Falls through to paragraph rendering otherwise.
+function consumeStructural(line: string, s: RenderState): boolean {
+  if (line.startsWith('```')) {
+    if (s.fenceBuf) flushFence(s);
+    else { flushList(s); s.fenceBuf = []; }
+    return true;
+  }
+  if (s.fenceBuf) { s.fenceBuf.push(line); return true; }
+  if (line.startsWith('### ')) {
+    flushList(s);
+    s.out.push(
+      <h4
+        key={`h3-${s.key++}`}
+        className="text-sm font-semibold mt-3 mb-1.5 pb-0.5"
+        style={{
+          color: 'var(--gv-accent)',
+          borderBottom: '1px solid color-mix(in srgb, var(--gv-accent) 25%, transparent)',
+        }}
+      >{renderInline(line.slice(4), `h3${s.key}`)}</h4>,
+    );
+    return true;
+  }
+  if (line.startsWith('#### ')) {
+    flushList(s);
+    s.out.push(
+      <h5 key={`h4-${s.key++}`} className="text-xs font-semibold mt-2 mb-1" style={{ color: 'var(--gv-ok)' }}>
+        {renderInline(line.slice(5), `h4${s.key}`)}
+      </h5>,
+    );
+    return true;
+  }
+  if (line.trim() === '---') {
+    flushList(s);
+    s.out.push(<hr key={`hr-${s.key++}`} style={{ borderColor: 'var(--gv-border)' }} className="my-3" />);
+    return true;
+  }
+  if (/^[-*]\s+/.test(line)) {
+    s.listBuf.push(
+      <li key={`li-${s.key++}`} className="text-xs leading-relaxed" style={{ color: 'var(--gv-text)' }}>
+        {renderInline(line.replace(/^[-*]\s+/, ''), `li${s.key}`)}
+      </li>,
+    );
+    return true;
+  }
+  return false;
+}
+
+function renderBody(body: string): React.ReactNode {
+  const s: RenderState = { out: [], listBuf: [], fenceBuf: null, key: 0 };
   for (const raw of body.split(/\n/)) {
     const line = raw.trimEnd();
-
-    if (line.startsWith('```')) {
-      if (fenceBuf) flushFence();
-      else { flushList(); fenceBuf = []; }
-      continue;
-    }
-    if (fenceBuf) { fenceBuf.push(line); continue; }
-
-    if (line.startsWith('### ')) {
-      flushList();
-      out.push(
-        <h4
-          key={`h3-${key++}`}
-          className="text-sm font-semibold mt-3 mb-1.5 pb-0.5"
-          style={{
-            color: 'var(--gv-accent)',
-            borderBottom: '1px solid color-mix(in srgb, var(--gv-accent) 25%, transparent)',
-          }}
-        >{renderInline(line.slice(4), `h3${key}`)}</h4>,
-      );
-      continue;
-    }
-    if (line.startsWith('#### ')) {
-      flushList();
-      out.push(
-        <h5 key={`h4-${key++}`} className="text-xs font-semibold mt-2 mb-1" style={{ color: 'var(--gv-ok)' }}>
-          {renderInline(line.slice(5), `h4${key}`)}
-        </h5>,
-      );
-      continue;
-    }
-    if (line.trim() === '---') {
-      flushList();
-      out.push(<hr key={`hr-${key++}`} style={{ borderColor: 'var(--gv-border)' }} className="my-3" />);
-      continue;
-    }
-    if (/^[-*]\s+/.test(line)) {
-      listBuf.push(
-        <li key={`li-${key++}`} className="text-xs leading-relaxed" style={{ color: 'var(--gv-text)' }}>
-          {renderInline(line.replace(/^[-*]\s+/, ''), `li${key}`)}
-        </li>,
-      );
-      continue;
-    }
-    flushList();
+    if (consumeStructural(line, s)) continue;
+    flushList(s);
     if (line.trim()) {
-      out.push(
-        <p key={`p-${key++}`} className="text-xs my-1.5 leading-relaxed" style={{ color: 'var(--gv-text-muted)' }}>
-          {renderInline(line, `p${key}`)}
+      s.out.push(
+        <p key={`p-${s.key++}`} className="text-xs my-1.5 leading-relaxed" style={{ color: 'var(--gv-text-muted)' }}>
+          {renderInline(line, `p${s.key}`)}
         </p>,
       );
     }
   }
-  flushList();
-  flushFence();
-  return <>{out}</>;
+  flushList(s);
+  flushFence(s);
+  return <>{s.out}</>;
 }
 
 export default function AboutSettings() {
@@ -158,7 +167,7 @@ export default function AboutSettings() {
 
   useEffect(() => {
     hydrate();
-    if (!result) void check(false);
+    if (!result) check(false).catch(() => { /* ignore */ });
   }, [hydrate, check, result]);
 
   useEffect(() => {

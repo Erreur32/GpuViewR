@@ -15,7 +15,11 @@ export default function UpdateSettings() {
   const [enabled, setEnabled] = useState<boolean>(true);
   const [hours, setHours] = useState<number>(24);
 
-  useEffect(() => { hydrate(); void loadConfig(); void check(false); }, [hydrate, loadConfig, check]);
+  useEffect(() => {
+    hydrate();
+    loadConfig().catch(() => { /* ignore */ });
+    check(false).catch(() => { /* ignore */ });
+  }, [hydrate, loadConfig, check]);
   useEffect(() => {
     if (!config) return;
     setEnabled(config.enabled);

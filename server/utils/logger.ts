@@ -75,19 +75,11 @@ export const logger = {
     limit?: number;
   } = {}): LogEntry[] {
     const limit = Math.min(2000, opts.limit ?? 500);
-    const lvl = opts.level && opts.level !== 'all' ? opts.level : null;
-    const scope = opts.scope?.toLowerCase();
-    const search = opts.search?.toLowerCase();
-
+    const filter = buildLogFilter(opts);
     const out: LogEntry[] = [];
     for (let i = buffer.length - 1; i >= 0 && out.length < limit; i--) {
       const e = buffer[i];
-      if (lvl && e.level !== lvl) continue;
-      if (scope && !e.scope.toLowerCase().includes(scope)) continue;
-      if (search && !e.message.toLowerCase().includes(search)) continue;
-      if (opts.sinceTs && e.ts < opts.sinceTs) continue;
-      if (opts.untilTs && e.ts > opts.untilTs) continue;
-      out.push(e);
+      if (filter(e)) out.push(e);
     }
     return out;
   },
@@ -95,6 +87,32 @@ export const logger = {
   scopes(): string[] {
     const set = new Set<string>();
     for (const e of buffer) set.add(e.scope);
-    return Array.from(set).sort();
+    // Use localeCompare so the order is stable across runtimes and locales
+    // (Sonar S2871 — default Array#sort coerces to string and is locale-blind).
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   },
 };
+
+// Build a single predicate from the query options so the loop body in
+// query() stays a flat early-return chain (Sonar S3776).
+function buildLogFilter(opts: {
+  level?: LogLevel | 'all';
+  scope?: string;
+  search?: string;
+  sinceTs?: number;
+  untilTs?: number;
+}): (e: LogEntry) => boolean {
+  const lvl = opts.level && opts.level !== 'all' ? opts.level : null;
+  const scope = opts.scope?.toLowerCase();
+  const search = opts.search?.toLowerCase();
+  const since = opts.sinceTs;
+  const until = opts.untilTs;
+  return (e) => {
+    if (lvl && e.level !== lvl) return false;
+    if (scope && !e.scope.toLowerCase().includes(scope)) return false;
+    if (search && !e.message.toLowerCase().includes(search)) return false;
+    if (since && e.ts < since) return false;
+    if (until && e.ts > until) return false;
+    return true;
+  };
+}

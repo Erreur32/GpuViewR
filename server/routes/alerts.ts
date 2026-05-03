@@ -34,25 +34,43 @@ router.post('/rules', requireAdmin, (req, res) => {
   res.json({ rule });
 });
 
+// Build the typed PATCH body from the raw request, mapping each field
+// individually so the route handler stays a flat sequence of guards.
+function buildRulePatch(body: Record<string, unknown>): Partial<{
+  name: string;
+  metric: AlertMetric;
+  condition: AlertCondition;
+  threshold: number;
+  duration_s: number;
+  gpu_index: number | null;
+  enabled: 0 | 1;
+  notify_browser: 0 | 1;
+  notify_sound: 0 | 1;
+  notify_webhook: 0 | 1;
+  cooldown_s: number;
+}> {
+  const patch: Record<string, unknown> = {};
+  if (body.name !== undefined) patch.name = String(body.name);
+  if (body.metric !== undefined) patch.metric = body.metric;
+  if (body.condition !== undefined) patch.condition = body.condition;
+  if (body.threshold !== undefined) patch.threshold = Number(body.threshold);
+  if (body.duration_s !== undefined) patch.duration_s = int(body.duration_s, 0);
+  if (body.gpu_index !== undefined) patch.gpu_index = body.gpu_index === null ? null : Number(body.gpu_index);
+  if (body.enabled !== undefined) patch.enabled = body.enabled ? 1 : 0;
+  if (body.notify_browser !== undefined) patch.notify_browser = body.notify_browser ? 1 : 0;
+  if (body.notify_sound !== undefined) patch.notify_sound = body.notify_sound ? 1 : 0;
+  if (body.notify_webhook !== undefined) patch.notify_webhook = body.notify_webhook ? 1 : 0;
+  if (body.cooldown_s !== undefined) patch.cooldown_s = int(body.cooldown_s, 300);
+  return patch;
+}
+
 router.patch('/rules/:id', requireAdmin, (req, res) => {
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
   const body = req.body || {};
   const err = validate(body, true);
   if (err) return res.status(400).json({ error: err });
-  const rule = AlertRuleRepo.update(id, {
-    ...(body.name !== undefined && { name: String(body.name) }),
-    ...(body.metric !== undefined && { metric: body.metric }),
-    ...(body.condition !== undefined && { condition: body.condition }),
-    ...(body.threshold !== undefined && { threshold: Number(body.threshold) }),
-    ...(body.duration_s !== undefined && { duration_s: int(body.duration_s, 0) }),
-    ...(body.gpu_index !== undefined && { gpu_index: body.gpu_index === null ? null : Number(body.gpu_index) }),
-    ...(body.enabled !== undefined && { enabled: body.enabled ? 1 : 0 }),
-    ...(body.notify_browser !== undefined && { notify_browser: body.notify_browser ? 1 : 0 }),
-    ...(body.notify_sound !== undefined && { notify_sound: body.notify_sound ? 1 : 0 }),
-    ...(body.notify_webhook !== undefined && { notify_webhook: body.notify_webhook ? 1 : 0 }),
-    ...(body.cooldown_s !== undefined && { cooldown_s: int(body.cooldown_s, 300) }),
-  });
+  const rule = AlertRuleRepo.update(id, buildRulePatch(body));
   if (!rule) return res.status(404).json({ error: 'Not found' });
   alertService.invalidateCache();
   res.json({ rule });
