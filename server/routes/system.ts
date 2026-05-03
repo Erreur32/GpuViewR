@@ -58,6 +58,32 @@ function readLoadAvg(): number[] {
   return os.loadavg();
 }
 
+// Aggregate CPU usage % over the elapsed time between calls. We snapshot
+// /proc/stat-style counters returned by os.cpus() and diff against the
+// previous snapshot. The first call returns 0 (no baseline yet).
+let prevCpuSnapshot: { idle: number; total: number } | null = null;
+
+function readCpuUsagePct(): number {
+  const cpus = os.cpus();
+  let idle = 0;
+  let total = 0;
+  for (const c of cpus) {
+    const t = c.times;
+    idle += t.idle;
+    total += t.user + t.nice + t.sys + t.idle + t.irq;
+  }
+  if (prevCpuSnapshot === null) {
+    prevCpuSnapshot = { idle, total };
+    return 0;
+  }
+  const idleDelta = idle - prevCpuSnapshot.idle;
+  const totalDelta = total - prevCpuSnapshot.total;
+  prevCpuSnapshot = { idle, total };
+  if (totalDelta <= 0) return 0;
+  const pct = (1 - idleDelta / totalDelta) * 100;
+  return Math.max(0, Math.min(100, pct));
+}
+
 router.get('/', (_req, res) => {
   const total = os.totalmem();
   const free = os.freemem();
@@ -79,6 +105,7 @@ router.get('/', (_req, res) => {
       model: readCpuModel(),
       cores: cpus.length,
       speedMHz: cpus[0]?.speed ?? 0,
+      usagePct: readCpuUsagePct(),
     },
     memory: {
       total,

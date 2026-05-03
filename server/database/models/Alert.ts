@@ -15,6 +15,7 @@ export interface AlertRule {
   enabled: 0 | 1;
   notify_browser: 0 | 1;
   notify_sound: 0 | 1;
+  notify_webhook: 0 | 1;
   cooldown_s: number;
   created_at: number;
 }
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS alert_rules (
   enabled INTEGER NOT NULL DEFAULT 1,
   notify_browser INTEGER NOT NULL DEFAULT 1,
   notify_sound INTEGER NOT NULL DEFAULT 0,
+  notify_webhook INTEGER NOT NULL DEFAULT 1,
   cooldown_s INTEGER NOT NULL DEFAULT 300,
   created_at INTEGER NOT NULL
 );
@@ -66,7 +68,13 @@ CREATE INDEX IF NOT EXISTS idx_alert_events_rule ON alert_events(rule_id);
 `;
 
 export function ensureAlertSchema(): void {
-  getDatabase().exec(ddl);
+  const db = getDatabase();
+  db.exec(ddl);
+  // Idempotent migration for existing installs that pre-date notify_webhook.
+  const cols = db.prepare("PRAGMA table_info('alert_rules')").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === 'notify_webhook')) {
+    db.exec("ALTER TABLE alert_rules ADD COLUMN notify_webhook INTEGER NOT NULL DEFAULT 1");
+  }
 }
 
 export const AlertRuleRepo = {
@@ -88,13 +96,14 @@ export const AlertRuleRepo = {
   create(input: Omit<AlertRule, 'id' | 'created_at'>): AlertRule {
     const stmt = getDatabase().prepare(
       `INSERT INTO alert_rules
-       (name, metric, condition, threshold, duration_s, gpu_index, enabled, notify_browser, notify_sound, cooldown_s, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (name, metric, condition, threshold, duration_s, gpu_index, enabled, notify_browser, notify_sound, notify_webhook, cooldown_s, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const r = stmt.run(
       input.name, input.metric, input.condition, input.threshold,
       input.duration_s, input.gpu_index, input.enabled,
-      input.notify_browser, input.notify_sound, input.cooldown_s,
+      input.notify_browser, input.notify_sound, input.notify_webhook,
+      input.cooldown_s,
       Math.floor(Date.now() / 1000)
     );
     return this.get(Number(r.lastInsertRowid))!;
@@ -105,11 +114,12 @@ export const AlertRuleRepo = {
     const merged = { ...cur, ...patch };
     getDatabase().prepare(
       `UPDATE alert_rules SET name=?, metric=?, condition=?, threshold=?, duration_s=?,
-       gpu_index=?, enabled=?, notify_browser=?, notify_sound=?, cooldown_s=? WHERE id=?`
+       gpu_index=?, enabled=?, notify_browser=?, notify_sound=?, notify_webhook=?, cooldown_s=? WHERE id=?`
     ).run(
       merged.name, merged.metric, merged.condition, merged.threshold, merged.duration_s,
       merged.gpu_index, merged.enabled ? 1 : 0,
-      merged.notify_browser ? 1 : 0, merged.notify_sound ? 1 : 0, merged.cooldown_s, id
+      merged.notify_browser ? 1 : 0, merged.notify_sound ? 1 : 0,
+      merged.notify_webhook ? 1 : 0, merged.cooldown_s, id
     );
     return this.get(id);
   },

@@ -4,6 +4,7 @@ import { logger } from '../utils/logger.js';
 import { spawnNvidiaSmi, spawnSyncNvidiaSmi } from '../utils/nvidiaSmi.js';
 import { GpuDeviceRepository, GpuMetricRepository, type GpuMetric } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
+import { buildFakeSamples } from './mockGpu.js';
 
 const QUERY_FIELDS = [
   'index',
@@ -65,6 +66,12 @@ class GpuCollector extends EventEmitter {
 
   start(): void {
     if (this.timer) return;
+    if (config.mockGpu) {
+      logger.warn('gpu', `Mock collector started (tick=${config.gpuTickMs}ms) — synthetic data, NOT REAL GPUS`);
+      this.mockTick();
+      this.timer = setInterval(() => this.mockTick(), config.gpuTickMs);
+      return;
+    }
     this.checkNvidiaSmi();
     if (!this.nvidiaSmiAvailable) {
       logger.warn('gpu', 'nvidia-smi not available: collector disabled (UI will show no data)');
@@ -73,6 +80,36 @@ class GpuCollector extends EventEmitter {
     logger.success('gpu', `Collector started (tick=${config.gpuTickMs}ms)`);
     this.tick();
     this.timer = setInterval(() => this.tick(), config.gpuTickMs);
+  }
+
+  private mockTick(): void {
+    const samples = buildFakeSamples();
+    if (samples.length === 0) return;
+    this.lastSamples = samples;
+    for (const s of samples) {
+      GpuDeviceRepository.upsert({
+        gpu_index: s.gpu_index,
+        name: s.name,
+        uuid: s.uuid,
+        memory_total: s.memory_total,
+        driver_version: s.driver_version,
+      });
+      this.buffer.push({
+        gpu_index: s.gpu_index,
+        timestamp: s.timestamp,
+        timestamp_epoch: s.timestamp_epoch,
+        temperature: s.temperature,
+        utilization: s.utilization,
+        memory_used: s.memory_used,
+        memory_total: s.memory_total,
+        power: s.power,
+        fan_speed: s.fan_speed,
+        clock_graphics: s.clock_graphics,
+        clock_memory: s.clock_memory,
+      });
+    }
+    this.emit('sample', samples);
+    if (Date.now() - this.lastFlush >= this.flushIntervalMs) this.flushBuffer();
   }
 
   stop(): void {

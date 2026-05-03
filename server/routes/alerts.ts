@@ -27,6 +27,7 @@ router.post('/rules', requireAdmin, (req, res) => {
     enabled: body.enabled === false ? 0 : 1,
     notify_browser: body.notify_browser === false ? 0 : 1,
     notify_sound: body.notify_sound ? 1 : 0,
+    notify_webhook: body.notify_webhook === false ? 0 : 1,
     cooldown_s: int(body.cooldown_s, 300),
   });
   alertService.invalidateCache();
@@ -49,6 +50,7 @@ router.patch('/rules/:id', requireAdmin, (req, res) => {
     ...(body.enabled !== undefined && { enabled: body.enabled ? 1 : 0 }),
     ...(body.notify_browser !== undefined && { notify_browser: body.notify_browser ? 1 : 0 }),
     ...(body.notify_sound !== undefined && { notify_sound: body.notify_sound ? 1 : 0 }),
+    ...(body.notify_webhook !== undefined && { notify_webhook: body.notify_webhook ? 1 : 0 }),
     ...(body.cooldown_s !== undefined && { cooldown_s: int(body.cooldown_s, 300) }),
   });
   if (!rule) return res.status(404).json({ error: 'Not found' });
@@ -102,6 +104,7 @@ router.post('/presets/install', requireAdmin, (req, res) => {
       enabled: 0, // installed disabled — user reviews then enables
       notify_browser: 1,
       notify_sound: p.notify_sound as 0 | 1,
+      notify_webhook: 1,
       cooldown_s: p.cooldown_s,
     }));
   }

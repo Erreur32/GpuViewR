@@ -138,6 +138,31 @@ export const THEMES: Theme[] = [
       chartGrid: 'rgba(82, 64, 38, 0.08)',
     },
   },
+  {
+    // Paper, dimmed: forest-paper variant. Deep moss greens with a sage-mint
+    // text and emerald accent. Not black — keeps the parchment warmth but in
+    // botanical/herbarium tones.
+    id: 'paper-dark',
+    label: 'Paper Dark',
+    mode: 'dark',
+    tokens: {
+      bg: '#131e17',
+      bg2: '#1a2820',
+      surface: 'rgba(26, 40, 32, 0.78)',
+      surfaceAlt: 'rgba(40, 56, 46, 0.55)',
+      border: 'rgba(190, 230, 200, 0.08)',
+      text: '#e3f1e6',
+      textMuted: '#a8c5b0',
+      textDim: '#6f8a78',
+      accent: '#4ade80',
+      accentFg: '#0a1410',
+      ok: '#84cc16',
+      warn: '#fbbf24',
+      danger: '#f87171',
+      info: '#22d3ee',
+      chartGrid: 'rgba(190, 230, 200, 0.06)',
+    },
+  },
 ];
 
 export function getTheme(id: string): Theme {

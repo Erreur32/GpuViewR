@@ -9,6 +9,12 @@ export const config = {
   retentionDays: Number.parseInt(process.env.RETENTION_DAYS || '7', 10),
   dataDir: process.env.DATA_DIR || './data',
   nodeEnv: process.env.NODE_ENV || 'development',
+  // Synthetic data for dev hosts without a GPU. Disabled in production
+  // unless explicitly forced (FORCE=1) — protects against accidentally
+  // serving fake metrics from a real install.
+  mockGpu:
+    (process.env.MOCK_GPU === '1' || process.env.MOCK_GPU === 'true') &&
+    (process.env.NODE_ENV !== 'production' || process.env.MOCK_GPU_FORCE === '1'),
 };
 
 if (!config.jwtSecret || config.jwtSecret.length < 16) {

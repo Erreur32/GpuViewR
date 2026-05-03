@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Database, Save, Trash2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Database, Save, Trash2, AlertTriangle } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
@@ -65,15 +65,9 @@ export default function DatabaseSettings() {
 
   return (
     <section className="card p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold flex items-center gap-2">
-          <Database className="w-4 h-4" /> {t('settings.db_title')}
-        </h2>
-        <button className="btn-ghost" onClick={load} disabled={loading}>
-          <RefreshCw className={'w-4 h-4 ' + (loading ? 'animate-spin' : '')} />
-          {t('common.refresh')}
-        </button>
-      </div>
+      <h2 className="font-semibold flex items-center gap-2">
+        <Database className="w-4 h-4" /> {t('settings.db_title')}
+      </h2>
 
       {info && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
@@ -94,7 +88,7 @@ export default function DatabaseSettings() {
             type="number"
             min="1"
             max="365"
-            className="input max-w-[120px]"
+            className="input max-w-[120px] !px-2 !py-1 !rounded-md"
             value={retention}
             disabled={!isAdmin || busy}
             onChange={(e) => setRetention(Number.parseInt(e.target.value, 10) || 7)}

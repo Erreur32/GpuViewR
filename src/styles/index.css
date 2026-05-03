@@ -21,6 +21,11 @@
   --gv-warn: #f59e0b;
   --gv-danger: #ef4444;
   --gv-info: #06b6d4;
+  /* 5-band severity scale: blue → green → yellow → orange → red.
+     The first/middle/last colours come from --gv-info / --gv-warn / --gv-danger
+     which themes already override; orange has no theme token yet, so we
+     define it once here and let themes opt-in by setting --gv-orange. */
+  --gv-orange: #f97316;
   --gv-chart-grid: rgba(148, 163, 184, 0.08);
   color-scheme: dark;
 }
@@ -140,6 +145,20 @@ body {
   50%      { opacity: 0.45; transform: scale(1.5); }
 }
 .live-dot { animation: live-pulse 1.5s ease-in-out infinite; }
+
+/* Gauge in danger zone (≥85 %): subtle heartbeat pulse via opacity so the
+   eye is drawn to the metric without making the page busy. */
+@keyframes gauge-pulse-kf {
+  0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+  50%      { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--gv-danger) 55%, transparent)); }
+}
+.gauge-pulse {
+  animation: gauge-pulse-kf 1.6s ease-in-out infinite;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gauge-pulse { animation: none; }
+}
 
 /* Toast slide-in */
 @keyframes toast-in {

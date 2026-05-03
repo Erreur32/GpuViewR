@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { api } from '../../lib/api';
 
 type Level = 'all' | 'info' | 'warn' | 'error' | 'success' | 'debug';
@@ -74,10 +74,6 @@ export default function LogsPage() {
             <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
             {t('logs.auto_refresh')}
           </label>
-          <button className="btn-ghost" onClick={load} disabled={loading}>
-            <RefreshCw className={'w-4 h-4 ' + (loading ? 'animate-spin' : '')} />
-            {t('common.refresh')}
-          </button>
         </div>
       </header>
 

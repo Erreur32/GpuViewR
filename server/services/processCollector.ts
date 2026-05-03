@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
+import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { spawnNvidiaSmi } from '../utils/nvidiaSmi.js';
+import { gpuCollector } from './gpuCollector.js';
+import { buildFakeProcesses } from './mockGpu.js';
 
 export interface GpuProcess {
   pid: number;
@@ -34,6 +37,11 @@ class ProcessCollector {
   }
 
   private refresh(): Promise<Snapshot> {
+    if (config.mockGpu) {
+      const samples = gpuCollector.getLatest();
+      this.last = { ts: Date.now(), processes: buildFakeProcesses(samples) };
+      return Promise.resolve(this.last);
+    }
     return new Promise((resolve) => {
       const child = spawnNvidiaSmi([
         `--query-compute-apps=${QUERY}`,
@@ -65,16 +73,20 @@ class ProcessCollector {
 
 // nvidia-smi returns "[Not Found]" when it cannot stat /proc/<pid>/exe (e.g.
 // the process lives in another PID namespace, or we lack permission). Try
-// reading procfs ourselves before giving up — works for host processes when
-// the container shares the host PID namespace (pid: host).
+// reading procfs ourselves before giving up. Works in two deployment modes:
+//   - pid: host             → read the container's own /proc (PIDs match host)
+//   - /proc bind-mounted ro → set HOST_PROC=/host/proc to read host PIDs
+//                             without sharing the PID namespace.
+const PROC_ROOT = process.env.HOST_PROC ?? '/proc';
+
 function resolveName(pid: number): string | null {
   try {
-    const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+    const cmdline = readFileSync(`${PROC_ROOT}/${pid}/cmdline`, 'utf8');
     const argv0 = cmdline.split('\0')[0];
     if (argv0) return basename(argv0);
   } catch { /* fall through */ }
   try {
-    const comm = readFileSync(`/proc/${pid}/comm`, 'utf8').trim();
+    const comm = readFileSync(`${PROC_ROOT}/${pid}/comm`, 'utf8').trim();
     if (comm) return comm;
   } catch { /* ignore */ }
   return null;

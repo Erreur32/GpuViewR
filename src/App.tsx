@@ -40,6 +40,7 @@ export default function App() {
           <Route path="/system" element={<SystemPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/:tab" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

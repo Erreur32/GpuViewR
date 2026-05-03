@@ -70,10 +70,80 @@ echo "HOST_IP=$(hostname -I | awk '{print $1}')" >> .env
 
 ### Step 2: grab the `docker-compose.yml`
 
-Use the [`docker-compose.yml`](docker-compose.yml) shipped with this repo
-(copy it next to your `.env`, or clone the repo). It pulls the published
-image from GHCR, exposes the dashboard on `${DASHBOARD_PORT}`, persists
-SQLite under `./data`, and reserves all NVIDIA GPUs to the container.
+Either clone the repo, or download the file directly next to your `.env`:
+
+```bash
+curl -fsSL -o docker-compose.yml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.yml
+```
+
+It pulls the published image from GHCR, exposes the dashboard on
+`${DASHBOARD_PORT}`, persists SQLite under `./data`, reserves all NVIDIA
+GPUs to the container, and bind-mounts the host `/proc` read-only so GPU
+process names resolve correctly without sharing the host PID namespace.
+
+<details>
+<summary>Show <code>docker-compose.yml</code></summary>
+
+```yaml
+services:
+  gpuviewr:
+    image: ghcr.io/erreur32/gpuviewr:latest
+    container_name: gpuviewr
+    restart: unless-stopped
+
+    # Host port 7510 → container port 3015. Override via DASHBOARD_PORT in .env.
+    ports:
+      - "${DASHBOARD_PORT:-7510}:3015"
+
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 3015
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
+      CONTAINER_NAME: gpuviewr
+      HOST_IP: ${HOST_IP:-}
+      TZ: ${TZ:-Europe/Paris}
+      GPU_TICK_MS: ${GPU_TICK_MS:-1000}
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+      # PUBLIC_URL: https://gpu.example.com
+      # Resolve GPU process names without sharing the host PID namespace.
+      # Pair with the /proc:/host/proc:ro bind mount below.
+      HOST_PROC: /host/proc
+
+    volumes:
+      - ./data:/app/data
+      # Read-only view of host /proc so we can resolve PID → process name
+      # when nvidia-smi returns "[Not Found]" (multi-tenant / hardened setups).
+      - /proc:/host/proc:ro
+
+    # Hardening: drop all caps, no privilege escalation.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility]
+    runtime: nvidia
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+```
+
+</details>
+
+> **Process names — alternative.** If you prefer the simpler model, drop
+> the `/proc:/host/proc:ro` mount + `HOST_PROC` env and add `pid: host`
+> to the service. Trade-off: the container then sees every process on the
+> host (less isolation, simpler config).
 
 ### Step 3: start it
 

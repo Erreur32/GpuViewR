@@ -1,13 +1,29 @@
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { LogOut, BellRing, FileText, Settings, LayoutDashboard, Server } from 'lucide-react';
+import { LogOut, BellRing, FileText, Settings, LayoutDashboard, Server, FlaskConical } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { api } from '../../lib/api';
 
 const VERSION = `v${__APP_VERSION__}`;
+const IS_DEV = import.meta.env.DEV;
+
+interface HealthInfo {
+  nodeEnv?: string;
+  mockGpu?: boolean;
+}
 
 export default function Header() {
   const { t } = useTranslation();
   const { user, logout } = useAuthStore();
+  const [health, setHealth] = useState<HealthInfo>({});
+
+  useEffect(() => {
+    api<HealthInfo>('/health').then(setHealth).catch(() => { /* keep silent */ });
+  }, []);
+
+  const showDev = IS_DEV || health.nodeEnv === 'development';
+  const showMock = health.mockGpu === true;
 
   return (
     <header className="sticky top-0 z-30 border-b backdrop-blur-xl"
@@ -27,9 +43,36 @@ export default function Header() {
             }}
           />
           <div className="leading-tight">
-            <div className="font-semibold flex items-center gap-2">
+            <div className="font-semibold flex items-center gap-2 flex-wrap">
               {t('app.title')}
               <span className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>{VERSION}</span>
+              {showDev && (
+                <span
+                  className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded"
+                  title="Vite dev mode"
+                  style={{
+                    color: 'var(--gv-warn)',
+                    background: 'color-mix(in srgb, var(--gv-warn) 15%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--gv-warn) 40%, transparent)',
+                  }}
+                >
+                  DEV
+                </span>
+              )}
+              {showMock && (
+                <span
+                  className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1"
+                  title="Synthetic GPU data — MOCK_GPU=1"
+                  style={{
+                    color: 'var(--gv-danger)',
+                    background: 'color-mix(in srgb, var(--gv-danger) 15%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--gv-danger) 40%, transparent)',
+                  }}
+                >
+                  <FlaskConical className="w-2.5 h-2.5" />
+                  Fake stats
+                </span>
+              )}
             </div>
             <div className="text-xs hidden sm:block" style={{ color: 'var(--gv-text-muted)' }}>{t('app.subtitle')}</div>
           </div>

@@ -59,7 +59,7 @@ export default function UpdateSettings() {
           type="number"
           min="1"
           max="168"
-          className="input max-w-[160px]"
+          className="input max-w-[160px] !px-2 !py-1 !rounded-md"
           value={hours}
           disabled={!isAdmin || !enabled}
           onChange={(e) => setHours(Number.parseInt(e.target.value, 10) || 24)}

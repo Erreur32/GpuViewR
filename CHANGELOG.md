@@ -5,6 +5,69 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.18] - 2026-05-03
+
+System tab redesign with bar/gauge switch, per-rule webhook toggle,
+mock GPU data for dev, URL-based settings tabs, Paper Dark theme,
+and a 5-band heat scale for usage indicators.
+
+### Added
+- **System tab overhaul**: machine vs GPU zones with coloured
+  separators, CPU usage % computed server-side from delta of
+  `os.cpus()` times, load average bars normalised to core count,
+  per-GPU utilisation/memory progress indicators with a
+  bar/gauge switch persisted in localStorage. Half-circle
+  speedometer-style gauges with a 5-band heat gradient (blue →
+  green → yellow → orange → red), gradient track on bars, soft
+  pulse when value ≥ 90 %.
+- **Per-rule webhook toggle** (`notify_webhook` column on
+  `alert_rules`): enable/disable webhook dispatch per rule from
+  the rules list **and** the editor; tooltips on the icon
+  describe exactly what the webhook receives. Webhook payload
+  fields are now selectable in metrics+generic mode (checkboxes
+  in Settings → Exports).
+- **Metric icons** in the alert rules list and presets modal
+  (Thermometer / Activity / MemoryStick / Zap / Fan).
+- **Mock GPU mode** for dev hosts without an NVIDIA GPU
+  (`MOCK_GPU=1`): synthetic samples for two virtual devices and
+  a few fake processes, with a **DEV** + **🧪 Fake stats** badge
+  in the header. `tsx watch` now also reloads on `.env` changes.
+- **URL-based settings tabs** (`/settings/<tabId>`) so deep links
+  and refreshes land back on the right panel; auth state is now
+  hydrated synchronously from localStorage so refreshing a sub-
+  page no longer flashes a redirect to the dashboard.
+- **Paper Dark theme**: forest-paper variant with deep moss
+  greens, sage-mint text and an emerald accent.
+
+### Changed
+- Manual "Refresh" buttons removed from System, Logs, Database
+  and Exports panels (auto-refresh covers them); only the
+  semantically distinct "Re-check for updates" button stays.
+- Theme picker cards are narrower (3/4/6-column grid) and use
+  truncation for long labels.
+- Tighter padding on the `.input` fields used for retention days
+  and update frequency in Settings.
+- "Server process" panel removed from the System tab (Node /
+  PID / RSS were not actionable from here).
+- README: ships the `docker-compose.yml` example inline (curl
+  one-liner + collapsible block) with the new `/proc:/host/proc:ro`
+  bind mount and `cap_drop: [ALL]` hardening.
+
+### Fixed
+- GPU utilisation values now display with two decimals so the
+  numbers stop "shaking" between integer renders (especially with
+  mock data).
+- Memory cell on the System GPU card now shows `used / total`
+  on two lines, the max in dim text.
+
+### Security
+- New `processCollector` reads `${HOST_PROC}/<pid>/cmdline` so
+  the container can resolve GPU process names by bind-mounting
+  `/proc` read-only instead of sharing the host PID namespace.
+- Compose example dropped privilege escalation
+  (`no-new-privileges:true`) and all capabilities (`cap_drop:
+  [ALL]`).
+
 ## [0.1.17] - 2026-05-02
 
 Stats / chart reorder around fan, CSV history export, exporter

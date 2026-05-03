@@ -1,7 +1,7 @@
 {
   "name": "gpuviewr",
   "private": true,
-  "version": "0.1.17",
+  "version": "0.1.18",
   "type": "module",
   "description": "Modern real-time NVIDIA GPU monitoring dashboard (React + Vite + Express + WebSocket + uPlot)",
   "homepage": "https://github.com/Erreur32/GpuViewR",
@@ -17,7 +17,7 @@
     "predev": "lsof -ti:3015 2>/dev/null | xargs -r kill -9; lsof -ti:5181 2>/dev/null | xargs -r kill -9; true",
     "dev": "concurrently --kill-others -n server,client -c blue,magenta \"npm run dev:server\" \"npm run dev:client\"",
     "dev:client": "vite",
-    "dev:server": "cross-env NODE_ENV=development tsx watch server/index.ts",
+    "dev:server": "cross-env NODE_ENV=development tsx watch --include=.env --include=server/**/*.ts server/index.ts",
     "build": "vite build",
     "start": "cross-env NODE_ENV=production tsx server/index.ts",
     "preview": "vite preview",

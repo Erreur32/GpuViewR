@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Moon, LayoutGrid, BarChart3, Languages, Clock, Sliders, Share2, Database, RefreshCw, Activity, Info, Palette, RotateCcw, Volume2, VolumeX, Bell, BellOff, BellRing } from 'lucide-react';
 import { useUiStore, DEFAULT_THRESHOLDS, type ChartSeriesKey } from '../../store/uiStore';
@@ -50,14 +51,29 @@ export default function SettingsPage() {
     setChartColor('mem' as ChartSeriesKey, preset.colors.mem);
     setChartColor('fan' as ChartSeriesKey, preset.colors.fan);
   };
-  const [tab, setTab] = useState<TabId>(() => {
-    const saved = localStorage.getItem('gpuviewr.settingsTab') as TabId | null;
-    return saved ?? 'general';
-  });
+  // The active tab is driven by the URL (/settings/<tab>) so deep-links and
+  // refresh land back on the right panel. We keep the localStorage key so a
+  // bare /settings hit still restores the user's last visited tab.
+  const navigate = useNavigate();
+  const { tab: tabParam } = useParams<{ tab: string }>();
+  const VALID_TABS: ReadonlyArray<TabId> = ['general', 'theme', 'exports', 'database', 'updates', 'about'];
+  const fallback = (localStorage.getItem('gpuviewr.settingsTab') as TabId | null) ?? 'general';
+  const tab: TabId = (VALID_TABS as readonly string[]).includes(tabParam ?? '')
+    ? (tabParam as TabId)
+    : fallback;
+
+  // Sync the URL when no segment is present (so a bare /settings reload keeps
+  // the last visited tab) and persist the choice for the next bare visit.
+  useEffect(() => {
+    if (!tabParam || !(VALID_TABS as readonly string[]).includes(tabParam)) {
+      navigate(`/settings/${tab}`, { replace: true });
+    }
+    localStorage.setItem('gpuviewr.settingsTab', tab);
+  }, [tab, tabParam, navigate]);
 
   const selectTab = (id: TabId) => {
-    setTab(id);
     localStorage.setItem('gpuviewr.settingsTab', id);
+    navigate(`/settings/${id}`);
   };
 
   const setLang = (code: string) => {
@@ -534,25 +550,25 @@ function ThemeRow({
   return (
     <div>
       <div className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--gv-text-muted)' }}>{title}</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
         {themes.map((th) => (
           <button
             key={th.id}
             onClick={() => onSelect(th.id)}
             aria-pressed={current === th.id}
-            className="rounded-xl p-3 text-left transition-all border-2"
+            className="rounded-lg p-2 text-left transition-all border-2"
             style={{
               borderColor: current === th.id ? th.tokens.accent : 'var(--gv-border)',
               background: `linear-gradient(135deg, ${th.tokens.bg}, ${th.tokens.bg2})`,
             }}
           >
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-block w-3 h-3 rounded-full" style={{ background: th.tokens.accent, boxShadow: `0 0 6px ${th.tokens.accent}` }} />
-              <span className="text-sm font-medium" style={{ color: th.mode === 'light' ? '#0f172a' : '#f1f5f9' }}>{th.label}</span>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: th.tokens.accent, boxShadow: `0 0 4px ${th.tokens.accent}` }} />
+              <span className="text-xs font-medium truncate" style={{ color: th.mode === 'light' ? '#0f172a' : '#f1f5f9' }}>{th.label}</span>
             </div>
             <div className="flex gap-1">
-              <span className="h-2 flex-1 rounded" style={{ background: th.tokens.surface, border: '1px solid rgba(255,255,255,0.05)' }} />
-              <span className="h-2 w-4 rounded" style={{ background: th.tokens.accent }} />
+              <span className="h-1.5 flex-1 rounded" style={{ background: th.tokens.surface, border: '1px solid rgba(255,255,255,0.05)' }} />
+              <span className="h-1.5 w-3 rounded" style={{ background: th.tokens.accent }} />
             </div>
           </button>
         ))}

@@ -1,30 +1,57 @@
-release: v0.1.17 - stats reorder + fan, CSV export, exporter info, password reset CLI
+release: v0.1.18 - System redesign, bar/gauge switch, webhook toggle per rule, mock GPU, Paper Dark
 
-- Stats cards & graph now follow the Temp · Util · Memory · Fan ·
-  Power order across the gauges above the chart, the Statistics
-  table, the chart legend chips and the cursor tooltip. Fan card
-  added to the gauge row; per-category colors preserved.
-- Footer aggregate pill folds in average fan speed (skipped on GPUs
-  that don't expose fan_speed), in the same global order.
-- New scripts/reset-password.ts (npm run user:reset-password) for
-  admins who lose web-UI access. Honors DATA_DIR, supports --list,
-  masked prompt + confirm, or non-interactive --password=<value>.
-- New "What's being sent" panel under each enabled exporter
-  (Prometheus, MQTT, InfluxDB) showing the active endpoint and the
-  exact metrics / topics / payload keys / HA sensors / tag+field
-  keys, sourced from a single catalog shared with the publishing
-  code so the panel and the actual exposition can't drift.
-- Webhook block: custom headers editor for the generic type, and
-  the push interval is now visible for every webhook type in
-  metrics mode (previously hidden for Discord/Telegram even though
-  the server scheduled their pushes).
-- Streaming GET /api/gpu/history.csv (gpu=<i>|all) backed by
-  SQLite iterate(), with a "CSV" download button next to the chart
-  title - UTF-8 BOM for Excel-friendly opening, RFC-4180 escaping.
-- New Notifications section in Settings -> General: global sound
-  toggle and a one-click "Enable browser notifications" button
-  surfacing the current permission state (granted / not asked /
-  blocked / not supported).
-- Notification icon switched to /GPUViewR.png to match the
-  branding used everywhere else.
-- selectedGpu now persists across reloads (key: gpuviewr.selected_gpu).
+- System tab redesigned around two visual zones: Machine
+  (host/CPU/memory) and GPU. Per-section coloured separators,
+  load-average bars normalised to core count, server-side CPU
+  usage %, per-GPU util + memory indicators with a local
+  bar/gauge switch (persisted in localStorage).
+- Half-circle speedometer-style gauges with a 5-band heat
+  gradient (blue <20% / green <50% / yellow <75% / orange <90% /
+  red >=90%), matching gradient on linear bars, severity-coloured
+  display value, soft pulse when value >= 90 %.
+- Per-rule webhook toggle: new notify_webhook column on
+  alert_rules (idempotent migration, default 1), inline pill in
+  the rules list, toggle in the editor. Webhook icon shows a
+  detailed tooltip explaining what fields are POSTed (rule_name,
+  metric, threshold, observed, gpu_index, state, message,
+  triggered_at). Webhook payload fields are now selectable in
+  metrics+generic mode through checkboxes in Settings -> Exports.
+- Metric icons (Thermometer / Activity / MemoryStick / Zap /
+  Fan) now lead each row in the alert rules list and presets
+  modal so users can scan the table without reading the metric
+  column.
+- Mock GPU mode for hosts without an NVIDIA GPU. Set MOCK_GPU=1
+  in .env to drive the dashboard with synthetic samples (2 fake
+  GPUs + 5 fake processes, slow sinusoidal curves with noise).
+  Header shows DEV + Fake stats badges. tsx watch now reacts to
+  .env changes too.
+- URL-based settings tabs (/settings/<tabId>) so deep links and
+  refreshes land back on the right panel. Auth state is now
+  hydrated synchronously from localStorage so refreshing a sub-
+  page no longer flashes a redirect to the dashboard.
+- Paper Dark theme: forest-paper variant with deep moss greens,
+  sage-mint text and an emerald accent. Theme picker cards are
+  narrower (3/4/6-column grid) with label truncation.
+- Manual Refresh buttons removed from System / Logs / Database /
+  Exports (auto-refresh covers them). Only the semantically
+  distinct "Re-check for updates" button stays.
+- Tighter padding on the input fields used for retention days and
+  update frequency in Settings.
+- Removed the "Server process" panel from the System tab (Node /
+  PID / RSS were not actionable here).
+- GPU utilisation now displays with two decimals; the GPU memory
+  cell renders used/total on two lines with the max in dim text.
+  Temperature/fan formatted to 1 / 0 decimals.
+
+Security:
+- processCollector now reads ${HOST_PROC}/<pid>/cmdline so the
+  container can resolve GPU process names by bind-mounting /proc
+  read-only instead of sharing the host PID namespace.
+- docker-compose.yml example: cap_drop: [ALL] + no-new-privileges,
+  /proc:/host/proc:ro mount, HOST_PROC env wired up. README ships
+  the compose inline with a curl one-liner.
+
+Misc:
+- Health endpoint now returns nodeEnv and mockGpu so the UI can
+  surface the right badges without a second roundtrip.
+- New env knobs: MOCK_GPU, MOCK_GPU_FORCE, HOST_PROC.

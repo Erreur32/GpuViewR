@@ -21,9 +21,20 @@ interface AuthState {
   logout: () => void;
 }
 
+// Read auth from localStorage synchronously so the very first render
+// already knows whether the user is logged in. Without this the auth
+// gate flashes <Navigate to="/login"> before hydrate() completes, which
+// loses the original target route on a hard refresh of /settings, /alerts…
+const initialToken = typeof window !== 'undefined'
+  ? localStorage.getItem('gpuviewr.token')
+  : null;
+const initialUserRaw = typeof window !== 'undefined'
+  ? localStorage.getItem('gpuviewr.user')
+  : null;
+
 export const useAuthStore = create<AuthState>((set, get) => ({
-  token: null,
-  user: null,
+  token: initialToken,
+  user: initialUserRaw ? (JSON.parse(initialUserRaw) as AuthUser) : null,
   hasUsers: true,
   loading: false,
   error: null,

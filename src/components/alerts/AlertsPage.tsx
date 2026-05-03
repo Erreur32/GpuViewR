@@ -1,6 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, Bell, Volume2, VolumeX, Edit3, Sparkles } from 'lucide-react';
+import {
+  Plus, Trash2, Bell, Volume2, VolumeX, Edit3, Sparkles, Webhook,
+  Thermometer, Activity, MemoryStick, Zap, Fan,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
@@ -8,6 +12,21 @@ import { notify } from '../../store/toastStore';
 
 type Metric = 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed';
 type Condition = 'above' | 'below';
+
+// Visual cue per metric so users scan rule rows without reading the metric column.
+const METRIC_ICON: Record<Metric, { icon: LucideIcon; color: string }> = {
+  temperature: { icon: Thermometer,  color: 'var(--gv-danger)' },
+  utilization: { icon: Activity,     color: 'var(--gv-info)' },
+  memory:      { icon: MemoryStick,  color: 'var(--gv-accent)' },
+  power:       { icon: Zap,          color: 'var(--gv-warn)' },
+  fan_speed:   { icon: Fan,          color: 'var(--gv-ok)' },
+};
+
+function MetricIcon({ metric, className = 'w-4 h-4' }: Readonly<{ metric: Metric; className?: string }>) {
+  const spec = METRIC_ICON[metric];
+  const Icon = spec.icon;
+  return <Icon className={className} style={{ color: spec.color }} />;
+}
 
 interface Rule {
   id: number;
@@ -20,6 +39,7 @@ interface Rule {
   enabled: 0 | 1;
   notify_browser: 0 | 1;
   notify_sound: 0 | 1;
+  notify_webhook: 0 | 1;
   cooldown_s: number;
 }
 
@@ -45,6 +65,7 @@ const EMPTY: Omit<Rule, 'id'> = {
   enabled: 1,
   notify_browser: 1,
   notify_sound: 0,
+  notify_webhook: 1,
   cooldown_s: 300,
 };
 
@@ -96,6 +117,18 @@ export default function AlertsPage() {
   async function toggle(rule: Rule) {
     try {
       await api(`/alerts/rules/${rule.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !rule.enabled }) });
+      await load();
+    } catch (err) {
+      notify('error', t('common.error'), (err as Error).message);
+    }
+  }
+
+  async function toggleWebhook(rule: Rule) {
+    try {
+      await api(`/alerts/rules/${rule.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ notify_webhook: !rule.notify_webhook }),
+      });
       await load();
     } catch (err) {
       notify('error', t('common.error'), (err as Error).message);
@@ -168,22 +201,71 @@ export default function AlertsPage() {
               {rules.map((r) => (
                 <tr key={r.id} style={{ borderTop: '1px solid var(--gv-border)' }}>
                   <td className="py-2 px-4">
-                    <div className="font-medium">{r.name}</div>
-                    <div className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
-                      {r.gpu_index === null ? t('alerts.all_gpus') : `GPU #${r.gpu_index}`}
+                    <div className="flex items-start gap-2">
+                      <span title={t(`alerts.metrics.${r.metric}`)} className="inline-flex shrink-0 mt-0.5">
+                        <MetricIcon metric={r.metric} className="w-4 h-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{r.name}</div>
+                        <div className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+                          {r.gpu_index === null ? t('alerts.all_gpus') : `GPU #${r.gpu_index}`}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td className="py-2 px-4 tabular-nums">
                     {t(`alerts.metrics.${r.metric}`)} {r.condition === 'above' ? '≥' : '≤'} {r.threshold}
                   </td>
                   <td className="py-2 px-4 tabular-nums">{r.duration_s}s</td>
-                  <td className="py-2 px-4 flex items-center gap-2">
-                    {!!r.notify_browser && <Bell className="w-3.5 h-3.5" style={{ color: 'var(--gv-info)' }} />}
-                    {!!r.notify_sound && <Volume2 className="w-3.5 h-3.5" style={{ color: 'var(--gv-warn)' }} />}
+                  <td className="py-2 px-4">
+                    <div className="flex items-center gap-2">
+                      {!!r.notify_browser && (
+                        <span title={t('alerts.notify_browser')} className="inline-flex">
+                          <Bell className="w-3.5 h-3.5" style={{ color: 'var(--gv-info)' }} />
+                        </span>
+                      )}
+                      {!!r.notify_sound && (
+                        <span title={t('alerts.notify_sound')} className="inline-flex">
+                          <Volume2 className="w-3.5 h-3.5" style={{ color: 'var(--gv-warn)' }} />
+                        </span>
+                      )}
+                      <span
+                        title={r.notify_webhook ? t('alerts.webhook_active_hint') : t('alerts.webhook_inactive_hint')}
+                        className="inline-flex cursor-help"
+                      >
+                        <Webhook
+                          className="w-3.5 h-3.5"
+                          style={{
+                            color: r.notify_webhook ? 'var(--gv-accent)' : 'var(--gv-text-dim)',
+                            opacity: r.notify_webhook ? 1 : 0.5,
+                          }}
+                        />
+                      </span>
+                    </div>
                   </td>
                   <td className="py-2 px-4 text-right">
-                    <div className="inline-flex items-center gap-1">
-                      <label className="inline-flex items-center cursor-pointer mr-2">
+                    <div className="inline-flex items-center gap-2">
+                      <label
+                        className="inline-flex items-center cursor-pointer"
+                        title={t('alerts.toggle_webhook_hint')}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!r.notify_webhook}
+                          onChange={() => isAdmin && toggleWebhook(r)}
+                          disabled={!isAdmin}
+                          className="sr-only peer"
+                        />
+                        <span className="inline-flex items-center gap-1 w-auto h-5 px-1.5 rounded-full transition-colors text-[10px] font-medium uppercase tracking-wider" style={{
+                          background: r.notify_webhook ? 'color-mix(in srgb, var(--gv-accent) 18%, transparent)' : 'var(--gv-surface-alt)',
+                          color: r.notify_webhook ? 'var(--gv-accent)' : 'var(--gv-text-dim)',
+                          border: `1px solid ${r.notify_webhook ? 'color-mix(in srgb, var(--gv-accent) 35%, transparent)' : 'var(--gv-border)'}`,
+                        }}>
+                          <Webhook className="w-3 h-3" />
+                          {r.notify_webhook ? 'ON' : 'OFF'}
+                        </span>
+                      </label>
+                      <label className="inline-flex items-center cursor-pointer">
                         <input
                           type="checkbox"
                           checked={!!r.enabled}
@@ -334,6 +416,9 @@ function PresetsModal({ onClose, onInstalled }: Readonly<{ onClose: () => void; 
                   checked={checked}
                   onChange={() => toggle(p.id)}
                 />
+                <span className="inline-flex shrink-0 mt-0.5" aria-hidden>
+                  <MetricIcon metric={p.metric} className="w-4 h-4" />
+                </span>
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm">{p.name}</div>
                   <div className="text-xs tabular-nums" style={{ color: 'var(--gv-text-muted)' }}>
@@ -445,6 +530,7 @@ function RuleModal({
         <div className="flex flex-wrap gap-4">
           <Toggle checked={!!rule.notify_browser} onChange={(v) => update({ notify_browser: v ? 1 : 0 })} label={t('alerts.notify_browser')} />
           <Toggle checked={!!rule.notify_sound}   onChange={(v) => update({ notify_sound: v ? 1 : 0 })}   label={t('alerts.notify_sound')} />
+          <Toggle checked={!!rule.notify_webhook} onChange={(v) => update({ notify_webhook: v ? 1 : 0 })} label={t('alerts.notify_webhook')} />
           <Toggle checked={!!rule.enabled}        onChange={(v) => update({ enabled: v ? 1 : 0 })}        label={t('alerts.enabled')} />
         </div>
 

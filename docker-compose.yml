@@ -7,10 +7,17 @@
 #      https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
 #   2. Create .env:  echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
 #   3. Start:        docker compose up -d
-#   4. Open:         http://localhost:3010   (first user becomes admin)
+#   4. Open:         http://localhost:7510   (first user becomes admin)
 #
 # Update:
 #   docker compose pull && docker compose up -d
+#
+# About process names:
+#   By default this compose bind-mounts the host /proc read-only into
+#   /host/proc and sets HOST_PROC=/host/proc so GpuViewR can resolve GPU
+#   process names without sharing the host PID namespace. If you prefer
+#   the simpler `pid: host` mode, remove the /proc volume + HOST_PROC env
+#   and add `pid: host` to the service.
 # ===========================================
 
 services:
@@ -35,13 +42,26 @@ services:
       GPU_TICK_MS: ${GPU_TICK_MS:-1000}
       RETENTION_DAYS: ${RETENTION_DAYS:-7}
       # PUBLIC_URL: https://gpu.example.com
+      # Resolve GPU process names without sharing the host PID namespace.
+      # Pair with the /proc:/host/proc:ro bind mount below.
+      HOST_PROC: /host/proc
 
     volumes:
       - ./data:/app/data
+      # Read-only view of host /proc so we can resolve PID → process name
+      # when nvidia-smi returns "[Not Found]" (multi-tenant / hardened setups).
+      - /proc:/host/proc:ro
       # Backward-compat with bigsk1/gpu-monitor users: these are read-only
       # references; new metrics go into ./data/gpuviewr.db. Optional.
       # - ./history:/app/legacy/history:ro
       # - ./logs:/app/legacy/logs:ro
+
+    # Hardening: drop all caps, no privilege escalation. Keep root inside the
+    # container (nvidia-smi needs it on some toolkit versions); switch to a
+    # non-root user if your runtime allows it.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
 
     deploy:
       resources:

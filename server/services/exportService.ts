@@ -124,6 +124,19 @@ export interface InfluxConfig {
 export type WebhookType = 'generic' | 'discord' | 'telegram';
 export type WebhookMode = 'metrics' | 'alerts';
 
+// Single source of truth for the per-sample fields a webhook can carry.
+// The UI surfaces these as checkboxes; the dispatcher filters samples
+// against `payloadFields` before sending.
+export const WEBHOOK_PAYLOAD_FIELDS = [
+  'gpu_index', 'name', 'uuid', 'driver_version',
+  'temperature', 'utilization',
+  'memory_used', 'memory_total',
+  'power', 'fan_speed',
+  'clock_graphics', 'clock_memory',
+  'timestamp', 'timestamp_epoch',
+] as const;
+export type WebhookPayloadField = (typeof WEBHOOK_PAYLOAD_FIELDS)[number];
+
 export interface WebhookConfig {
   enabled: boolean;
   type: WebhookType;
@@ -132,6 +145,9 @@ export interface WebhookConfig {
   method: 'POST' | 'PUT';
   headers: Record<string, string>;
   intervalSeconds: number;
+  // Subset of WEBHOOK_PAYLOAD_FIELDS to include per sample (generic/metrics).
+  // Empty array = include all (treated as "no filter" for backward compat).
+  payloadFields: WebhookPayloadField[];
   // Telegram-only
   token?: string;
   chatId?: string;
@@ -174,6 +190,7 @@ const DEFAULTS: ExportConfigs = {
     method: 'POST',
     headers: {},
     intervalSeconds: 30,
+    payloadFields: [...WEBHOOK_PAYLOAD_FIELDS],
     token: '',
     chatId: '',
   },
@@ -203,11 +220,14 @@ class ExportService {
     void import('./alertService.js').then(({ alertService }) => {
       alertService.on('event', (event: unknown, rule: unknown) => {
         const c = this.getConfigs();
-        if (c.webhook.enabled && c.webhook.mode === 'alerts') {
-          this.dispatchWebhookAlert(c.webhook, event, rule).catch((err: Error) =>
-            logger.warn('export', `Webhook alert dispatch failed: ${err.message}`),
-          );
-        }
+        if (!c.webhook.enabled || c.webhook.mode !== 'alerts') return;
+        // Per-rule opt-out: if the rule was saved with notify_webhook=0 the
+        // alert still fires browser/sound notifications but skips the webhook.
+        const r = rule as { notify_webhook?: 0 | 1 };
+        if (r?.notify_webhook === 0) return;
+        this.dispatchWebhookAlert(c.webhook, event, rule).catch((err: Error) =>
+          logger.warn('export', `Webhook alert dispatch failed: ${err.message}`),
+        );
       });
     });
     this.applyAll();
@@ -220,7 +240,14 @@ class ExportService {
       prometheus: { ...DEFAULTS.prometheus, ...(stored.prometheus ?? {}) },
       mqtt: { ...DEFAULTS.mqtt, ...(stored.mqtt ?? {}) },
       influxdb: { ...DEFAULTS.influxdb, ...(stored.influxdb ?? {}) },
-      webhook: { ...DEFAULTS.webhook, ...(stored.webhook ?? {}) },
+      webhook: {
+        ...DEFAULTS.webhook,
+        ...(stored.webhook ?? {}),
+        payloadFields: Array.isArray(stored.webhook?.payloadFields)
+          ? (stored.webhook!.payloadFields.filter((f): f is WebhookPayloadField =>
+              (WEBHOOK_PAYLOAD_FIELDS as readonly string[]).includes(f as string)))
+          : [...WEBHOOK_PAYLOAD_FIELDS],
+      },
     };
   }
 
@@ -485,7 +512,7 @@ class ExportService {
     const body = {
       source: 'gpuviewr',
       timestamp: new Date().toISOString(),
-      samples: this.latestSamples,
+      samples: this.latestSamples.map((s) => filterSampleFields(s, cfg.payloadFields)),
     };
     await this.sendWebhook(cfg, body, this.metricsSummary());
   }
@@ -645,6 +672,17 @@ class ExportService {
 
 function escapeTag(v: string): string {
   return v.replace(/[ ,=]/g, '_');
+}
+
+// Keep only the fields the user opted into. An empty selection means
+// "no filter" so legacy installs without payloadFields keep their behavior.
+function filterSampleFields(sample: GpuSample, fields: WebhookPayloadField[] | undefined): Partial<GpuSample> {
+  if (!fields || fields.length === 0) return sample;
+  const out: Partial<GpuSample> = {};
+  for (const f of fields) {
+    if (f in sample) (out as Record<string, unknown>)[f] = (sample as unknown as Record<string, unknown>)[f];
+  }
+  return out;
 }
 
 function buildInfluxLine(measurement: string, s: GpuSample): string {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { gpuCollector } from '../services/gpuCollector.js';
+import { config } from '../config.js';
 
 const router = Router();
 
@@ -9,6 +10,8 @@ router.get('/', (_req, res) => {
     status: 'ok',
     uptime: process.uptime(),
     gpuCount: samples.length,
+    nodeEnv: config.nodeEnv,
+    mockGpu: config.mockGpu,
     timestamp: new Date().toISOString(),
   });
 });

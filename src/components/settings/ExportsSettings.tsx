@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Activity, Database, Webhook, RefreshCw, Save, PlayCircle, BellRing, BarChart3, Eye } from 'lucide-react';
+import { Send, Activity, Database, Webhook, Save, PlayCircle, BellRing, BarChart3, Eye } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
@@ -18,6 +18,17 @@ interface InfluxConfig {
 }
 type WebhookType = 'generic' | 'discord' | 'telegram';
 type WebhookMode = 'metrics' | 'alerts';
+
+const WEBHOOK_PAYLOAD_FIELDS = [
+  'gpu_index', 'name', 'uuid', 'driver_version',
+  'temperature', 'utilization',
+  'memory_used', 'memory_total',
+  'power', 'fan_speed',
+  'clock_graphics', 'clock_memory',
+  'timestamp', 'timestamp_epoch',
+] as const;
+type WebhookPayloadField = (typeof WEBHOOK_PAYLOAD_FIELDS)[number];
+
 interface WebhookConfig {
   enabled: boolean;
   type: WebhookType;
@@ -26,6 +37,7 @@ interface WebhookConfig {
   method: 'POST' | 'PUT';
   headers: Record<string, string>;
   intervalSeconds: number;
+  payloadFields: WebhookPayloadField[];
   token?: string;
   chatId?: string;
 }
@@ -123,15 +135,9 @@ export default function ExportsSettings() {
 
   return (
     <section className="card p-5 space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold flex items-center gap-2">
-          <Send className="w-4 h-4" /> {t('settings.exports_title')}
-        </h2>
-        <button className="btn-ghost" onClick={load} disabled={busy}>
-          <RefreshCw className={'w-4 h-4 ' + (busy ? 'animate-spin' : '')} />
-          {t('common.refresh')}
-        </button>
-      </div>
+      <h2 className="font-semibold flex items-center gap-2">
+        <Send className="w-4 h-4" /> {t('settings.exports_title')}
+      </h2>
       <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
         {t('settings.exports_help')}
       </p>
@@ -449,6 +455,17 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
         />
       )}
 
+      {/* Field picker — only meaningful for raw JSON (generic) in metrics mode.
+          Discord/Telegram payloads are reformatted into embeds/text by the
+          server so per-field selection is ignored there. */}
+      {s.mode === 'metrics' && s.type === 'generic' && (
+        <PayloadFieldsPicker
+          selected={s.payloadFields ?? [...WEBHOOK_PAYLOAD_FIELDS]}
+          disabled={disabled}
+          onChange={(next) => setS({ ...s, payloadFields: next })}
+        />
+      )}
+
       {s.type === 'generic' && (
         <HeadersEditor
           headers={s.headers ?? {}}
@@ -545,6 +562,77 @@ function HeadersEditor({ headers, disabled, onChange }: Readonly<{
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+function PayloadFieldsPicker({ selected, disabled, onChange }: Readonly<{
+  selected: WebhookPayloadField[];
+  disabled?: boolean;
+  onChange: (next: WebhookPayloadField[]) => void;
+}>) {
+  const { t } = useTranslation();
+  const set = new Set<WebhookPayloadField>(selected);
+  const toggle = (f: WebhookPayloadField) => {
+    const next = new Set(set);
+    if (next.has(f)) next.delete(f);
+    else next.add(f);
+    // Preserve canonical order so the JSON keys stay predictable.
+    onChange(WEBHOOK_PAYLOAD_FIELDS.filter((k) => next.has(k)));
+  };
+  const allOn = set.size === WEBHOOK_PAYLOAD_FIELDS.length;
+  return (
+    <div>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <label className="label !mb-0">{t('settings.exports_webhook_fields')}</label>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            className="btn-ghost text-[10px] !px-2 !py-0.5"
+            disabled={disabled}
+            onClick={() => onChange([...WEBHOOK_PAYLOAD_FIELDS])}
+            aria-pressed={allOn}
+          >
+            {t('settings.exports_webhook_fields_all')}
+          </button>
+          <button
+            type="button"
+            className="btn-ghost text-[10px] !px-2 !py-0.5"
+            disabled={disabled}
+            onClick={() => onChange([])}
+          >
+            {t('settings.exports_webhook_fields_none')}
+          </button>
+        </div>
+      </div>
+      <p className="text-[11px] mb-2" style={{ color: 'var(--gv-text-dim)' }}>
+        {t('settings.exports_webhook_fields_help')}
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+        {WEBHOOK_PAYLOAD_FIELDS.map((f) => {
+          const checked = set.has(f);
+          return (
+            <label
+              key={f}
+              className="inline-flex items-center gap-2 text-xs cursor-pointer rounded-md px-2 py-1"
+              style={{
+                background: checked ? 'color-mix(in srgb, var(--gv-accent) 12%, transparent)' : 'var(--gv-surface-alt)',
+                border: `1px solid ${checked ? 'color-mix(in srgb, var(--gv-accent) 35%, transparent)' : 'var(--gv-border)'}`,
+                opacity: disabled ? 0.6 : 1,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={disabled}
+                onChange={() => toggle(f)}
+                className="accent-current"
+              />
+              <span className="font-mono tabular-nums">{f}</span>
+            </label>
+          );
+        })}
+      </div>
     </div>
   );
 }
