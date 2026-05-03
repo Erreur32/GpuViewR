@@ -80,7 +80,8 @@ export default function SystemPage() {
           </h1>
           <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>{t('system.subtitle')}</p>
         </div>
-        <div className="seg" role="group" aria-label={t('system.view_mode')}>
+        <fieldset className="seg" aria-label={t('system.view_mode')}>
+          <legend className="sr-only">{t('system.view_mode')}</legend>
           <button
             className="seg-btn inline-flex items-center gap-2"
             aria-pressed={viewMode === 'bar'}
@@ -95,7 +96,7 @@ export default function SystemPage() {
           >
             <LayoutGrid className="w-4 h-4" /> {t('dashboard.view_arc')}
           </button>
-        </div>
+        </fieldset>
       </div>
 
       {error && (
@@ -118,11 +119,11 @@ export default function SystemPage() {
                 <Server className="w-4 h-4" style={{ color: 'var(--gv-info)' }} /> {t('system.host')}
               </h2>
               <Grid>
-                <KV label={t('system.os')} value={info.host.os.prettyName ?? info.host.os.name} />
-                <KV label={t('system.kernel')} value={`${info.host.platform} ${info.host.release}`} />
-                <KV label={t('system.arch')} value={info.host.arch} />
-                <KV label={t('system.hostname')} value={info.host.hostname} />
-                <KV label={t('system.uptime')} value={fmtUptime(info.host.uptime)} />
+                <InfoField label={t('system.os')} value={info.host.os.prettyName ?? info.host.os.name} />
+                <InfoField label={t('system.kernel')} value={`${info.host.platform} ${info.host.release}`} />
+                <InfoField label={t('system.arch')} value={info.host.arch} />
+                <InfoField label={t('system.hostname')} value={info.host.hostname} />
+                <InfoField label={t('system.uptime')} value={fmtUptime(info.host.uptime)} />
               </Grid>
               <LoadAvgBars loadavg={info.host.loadavg} cores={info.cpu.cores} label={t('system.loadavg')} viewMode={viewMode} />
             </section>
@@ -132,9 +133,9 @@ export default function SystemPage() {
                 <Cpu className="w-4 h-4" style={{ color: 'var(--gv-info)' }} /> {t('system.cpu')}
               </h2>
               <Grid>
-                <KV label={t('system.cpu_model')} value={info.cpu.model} mono />
-                <KV label={t('system.cpu_cores')} value={String(info.cpu.cores)} />
-                <KV label={t('system.cpu_speed')} value={`${info.cpu.speedMHz} MHz`} />
+                <InfoField label={t('system.cpu_model')} value={info.cpu.model} mono />
+                <InfoField label={t('system.cpu_cores')} value={String(info.cpu.cores)} />
+                <InfoField label={t('system.cpu_speed')} value={`${info.cpu.speedMHz} MHz`} />
               </Grid>
               <UsageBar label={t('system.cpu_usage')} pct={info.cpu.usagePct} viewMode={viewMode} />
             </section>
@@ -144,9 +145,9 @@ export default function SystemPage() {
                 <MemoryStick className="w-4 h-4" style={{ color: 'var(--gv-info)' }} /> {t('system.memory')}
               </h2>
               <Grid>
-                <KV label={t('system.mem_total')} value={fmtBytes(info.memory.total)} />
-                <KV label={t('system.mem_used')} value={`${fmtBytes(info.memory.used)} (${info.memory.usedPct.toFixed(1)}%)`} />
-                <KV label={t('system.mem_free')} value={fmtBytes(info.memory.free)} />
+                <InfoField label={t('system.mem_total')} value={fmtBytes(info.memory.total)} />
+                <InfoField label={t('system.mem_used')} value={`${fmtBytes(info.memory.used)} (${info.memory.usedPct.toFixed(1)}%)`} />
+                <InfoField label={t('system.mem_free')} value={fmtBytes(info.memory.free)} />
               </Grid>
               <UsageBar label={t('system.mem_used')} pct={info.memory.usedPct} viewMode={viewMode} />
             </section>
@@ -177,13 +178,13 @@ export default function SystemPage() {
                         <span className="font-semibold">#{g.gpu_index} · {g.name}</span>
                       </div>
                       <Grid>
-                        <KV label={t('system.gpu_uuid')} value={g.uuid ?? '-'} mono />
-                        <KV label={t('system.gpu_driver')} value={g.driver_version ?? '-'} />
-                        <KV label={t('system.gpu_temp')} value={`${g.temperature.toFixed(1)} °C`} />
-                        <KV label={t('system.gpu_power')} value={`${g.power.toFixed(1)} W`} />
-                        <KV label={t('system.gpu_fan')} value={g.fan_speed === null ? '-' : `${g.fan_speed.toFixed(0)} %`} />
-                        <KV label={t('system.gpu_clk_gr')} value={g.clock_graphics === null ? '-' : `${g.clock_graphics} MHz`} />
-                        <KV label={t('system.gpu_clk_mem')} value={g.clock_memory === null ? '-' : `${g.clock_memory} MHz`} />
+                        <InfoField label={t('system.gpu_uuid')} value={g.uuid ?? '-'} mono />
+                        <InfoField label={t('system.gpu_driver')} value={g.driver_version ?? '-'} />
+                        <InfoField label={t('system.gpu_temp')} value={`${g.temperature.toFixed(1)} °C`} />
+                        <InfoField label={t('system.gpu_power')} value={`${g.power.toFixed(1)} W`} />
+                        <InfoField label={t('system.gpu_fan')} value={g.fan_speed === null ? '-' : `${g.fan_speed.toFixed(0)} %`} />
+                        <InfoField label={t('system.gpu_clk_gr')} value={g.clock_graphics === null ? '-' : `${g.clock_graphics} MHz`} />
+                        <InfoField label={t('system.gpu_clk_mem')} value={g.clock_memory === null ? '-' : `${g.clock_memory} MHz`} />
                       </Grid>
                       <div className={'mt-2 ' + (viewMode === 'gauge' ? 'grid grid-cols-2 gap-3' : 'space-y-2')}>
                         <UsageBar
@@ -298,8 +299,8 @@ function PcieSection({ gpu, t }: Readonly<{
       )}
 
       <Grid>
-        <KV label={t('system.pcie_slot')} value={gpu.pci_bus_id ?? '-'} mono />
-        <KV
+        <InfoField label={t('system.pcie_slot')} value={gpu.pci_bus_id ?? '-'} mono />
+        <InfoField
           label={t('system.pcie_link')}
           value={linkMaxText && linkMaxText !== linkText ? `${linkText}  (max ${linkMaxText})` : linkText}
         />
@@ -349,7 +350,7 @@ function Grid({ children }: Readonly<{ children: React.ReactNode }>) {
   return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">{children}</div>;
 }
 
-function KV({ label, value, mono }: Readonly<{ label: string; value: string; mono?: boolean }>) {
+function InfoField({ label, value, mono }: Readonly<{ label: string; value: string; mono?: boolean }>) {
   return (
     <div>
       <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>{label}</div>
@@ -458,7 +459,7 @@ function UsageArc({ label, pct, display, sub, color }: Readonly<{
   const offset = arcLen - (pct / 100) * arcLen;
   const danger = pct >= 90;
   // Unique ids so multiple gauges on the page don't share defs.
-  const uid = `${label.replace(/\W+/g, '')}-${Math.round(pct * 1000)}`;
+  const uid = `${label.replaceAll(/\W+/g, '')}-${Math.round(pct * 1000)}`;
   // 10 evenly-spaced ticks across the 180° arc.
   const tickCount = 10;
   const tickEvery = arcLen / tickCount;

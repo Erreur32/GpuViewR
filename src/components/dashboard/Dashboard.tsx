@@ -242,7 +242,7 @@ function PcieMetric({ icon, label, value, max }: Readonly<{
       </div>
       <div className="flex items-baseline gap-1.5 mt-1">
         <span className="text-lg font-semibold tabular-nums" style={{ color: 'var(--gv-info)' }}>
-          {value !== null ? value.toFixed(2) : '-'}
+          {value === null ? '-' : value.toFixed(2)}
         </span>
         <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>GB/s</span>
       </div>

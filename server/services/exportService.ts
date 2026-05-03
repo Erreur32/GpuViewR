@@ -242,10 +242,10 @@ class ExportService {
       influxdb: { ...DEFAULTS.influxdb, ...(stored.influxdb ?? {}) },
       webhook: {
         ...DEFAULTS.webhook,
-        ...(stored.webhook ?? {}),
+        ...stored.webhook,
         payloadFields: Array.isArray(stored.webhook?.payloadFields)
-          ? (stored.webhook!.payloadFields.filter((f): f is WebhookPayloadField =>
-              (WEBHOOK_PAYLOAD_FIELDS as readonly string[]).includes(f as string)))
+          ? stored.webhook.payloadFields.filter((f): f is WebhookPayloadField =>
+              (WEBHOOK_PAYLOAD_FIELDS as readonly string[]).includes(f))
           : [...WEBHOOK_PAYLOAD_FIELDS],
       },
     };

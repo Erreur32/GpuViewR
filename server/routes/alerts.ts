@@ -51,17 +51,20 @@ type RulePatch = Partial<{
 // Field-by-field coercion table. Driving the patch builder from a table
 // instead of an `if` chain keeps cognitive complexity low and makes
 // adding a future field a one-line change (Sonar S3776).
+const passthrough = (v: unknown): unknown => v;
+const toBit = (v: unknown): 0 | 1 => (v ? 1 : 0);
+
 const RULE_FIELD_COERCERS: Array<{ key: keyof RulePatch; coerce: (v: unknown) => unknown }> = [
-  { key: 'name',           coerce: (v) => String(v) },
-  { key: 'metric',         coerce: (v) => v },
-  { key: 'condition',      coerce: (v) => v },
-  { key: 'threshold',      coerce: (v) => Number(v) },
+  { key: 'name',           coerce: String },
+  { key: 'metric',         coerce: passthrough },
+  { key: 'condition',      coerce: passthrough },
+  { key: 'threshold',      coerce: Number },
   { key: 'duration_s',     coerce: (v) => int(v, 0) },
   { key: 'gpu_index',      coerce: (v) => (v === null ? null : Number(v)) },
-  { key: 'enabled',        coerce: (v) => (v ? 1 : 0) },
-  { key: 'notify_browser', coerce: (v) => (v ? 1 : 0) },
-  { key: 'notify_sound',   coerce: (v) => (v ? 1 : 0) },
-  { key: 'notify_webhook', coerce: (v) => (v ? 1 : 0) },
+  { key: 'enabled',        coerce: toBit },
+  { key: 'notify_browser', coerce: toBit },
+  { key: 'notify_sound',   coerce: toBit },
+  { key: 'notify_webhook', coerce: toBit },
   { key: 'cooldown_s',     coerce: (v) => int(v, 300) },
 ];
 
