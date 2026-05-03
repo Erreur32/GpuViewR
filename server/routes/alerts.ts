@@ -34,9 +34,7 @@ router.post('/rules', requireAdmin, (req, res) => {
   res.json({ rule });
 });
 
-// Build the typed PATCH body from the raw request, mapping each field
-// individually so the route handler stays a flat sequence of guards.
-function buildRulePatch(body: Record<string, unknown>): Partial<{
+type RulePatch = Partial<{
   name: string;
   metric: AlertMetric;
   condition: AlertCondition;
@@ -48,20 +46,35 @@ function buildRulePatch(body: Record<string, unknown>): Partial<{
   notify_sound: 0 | 1;
   notify_webhook: 0 | 1;
   cooldown_s: number;
-}> {
+}>;
+
+// Field-by-field coercion table. Driving the patch builder from a table
+// instead of an `if` chain keeps cognitive complexity low and makes
+// adding a future field a one-line change (Sonar S3776).
+const RULE_FIELD_COERCERS: Array<{ key: keyof RulePatch; coerce: (v: unknown) => unknown }> = [
+  { key: 'name',           coerce: (v) => String(v) },
+  { key: 'metric',         coerce: (v) => v },
+  { key: 'condition',      coerce: (v) => v },
+  { key: 'threshold',      coerce: (v) => Number(v) },
+  { key: 'duration_s',     coerce: (v) => int(v, 0) },
+  { key: 'gpu_index',      coerce: (v) => (v === null ? null : Number(v)) },
+  { key: 'enabled',        coerce: (v) => (v ? 1 : 0) },
+  { key: 'notify_browser', coerce: (v) => (v ? 1 : 0) },
+  { key: 'notify_sound',   coerce: (v) => (v ? 1 : 0) },
+  { key: 'notify_webhook', coerce: (v) => (v ? 1 : 0) },
+  { key: 'cooldown_s',     coerce: (v) => int(v, 300) },
+];
+
+// Build the typed PATCH body from the raw request, only including keys
+// that the caller actually sent so the repo `update()` does a true
+// partial update.
+function buildRulePatch(body: Record<string, unknown>): RulePatch {
   const patch: Record<string, unknown> = {};
-  if (body.name !== undefined) patch.name = String(body.name);
-  if (body.metric !== undefined) patch.metric = body.metric;
-  if (body.condition !== undefined) patch.condition = body.condition;
-  if (body.threshold !== undefined) patch.threshold = Number(body.threshold);
-  if (body.duration_s !== undefined) patch.duration_s = int(body.duration_s, 0);
-  if (body.gpu_index !== undefined) patch.gpu_index = body.gpu_index === null ? null : Number(body.gpu_index);
-  if (body.enabled !== undefined) patch.enabled = body.enabled ? 1 : 0;
-  if (body.notify_browser !== undefined) patch.notify_browser = body.notify_browser ? 1 : 0;
-  if (body.notify_sound !== undefined) patch.notify_sound = body.notify_sound ? 1 : 0;
-  if (body.notify_webhook !== undefined) patch.notify_webhook = body.notify_webhook ? 1 : 0;
-  if (body.cooldown_s !== undefined) patch.cooldown_s = int(body.cooldown_s, 300);
-  return patch;
+  for (const { key, coerce } of RULE_FIELD_COERCERS) {
+    const raw = body[key];
+    if (raw !== undefined) patch[key] = coerce(raw);
+  }
+  return patch as RulePatch;
 }
 
 router.patch('/rules/:id', requireAdmin, (req, res) => {
