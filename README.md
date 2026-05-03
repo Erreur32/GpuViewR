@@ -29,7 +29,7 @@
 
 <div align="center">
 
-<img src="public/gpuviewr_screnshot.png" alt="GpuViewR dashboard screenshot" />
+<img src="public/CpuViewR_screnshot.png" alt="GpuViewR dashboard screenshot" />
 
 </div>
 
