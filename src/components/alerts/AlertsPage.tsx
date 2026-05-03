@@ -265,9 +265,13 @@ export default function AlertsPage() {
                           {r.notify_webhook ? 'ON' : 'OFF'}
                         </span>
                       </label>
-                      <label className="inline-flex items-center cursor-pointer">
+                      <label
+                        className="inline-flex items-center cursor-pointer"
+                        aria-label={t('alerts.enabled')}
+                      >
                         <input
                           type="checkbox"
+                          aria-label={t('alerts.enabled')}
                           checked={!!r.enabled}
                           onChange={() => isAdmin && toggle(r)}
                           disabled={!isAdmin}

@@ -78,7 +78,8 @@ export default function LogsPage() {
       </header>
 
       <div className="card p-3 flex flex-wrap items-center gap-3">
-        <div className="seg" role="group" aria-label="Level">
+        <fieldset className="seg" aria-label="Level">
+          <legend className="sr-only">Level</legend>
           {LEVELS.map((l) => (
             <button
               key={l}
@@ -90,7 +91,7 @@ export default function LogsPage() {
               <span className="ml-1 text-[10px] opacity-70 tabular-nums">({counts[l] || 0})</span>
             </button>
           ))}
-        </div>
+        </fieldset>
 
         <select className="input max-w-[180px]" value={scope} onChange={(e) => setScope(e.target.value)}>
           <option value="">{t('logs.all_scopes')}</option>

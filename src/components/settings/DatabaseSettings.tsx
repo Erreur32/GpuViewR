@@ -21,15 +21,12 @@ export default function DatabaseSettings() {
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
   const [info, setInfo] = useState<DbInfo | null>(null);
   const [retention, setRetention] = useState<number>(7);
-  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = () => {
-    setLoading(true);
     api<DbInfo>('/system/db')
       .then((r) => { setInfo(r); setRetention(r.retentionDays); })
-      .catch((e: Error) => notify('error', t('common.error'), e.message))
-      .finally(() => setLoading(false));
+      .catch((e: Error) => notify('error', t('common.error'), e.message));
   };
   useEffect(() => { load(); }, []);
 

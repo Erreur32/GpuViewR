@@ -39,7 +39,6 @@ const REFRESH_MS = 5000;
 export default function SystemPage() {
   const { t } = useTranslation();
   const [info, setInfo] = useState<SystemInfo | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Persist the bar/gauge choice across visits so users don't have to
   // re-pick it every time they open System. Local to this page — does
@@ -53,12 +52,10 @@ export default function SystemPage() {
   };
 
   const load = () => {
-    setLoading(true);
     setError(null);
     api<SystemInfo>('/system')
       .then(setInfo)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch((e: Error) => setError(e.message));
   };
 
   useEffect(() => {
