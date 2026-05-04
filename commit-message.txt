@@ -1,14 +1,11 @@
-release: v0.1.36 - shorter PCIe tiles, no-blink Stats refresh
+release: v0.1.37 - merged dashboard header + harmonized view order
 
 Changed:
-- PCIe card tiles (RX, TX, Link bandwidth, Link) are ~25 %
-  shorter: tighter padding (px-2.5 py-1.5), value text base
-  instead of lg, removed extra top margin. The Link-bandwidth
-  tile now renders "/ max X.XX GB/s" on the same flex row as
-  the value, on the same baseline.
-- Stats cards (period min/avg/max) no longer blink to "…" on
-  the 5 s background refresh. Switched to stale-while-
-  revalidate: previous values stay rendered until the new
-  payload lands. The "…" placeholder is removed entirely;
-  cells show "-" only on first paint or while a gpu/range
-  switch is in progress.
+- Dashboard collapses its two header rows into one. GPU name +
+  "GPU #N · driver X.Y.Z" now share the row with the multi-GPU
+  tabs (when applicable), the gauge/bar view selector, and the
+  range selector. ml-auto keeps the controls right-aligned;
+  flex-wrap drops them below on narrow viewports.
+- System page's view selector swaps to "Gauges first, Bars
+  second" to match the Dashboard layout. Keeps muscle memory
+  consistent when toggling between the two pages.

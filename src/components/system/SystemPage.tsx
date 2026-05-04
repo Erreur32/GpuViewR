@@ -82,19 +82,22 @@ export default function SystemPage() {
         </div>
         <fieldset className="seg" aria-label={t('system.view_mode')}>
           <legend className="sr-only">{t('system.view_mode')}</legend>
-          <button
-            className="seg-btn inline-flex items-center gap-2"
-            aria-pressed={viewMode === 'bar'}
-            onClick={() => selectView('bar')}
-          >
-            <BarChart3 className="w-4 h-4" /> {t('dashboard.view_bar')}
-          </button>
+          {/* Order matches the Dashboard's view selector: gauges first
+              (left), bars second (right). Keeps muscle memory consistent
+              when toggling between the two pages. */}
           <button
             className="seg-btn inline-flex items-center gap-2"
             aria-pressed={viewMode === 'gauge'}
             onClick={() => selectView('gauge')}
           >
             <LayoutGrid className="w-4 h-4" /> {t('dashboard.view_arc')}
+          </button>
+          <button
+            className="seg-btn inline-flex items-center gap-2"
+            aria-pressed={viewMode === 'bar'}
+            onClick={() => selectView('bar')}
+          >
+            <BarChart3 className="w-4 h-4" /> {t('dashboard.view_bar')}
           </button>
         </fieldset>
       </div>

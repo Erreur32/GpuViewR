@@ -5,6 +5,25 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.37] - 2026-05-04
+
+Save a full row of vertical space on the dashboard by merging the
+GPU header and the view/range controls onto a single line, and
+harmonize the gauge/bar selector order across the dashboard and
+system pages.
+
+### Changed
+- **Dashboard header is now one row**, not two. The previous
+  layout had `[GpuTabs … Gauges/Bars Range]` on row 1 and the
+  GPU name + `GPU #N · driver X.Y.Z` on row 2. Both are merged
+  into a single `flex-wrap` row: identity on the left, multi-GPU
+  tabs in the middle (when present), Gauges/Bars + Range
+  selector pushed right via `ml-auto`. On narrow viewports the
+  controls wrap below as before.
+- **System page view selector** now reads Gauges left / Bars
+  right, matching the Dashboard. Was Bars / Gauges, which broke
+  muscle memory when switching between the two pages.
+
 ## [0.1.36] - 2026-05-04
 
 Two visual polish fixes: shorter PCIe tiles and no more blink on

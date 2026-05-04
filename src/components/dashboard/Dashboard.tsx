@@ -39,7 +39,16 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <UpdateBanner />
-      <div className="flex flex-wrap items-center gap-3 justify-between">
+      {/* Single header row: GPU identity on the left, multi-GPU tabs (if
+          any), then the view + range selectors on the right. The previous
+          two-line layout cost a full row of vertical space for no gain. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="text-xl font-semibold leading-none" style={{ color: 'var(--gv-text)' }}>
+          {active.name}
+        </h2>
+        <span className="text-xs leading-none" style={{ color: 'var(--gv-text-dim)' }}>
+          GPU #{active.gpu_index} · driver {active.driver_version || '-'}
+        </span>
         <GpuTabs samples={samples} />
 
         <div className="flex flex-wrap items-center gap-2 ml-auto">
@@ -64,13 +73,6 @@ export default function Dashboard() {
           <RangeSelector />
         </div>
       </div>
-
-      <header className="flex items-baseline gap-3 flex-wrap">
-        <h2 className="text-xl font-semibold" style={{ color: 'var(--gv-text)' }}>{active.name}</h2>
-        <span className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
-          GPU #{active.gpu_index} · driver {active.driver_version || '-'}
-        </span>
-      </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <GaugeCard
