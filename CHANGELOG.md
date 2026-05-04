@@ -5,6 +5,33 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.39] - 2026-05-04
+
+Smaller, less noisy PCIe panel on the System tab. The ASPM idle-
+downshift explanation moves out of an inline paragraph into a
+hover/focus tooltip behind a small info icon, and the
+"Connectivité PCIe" card is rearranged to drop a full row of
+height per GPU.
+
+### Changed
+- **PCIe bandwidth hint -> info tooltip.** The two-line hint
+  paragraph that explained "NVIDIA cards downshift the link gen
+  at idle, so 4.00 GB/s vs. 15.76 GB/s max is normal" is gone
+  from the layout. A small info icon next to the value reveals
+  the same text on hover or keyboard focus, in a CSS-only
+  tooltip with a `title` fallback for accessibility.
+- **Denser PCIe card.** Vertical padding shrinks from `p-3` to
+  `px-3 py-2`, the bandwidth label is now inline with the value
+  on a single row instead of stacked above, and the inter-row
+  gap is `space-y-1.5`. The Slot / Link grid is unchanged. Net
+  result: about 40% less height per GPU PCIe panel.
+- **Theme-safe tooltip colours.** The tooltip relies only on
+  `--gv-surface`, `--gv-text`, `--gv-border`, `--gv-bg` and
+  `--gv-accent` (the same variables every theme already
+  defines), so it renders correctly on Midnight, Graphite,
+  Oceanic and any future light theme — no hard-coded hex
+  values.
+
 ## [0.1.38] - 2026-05-04
 
 Clearer PCIe wording on the System tab and a denser, more

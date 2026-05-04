@@ -1,22 +1,17 @@
-release: v0.1.38 - clearer PCIe wording + denser System bar mode
+release: v0.1.39 - PCIe bandwidth hint moved to info-tooltip
 
 Changed:
-- System tab: rename "Effective bandwidth" / "Bande passante
-  effective" to "Link bandwidth" / "Bande passante du lien" so it
-  no longer reads like a real-time RX/TX number. Added a small
-  hint explaining that NVIDIA cards downshift the link gen at
-  idle (ASPM), so e.g. seeing 4.00 GB/s on a PCIe 4.0 x8 link is
-  expected, not a fault.
-- "Degraded link" badge (System + Dashboard) now only fires on a
-  lane *width* mismatch — a real seating/BIOS issue. A lower
-  current PCIe gen vs max is normal idle ASPM behaviour and no
-  longer triggers a false positive. Same badge added to the
-  dashboard PCIe card to match.
-- System bar mode: bars are inlined with their value on a single
-  row (LABEL · bar · VALUE). Bars are thinner (h-1.5) and the
-  value text is bigger (text-base, bold). Saves a full line of
-  height per metric.
-- System gauge mode: Host / CPU / Memory now share one row on
-  >=xl screens (Host 2fr, CPU 1fr, Memory 1fr). Drops to "Host
-  full / CPU + Memory split" on md, and to a single column on
-  mobile.
+- The PCIe "Link bandwidth" inline hint is replaced by a small
+  info icon next to the value. Hover or keyboard focus on the
+  icon reveals the explanation about ASPM idle downshift in a
+  CSS-only tooltip. Hint text itself is unchanged.
+- Connectivité PCIe card is denser:
+  - py-3 -> py-2 padding,
+  - bandwidth label is now inline with the value instead of
+    stacked above,
+  - section gap reduced (space-y-1.5).
+  Net result: ~40% less vertical height per GPU PCIe panel.
+- Tooltip uses only --gv-* CSS variables (surface, text, border,
+  bg, accent) so it renders correctly on every registered theme
+  (Midnight, Graphite, Oceanic, light variants) without any
+  hard-coded colour.

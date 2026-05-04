@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid, Cable, AlertTriangle } from 'lucide-react';
+import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid, Cable, AlertTriangle, Info } from 'lucide-react';
 import { api } from '../../lib/api';
 
 type ViewMode = 'bar' | 'gauge';
@@ -303,14 +303,14 @@ function PcieSection({ gpu, t }: Readonly<{
 
   return (
     <div
-      className="mt-3 rounded-xl p-3"
+      className="mt-3 rounded-xl px-3 py-2 space-y-1.5"
       style={{
         background: 'color-mix(in srgb, var(--gv-info) 6%, transparent)',
         border: '1px solid color-mix(in srgb, var(--gv-info) 25%, transparent)',
       }}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <Cable className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />
+      <div className="flex items-center gap-2">
+        <Cable className="w-4 h-4 shrink-0" style={{ color: 'var(--gv-info)' }} />
         <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gv-info)' }}>
           {t('system.pcie_title')}
         </span>
@@ -330,26 +330,23 @@ function PcieSection({ gpu, t }: Readonly<{
         )}
       </div>
 
-      {/* Bandwidth headline — the number users actually care about. */}
+      {/* Bandwidth headline — label, value and info-icon all on one row
+          to save vertical space. The hint moved to the tooltip. */}
       {gpu.pcie_bandwidth_GBps !== null && (
-        <div className="mb-2">
-          <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
             {t('system.pcie_bandwidth')}
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl font-semibold tabular-nums" style={{ color: 'var(--gv-info)' }}>
-              {gpu.pcie_bandwidth_GBps.toFixed(2)}
+          </span>
+          <span className="text-xl font-semibold tabular-nums leading-none" style={{ color: 'var(--gv-info)' }}>
+            {gpu.pcie_bandwidth_GBps.toFixed(2)}
+          </span>
+          <span className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>GB/s</span>
+          {gpu.pcie_bandwidth_max_GBps !== null && gpu.pcie_bandwidth_max_GBps > gpu.pcie_bandwidth_GBps && (
+            <span className="text-[10px] tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>
+              / max {gpu.pcie_bandwidth_max_GBps.toFixed(2)} GB/s
             </span>
-            <span className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>GB/s</span>
-            {gpu.pcie_bandwidth_max_GBps !== null && gpu.pcie_bandwidth_max_GBps > gpu.pcie_bandwidth_GBps && (
-              <span className="text-[10px] tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>
-                / max {gpu.pcie_bandwidth_max_GBps.toFixed(2)} GB/s
-              </span>
-            )}
-          </div>
-          <p className="text-[10px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
-            {t('system.pcie_bandwidth_hint')}
-          </p>
+          )}
+          <InfoTooltip text={t('system.pcie_bandwidth_hint')} />
         </div>
       )}
 
@@ -361,6 +358,47 @@ function PcieSection({ gpu, t }: Readonly<{
         />
       </Grid>
     </div>
+  );
+}
+
+// Theme-agnostic info icon with a CSS-only hover/focus tooltip. Uses
+// only --gv-* CSS variables so it adapts to every registered theme
+// (dark Midnight/Graphite/Oceanic, light variants, etc.) without
+// hard-coded colours. Tooltip stays clipped to the viewport via
+// `max-w-[min(20rem,calc(100vw-2rem))]` and is dismissed by mouseout
+// or blur. Also exposes `title` as an accessibility fallback.
+function InfoTooltip({ text }: Readonly<{ text: string }>) {
+  return (
+    <span className="relative inline-flex group ml-0.5 align-middle">
+      <button
+        type="button"
+        aria-label={text}
+        title={text}
+        className="inline-flex items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 cursor-help"
+        style={{
+          color: 'var(--gv-text-muted)',
+          // Use the accent ring colour so it visually agrees with the
+          // rest of the focus styles on cards/buttons.
+          // @ts-expect-error CSS custom property
+          '--tw-ring-color': 'color-mix(in srgb, var(--gv-accent) 35%, transparent)',
+        }}
+      >
+        <Info className="w-3.5 h-3.5" />
+      </button>
+      <span
+        role="tooltip"
+        className="invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 transition-opacity duration-150 pointer-events-none absolute z-20 left-1/2 -translate-x-1/2 bottom-full mb-2 p-2 rounded-lg text-[11px] leading-snug normal-case tracking-normal font-normal text-left max-w-[min(20rem,calc(100vw-2rem))] w-max"
+        style={{
+          background: 'var(--gv-surface)',
+          color: 'var(--gv-text)',
+          border: '1px solid var(--gv-border)',
+          boxShadow: '0 8px 24px -10px color-mix(in srgb, var(--gv-bg) 80%, #000 60%)',
+          backdropFilter: 'blur(6px)',
+        }}
+      >
+        {text}
+      </span>
+    </span>
   );
 }
 
