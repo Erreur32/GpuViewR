@@ -413,7 +413,7 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
                       ...(info.haDiscovery.host?.sensors ?? []),
                     ].map((s) => ({
                       primary: <code>{s.key}</code>,
-                      secondary: `${s.name}${s.unit ? ` · ${s.unit}` : ''}${s.cls ? ` · class=${s.cls}` : ''}`,
+                      secondary: formatHaSensorMeta(s),
                     }))}
                     embedded
                   />
@@ -850,6 +850,16 @@ function DispatchPanel({ rows, listTitle, listItems, extra, embedded }: Readonly
   );
 }
 
+// Builds the secondary line for a Home Assistant sensor entry without
+// nested template literals (Sonar S6606): joins the optional unit and
+// device-class fragments around the sensor name with " · ".
+function formatHaSensorMeta(s: { name: string; unit: string; cls?: string }): string {
+  const parts: string[] = [s.name];
+  if (s.unit) parts.push(s.unit);
+  if (s.cls) parts.push(`class=${s.cls}`);
+  return parts.join(' · ');
+}
+
 function HomeAssistantHelp() {
   const { t } = useTranslation();
   const steps: string[] = t('settings.exports_ha_help_steps', { returnObjects: true }) as string[];
@@ -869,9 +879,9 @@ function HomeAssistantHelp() {
         {t('settings.exports_ha_help_intro')}
       </p>
       <ol className="mt-3 space-y-2 text-xs">
-        {steps.map((s, i) => (
+        {steps.map((s, idx) => (
           <li
-            key={i}
+            key={s}
             className="flex items-start gap-3 rounded-lg px-3 py-2"
             style={{
               background: 'color-mix(in srgb, var(--gv-info) 6%, transparent)',
@@ -886,7 +896,7 @@ function HomeAssistantHelp() {
               }}
               aria-hidden
             >
-              {i + 1}
+              {idx + 1}
             </span>
             <HelpStepText text={s} />
           </li>
@@ -912,14 +922,20 @@ function HomeAssistantHelp() {
 function HelpStepText({ text }: Readonly<{ text: string }>) {
   // Highlight chunks wrapped in single quotes (UI labels) and bracketed
   // <placeholders> so they stand out without splitting the sentence.
+  // Use the cumulative byte offset within the text as the React key:
+  // it's content-derived (so stable across re-renders for the same
+  // input) without falling back to the array index.
   const parts = text.split(/('[^']+'|<[^>]+>)/g);
+  let cursor = 0;
   return (
     <span style={{ color: 'var(--gv-text)' }}>
-      {parts.map((p, i) => {
+      {parts.map((p) => {
+        const key = `${cursor}:${p.slice(0, 6)}`;
+        cursor += p.length;
         if (/^'[^']+'$/.test(p)) {
           return (
             <code
-              key={i}
+              key={key}
               className="px-1 py-0.5 rounded text-[11px]"
               style={{
                 background: 'color-mix(in srgb, var(--gv-accent) 14%, transparent)',
@@ -934,7 +950,7 @@ function HelpStepText({ text }: Readonly<{ text: string }>) {
         if (/^<[^>]+>$/.test(p)) {
           return (
             <code
-              key={i}
+              key={key}
               className="px-1 py-0.5 rounded text-[11px] font-mono"
               style={{
                 background: 'color-mix(in srgb, var(--gv-info) 14%, transparent)',
@@ -946,7 +962,7 @@ function HelpStepText({ text }: Readonly<{ text: string }>) {
             </code>
           );
         }
-        return <span key={i}>{p}</span>;
+        return <span key={key}>{p}</span>;
       })}
     </span>
   );

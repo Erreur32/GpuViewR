@@ -1036,56 +1036,56 @@ function buildInfluxLine(measurement: string, s: GpuSample): string {
   return `${measurement},${tags.join(',')} ${fields.join(',')} ${s.timestamp_epoch}`;
 }
 
+// Prometheus label-value escaping: backslash → \\, quote → \", newline → \n.
+// Order matters: escape backslashes first, otherwise we'd escape the
+// backslashes we just inserted for quotes.
+function escapePromLabel(v: string): string {
+  return v.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\n');
+}
+
+function promHelpTypeLines(metrics: readonly PrometheusMetricSpec[]): string[] {
+  return metrics.flatMap((m) => [
+    `# HELP ${m.name} ${m.help}`,
+    `# TYPE ${m.name} ${m.type}`,
+  ]);
+}
+
+function promGpuLines(s: GpuSample): string[] {
+  const uuidPart = s.uuid ? `,uuid="${escapePromLabel(s.uuid)}"` : '';
+  const l = `{gpu="${s.gpu_index}",name="${escapePromLabel(s.name)}"${uuidPart}}`;
+  const out: string[] = [`gpuviewr_gpu_temperature_celsius${l} ${s.temperature}`];
+  if (s.utilization !== null) out.push(`gpuviewr_gpu_utilization_ratio${l} ${(s.utilization / 100).toFixed(4)}`);
+  out.push(`gpuviewr_gpu_memory_used_bytes${l} ${s.memory_used * 1024 * 1024}`);
+  if (s.memory_total !== null) out.push(`gpuviewr_gpu_memory_total_bytes${l} ${s.memory_total * 1024 * 1024}`);
+  out.push(`gpuviewr_gpu_power_watts${l} ${s.power}`);
+  if (s.fan_speed !== null) out.push(`gpuviewr_gpu_fan_speed_ratio${l} ${(s.fan_speed / 100).toFixed(4)}`);
+  if (s.clock_graphics !== null) out.push(`gpuviewr_gpu_clock_graphics_hz${l} ${s.clock_graphics * 1_000_000}`);
+  if (s.clock_memory !== null) out.push(`gpuviewr_gpu_clock_memory_hz${l} ${s.clock_memory * 1_000_000}`);
+  return out;
+}
+
+function promHostLines(): string[] {
+  const sys = getSystemStats();
+  const hostLabel = `{host="${escapePromLabel(sys.hostname)}"}`;
+  return [
+    `gpuviewr_host_cpu_usage_ratio${hostLabel} ${(sys.cpu.usagePct / 100).toFixed(4)}`,
+    `gpuviewr_host_load_1m${hostLabel} ${sys.load['1m'].toFixed(2)}`,
+    `gpuviewr_host_load_5m${hostLabel} ${sys.load['5m'].toFixed(2)}`,
+    `gpuviewr_host_load_15m${hostLabel} ${sys.load['15m'].toFixed(2)}`,
+    `gpuviewr_host_memory_used_bytes${hostLabel} ${sys.memory.used}`,
+    `gpuviewr_host_memory_total_bytes${hostLabel} ${sys.memory.total}`,
+    `gpuviewr_host_memory_used_ratio${hostLabel} ${(sys.memory.usedPct / 100).toFixed(4)}`,
+  ];
+}
+
 /** Build the Prometheus exposition (text/plain; version=0.0.4). */
 export function renderPrometheus(samples: GpuSample[], includeHost = false): string {
-  const lines: string[] = [];
-  // HELP/TYPE block driven by PROMETHEUS_METRICS so the dispatch-info panel
-  // and the actual exposition stay in lockstep.
-  for (const m of PROMETHEUS_METRICS) {
-    lines.push(`# HELP ${m.name} ${m.help}`);
-    lines.push(`# TYPE ${m.name} ${m.type}`);
-  }
-  if (includeHost) {
-    for (const m of PROMETHEUS_HOST_METRICS) {
-      lines.push(`# HELP ${m.name} ${m.help}`);
-      lines.push(`# TYPE ${m.name} ${m.type}`);
-    }
-  }
-
-  // Prometheus label-value escaping: backslash → \\, quote → \", newline → \n.
-  // Order matters: escape backslashes first, otherwise we'd escape the
-  // backslashes we just inserted for quotes.
-  const escapeLabel = (v: string) =>
-    v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
-  const labels = (s: GpuSample) => {
-    const uuidPart = s.uuid ? `,uuid="${escapeLabel(s.uuid)}"` : '';
-    return `{gpu="${s.gpu_index}",name="${escapeLabel(s.name)}"${uuidPart}}`;
-  };
-
-  for (const s of samples) {
-    const l = labels(s);
-    lines.push(`gpuviewr_gpu_temperature_celsius${l} ${s.temperature}`);
-    if (s.utilization !== null) lines.push(`gpuviewr_gpu_utilization_ratio${l} ${(s.utilization / 100).toFixed(4)}`);
-    lines.push(`gpuviewr_gpu_memory_used_bytes${l} ${s.memory_used * 1024 * 1024}`);
-    if (s.memory_total !== null) lines.push(`gpuviewr_gpu_memory_total_bytes${l} ${s.memory_total * 1024 * 1024}`);
-    lines.push(`gpuviewr_gpu_power_watts${l} ${s.power}`);
-    if (s.fan_speed !== null) lines.push(`gpuviewr_gpu_fan_speed_ratio${l} ${(s.fan_speed / 100).toFixed(4)}`);
-    if (s.clock_graphics !== null) lines.push(`gpuviewr_gpu_clock_graphics_hz${l} ${s.clock_graphics * 1_000_000}`);
-    if (s.clock_memory !== null) lines.push(`gpuviewr_gpu_clock_memory_hz${l} ${s.clock_memory * 1_000_000}`);
-  }
-
-  if (includeHost) {
-    const sys = getSystemStats();
-    const hostLabel = `{host="${escapeLabel(sys.hostname)}"}`;
-    lines.push(`gpuviewr_host_cpu_usage_ratio${hostLabel} ${(sys.cpu.usagePct / 100).toFixed(4)}`);
-    lines.push(`gpuviewr_host_load_1m${hostLabel} ${sys.load['1m'].toFixed(2)}`);
-    lines.push(`gpuviewr_host_load_5m${hostLabel} ${sys.load['5m'].toFixed(2)}`);
-    lines.push(`gpuviewr_host_load_15m${hostLabel} ${sys.load['15m'].toFixed(2)}`);
-    lines.push(`gpuviewr_host_memory_used_bytes${hostLabel} ${sys.memory.used}`);
-    lines.push(`gpuviewr_host_memory_total_bytes${hostLabel} ${sys.memory.total}`);
-    lines.push(`gpuviewr_host_memory_used_ratio${hostLabel} ${(sys.memory.usedPct / 100).toFixed(4)}`);
-  }
-
+  const lines: string[] = [
+    ...promHelpTypeLines(PROMETHEUS_METRICS),
+    ...(includeHost ? promHelpTypeLines(PROMETHEUS_HOST_METRICS) : []),
+    ...samples.flatMap(promGpuLines),
+    ...(includeHost ? promHostLines() : []),
+  ];
   return lines.join('\n') + '\n';
 }
 
