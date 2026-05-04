@@ -26,8 +26,6 @@
   "dashboard": {
     "live": "LIVE",
     "offline": "OFFLINE",
-    "click_pin": "Click to freeze the value at the cursor",
-    "click_unpin": "Click to resume live values",
     "no_gpu": "No GPU detected: check that nvidia-smi is available in the container.",
     "history": "Live performance",
     "export_csv_help": "Download the current GPU's history for the selected range as CSV",

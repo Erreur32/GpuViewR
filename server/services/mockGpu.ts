@@ -81,17 +81,40 @@ function wave(amp: number, base: number, periodSec: number, phase: number, jitte
   return base + amp * s + n;
 }
 
+// Sweep cleanly between [min, max] without overshoot — useful for dev
+// previews so every gauge / bar visits both extremes during a session.
+function sweep(min: number, max: number, periodSec: number, phase: number): number {
+  const t = Date.now() / 1000;
+  const s = Math.sin((t / periodSec) * 2 * Math.PI + phase);
+  return min + ((s + 1) / 2) * (max - min);
+}
+
+// PCI-SIG per-lane bandwidth (GB/s decimal) — must match the table on
+// the dashboard. Used to compute the theoretical link bandwidth for
+// each fake device so RX/TX sweeps reach the bar's 100% point.
+const MOCK_PCIE_PER_LANE_GBPS: Record<number, number> = {
+  1: 0.25, 2: 0.5, 3: 0.985, 4: 1.969, 5: 3.938, 6: 7.563,
+};
+
+function pcieMaxKbps(gen: number, width: number): number {
+  const perLane = MOCK_PCIE_PER_LANE_GBPS[gen] ?? 1;
+  return (perLane * width * 1e9) / 1024;
+}
+
 export function buildFakeSamples(): GpuSample[] {
   const { iso, epoch } = nowTimestamp();
   return DEVICES.map((d) => {
-    const utilization = Math.max(0, Math.min(100, wave(40, 55, 90, d.phase, 5)));
-    const temperature = Math.max(35, Math.min(85, wave(12, 62, 120, d.phase, 1.5)));
-    const fan = Math.max(20, Math.min(100, wave(25, 50, 150, d.phase, 2)));
-    const power = Math.max(20, Math.min(d.powerCap, wave(d.powerCap * 0.35, d.powerCap * 0.55, 90, d.phase, 4)));
-    const memUsedRatio = Math.max(0.1, Math.min(0.95, wave(0.25, 0.45, 240, d.phase, 0.02)));
+    // Full-range sweeps so the dev preview exercises every gauge from
+    // its min to its max — handy for tweaking gradients/thresholds.
+    const utilization = sweep(0, 100, 30, d.phase);
+    const temperature = sweep(35, 85, 45, d.phase);
+    const fan = sweep(0, 100, 50, d.phase);
+    const power = sweep(5, d.powerCap, 35, d.phase);
+    const memUsedRatio = sweep(0.05, 0.95, 60, d.phase);
     const memUsed = Math.round(d.memTotal * memUsedRatio);
     const clockGr = Math.round(wave(300, 1700, 90, d.phase, 20));
     const clockMem = Math.round(wave(200, 9000, 90, d.phase, 30));
+    const linkMaxKbps = pcieMaxKbps(d.pcieGen, d.pcieWidth);
     return {
       gpu_index: d.index,
       name: d.name,
@@ -110,11 +133,11 @@ export function buildFakeSamples(): GpuSample[] {
       pcie_gen_max: d.pcieGenMax,
       pcie_width_current: d.pcieWidth,
       pcie_width_max: d.pcieWidthMax,
-      // Synthesize asymmetric, non-trivially-different RX/TX so the UI
-      // demonstrably shows two distinct values in mock mode (the bug
-      // we just fixed was both tiles showing the same number).
-      pcie_rx_kbps: Math.round(wave(50, 8000, 22, d.phase + 0.3, 200)),
-      pcie_tx_kbps: Math.round(wave(20, 4000, 35, d.phase + 1.7, 200)),
+      // Sweep RX/TX from idle (~500 KiB/s) up to ~95% of the link's
+      // theoretical bandwidth so the new fill-bar visits both extremes
+      // in dev. Distinct phases keep the two tiles desynchronized.
+      pcie_rx_kbps: Math.round(sweep(500, linkMaxKbps * 0.95, 25, d.phase + 0.3)),
+      pcie_tx_kbps: Math.round(sweep(500, linkMaxKbps * 0.95, 40, d.phase + 1.7)),
       timestamp: iso,
       timestamp_epoch: epoch,
     };

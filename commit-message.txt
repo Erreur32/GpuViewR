@@ -1,17 +1,42 @@
-release: v0.1.39 - PCIe bandwidth hint moved to info-tooltip
+release: v0.1.40 - dashboard fill-bars, simpler arc gauge, full-range mock
+
+Added:
+- PCIe RX/TX fill bars: glass-style fill scaled to the link's
+  theoretical bandwidth (log-scaled so idle traffic remains
+  visible). Gradient anchored to the full tile width and
+  revealed via clip-path, so the dark band stays at the left
+  edge and the bright tip stays at the right edge regardless of
+  value.
+- Theme-aware PCIe gradient stops: ends at var(--gv-info) (no
+  white mix) and starts from mix(info, var(--gv-bg)), so the
+  effect stays subtle in dark themes and doesn't wash out in
+  light themes.
 
 Changed:
-- The PCIe "Link bandwidth" inline hint is replaced by a small
-  info icon next to the value. Hover or keyboard focus on the
-  icon reveals the explanation about ASPM idle downshift in a
-  CSS-only tooltip. Hint text itself is unchanged.
-- Connectivité PCIe card is denser:
-  - py-3 -> py-2 padding,
-  - bandwidth label is now inline with the value instead of
-    stacked above,
-  - section gap reduced (space-y-1.5).
-  Net result: ~40% less vertical height per GPU PCIe panel.
-- Tooltip uses only --gv-* CSS variables (surface, text, border,
-  bg, accent) so it renders correctly on every registered theme
-  (Midnight, Graphite, Oceanic, light variants) without any
-  hard-coded colour.
+- Bar gauge gradient (temp / util / memory / fan / power):
+  3-stop sombre -> pleine couleur -> leger eclat, anchored to
+  the full track and revealed via clip-path so the dark band
+  stays fixed as pct grows.
+- Arc gauge simplified: stroke thickened from 8 to 13, gradient
+  reduced to a clean dark->bright fade in the status colour (no
+  more white over-glow). Warn/danger tick marks remain.
+- Memory tile: removed redundant "MiB" from primary value
+  (shows "20 760" instead of "20 760 MiB"); unit still on the
+  "/ 24 576 MiB" sub-line.
+- MiB/s legibility: PCIe throughput unit (KiB/s, MiB/s, GiB/s)
+  now tinted with --gv-info instead of --gv-text-dim, fixing
+  low contrast on dark themes.
+
+Removed:
+- Live-chart "pin" click: clicking the chart no longer toggles a
+  frozen-cursor mode (the feature was unreliable). Hover
+  tooltip and keyboard interactions unchanged. Unused
+  dashboard.click_pin / click_unpin translation keys removed.
+
+Dev / Mock:
+- Full-range sweeps: MOCK_GPU=1 now uses a clean
+  sweep(min, max, period, phase) helper for utilization, temp,
+  fan, power, memory and PCIe RX/TX, so every gauge visits both
+  extremes during a session. RX/TX sweep up to 95% of each
+  device's theoretical PCIe link bandwidth (PCI-SIG per-lane x
+  width).

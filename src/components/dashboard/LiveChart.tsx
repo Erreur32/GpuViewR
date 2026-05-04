@@ -78,7 +78,6 @@ export default function LiveChart({ gpuIndex }: Props) {
   const [tip, setTip] = useState<{ left: number; top: number; flipX: boolean; flipY: boolean; show: boolean }>(
     { left: 0, top: 0, flipX: false, flipY: false, show: false },
   );
-  const [pinned, setPinned] = useState<boolean>(false);
   const [visible, setVisible] = useState<{ util: boolean; temp: boolean; pow: boolean; mem: boolean; fan: boolean }>({ util: true, temp: true, pow: true, mem: true, fan: true });
 
   // uPlot needs latest props inside its hooks; keep refs to avoid rebuilding the
@@ -322,7 +321,7 @@ export default function LiveChart({ gpuIndex }: Props) {
     plotRef.current.setData([tArr, utilArr, tempArr, powArr, memArr, fanArr] as AlignedData);
   }, [historic, series, range, latestSample?.memory_total]);
 
-  // What the legend shows: the cursor value if hovering/pinned, else the live latest sample.
+  // What the legend shows: the cursor value if hovering, else the live latest sample.
   const display = useMemo<{
     live: boolean;
     t: number | null;
@@ -431,18 +430,7 @@ export default function LiveChart({ gpuIndex }: Props) {
       <div className="relative">
         <div
           ref={containerRef}
-          role="button"
-          tabIndex={0}
-          aria-pressed={pinned}
-          className="w-full select-none cursor-pointer"
-          onClick={() => setPinned((p) => !p)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setPinned((p) => !p);
-            }
-          }}
-          title={pinned ? t('dashboard.click_unpin') : t('dashboard.click_pin')}
+          className="w-full select-none"
         />
         {tip.show && cursor.t !== null && (
           <div

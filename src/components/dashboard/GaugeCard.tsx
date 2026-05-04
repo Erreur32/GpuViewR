@@ -92,7 +92,8 @@ function ArcGauge({
   pct: number; colorVar: string; value: number; unit: string; max: number;
   displayValue?: string; displaySubValue?: string; warn?: number; danger?: number; status: Status;
 }) {
-  const radius = 52;
+  const radius = 50;
+  const strokeW = 13;
   const circ = 2 * Math.PI * radius * 0.75;
   const offset = circ - (pct / 100) * circ;
 
@@ -106,13 +107,13 @@ function ArcGauge({
       <svg viewBox="0 0 120 120" className="w-full h-full -rotate-[135deg]">
         <defs>
           <linearGradient id={`gaugeGrad-${status}`} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%"   stopColor={colorVar} stopOpacity="0.55" />
+            <stop offset="0%"   stopColor={colorVar} stopOpacity="0.35" />
             <stop offset="100%" stopColor={colorVar} stopOpacity="1" />
           </linearGradient>
         </defs>
         {/* track */}
         <circle
-          cx="60" cy="60" r={radius} fill="none" strokeWidth="8"
+          cx="60" cy="60" r={radius} fill="none" strokeWidth={strokeW}
           stroke="var(--gv-border)"
           strokeDasharray={`${circ} ${2 * Math.PI * radius}`}
           strokeLinecap="round"
@@ -123,18 +124,18 @@ function ArcGauge({
           return (
             <circle
               key={t.color + t.pct}
-              cx="60" cy="60" r={radius} fill="none" strokeWidth="2"
+              cx="60" cy="60" r={radius} fill="none" strokeWidth={strokeW - 4}
               stroke={t.color}
               strokeDasharray={`2 ${2 * Math.PI * radius - 2}`}
               strokeDashoffset={-a}
               strokeLinecap="butt"
-              opacity="0.55"
+              opacity="0.7"
             />
           );
         })}
         {/* value arc */}
         <circle
-          cx="60" cy="60" r={radius} fill="none" strokeWidth="8"
+          cx="60" cy="60" r={radius} fill="none" strokeWidth={strokeW}
           stroke={`url(#gaugeGrad-${status})`}
           strokeDasharray={`${circ} ${2 * Math.PI * radius}`}
           strokeDashoffset={offset}
@@ -182,11 +183,16 @@ function BarGauge({
         style={{ background: 'var(--gv-surface-alt)' }}
       >
         <div
-          className="absolute inset-y-0 left-0 rounded-full"
+          className="absolute inset-0 rounded-full"
           style={{
-            width: `${pct}%`,
-            background: `linear-gradient(90deg, color-mix(in srgb, ${colorVar} 55%, transparent), ${colorVar})`,
-            transition: 'width 600ms cubic-bezier(0.2, 0.8, 0.2, 1), background 300ms',
+            // Gradient anchored to the full track (sombre fixed at the
+            // left edge, clair fixed at the right edge); the fill grows
+            // by revealing more of it via clip-path so the dark band
+            // doesn't stretch with pct.
+            background: `linear-gradient(90deg, color-mix(in srgb, ${colorVar} 35%, #000) 0%, ${colorVar} 70%, color-mix(in srgb, ${colorVar} 70%, #fff) 100%)`,
+            boxShadow: `0 0 8px color-mix(in srgb, ${colorVar} 40%, transparent)`,
+            clipPath: `inset(0 ${100 - pct}% 0 0)`,
+            transition: 'clip-path 600ms cubic-bezier(0.2, 0.8, 0.2, 1), background 300ms',
           }}
           aria-label={`${status} ${pct.toFixed(0)}%`}
         />

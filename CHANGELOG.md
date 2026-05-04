@@ -5,6 +5,61 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.40] - 2026-05-04
+
+Dashboard polish pass: fill-bar previews on PCIe RX/TX tiles, a
+cleaner Arc gauge, removal of the broken legend "pin" click, and
+a dev-mode mock that now sweeps every gauge through its full
+range so theme/gradient tweaks can be previewed without a real
+GPU.
+
+### Added
+- **PCIe RX/TX fill bars.** The RX and TX tiles now display a
+  glass-style fill that scales with traffic relative to the
+  link's theoretical bandwidth. Log-scaled so idle traffic is
+  still visible without being lost in the noise of a saturated
+  PCIe 4.0 x16 link. Gradient is anchored to the full tile
+  width and revealed via `clip-path`, so the dark band stays at
+  the left edge and the bright tip stays at the right edge
+  regardless of value.
+- **Theme-aware gradient stops.** The PCIe fill now ends at
+  `var(--gv-info)` (no white mix) and starts from
+  `mix(info, var(--gv-bg))`, so the effect stays subtle in dark
+  themes and doesn't wash out in light themes.
+
+### Changed
+- **Bar gauge gradient.** The temperature / utilization /
+  memory / fan / power bars use a 3-stop gradient
+  (sombre -> pleine couleur -> leger eclat) anchored to the
+  full track, with `clip-path` reveal so the dark band stays
+  fixed.
+- **Arc gauge simplified.** Stroke thickened from 8 to 13,
+  gradient reduced to a clean dark->bright fade in the gauge's
+  status colour (no more white over-glow). Warn/danger tick
+  marks remain.
+- **Memory tile.** Removed the redundant `MiB` from the primary
+  value (`20 760` instead of `20 760 MiB`); the unit is still
+  shown on the `/ 24 576 MiB` sub-line.
+- **MiB/s legibility.** The PCIe throughput unit (`KiB/s`,
+  `MiB/s`, `GiB/s`) is now tinted with `--gv-info` instead of
+  `--gv-text-dim`, fixing low contrast on dark themes.
+
+### Removed
+- **Chart "pin" click.** Clicking on the live chart no longer
+  toggles a frozen-cursor mode (the feature was unreliable). The
+  hover tooltip and keyboard interactions are unchanged. Unused
+  `dashboard.click_pin` / `dashboard.click_unpin` translation
+  keys removed.
+
+### Dev / Mock
+- **Full-range sweeps.** `MOCK_GPU=1` now uses a clean
+  `sweep(min, max, period, phase)` helper for utilization, temp,
+  fan, power, memory and PCIe RX/TX, so every gauge visits both
+  extremes during a session - handy for previewing gradients
+  and warn/danger thresholds in `npm run dev` without a real
+  GPU. RX/TX sweep up to 95% of each device's theoretical PCIe
+  link bandwidth (PCI-SIG per-lane x width).
+
 ## [0.1.39] - 2026-05-04
 
 Smaller, less noisy PCIe panel on the System tab. The ASPM idle-
