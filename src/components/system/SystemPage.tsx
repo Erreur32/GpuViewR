@@ -114,42 +114,51 @@ export default function SystemPage() {
             sub={t('system.zone_machine_sub')}
           />
           <div className="space-y-4 pl-3 border-l-2" style={{ borderColor: 'color-mix(in srgb, var(--gv-info) 35%, transparent)' }}>
-            <section className="card p-5 space-y-3">
-              <h2 className="font-semibold flex items-center gap-2">
-                <Server className="w-4 h-4" style={{ color: 'var(--gv-info)' }} /> {t('system.host')}
-              </h2>
-              <Grid>
-                <InfoField label={t('system.os')} value={info.host.os.prettyName ?? info.host.os.name} />
-                <InfoField label={t('system.kernel')} value={`${info.host.platform} ${info.host.release}`} />
-                <InfoField label={t('system.arch')} value={info.host.arch} />
-                <InfoField label={t('system.hostname')} value={info.host.hostname} />
-                <InfoField label={t('system.uptime')} value={fmtUptime(info.host.uptime)} />
-              </Grid>
+            <section className="card p-4 space-y-3">
+              <CardHeader
+                icon={<Server className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
+                title={t('system.host')}
+                meta={[
+                  info.host.os.prettyName ?? info.host.os.name,
+                  `${info.host.platform} ${info.host.release}`,
+                  info.host.arch,
+                  info.host.hostname,
+                  `up ${fmtUptime(info.host.uptime)}`,
+                ]}
+              />
               <LoadAvgBars loadavg={info.host.loadavg} cores={info.cpu.cores} label={t('system.loadavg')} viewMode={viewMode} />
             </section>
 
-            <section className="card p-5 space-y-3">
-              <h2 className="font-semibold flex items-center gap-2">
-                <Cpu className="w-4 h-4" style={{ color: 'var(--gv-info)' }} /> {t('system.cpu')}
-              </h2>
-              <Grid>
-                <InfoField label={t('system.cpu_model')} value={info.cpu.model} mono />
-                <InfoField label={t('system.cpu_cores')} value={String(info.cpu.cores)} />
-                <InfoField label={t('system.cpu_speed')} value={`${info.cpu.speedMHz} MHz`} />
-              </Grid>
+            <section className="card p-4 space-y-3">
+              <CardHeader
+                icon={<Cpu className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
+                title={t('system.cpu')}
+                meta={[
+                  info.cpu.model,
+                  `${info.cpu.cores} cores`,
+                  `${info.cpu.speedMHz} MHz`,
+                ]}
+              />
               <UsageBar label={t('system.cpu_usage')} pct={info.cpu.usagePct} viewMode={viewMode} />
             </section>
 
-            <section className="card p-5 space-y-3">
-              <h2 className="font-semibold flex items-center gap-2">
-                <MemoryStick className="w-4 h-4" style={{ color: 'var(--gv-info)' }} /> {t('system.memory')}
-              </h2>
-              <Grid>
-                <InfoField label={t('system.mem_total')} value={fmtBytes(info.memory.total)} />
-                <InfoField label={t('system.mem_used')} value={`${fmtBytes(info.memory.used)} (${info.memory.usedPct.toFixed(1)}%)`} />
-                <InfoField label={t('system.mem_free')} value={fmtBytes(info.memory.free)} />
-              </Grid>
-              <UsageBar label={t('system.mem_used')} pct={info.memory.usedPct} viewMode={viewMode} />
+            <section className="card p-4 space-y-3">
+              <CardHeader
+                icon={<MemoryStick className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
+                title={t('system.memory')}
+                meta={[
+                  `${fmtBytes(info.memory.total)} total`,
+                  `${fmtBytes(info.memory.used)} used`,
+                  `${fmtBytes(info.memory.free)} free`,
+                ]}
+              />
+              <UsageBar
+                label={t('system.mem_used')}
+                pct={info.memory.usedPct}
+                valueText={`${info.memory.usedPct.toFixed(1)}%`}
+                valueSub={`${fmtBytes(info.memory.used)} / ${fmtBytes(info.memory.total)}`}
+                viewMode={viewMode}
+              />
             </section>
           </div>
 
@@ -171,22 +180,40 @@ export default function SystemPage() {
                   const memPct = g.memory_total && g.memory_total > 0
                     ? (g.memory_used / g.memory_total) * 100
                     : 0;
+                  // Stable identity (right-aligned, on the title line).
+                  const titleMeta: string[] = [];
+                  if (g.driver_version) titleMeta.push(`drv ${g.driver_version}`);
+                  if (g.pcie_gen_current && g.pcie_width_current) {
+                    titleMeta.push(`PCIe ${g.pcie_gen_current}.0 ×${g.pcie_width_current}`);
+                  }
+                  // Live readings, second line under the title.
+                  const liveMeta: string[] = [`${g.temperature.toFixed(0)}°C`, `${g.power.toFixed(0)} W`];
+                  if (g.fan_speed !== null) liveMeta.push(`fan ${g.fan_speed.toFixed(0)}%`);
+                  if (g.clock_graphics !== null) liveMeta.push(`GR ${g.clock_graphics} MHz`);
+                  if (g.clock_memory !== null) liveMeta.push(`MEM ${g.clock_memory} MHz`);
+                  if (g.pci_bus_id) liveMeta.push(g.pci_bus_id);
                   return (
-                    <div key={g.gpu_index} className="rounded-xl p-3" style={{ background: 'var(--gv-surface-alt)' }}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <HardDrive className="w-4 h-4" style={{ color: 'var(--gv-accent)' }} />
-                        <span className="font-semibold">#{g.gpu_index} · {g.name}</span>
+                    <div key={g.gpu_index} className="rounded-xl p-3 space-y-2" style={{ background: 'var(--gv-surface-alt)' }}>
+                      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <HardDrive className="w-4 h-4 shrink-0" style={{ color: 'var(--gv-accent)' }} />
+                          <span className="font-semibold truncate">#{g.gpu_index} · {g.name}</span>
+                        </div>
+                        {titleMeta.length > 0 && (
+                          <span className="text-[11px] tabular-nums" style={{ color: 'var(--gv-text-muted)' }}>
+                            {titleMeta.join(' · ')}
+                          </span>
+                        )}
                       </div>
-                      <Grid>
-                        <InfoField label={t('system.gpu_uuid')} value={g.uuid ?? '-'} mono />
-                        <InfoField label={t('system.gpu_driver')} value={g.driver_version ?? '-'} />
-                        <InfoField label={t('system.gpu_temp')} value={`${g.temperature.toFixed(1)} °C`} />
-                        <InfoField label={t('system.gpu_power')} value={`${g.power.toFixed(1)} W`} />
-                        <InfoField label={t('system.gpu_fan')} value={g.fan_speed === null ? '-' : `${g.fan_speed.toFixed(0)} %`} />
-                        <InfoField label={t('system.gpu_clk_gr')} value={g.clock_graphics === null ? '-' : `${g.clock_graphics} MHz`} />
-                        <InfoField label={t('system.gpu_clk_mem')} value={g.clock_memory === null ? '-' : `${g.clock_memory} MHz`} />
-                      </Grid>
-                      <div className={'mt-2 ' + (viewMode === 'gauge' ? 'grid grid-cols-2 gap-3' : 'space-y-2')}>
+                      <div className="text-[11px] tabular-nums leading-snug" style={{ color: 'var(--gv-text-muted)' }}>
+                        {liveMeta.join(' · ')}
+                        {g.uuid && (
+                          <span className="ml-2 font-mono opacity-60" title={g.uuid}>
+                            · {g.uuid.slice(0, 12)}…
+                          </span>
+                        )}
+                      </div>
+                      <div className={viewMode === 'gauge' ? 'grid grid-cols-2 gap-3' : 'space-y-2'}>
                         <UsageBar
                           label={t('system.gpu_util')}
                           pct={g.utilization ?? 0}
@@ -348,6 +375,34 @@ function ZoneHeader({ color, icon, label, sub }: Readonly<{
 
 function Grid({ children }: Readonly<{ children: React.ReactNode }>) {
   return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">{children}</div>;
+}
+
+/**
+ * Concept B layout: title + icon on the left, dotted-list of metadata
+ * chips on the right of the same row (or wraps below on narrow widths).
+ * Replaces the previous {h2 + 3-col grid of label/value pairs} so the
+ * card body keeps its real estate for the bars/gauges underneath.
+ */
+function CardHeader({ icon, title, meta }: Readonly<{
+  icon: React.ReactNode; title: string; meta: Array<string | null | undefined>;
+}>) {
+  const items = meta.filter((m): m is string => Boolean(m && m.trim().length > 0));
+  return (
+    <div className="flex items-baseline justify-between gap-3 flex-wrap">
+      <h2 className="font-semibold flex items-center gap-2 min-w-0">
+        {icon}
+        <span className="truncate">{title}</span>
+      </h2>
+      {items.length > 0 && (
+        <span
+          className="text-[11px] tabular-nums leading-snug min-w-0 truncate sm:whitespace-normal"
+          style={{ color: 'var(--gv-text-muted)' }}
+        >
+          {items.join(' · ')}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function InfoField({ label, value, mono }: Readonly<{ label: string; value: string; mono?: boolean }>) {

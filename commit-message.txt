@@ -1,20 +1,15 @@
-release: v0.1.30 - real PCIe RX/TX, separate Link bandwidth tile
+release: v0.1.31 - System page Concept B (condensed metadata)
 
-Fixed:
-- The PCIe card's RX and TX tiles displayed the same value (the
-  link's theoretical capacity, gen x width in GB/s) instead of
-  real instantaneous traffic. Both pointed at the same variable.
-
-Added:
-- gpuCollector now spawns `nvidia-smi -q -d PCI` per tick in
-  parallel with the CSV query, parses `Tx Throughput` /
-  `Rx Throughput` per GPU (matched by Bus Id), and exposes
-  pcie_rx_kbps / pcie_tx_kbps on GpuSample. Falls back to null
-  when the driver returns N/A (typical on consumer GeForce
-  without admin or with older drivers).
-- Dashboard: separate RX, TX, Link bandwidth (theoretical max)
-  and Link gen/width tiles. RX/TX humanized (KiB/s -> MiB/s ->
-  GiB/s); '-' when not available.
-- Mock GPU data synthesizes asymmetric, non-trivially-different
-  RX and TX waves so the UI demonstrates two distinct values
-  without a real card.
+Changed:
+- System page Host/CPU/Memory cards now condense their metadata
+  into a single dotted line on the title row (Concept B), instead
+  of a 3-column label-value grid. The card body is now reserved
+  for the bars/gauges, which roughly doubles their relative
+  vertical share.
+- Per-GPU sub-cards collapse the InfoField grid into two muted
+  inline lines: identity (driver, PCIe link) on the right of the
+  title, and live readings (temp, power, fan, clocks, bus id,
+  truncated UUID) directly underneath. Util/Memory bars sit
+  immediately below the metadata — no more 6-cell grid above.
+- Memory bar gains a sub-line "X used / Y total" so the removed
+  three-field grid stays glanceable.

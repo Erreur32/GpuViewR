@@ -5,6 +5,23 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.31] - 2026-05-04
+
+System page: condense card metadata so bars/gauges dominate.
+
+### Changed
+- **Host / CPU / Memory cards** drop the 3-column label-value
+  grid in favour of a single inline metadata line right of the
+  title (Concept B). The body of each card now belongs to the
+  bars/gauges, roughly halving the vertical footprint.
+- **Per-GPU sub-cards** follow the same layout: identity (driver,
+  PCIe link) on the title line; live readings (temp, power,
+  fan, GR/MEM clocks, bus id, truncated UUID) condensed into one
+  muted line under the title. Util/Memory bars sit immediately
+  below — no more 6-cell grid above them.
+- Memory bar gains a sub-line ("X used / Y total") so the
+  removed grid info stays visible at a glance.
+
 ## [0.1.30] - 2026-05-04
 
 PCIe RX and TX now show real, distinct, instantaneous traffic
