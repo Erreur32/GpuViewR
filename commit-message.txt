@@ -1,10 +1,10 @@
-release: v0.1.21 - default chart range to live
+release: v0.1.22 - rolling chart window for every range
 
-Changed:
-- Dashboard chart now defaults to "live" on first run instead of
-  "1h". Existing users keep their last selected range; only the
-  fallback for fresh localStorage changes.
-- Removed the dedicated 1m/2m -> live migration introduced in
-  v0.1.9 for upgrades from <= 0.1.8. Any unknown stored range
-  (including 1m/2m) now falls back to "live", which covers the
-  same case with less code.
+Fixed:
+- Chart's left edge now slides forward for every range, not just
+  "live". Previously 5m/15m/1h/6h/24h/3d kept the fetch's initial
+  left boundary fixed and just appended new live data, so the
+  visible window grew beyond the selected period (e.g. "5m" opened
+  at 14:00 was showing 13:55-14:10 by 14:10). A client-side
+  rangeToSeconds() mirrors the server's parseRange and the cutoff
+  is applied uniformly across all ranges.

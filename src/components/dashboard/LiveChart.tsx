@@ -18,6 +18,25 @@ import type { HistoryRow } from '../../store/gpuStore';
 // breathes and individual hover targets stay clickable.
 const LIVE_WINDOW_S = 90;
 
+// Mirrors parseRange() in server/routes/gpu.ts so the client can apply
+// the same rolling-window cutoff to merged (history + live) data: the
+// chart's left edge must slide forward as time passes so "5m" always
+// shows the last 5 minutes, not "the 5 minutes that started when you
+// clicked the button".
+function rangeToSeconds(range: string): number {
+  if (range === 'live') return LIVE_WINDOW_S;
+  const m = /^(\d+(?:\.\d+)?)([smhd])$/.exec(range);
+  if (!m) return 3600;
+  const n = Number.parseFloat(m[1]);
+  switch (m[2]) {
+    case 's': return Math.max(1, Math.floor(n));
+    case 'm': return Math.floor(n * 60);
+    case 'h': return Math.floor(n * 3600);
+    case 'd': return Math.floor(n * 86400);
+    default: return 3600;
+  }
+}
+
 interface CursorValues {
   t: number | null;
   utilization: number | null;
@@ -286,8 +305,8 @@ export default function LiveChart({ gpuIndex }: Props) {
       }
     }
 
-    if (range === 'live' && tArr.length > 0) {
-      const cutoff = tArr[tArr.length - 1] - LIVE_WINDOW_S;
+    if (tArr.length > 0) {
+      const cutoff = tArr[tArr.length - 1] - rangeToSeconds(range);
       let drop = 0;
       while (drop < tArr.length && tArr[drop] < cutoff) drop++;
       if (drop > 0) {

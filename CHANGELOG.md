@@ -5,6 +5,23 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.22] - 2026-05-04
+
+Make the chart's time window truly rolling for every range, not just
+`live`.
+
+### Fixed
+- **Chart range now slides for all periods.** Previously only
+  `live` (90s) trimmed old points from the left edge as new ones
+  arrived; `5m`, `15m`, `1h`, `6h`, `24h`, `3d` kept the initial
+  fetch's left boundary fixed and just appended new live data,
+  so the visible window grew beyond the selected period over
+  time (e.g. `5m` opened at 14:00 was showing 13:55→14:10 by
+  14:10). The cutoff is now applied to every range using a
+  client-side `rangeToSeconds()` that mirrors the server's
+  `parseRange`, so the left edge advances in lockstep with the
+  newest sample.
+
 ## [0.1.21] - 2026-05-04
 
 Default the dashboard chart to **Live** on first run, and drop the
