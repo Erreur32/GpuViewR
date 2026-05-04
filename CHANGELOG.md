@@ -5,6 +5,26 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.29] - 2026-05-04
+
+Polish the Midnight and Graphite themes: cards stand out more,
+header text is pure white, active nav link is more legible.
+
+### Changed
+- **Midnight & Graphite cards** now use a lifted, more opaque
+  surface so they pop off the page gradient instead of blending
+  into it. Borders bumped from ~5–6 % to ~9–10 % white opacity
+  so card edges read clearly. The two `surface-alt` tones move
+  with them so chips, segs and inputs keep enough contrast
+  against the new base.
+- **Header / body text on Midnight & Graphite** moves to pure
+  `#ffffff`. Muted/dim grays shift up a notch so section
+  subtitles stay distinguishable on the now-brighter cards.
+- **Active nav link** (all themes) gets a stronger background
+  mix (14 → 20 % accent) plus a 1 px inset accent ring, so the
+  current page is unambiguous on dark themes without changing
+  the layout.
+
 ## [0.1.28] - 2026-05-04
 
 Split the combined Metrics tab and put the gauge style picker first
