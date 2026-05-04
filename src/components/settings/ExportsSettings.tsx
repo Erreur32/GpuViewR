@@ -152,6 +152,7 @@ export default function ExportsSettings() {
           onClick={() => selectSub('notification')}
         >
           <BellRing className="w-4 h-4" /> {t('settings.exports_sub_notification')}
+          <ActiveDot active={cfg.webhook.enabled} title={t('settings.exports_active')} />
         </button>
         <button
           role="tab"
@@ -161,6 +162,10 @@ export default function ExportsSettings() {
           onClick={() => selectSub('homeassistant')}
         >
           <Home className="w-4 h-4" /> {t('settings.exports_sub_homeassistant')}
+          <ActiveDot
+            active={cfg.mqtt.enabled && !!info?.mqtt?.connected}
+            title={t('settings.exports_active_connected')}
+          />
         </button>
         <button
           role="tab"
@@ -170,6 +175,10 @@ export default function ExportsSettings() {
           onClick={() => selectSub('metrics')}
         >
           <BarChart3 className="w-4 h-4" /> {t('settings.exports_sub_metrics')}
+          <ActiveDot
+            active={cfg.prometheus.enabled || cfg.influxdb.enabled}
+            title={t('settings.exports_active')}
+          />
         </button>
       </div>
 
@@ -210,6 +219,21 @@ function Toggle({ label, checked, onChange, disabled }: Readonly<{
       </span>
       {label}
     </label>
+  );
+}
+
+function ActiveDot({ active, title }: Readonly<{ active: boolean; title: string }>) {
+  if (!active) return null;
+  return (
+    <span
+      aria-label={title}
+      title={title}
+      className="inline-block w-2 h-2 rounded-full"
+      style={{
+        background: 'var(--gv-ok)',
+        boxShadow: '0 0 6px color-mix(in srgb, var(--gv-ok) 60%, transparent)',
+      }}
+    />
   );
 }
 

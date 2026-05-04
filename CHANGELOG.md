@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.27] - 2026-05-04
+
+Show an at-a-glance "active" indicator on each Exports sub-tab.
+
+### Added
+- **Green status dot on the sub-tab labels** (Notification / Home
+  Assistant / Metrics) when the underlying exporter(s) are active.
+  Notification dots when the webhook is enabled, Home Assistant
+  dots when MQTT is enabled and the broker is connected (uses the
+  live `info.mqtt.connected` flag), Metrics dots when at least one
+  of Prometheus or InfluxDB is enabled. Dot includes a `title`
+  tooltip ("Active" / "Active and connected") and is hidden
+  otherwise. EN + FR.
+
 ## [0.1.26] - 2026-05-04
 
 Make the InfluxDB "Send test" report the real result instead of a

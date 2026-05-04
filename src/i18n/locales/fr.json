@@ -252,6 +252,8 @@
     "exports_sub_notification": "Notification",
     "exports_sub_homeassistant": "Home Assistant",
     "exports_sub_metrics": "Metrics",
+    "exports_active": "Actif",
+    "exports_active_connected": "Actif et connecté",
     "exports_ha_help_title": "Comment configurer côté Home Assistant",
     "exports_ha_help_intro": "GpuViewR publie un message MQTT retenu par GPU et (optionnellement) les topics de discovery Home Assistant, pour que chaque GPU apparaisse comme un device avec ses capteurs. Configure d'abord le broker côté HA, puis renseigne le formulaire ci-dessus.",
     "exports_ha_help_steps": [
