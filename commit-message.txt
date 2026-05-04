@@ -1,10 +1,8 @@
-release: v0.1.22 - rolling chart window for every range
+release: v0.1.23 - downsample history for long ranges
 
-Fixed:
-- Chart's left edge now slides forward for every range, not just
-  "live". Previously 5m/15m/1h/6h/24h/3d kept the fetch's initial
-  left boundary fixed and just appended new live data, so the
-  visible window grew beyond the selected period (e.g. "5m" opened
-  at 14:00 was showing 13:55-14:10 by 14:10). A client-side
-  rangeToSeconds() mirrors the server's parseRange and the cutoff
-  is applied uniformly across all ranges.
+Performance:
+- /gpu/history now bucket-averages rows server-side so the chart
+  payload is capped at ~1800 points regardless of range. At 1Hz
+  collection, 3d went from ~259k rows / ~30 MB JSON to ~1800
+  rows / ~250 KB. Buckets: 1h=2s, 6h=12s, 24h=48s, 3d=144s.
+  live/5m/15m stay raw. CSV export keeps full resolution.
