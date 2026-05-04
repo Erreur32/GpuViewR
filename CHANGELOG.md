@@ -5,6 +5,19 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.34] - 2026-05-04
+
+Silence SonarCloud's S2245 PRNG hotspot on the mock GPU collector.
+
+### Changed
+- **`mockGpu.ts` no longer calls `Math.random()`.** All four
+  cosmetic uses (jitter, fake CPU%/GPU%, process memory weights)
+  now go through a tiny `rand01()` helper backed by Node's
+  `crypto.randomInt`. Behaviour is identical (still mock data,
+  still only active when `MOCK_GPU=1`); the change exists purely
+  to keep `typescript:S2245` clean without per-call NOSONAR
+  noise.
+
 ## [0.1.33] - 2026-05-04
 
 Fix the *real* reason PCIe RX/TX stayed at "-", and beef up the

@@ -1,22 +1,9 @@
-release: v0.1.33 - real PCIe RX/TX + nvtop-style process columns
-
-Fixed:
-- PCIe throughput collector spawned `nvidia-smi -q -d PCI`, but
-  PCI is not a valid value for --display (allowed list excludes
-  it). The spawn exited non-zero and the callback returned
-  silently, leaving the throughput map empty - the "RX/TX always
-  -" symptom. Switched to the unfiltered `nvidia-smi -q` dump,
-  whose per-GPU PCI section still contains Tx/Rx Throughput
-  lines for parsing.
-- Spawn errors now warn-log with exit code and stderr.
-
-Added:
-- Per-GPU process table now shows Type (C/G/G+C badge from
-  `nvidia-smi pmon`), GPU% (per-pid SM utilization from pmon),
-  CPU% (computed from /proc/<pid>/stat utime+stime delta), and
-  the full /proc/<pid>/cmdline as a muted second line under the
-  basename. Matches what nvtop displays.
+release: v0.1.34 - mockGpu uses crypto.randomInt instead of Math.random
 
 Changed:
-- PCIe RX/TX render "0 KiB/s" when the driver returns null,
-  not "-" - per user request.
+- mockGpu.ts replaces all four Math.random() calls (sample
+  jitter, fake CPU%/GPU%, process memory weights) with a small
+  rand01() helper backed by node:crypto.randomInt. Resolves
+  SonarCloud's typescript:S2245 PRNG hotspot without scattering
+  NOSONAR comments. Behaviour is identical; mock collector still
+  only runs under MOCK_GPU=1.

@@ -1,8 +1,17 @@
 // Synthetic GPU + process data for dev hosts without an NVIDIA GPU.
 // Activated by MOCK_GPU=1 (see config.mockGpu). Two fake devices with
 // fixed UUIDs so processCollector can reuse the UUID→index mapping.
+import { randomInt } from 'node:crypto';
 import type { GpuSample } from './gpuCollector.js';
 import type { GpuProcess } from './processCollector.js';
+
+// CSPRNG-backed [0, 1) float — used purely for cosmetic mock jitter,
+// but routed through node:crypto so SonarCloud's S2245 hotspot stays
+// clean without per-call NOSONAR comments. randomInt is plenty fast at
+// our 1Hz tick (sub-microsecond per call).
+function rand01(): number {
+  return randomInt(0, 1_000_000) / 1_000_000;
+}
 
 interface FakeDevice {
   index: number;
@@ -68,7 +77,7 @@ function nowTimestamp(): { iso: string; epoch: number } {
 function wave(amp: number, base: number, periodSec: number, phase: number, jitter: number): number {
   const t = Date.now() / 1000;
   const s = Math.sin((t / periodSec) * 2 * Math.PI + phase);
-  const n = (Math.random() - 0.5) * 2 * jitter;
+  const n = (rand01() - 0.5) * 2 * jitter;
   return base + amp * s + n;
 }
 
@@ -129,15 +138,15 @@ export function buildFakeProcesses(samples: GpuSample[]): GpuProcess[] {
       used_memory: 0,
       type: 'C',
       command: `/usr/bin/${fp.name} --mock-arg --port ${30000 + fp.pid % 1000}`,
-      cpu_pct: Math.round(Math.random() * 80 * 10) / 10,
-      gpu_pct: Math.round(Math.random() * 90),
+      cpu_pct: Math.round(rand01() * 80 * 10) / 10,
+      gpu_pct: Math.round(rand01() * 90),
     });
     procsByGpu.set(fp.gpu, list);
   }
   const out: GpuProcess[] = [];
   for (const [gpu, procs] of procsByGpu) {
     const total = memByGpu.get(gpu) ?? 0;
-    const weights = procs.map(() => 0.5 + Math.random());
+    const weights = procs.map(() => 0.5 + rand01());
     const sum = weights.reduce((a, b) => a + b, 0);
     procs.forEach((p, i) => {
       out.push({ ...p, used_memory: Math.round((weights[i] / sum) * total) });
