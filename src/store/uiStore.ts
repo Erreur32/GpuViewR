@@ -105,7 +105,7 @@ function readChartThresholds(): ChartThresholds {
 export const useUiStore = create<UiState>((set, get) => ({
   themeId: 'midnight',
   gaugeView: 'arc',
-  range: '1h',
+  range: 'live',
   selectedGpu: 0,
   soundEnabled: false,
   chartColors: {},
@@ -174,10 +174,10 @@ export const useUiStore = create<UiState>((set, get) => ({
     // Migrate legacy values ('1m', '2m') that no longer exist in the
     // Range union to the closest current option so the UI does not break
     // for users upgrading from <= 0.1.8.
-    const rawRange = readLS(KEYS.range, '1h');
+    const rawRange = readLS(KEYS.range, 'live');
     const range: Range = (['live', '5m', '15m', '1h', '6h', '24h', '3d'] as Range[]).includes(rawRange as Range)
       ? (rawRange as Range)
-      : ((rawRange === '1m' || rawRange === '2m') ? 'live' : '1h');
+      : 'live';
     const sound = readLS(KEYS.sound, '0') === '1';
     const rawGpu = Number.parseInt(readLS(KEYS.selectedGpu, '0'), 10);
     const selectedGpu = Number.isFinite(rawGpu) && rawGpu >= 0 ? rawGpu : 0;
