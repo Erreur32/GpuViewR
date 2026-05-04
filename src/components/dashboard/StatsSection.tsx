@@ -28,18 +28,22 @@ export default function StatsSection({ gpuIndex }: Props) {
   // itself is unused; the subscription is the point.
   useGpuStore((s) => s.latest.get(gpuIndex)?.timestamp_epoch);
   const [data, setData] = useState<StatsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
 
   // Re-fetch when gpu/range changes, AND poll every 5 s so the cards stay
   // in sync with the live samples flushed to SQLite by the collector.
+  // Stale-while-revalidate: previous values stay rendered during the
+  // background refresh so the cards never flash "…" between ticks
+  // (the original blink the user complained about).
   useEffect(() => {
     let cancelled = false;
+    // On gpu/range change, drop the cached data so the new range starts
+    // with the loading placeholder rather than briefly showing old
+    // numbers under the new label.
+    setData(null);
     const load = () => {
-      setLoading(true);
       api<StatsResponse>(`/gpu/stats?gpu=${gpuIndex}&range=${range}`)
         .then((r) => { if (!cancelled) setData(r); })
-        .catch(() => { if (!cancelled) setData(null); })
-        .finally(() => { if (!cancelled) setLoading(false); });
+        .catch(() => { /* keep previous data; transient errors shouldn't blink */ });
     };
     load();
     const id = setInterval(load, 5_000);
@@ -136,9 +140,9 @@ export default function StatsSection({ gpuIndex }: Props) {
               <span>{t(`dashboard.metrics.${row.key}`)}</span>
             </div>
             <div className="grid grid-cols-3 gap-1 text-xs">
-              <Cell label={t('dashboard.min')} value={row.min} unit={row.unit} loading={loading} />
-              <Cell label={t('dashboard.avg')} value={row.avg} unit={row.unit} loading={loading} bold />
-              <Cell label={t('dashboard.max')} value={row.max} unit={row.unit} loading={loading} />
+              <Cell label={t('dashboard.min')} value={row.min} unit={row.unit} />
+              <Cell label={t('dashboard.avg')} value={row.avg} unit={row.unit} bold />
+              <Cell label={t('dashboard.max')} value={row.max} unit={row.unit} />
             </div>
           </div>
         ))}
@@ -178,12 +182,12 @@ export default function StatsSection({ gpuIndex }: Props) {
   );
 }
 
-function Cell({ label, value, unit, loading, bold }: { label: string; value: number | undefined | null; unit: string; loading: boolean; bold?: boolean }) {
+function Cell({ label, value, unit, bold }: { label: string; value: number | undefined | null; unit: string; bold?: boolean }) {
   return (
     <div className="text-center">
       <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>{label}</div>
       <div className={'tabular-nums ' + (bold ? 'font-bold text-sm' : 'text-xs')} style={{ color: 'var(--gv-text)' }}>
-        {loading ? '…' : fmt(value, unit)}
+        {fmt(value, unit)}
       </div>
     </div>
   );

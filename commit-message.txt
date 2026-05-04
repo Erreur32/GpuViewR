@@ -1,7 +1,14 @@
-release: v0.1.35 - mark ProcessCollector.cpuPrev as readonly
+release: v0.1.36 - shorter PCIe tiles, no-blink Stats refresh
 
 Changed:
-- processCollector.ts: cpuPrev (per-pid CPU-time bookkeeping map)
-  is now declared `readonly`. The reference is only assigned at
-  construction; only map entries are mutated via set/delete.
-  Resolves SonarCloud S2933 maintainability smell.
+- PCIe card tiles (RX, TX, Link bandwidth, Link) are ~25 %
+  shorter: tighter padding (px-2.5 py-1.5), value text base
+  instead of lg, removed extra top margin. The Link-bandwidth
+  tile now renders "/ max X.XX GB/s" on the same flex row as
+  the value, on the same baseline.
+- Stats cards (period min/avg/max) no longer blink to "…" on
+  the 5 s background refresh. Switched to stale-while-
+  revalidate: previous values stay rendered until the new
+  payload lands. The "…" placeholder is removed entirely;
+  cells show "-" only on first paint or while a gpu/range
+  switch is in progress.

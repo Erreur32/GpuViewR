@@ -208,12 +208,12 @@ function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
           kbps={txKbps}
         />
         <PcieLinkBwTile value={linkBw} max={linkMax} label={t('dashboard.pcie_link_bw')} />
-        <div className="rounded-lg p-2.5"
+        <div className="rounded-lg px-2.5 py-1.5"
              style={{ background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}>
           <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
             {t('dashboard.pcie_link')}
           </div>
-          <div className="text-sm font-semibold tabular-nums mt-0.5" style={{ color: 'var(--gv-text)' }}>
+          <div className="text-sm font-semibold tabular-nums" style={{ color: 'var(--gv-text)' }}>
             {link}
           </div>
         </div>
@@ -231,7 +231,7 @@ function PcieThroughputTile({ icon, label, kbps }: Readonly<{
   const fmt = formatThroughput(kbps);
   return (
     <div
-      className="rounded-lg p-2.5"
+      className="rounded-lg px-2.5 py-1.5"
       style={{
         background: 'color-mix(in srgb, var(--gv-info) 8%, transparent)',
         border: '1px solid color-mix(in srgb, var(--gv-info) 25%, transparent)',
@@ -242,8 +242,8 @@ function PcieThroughputTile({ icon, label, kbps }: Readonly<{
         {icon}
         {label}
       </div>
-      <div className="flex items-baseline gap-1.5 mt-1">
-        <span className="text-lg font-semibold tabular-nums" style={{ color: 'var(--gv-info)' }}>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-base font-semibold tabular-nums" style={{ color: 'var(--gv-info)' }}>
           {fmt.value}
         </span>
         <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>{fmt.unit}</span>
@@ -255,25 +255,26 @@ function PcieThroughputTile({ icon, label, kbps }: Readonly<{
 function PcieLinkBwTile({ value, max, label }: Readonly<{
   value: number | null; max: number | null; label: string;
 }>) {
+  const showMax = max !== null && value !== null && max > value;
   return (
     <div
-      className="rounded-lg p-2.5"
+      className="rounded-lg px-2.5 py-1.5"
       style={{ background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}
     >
       <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
         {label}
       </div>
-      <div className="flex items-baseline gap-1.5 mt-1">
-        <span className="text-lg font-semibold tabular-nums" style={{ color: 'var(--gv-text)' }}>
+      <div className="flex items-baseline gap-1.5 flex-wrap">
+        <span className="text-base font-semibold tabular-nums" style={{ color: 'var(--gv-text)' }}>
           {value === null ? '-' : value.toFixed(2)}
         </span>
         <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>GB/s</span>
+        {showMax && (
+          <span className="text-[10px] tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>
+            / max {max!.toFixed(2)} GB/s
+          </span>
+        )}
       </div>
-      {max !== null && value !== null && max > value && (
-        <div className="text-[10px] tabular-nums mt-0.5" style={{ color: 'var(--gv-text-dim)' }}>
-          / max {max.toFixed(2)} GB/s
-        </div>
-      )}
     </div>
   );
 }

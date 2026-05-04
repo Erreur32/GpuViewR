@@ -5,6 +5,26 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.36] - 2026-05-04
+
+Two visual polish fixes: shorter PCIe tiles and no more blink on
+Stats cards every refresh.
+
+### Changed
+- **PCIe card tiles (RX, TX, Link bandwidth, Link) are now ~25 %
+  shorter.** Padding tightened (px-2.5 py-1.5), value text drops
+  from text-lg to text-base, the gap above the number is removed.
+  The Link-bandwidth tile now puts `/ max X.XX GB/s` on the same
+  flex row as the live value (same baseline) instead of a
+  dedicated line below — cleaner read, less vertical bulk.
+- **Stats cards (period min/avg/max) no longer flash "…" on every
+  5 s refresh.** Switched to stale-while-revalidate: previous
+  values stay rendered while the background fetch is in flight,
+  and only get replaced when the new payload lands. The "…"
+  placeholder disappears entirely; cells show "-" only on the
+  very first paint before any data is available, or when a
+  switch to a new gpu/range is in progress.
+
 ## [0.1.35] - 2026-05-04
 
 Mark the per-pid CPU bookkeeping map as readonly to silence
