@@ -5,6 +5,21 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.26] - 2026-05-04
+
+Make the InfluxDB "Send test" report the real result instead of a
+guaranteed success.
+
+### Fixed
+- **InfluxDB test now returns the broker's actual HTTP response.**
+  The previous test delegated to the periodic push helper, which
+  swallows HTTP errors (logs a warning) and bails out silently when
+  no GPU samples have been collected yet — so the test always
+  reported "OK" even with a wrong token, missing bucket, or
+  unreachable URL. The dedicated test now sends a synthetic line
+  directly, surfaces non-2xx responses with the Influx error body,
+  and aborts after 8s with an explicit timeout message.
+
 ## [0.1.25] - 2026-05-04
 
 Make the MQTT "Send test" button actually test the broker — and stop

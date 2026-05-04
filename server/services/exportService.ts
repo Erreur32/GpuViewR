@@ -659,10 +659,47 @@ class ExportService {
     return { ok: true, message: 'Webhook test sent and accepted by the remote endpoint.' };
   }
 
+  /**
+   * Send a single synthetic line to InfluxDB and surface the broker's
+   * actual response. The previous version delegated to pushInflux(),
+   * which logs HTTP errors but doesn't throw and bails early when no
+   * samples have been collected yet — making the test a guaranteed
+   * "ok" even with a wrong token, missing bucket, or unreachable URL.
+   */
   private async testInflux(cfg: InfluxConfig): Promise<{ ok: boolean; message: string }> {
-    if (!cfg.token || !cfg.org) return { ok: false, message: 'InfluxDB token/org missing.' };
-    await this.pushInflux(cfg);
-    return { ok: true, message: 'InfluxDB test write sent.' };
+    if (!cfg.url) return { ok: false, message: 'InfluxDB URL is empty.' };
+    if (!cfg.token) return { ok: false, message: 'InfluxDB token is missing.' };
+    if (!cfg.org || !cfg.bucket) return { ok: false, message: 'InfluxDB org and bucket are required.' };
+
+    const measurement = cfg.measurement || 'gpu_metrics';
+    const line = `${measurement},source=gpuviewr_test test_value=1`;
+    const writeUrl = `${cfg.url.replace(/\/$/, '')}/api/v2/write?org=${encodeURIComponent(cfg.org)}&bucket=${encodeURIComponent(cfg.bucket)}&precision=s`;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const res = await fetch(writeUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Token ${cfg.token}`,
+          'Content-Type': 'text/plain; charset=utf-8',
+        },
+        body: line,
+        signal: ctl.signal,
+      });
+      if (res.ok) {
+        return { ok: true, message: `InfluxDB accepted the test write (HTTP ${res.status}).` };
+      }
+      const text = (await res.text()).slice(0, 200);
+      return { ok: false, message: `InfluxDB returned HTTP ${res.status}: ${text || res.statusText}` };
+    } catch (err) {
+      const e = err as Error;
+      const msg = e.name === 'AbortError'
+        ? 'InfluxDB request timed out after 8s. Check URL and reachability.'
+        : `InfluxDB request failed: ${e.message}`;
+      return { ok: false, message: msg };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**

@@ -1,14 +1,14 @@
-release: v0.1.25 - real MQTT test, no more spurious "Bad Gateway"
+release: v0.1.26 - InfluxDB test reports the real result
 
 Fixed:
-- MQTT "Send test" now opens its own short-lived connection with
-  the configured URL/credentials and publishes a test message,
-  instead of polling the long-running client's connected flag.
-  The old check raced the background reconnect right after Save
-  and returned "MQTT client not connected" while the handshake
-  was still in flight.
-- POST /api/exports/:kind/test always returns HTTP 200 with the
-  { ok, message } body. The previous 502-on-failure path made the
-  client's api() throw with res.statusText ("Bad Gateway"),
-  swallowing the actual broker reason (auth refused, timeout,
-  connection refused). The UI now shows the real message.
+- InfluxDB "Send test" now sends a synthetic line directly to the
+  /api/v2/write endpoint and surfaces the broker's actual HTTP
+  response (success or the Influx error body for 4xx/5xx). The
+  previous version delegated to the periodic push helper, which
+  swallows HTTP errors and bails when no samples are collected
+  yet — so the test always returned "OK" even with a wrong token,
+  missing bucket, or unreachable URL. Adds an 8s AbortController
+  timeout with an explicit message.
+
+Note: Prometheus is pull-based; its "test" stays informational
+(scrape /metrics from the configured URL).
