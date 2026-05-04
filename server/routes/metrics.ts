@@ -12,7 +12,7 @@ router.get('/', (_req, res) => {
     return;
   }
   const samples = exportService.getLatestSamples();
-  res.type('text/plain; version=0.0.4').send(renderPrometheus(samples));
+  res.type('text/plain; version=0.0.4').send(renderPrometheus(samples, cfg.includeSystemStats));
 });
 
 export default router;

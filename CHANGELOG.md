@@ -5,6 +5,74 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.43] - 2026-05-04
+
+Host stats reach every exporter (Prometheus, MQTT, InfluxDB, Webhook),
+host-scoped alert presets land, the MQTT settings get a layout pass,
+and the Home Assistant help block is restyled.
+
+### Added
+- **Host metrics on every exporter (toggle).** Each exporter has a new
+  `includeSystemStats` setting (off by default):
+  - **Prometheus** exposes `gpuviewr_host_*` gauges on `/metrics`
+    (CPU usage ratio, load 1m / 5m / 15m, memory used bytes / ratio).
+  - **MQTT** publishes a retained JSON message on
+    `<prefix>/host/state`, and emits HA discovery for the host sensors
+    when `haDiscovery` is also on.
+  - **InfluxDB** writes one extra point per push to
+    `<measurement>_host` with cpu_usage_pct, load 1m / 5m / 15m and
+    memory_used_pct.
+  - **Webhook**: was already exposed in 0.1.41; now mirrored across
+    the other three. The toggle is per-exporter so each can be turned
+    on independently.
+- **Host-scoped alert presets.** `AlertMetric` extended with
+  `host_cpu`, `host_load_1m`, `host_memory`. New presets land
+  disabled like the GPU ones:
+  - Host CPU critical (> 95% / 60s, sound)
+  - Host CPU high (> 85% / 120s)
+  - Host load high (> 4.0 / 120s — calibrated for ≥ 4 cores)
+  - Host RAM saturated (> 95% / 30s, sound)
+  - Host RAM high (> 90% / 60s)
+- **Host alerts in the rule editor.** Metric `<select>` is now an
+  `<optgroup>` split — GPU group and Host group — and the rules table
+  / presets picker order, badges and icons all extend cleanly to the
+  three new metrics.
+- **`gpuviewr_host` as a Home Assistant device.** When MQTT discovery
+  + host stats are both enabled, host CPU / load / memory appear as a
+  separate device alongside the per-GPU devices.
+
+### Changed
+- **MQTT settings layout.** Broker URL, status (connecté/disconnecté),
+  push interval are now in a flat status block above the "Ce qui est
+  envoyé" disclosure — text no longer overlaps the disclosure summary.
+  The disclosure keeps only what describes the data being sent (topic
+  pattern, active topics, host topic when applicable, payload keys,
+  HA discovery sub-block).
+- **MQTT toggles spaced.** "Publier les stats machine" sits in its
+  own `pt-2` block under "Publier la découverte Home Assistant" with
+  a clear helper. The "Sensors auto-appear in Home Assistant" tip is
+  attached to the HA toggle, not floating above the system one.
+- **Home Assistant help restyled.** Numbered colored badges, info-tinted
+  step rows, accent-tinted inline labels (`'value'`) and info-tinted
+  placeholders (`<broker-host>`). Em-dashes removed from step bodies.
+  Final note rendered in a soft warn-tinted box.
+
+### Removed (em-dashes)
+- "Les règles ajoutées sont désactivées — vérifiez puis activez
+  chacune." → uses `:` instead.
+- HA help step 5 "en entités distinctes — utilisables" → "en entités
+  distinctes, utilisables".
+- EN steps 2 + 4 reworded similarly.
+
+### Internal
+- `alertService` no longer needs `as unknown as GpuSample`. The
+  evaluator is typed against an `EvalSample = GpuSample | HostSample`
+  union with an `isHostSample` type guard, so `readMetric` narrows
+  cleanly without runtime cost.
+- New shared helper `buildInfluxHostLine()` keeps the line-protocol
+  format for the host point in one place; `INFLUX_HOST_FIELD_KEYS`
+  drives both the writer and the dispatch panel listing.
+
 ## [0.1.42] - 2026-05-04
 
 System tab gets PCIe RX/TX fill bars per GPU, the throughput tile

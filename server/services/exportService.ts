@@ -62,6 +62,7 @@ export interface PrometheusDispatchInfo {
   enabled: boolean;
   endpoint: { method: 'GET'; path: string; url: string };
   metrics: PrometheusMetricSpec[];
+  hostMetrics?: PrometheusMetricSpec[];
 }
 export interface MqttDispatchInfo {
   enabled: boolean;
@@ -71,12 +72,23 @@ export interface MqttDispatchInfo {
   stateTopicPattern: string;
   resolvedStateTopics: string[];
   payloadKeys: readonly string[];
+  // Optional host snapshot block: appears only when MqttConfig
+  // .includeSystemStats is enabled. Drives the "Host topic / payload"
+  // section of the Settings dispatch panel.
+  host?: {
+    stateTopic: string;
+    payloadKeys: readonly string[];
+  };
   haDiscovery:
     | { enabled: false }
     | {
         enabled: true;
         configTopicPattern: string;
         sensors: HaSensorSpec[];
+        host?: {
+          configTopicPattern: string;
+          sensors: readonly HaSensorSpec[];
+        };
       };
 }
 export interface InfluxDispatchInfo {
@@ -86,6 +98,7 @@ export interface InfluxDispatchInfo {
   intervalSeconds: number;
   tagKeys: readonly string[];
   fieldKeys: readonly string[];
+  hostFieldKeys?: readonly string[];
 }
 export interface DispatchInfo {
   prometheus: PrometheusDispatchInfo;
@@ -101,7 +114,23 @@ export type ExporterKind = 'prometheus' | 'mqtt' | 'influxdb' | 'webhook';
 
 export interface PrometheusConfig {
   enabled: boolean;
+  // Also expose host metrics (CPU usage, load 1/5/15, memory used %)
+  // alongside the per-GPU gauges. Off by default so existing scrape
+  // configs don't gain new series unannounced.
+  includeSystemStats: boolean;
 }
+
+// Host-level Prometheus gauges, emitted only when
+// PrometheusConfig.includeSystemStats is true.
+export const PROMETHEUS_HOST_METRICS: readonly PrometheusMetricSpec[] = [
+  { name: 'gpuviewr_host_cpu_usage_ratio',  help: 'Host CPU usage (0-1)', type: 'gauge', unit: 'ratio' },
+  { name: 'gpuviewr_host_load_1m',          help: 'Host load average over 1 minute',  type: 'gauge', unit: '' },
+  { name: 'gpuviewr_host_load_5m',          help: 'Host load average over 5 minutes', type: 'gauge', unit: '' },
+  { name: 'gpuviewr_host_load_15m',         help: 'Host load average over 15 minutes', type: 'gauge', unit: '' },
+  { name: 'gpuviewr_host_memory_used_bytes', help: 'Host memory used (bytes)',  type: 'gauge', unit: 'bytes' },
+  { name: 'gpuviewr_host_memory_total_bytes',help: 'Host memory total (bytes)', type: 'gauge', unit: 'bytes' },
+  { name: 'gpuviewr_host_memory_used_ratio', help: 'Host memory used (0-1)',    type: 'gauge', unit: 'ratio' },
+];
 
 export interface MqttConfig {
   enabled: boolean;
@@ -111,7 +140,30 @@ export interface MqttConfig {
   topicPrefix: string;    // e.g. "gpuviewr"
   haDiscovery: boolean;   // publish Home Assistant discovery configs
   intervalSeconds: number;
+  // Also publish a host snapshot (CPU / load / memory) on
+  // `${topicPrefix}/host/state`. Off by default to keep MQTT
+  // strictly GPU-scoped for installs that already monitor the host
+  // through other means.
+  includeSystemStats: boolean;
 }
+
+// Flat host-state payload keys published on `${topicPrefix}/host/state`
+// when MqttConfig.includeSystemStats is true.
+export const MQTT_HOST_PAYLOAD_KEYS = [
+  'hostname', 'uptime',
+  'cpu_usage_pct', 'cpu_cores',
+  'load_1m', 'load_5m', 'load_15m',
+  'memory_total', 'memory_used', 'memory_free', 'memory_used_pct',
+  'timestamp',
+] as const;
+
+export const MQTT_HOST_HA_SENSORS: readonly HaSensorSpec[] = [
+  { key: 'cpu_usage_pct',  name: 'CPU usage',     unit: '%' },
+  { key: 'load_1m',        name: 'Load 1 min',    unit: '' },
+  { key: 'load_5m',        name: 'Load 5 min',    unit: '' },
+  { key: 'load_15m',       name: 'Load 15 min',   unit: '' },
+  { key: 'memory_used_pct',name: 'Memory used',   unit: '%' },
+];
 
 export interface InfluxConfig {
   enabled: boolean;
@@ -121,7 +173,17 @@ export interface InfluxConfig {
   bucket: string;
   measurement: string;    // default: gpu_metrics
   intervalSeconds: number;
+  // Also write a host-stats point (`<measurement>_host`) on each push
+  // with CPU usage, load averages and memory used %. Off by default
+  // so existing dashboards don't see new series unannounced.
+  includeSystemStats: boolean;
 }
+
+export const INFLUX_HOST_FIELD_KEYS = [
+  'cpu_usage_pct', 'cpu_cores',
+  'load_1m', 'load_5m', 'load_15m',
+  'memory_used', 'memory_total', 'memory_used_pct',
+] as const;
 
 export type WebhookType = 'generic' | 'discord' | 'telegram';
 export type WebhookMode = 'metrics' | 'alerts';
@@ -173,7 +235,7 @@ export interface ExportConfigs {
 const CONFIG_KEY = 'export_configs';
 
 const DEFAULTS: ExportConfigs = {
-  prometheus: { enabled: false },
+  prometheus: { enabled: false, includeSystemStats: false },
   mqtt: {
     enabled: false,
     url: 'mqtt://localhost:1883',
@@ -182,6 +244,7 @@ const DEFAULTS: ExportConfigs = {
     topicPrefix: 'gpuviewr',
     haDiscovery: false,
     intervalSeconds: 10,
+    includeSystemStats: false,
   },
   influxdb: {
     enabled: false,
@@ -191,6 +254,7 @@ const DEFAULTS: ExportConfigs = {
     bucket: 'gpuviewr',
     measurement: 'gpu_metrics',
     intervalSeconds: 10,
+    includeSystemStats: false,
   },
   webhook: {
     enabled: false,
@@ -331,6 +395,7 @@ class ExportService {
           url: origin ? `${origin.replace(/\/$/, '')}${promPath}` : promPath,
         },
         metrics: [...PROMETHEUS_METRICS],
+        hostMetrics: c.prometheus.includeSystemStats ? [...PROMETHEUS_HOST_METRICS] : undefined,
       },
       mqtt: {
         enabled: c.mqtt.enabled,
@@ -340,11 +405,23 @@ class ExportService {
         stateTopicPattern,
         resolvedStateTopics,
         payloadKeys: MQTT_PAYLOAD_KEYS,
+        host: c.mqtt.includeSystemStats
+          ? {
+              stateTopic: `${c.mqtt.topicPrefix}/host/state`,
+              payloadKeys: MQTT_HOST_PAYLOAD_KEYS,
+            }
+          : undefined,
         haDiscovery: c.mqtt.haDiscovery
           ? {
               enabled: true,
               configTopicPattern: 'homeassistant/sensor/gpuviewr_gpu<N>_<key>/config',
               sensors: [...MQTT_HA_SENSORS],
+              host: c.mqtt.includeSystemStats
+                ? {
+                    configTopicPattern: 'homeassistant/sensor/gpuviewr_host_<key>/config',
+                    sensors: MQTT_HOST_HA_SENSORS,
+                  }
+                : undefined,
             }
           : { enabled: false },
       },
@@ -355,6 +432,7 @@ class ExportService {
         intervalSeconds: c.influxdb.intervalSeconds,
         tagKeys: INFLUX_TAG_KEYS,
         fieldKeys: INFLUX_FIELD_KEYS,
+        hostFieldKeys: c.influxdb.includeSystemStats ? INFLUX_HOST_FIELD_KEYS : undefined,
       },
     };
   }
@@ -443,6 +521,25 @@ class ExportService {
       };
       this.mqttClient.publish(`${base}/state`, JSON.stringify(payload), { retain: true });
     }
+    if (cfg.includeSystemStats) {
+      const sys = getSystemStats();
+      // Keys must stay in sync with MQTT_HOST_PAYLOAD_KEYS.
+      const hostPayload = {
+        hostname: sys.hostname,
+        uptime: sys.uptime,
+        cpu_usage_pct: sys.cpu.usagePct,
+        cpu_cores: sys.cpu.cores,
+        load_1m: sys.load['1m'],
+        load_5m: sys.load['5m'],
+        load_15m: sys.load['15m'],
+        memory_total: sys.memory.total,
+        memory_used: sys.memory.used,
+        memory_free: sys.memory.free,
+        memory_used_pct: sys.memory.usedPct,
+        timestamp: new Date().toISOString(),
+      };
+      this.mqttClient.publish(`${cfg.topicPrefix}/host/state`, JSON.stringify(hostPayload), { retain: true });
+    }
   }
 
   private publishHaDiscovery(cfg: MqttConfig): void {
@@ -484,8 +581,33 @@ class ExportService {
         this.mqttClient!.publish(cfgTopic, JSON.stringify(cfgPayload), { retain: true });
       }
     }
+    if (cfg.includeSystemStats) this.publishHaDiscoveryHost(cfg);
     this.mqttDiscoveryPublished = true;
     logger.info('export', `MQTT HA discovery published for ${this.latestSamples.length} GPU(s)`);
+  }
+
+  private publishHaDiscoveryHost(cfg: MqttConfig): void {
+    if (!this.mqttClient) return;
+    const stateTopic = `${cfg.topicPrefix}/host/state`;
+    const device = {
+      identifiers: ['gpuviewr_host'],
+      name: 'GpuViewR Host',
+      manufacturer: 'GpuViewR',
+    };
+    for (const sensor of MQTT_HOST_HA_SENSORS) {
+      const cfgTopic = `homeassistant/sensor/gpuviewr_host_${sensor.key}/config`;
+      const cfgPayload = {
+        name: `Host ${sensor.name}`,
+        unique_id: `gpuviewr_host_${sensor.key}`,
+        state_topic: stateTopic,
+        value_template: `{{ value_json.${sensor.key} }}`,
+        unit_of_measurement: sensor.unit || undefined,
+        device_class: sensor.cls,
+        state_class: 'measurement',
+        device,
+      };
+      this.mqttClient.publish(cfgTopic, JSON.stringify(cfgPayload), { retain: true });
+    }
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -495,6 +617,9 @@ class ExportService {
   private async pushInflux(cfg: InfluxConfig): Promise<void> {
     if (this.latestSamples.length === 0) return;
     const lines = this.latestSamples.map((s) => buildInfluxLine(cfg.measurement, s));
+    if (cfg.includeSystemStats) {
+      lines.push(buildInfluxHostLine(cfg.measurement, getSystemStats()));
+    }
     const body = lines.join('\n');
     const url = `${cfg.url.replace(/\/$/, '')}/api/v2/write?org=${encodeURIComponent(cfg.org)}&bucket=${encodeURIComponent(cfg.bucket)}&precision=s`;
     try {
@@ -879,6 +1004,21 @@ function filterSampleFields(sample: GpuSample, fields: WebhookPayloadField[] | u
   return out;
 }
 
+function buildInfluxHostLine(measurement: string, sys: ReturnType<typeof getSystemStats>): string {
+  const tags = [`host=${escapeTag(sys.hostname || 'unknown')}`];
+  const fields: string[] = [
+    `cpu_usage_pct=${sys.cpu.usagePct.toFixed(2)}`,
+    `cpu_cores=${sys.cpu.cores}i`,
+    `load_1m=${sys.load['1m'].toFixed(2)}`,
+    `load_5m=${sys.load['5m'].toFixed(2)}`,
+    `load_15m=${sys.load['15m'].toFixed(2)}`,
+    `memory_used=${sys.memory.used}i`,
+    `memory_total=${sys.memory.total}i`,
+    `memory_used_pct=${sys.memory.usedPct.toFixed(2)}`,
+  ];
+  return `${measurement}_host,${tags.join(',')} ${fields.join(',')} ${Math.floor(Date.now() / 1000)}`;
+}
+
 function buildInfluxLine(measurement: string, s: GpuSample): string {
   const tags = [
     `gpu_index=${s.gpu_index}`,
@@ -897,13 +1037,19 @@ function buildInfluxLine(measurement: string, s: GpuSample): string {
 }
 
 /** Build the Prometheus exposition (text/plain; version=0.0.4). */
-export function renderPrometheus(samples: GpuSample[]): string {
+export function renderPrometheus(samples: GpuSample[], includeHost = false): string {
   const lines: string[] = [];
   // HELP/TYPE block driven by PROMETHEUS_METRICS so the dispatch-info panel
   // and the actual exposition stay in lockstep.
   for (const m of PROMETHEUS_METRICS) {
     lines.push(`# HELP ${m.name} ${m.help}`);
     lines.push(`# TYPE ${m.name} ${m.type}`);
+  }
+  if (includeHost) {
+    for (const m of PROMETHEUS_HOST_METRICS) {
+      lines.push(`# HELP ${m.name} ${m.help}`);
+      lines.push(`# TYPE ${m.name} ${m.type}`);
+    }
   }
 
   // Prometheus label-value escaping: backslash → \\, quote → \", newline → \n.
@@ -927,6 +1073,19 @@ export function renderPrometheus(samples: GpuSample[]): string {
     if (s.clock_graphics !== null) lines.push(`gpuviewr_gpu_clock_graphics_hz${l} ${s.clock_graphics * 1_000_000}`);
     if (s.clock_memory !== null) lines.push(`gpuviewr_gpu_clock_memory_hz${l} ${s.clock_memory * 1_000_000}`);
   }
+
+  if (includeHost) {
+    const sys = getSystemStats();
+    const hostLabel = `{host="${escapeLabel(sys.hostname)}"}`;
+    lines.push(`gpuviewr_host_cpu_usage_ratio${hostLabel} ${(sys.cpu.usagePct / 100).toFixed(4)}`);
+    lines.push(`gpuviewr_host_load_1m${hostLabel} ${sys.load['1m'].toFixed(2)}`);
+    lines.push(`gpuviewr_host_load_5m${hostLabel} ${sys.load['5m'].toFixed(2)}`);
+    lines.push(`gpuviewr_host_load_15m${hostLabel} ${sys.load['15m'].toFixed(2)}`);
+    lines.push(`gpuviewr_host_memory_used_bytes${hostLabel} ${sys.memory.used}`);
+    lines.push(`gpuviewr_host_memory_total_bytes${hostLabel} ${sys.memory.total}`);
+    lines.push(`gpuviewr_host_memory_used_ratio${hostLabel} ${(sys.memory.usedPct / 100).toFixed(4)}`);
+  }
+
   return lines.join('\n') + '\n';
 }
 

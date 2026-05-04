@@ -3,12 +3,19 @@ import {
   AlertEventRepo,
   AlertRuleRepo,
   ensureAlertSchema,
+  HOST_METRICS,
   type AlertEvent,
   type AlertRule,
   type AlertMetric,
 } from '../database/models/Alert.js';
 import { gpuCollector, type GpuSample } from './gpuCollector.js';
+import { getSystemStats } from './systemStats.js';
 import { logger } from '../utils/logger.js';
+
+// Synthetic gpu_index used in event rows for host-scoped alerts so the
+// (rule, sample) state map key stays unique without leaking into the
+// real per-GPU dimension.
+const HOST_PSEUDO_INDEX = -1;
 
 interface RuleState {
   /** epoch (s) at which the threshold first became crossed; 0 = not crossed */
@@ -54,7 +61,15 @@ class AlertService extends EventEmitter {
     const rules = this.rules();
     if (rules.length === 0) return;
     const now = Math.floor(Date.now() / 1000);
+    // Cache the host snapshot once per tick so multiple host-scoped
+    // rules see a consistent reading.
+    let hostSample: HostSample | null = null;
     for (const rule of rules) {
+      if (HOST_METRICS.has(rule.metric)) {
+        hostSample ??= buildHostSample();
+        this.evaluateOne(rule, hostSample, now);
+        continue;
+      }
       for (const sample of samples) {
         this.evaluateOne(rule, sample, now);
       }
@@ -62,8 +77,9 @@ class AlertService extends EventEmitter {
   }
 
   // Per (rule, sample) tick. Split out of evaluate() so the outer loop
-  // stays a flat 2-level iteration (Sonar S3776).
-  private evaluateOne(rule: AlertRule, sample: GpuSample, now: number): void {
+  // stays a flat 2-level iteration (Sonar S3776). Sample is either a
+  // real GpuSample or the synthetic HostSample built once per tick.
+  private evaluateOne(rule: AlertRule, sample: EvalSample, now: number): void {
     if (rule.gpu_index !== null && rule.gpu_index !== sample.gpu_index) return;
     const observed = readMetric(sample, rule.metric);
     if (observed === null) return;
@@ -81,7 +97,7 @@ class AlertService extends EventEmitter {
     this.state.set(key, st);
   }
 
-  private handleCrossed(rule: AlertRule, sample: GpuSample, observed: number, st: RuleState, now: number): void {
+  private handleCrossed(rule: AlertRule, sample: EvalSample, observed: number, st: RuleState, now: number): void {
     if (st.crossedSince === 0) st.crossedSince = now;
     const sustained = now - st.crossedSince >= rule.duration_s;
     const cooled = now - st.lastFired >= rule.cooldown_s;
@@ -92,7 +108,7 @@ class AlertService extends EventEmitter {
     st.lastFired = now;
   }
 
-  private handleCleared(rule: AlertRule, sample: GpuSample, observed: number, st: RuleState): void {
+  private handleCleared(rule: AlertRule, sample: EvalSample, observed: number, st: RuleState): void {
     if (st.firing) {
       this.fire(rule, sample, observed, 'resolved');
       st.firing = false;
@@ -100,10 +116,14 @@ class AlertService extends EventEmitter {
     st.crossedSince = 0;
   }
 
-  private fire(rule: AlertRule, sample: GpuSample, observed: number, state: 'firing' | 'resolved'): void {
+  private fire(rule: AlertRule, sample: EvalSample, observed: number, state: 'firing' | 'resolved'): void {
+    // Host-scoped rules don't carry a meaningful gpu_index — surface
+    // them as "host" in the message so the AlertsPage and webhook
+    // formatter don't show "GPU #-1".
+    const target = HOST_METRICS.has(rule.metric) ? 'host' : `GPU #${sample.gpu_index}`;
     const message = state === 'firing'
-      ? `${rule.name}: ${rule.metric} ${rule.condition} ${rule.threshold} (observed ${round(observed)}) on GPU #${sample.gpu_index}`
-      : `${rule.name} resolved on GPU #${sample.gpu_index} (observed ${round(observed)})`;
+      ? `${rule.name}: ${rule.metric} ${rule.condition} ${rule.threshold} (observed ${round(observed)}) on ${target}`
+      : `${rule.name} resolved on ${target} (observed ${round(observed)})`;
     const event = AlertEventRepo.insert({
       rule_id: rule.id,
       rule_name: rule.name,
@@ -124,7 +144,39 @@ class AlertService extends EventEmitter {
   }
 }
 
-function readMetric(sample: GpuSample, metric: AlertMetric): number | null {
+// Host metrics are read from a synthetic "sample" that wraps the latest
+// systemStats snapshot — see buildHostSample() — so the same readMetric
+// call site can dispatch on metric type without a separate code path.
+interface HostSample {
+  gpu_index: number;
+  host_cpu: number;
+  host_load_1m: number;
+  host_memory: number;
+}
+
+type EvalSample = GpuSample | HostSample;
+
+function isHostSample(s: EvalSample): s is HostSample {
+  return 'host_cpu' in s;
+}
+
+function buildHostSample(): HostSample {
+  const sys = getSystemStats();
+  return {
+    gpu_index: HOST_PSEUDO_INDEX,
+    host_cpu: sys.cpu.usagePct,
+    host_load_1m: sys.load['1m'],
+    host_memory: sys.memory.usedPct,
+  };
+}
+
+function readMetric(sample: EvalSample, metric: AlertMetric): number | null {
+  if (isHostSample(sample)) {
+    if (metric === 'host_cpu') return sample.host_cpu;
+    if (metric === 'host_load_1m') return sample.host_load_1m;
+    if (metric === 'host_memory') return sample.host_memory;
+    return null;
+  }
   switch (metric) {
     case 'temperature': return sample.temperature;
     case 'utilization': return sample.utilization;

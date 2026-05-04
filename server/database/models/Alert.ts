@@ -1,6 +1,12 @@
 import { getDatabase } from '../connection.js';
 
-export type AlertMetric = 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed';
+// GPU-scoped metrics fire per-GPU; host_* metrics fire once per host
+// (gpu_index is read from systemStats by alertService).
+export type AlertMetric =
+  | 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed'
+  | 'host_cpu' | 'host_load_1m' | 'host_memory';
+
+export const HOST_METRICS = new Set<AlertMetric>(['host_cpu', 'host_load_1m', 'host_memory']);
 export type AlertCondition = 'above' | 'below';
 
 export interface AlertRule {

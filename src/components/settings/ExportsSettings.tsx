@@ -7,14 +7,16 @@ import { notify } from '../../store/toastStore';
 
 type SubTab = 'notification' | 'homeassistant' | 'prometheus' | 'influxdb';
 
-interface PrometheusConfig { enabled: boolean }
+interface PrometheusConfig { enabled: boolean; includeSystemStats: boolean }
 interface MqttConfig {
   enabled: boolean; url: string; username?: string; password?: string;
   topicPrefix: string; haDiscovery: boolean; intervalSeconds: number;
+  includeSystemStats: boolean;
 }
 interface InfluxConfig {
   enabled: boolean; url: string; token: string; org: string; bucket: string;
   measurement: string; intervalSeconds: number;
+  includeSystemStats: boolean;
 }
 type WebhookType = 'generic' | 'discord' | 'telegram';
 type WebhookMode = 'metrics' | 'alerts';
@@ -54,6 +56,7 @@ interface PrometheusDispatchInfo {
   enabled: boolean;
   endpoint: { method: 'GET'; path: string; url: string };
   metrics: Array<{ name: string; help: string; type: 'gauge' | 'counter'; unit: string }>;
+  hostMetrics?: Array<{ name: string; help: string; type: 'gauge' | 'counter'; unit: string }>;
 }
 interface MqttDispatchInfo {
   enabled: boolean;
@@ -63,12 +66,17 @@ interface MqttDispatchInfo {
   stateTopicPattern: string;
   resolvedStateTopics: string[];
   payloadKeys: string[];
+  host?: { stateTopic: string; payloadKeys: string[] };
   haDiscovery:
     | { enabled: false }
     | {
         enabled: true;
         configTopicPattern: string;
         sensors: Array<{ key: string; name: string; unit: string; cls?: string }>;
+        host?: {
+          configTopicPattern: string;
+          sensors: Array<{ key: string; name: string; unit: string; cls?: string }>;
+        };
       };
 }
 interface InfluxDispatchInfo {
@@ -78,6 +86,7 @@ interface InfluxDispatchInfo {
   intervalSeconds: number;
   tagKeys: string[];
   fieldKeys: string[];
+  hostFieldKeys?: string[];
 }
 interface DispatchInfo {
   prometheus: PrometheusDispatchInfo;
@@ -267,24 +276,37 @@ function PrometheusBlock({ cfg, info, disabled, onSave }: Readonly<{
 }>) {
   const { t } = useTranslation();
   const [enabled, setEnabled] = useState(cfg.enabled);
+  const [includeSys, setIncludeSys] = useState(cfg.includeSystemStats === true);
   useEffect(() => { setEnabled(cfg.enabled); }, [cfg.enabled]);
+  useEffect(() => { setIncludeSys(cfg.includeSystemStats === true); }, [cfg.includeSystemStats]);
   return (
     <Block icon={<Activity className="w-4 h-4" />} title="Prometheus">
       <Toggle label={t('settings.exports_enabled')} checked={enabled} onChange={setEnabled} disabled={disabled} />
       <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
         {t('settings.exports_prom_help')} <code>GET /metrics</code>
       </p>
-      <button className="btn-primary" disabled={disabled} onClick={() => onSave({ enabled })}>
+      <div className="pt-2">
+        <Toggle
+          label={t('settings.exports_prom_include_system')}
+          checked={includeSys}
+          onChange={setIncludeSys}
+          disabled={disabled}
+        />
+        <p className="text-[11px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+          {t('settings.exports_prom_include_system_help')}
+        </p>
+      </div>
+      <button className="btn-primary" disabled={disabled} onClick={() => onSave({ enabled, includeSystemStats: includeSys })}>
         <Save className="w-4 h-4" /> {t('common.save')}
       </button>
       {cfg.enabled && info && (
         <DispatchPanel
           rows={[
             { label: t('settings.exports_info_endpoint'), value: <code>{info.endpoint.method} {info.endpoint.url}</code> },
-            { label: t('settings.exports_info_metrics_count'), value: String(info.metrics.length) },
+            { label: t('settings.exports_info_metrics_count'), value: String(info.metrics.length + (info.hostMetrics?.length ?? 0)) },
           ]}
           listTitle={t('settings.exports_info_metrics')}
-          listItems={info.metrics.map((m) => ({
+          listItems={[...info.metrics, ...(info.hostMetrics ?? [])].map((m) => ({
             primary: <code>{m.name}</code>,
             secondary: `${m.help} · ${m.type}`,
           }))}
@@ -313,9 +335,20 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
         <Field label={t('settings.exports_interval')} value={String(s.intervalSeconds)} onChange={(v) => setS({ ...s, intervalSeconds: Number.parseInt(v, 10) || 10 })} disabled={disabled} type="number" />
       </div>
       <Toggle label={t('settings.exports_mqtt_ha')} checked={s.haDiscovery} onChange={(v) => setS({ ...s, haDiscovery: v })} disabled={disabled} />
-      <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
+      <p className="text-[11px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
         {t('settings.exports_mqtt_help')}
       </p>
+      <div className="pt-2">
+        <Toggle
+          label={t('settings.exports_mqtt_include_system')}
+          checked={s.includeSystemStats === true}
+          onChange={(v) => setS({ ...s, includeSystemStats: v })}
+          disabled={disabled}
+        />
+        <p className="text-[11px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+          {t('settings.exports_mqtt_include_system_help')}
+        </p>
+      </div>
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
           <Save className="w-4 h-4" /> {t('common.save')}
@@ -325,39 +358,70 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
         </button>
       </div>
       {cfg.enabled && info && (
-        <DispatchPanel
-          rows={[
-            { label: t('settings.exports_info_broker'), value: <code>{info.broker || '—'}</code> },
-            {
-              label: t('settings.exports_info_status'),
-              value: (
-                <span style={{ color: info.connected ? 'var(--gv-ok)' : 'var(--gv-warn)' }}>
-                  {info.connected ? t('settings.exports_info_connected') : t('settings.exports_info_disconnected')}
-                </span>
-              ),
-            },
-            { label: t('settings.exports_info_interval'), value: `${info.intervalSeconds}s` },
-            { label: t('settings.exports_info_topic_pattern'), value: <code>{info.stateTopicPattern}</code> },
-            ...(info.resolvedStateTopics.length > 0
-              ? [{ label: t('settings.exports_info_resolved_topics'), value: <code>{info.resolvedStateTopics.join(', ')}</code> }]
-              : []),
-          ]}
-          listTitle={t('settings.exports_info_payload_keys')}
-          listItems={info.payloadKeys.map((k) => ({ primary: <code>{k}</code> }))}
-          extra={info.haDiscovery.enabled ? (
-            <DispatchPanel
-              rows={[
-                { label: t('settings.exports_info_ha_topic_pattern'), value: <code>{info.haDiscovery.configTopicPattern}</code> },
-              ]}
-              listTitle={t('settings.exports_info_ha_sensors')}
-              listItems={info.haDiscovery.sensors.map((s) => ({
-                primary: <code>{s.key}</code>,
-                secondary: `${s.name} · ${s.unit}${s.cls ? ` · class=${s.cls}` : ''}`,
-              }))}
-              embedded
-            />
-          ) : undefined}
-        />
+        <>
+          {/* Connection / runtime status — kept outside the "what's
+              being sent" panel so the broker URL, connected state and
+              push interval stay visible at a glance without expanding
+              the details disclosure. */}
+          <dl
+            className="rounded-lg p-3 text-xs grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1"
+            style={{ background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}
+          >
+            <dt style={{ color: 'var(--gv-text-dim)' }}>{t('settings.exports_info_broker')}</dt>
+            <dd style={{ color: 'var(--gv-text)' }}><code>{info.broker || '—'}</code></dd>
+            <dt style={{ color: 'var(--gv-text-dim)' }}>{t('settings.exports_info_status')}</dt>
+            <dd style={{ color: info.connected ? 'var(--gv-ok)' : 'var(--gv-warn)' }}>
+              {info.connected ? t('settings.exports_info_connected') : t('settings.exports_info_disconnected')}
+            </dd>
+            <dt style={{ color: 'var(--gv-text-dim)' }}>{t('settings.exports_info_interval')}</dt>
+            <dd style={{ color: 'var(--gv-text)' }}>{info.intervalSeconds}s</dd>
+          </dl>
+
+          <DispatchPanel
+            rows={[
+              { label: t('settings.exports_info_topic_pattern'), value: <code>{info.stateTopicPattern}</code> },
+              ...(info.resolvedStateTopics.length > 0
+                ? [{ label: t('settings.exports_info_resolved_topics'), value: <code>{info.resolvedStateTopics.join(', ')}</code> }]
+                : []),
+              ...(info.host
+                ? [{ label: t('settings.exports_info_host_topic'), value: <code>{info.host.stateTopic}</code> }]
+                : []),
+            ]}
+            listTitle={t('settings.exports_info_payload_keys')}
+            listItems={info.payloadKeys.map((k) => ({ primary: <code>{k}</code> }))}
+            extra={(
+              <>
+                {info.host && (
+                  <DispatchPanel
+                    rows={[]}
+                    listTitle={t('settings.exports_info_host_payload_keys')}
+                    listItems={info.host.payloadKeys.map((k) => ({ primary: <code>{k}</code> }))}
+                    embedded
+                  />
+                )}
+                {info.haDiscovery.enabled && (
+                  <DispatchPanel
+                    rows={[
+                      { label: t('settings.exports_info_ha_topic_pattern'), value: <code>{info.haDiscovery.configTopicPattern}</code> },
+                      ...(info.haDiscovery.host
+                        ? [{ label: t('settings.exports_info_ha_host_topic_pattern'), value: <code>{info.haDiscovery.host.configTopicPattern}</code> }]
+                        : []),
+                    ]}
+                    listTitle={t('settings.exports_info_ha_sensors')}
+                    listItems={[
+                      ...info.haDiscovery.sensors,
+                      ...(info.haDiscovery.host?.sensors ?? []),
+                    ].map((s) => ({
+                      primary: <code>{s.key}</code>,
+                      secondary: `${s.name}${s.unit ? ` · ${s.unit}` : ''}${s.cls ? ` · class=${s.cls}` : ''}`,
+                    }))}
+                    embedded
+                  />
+                )}
+              </>
+            )}
+          />
+        </>
       )}
     </Block>
   );
@@ -382,6 +446,17 @@ function InfluxBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
         <Field label={t('settings.exports_inf_measurement')} value={s.measurement} onChange={(v) => setS({ ...s, measurement: v })} disabled={disabled} />
         <Field label={t('settings.exports_interval')} value={String(s.intervalSeconds)} onChange={(v) => setS({ ...s, intervalSeconds: Number.parseInt(v, 10) || 10 })} disabled={disabled} type="number" />
       </div>
+      <div className="pt-2">
+        <Toggle
+          label={t('settings.exports_inf_include_system')}
+          checked={s.includeSystemStats === true}
+          onChange={(v) => setS({ ...s, includeSystemStats: v })}
+          disabled={disabled}
+        />
+        <p className="text-[11px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+          {t('settings.exports_inf_include_system_help')}
+        </p>
+      </div>
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
           <Save className="w-4 h-4" /> {t('common.save')}
@@ -397,9 +472,18 @@ function InfluxBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
             { label: t('settings.exports_inf_measurement'), value: <code>{info.measurement}</code> },
             { label: t('settings.exports_info_interval'), value: `${info.intervalSeconds}s` },
             { label: t('settings.exports_info_tag_keys'), value: <code>{info.tagKeys.join(', ')}</code> },
+            ...(info.hostFieldKeys?.length
+              ? [{ label: t('settings.exports_info_host_measurement'), value: <code>{info.measurement}_host</code> }]
+              : []),
           ]}
           listTitle={t('settings.exports_info_field_keys')}
-          listItems={info.fieldKeys.map((k) => ({ primary: <code>{k}</code> }))}
+          listItems={[
+            ...info.fieldKeys.map((k) => ({ primary: <code>{k}</code> })),
+            ...(info.hostFieldKeys ?? []).map((k) => ({
+              primary: <code>{k}</code>,
+              secondary: t('settings.exports_info_host_field') as string,
+            })),
+          ]}
         />
       )}
     </Block>
@@ -778,21 +862,93 @@ function HomeAssistantHelp() {
         className="cursor-pointer select-none flex items-center gap-2 font-medium"
         style={{ color: 'var(--gv-text)' }}
       >
-        <HelpCircle className="w-4 h-4" />
+        <HelpCircle className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />
         {t('settings.exports_ha_help_title')}
       </summary>
       <p className="mt-3 text-xs" style={{ color: 'var(--gv-text-muted)' }}>
         {t('settings.exports_ha_help_intro')}
       </p>
-      <ol className="mt-2 space-y-1.5 text-xs list-decimal pl-5" style={{ color: 'var(--gv-text)' }}>
+      <ol className="mt-3 space-y-2 text-xs">
         {steps.map((s, i) => (
-          <li key={i}>{s}</li>
+          <li
+            key={i}
+            className="flex items-start gap-3 rounded-lg px-3 py-2"
+            style={{
+              background: 'color-mix(in srgb, var(--gv-info) 6%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--gv-info) 18%, transparent)',
+            }}
+          >
+            <span
+              className="inline-flex shrink-0 items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold tabular-nums"
+              style={{
+                background: 'var(--gv-info)',
+                color: 'var(--gv-bg)',
+              }}
+              aria-hidden
+            >
+              {i + 1}
+            </span>
+            <HelpStepText text={s} />
+          </li>
         ))}
       </ol>
-      <p className="mt-3 text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+      <p
+        className="mt-3 text-xs rounded-lg px-3 py-2"
+        style={{
+          color: 'var(--gv-text)',
+          background: 'color-mix(in srgb, var(--gv-warn) 8%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--gv-warn) 25%, transparent)',
+        }}
+      >
         {t('settings.exports_ha_help_note')}
       </p>
     </details>
+  );
+}
+
+// Render a step body with breadcrumb arrows and obvious tokens (paths
+// containing →, single-quoted names) emphasized so the eye picks up
+// menu paths and field names without re-reading the whole sentence.
+function HelpStepText({ text }: Readonly<{ text: string }>) {
+  // Highlight chunks wrapped in single quotes (UI labels) and bracketed
+  // <placeholders> so they stand out without splitting the sentence.
+  const parts = text.split(/('[^']+'|<[^>]+>)/g);
+  return (
+    <span style={{ color: 'var(--gv-text)' }}>
+      {parts.map((p, i) => {
+        if (/^'[^']+'$/.test(p)) {
+          return (
+            <code
+              key={i}
+              className="px-1 py-0.5 rounded text-[11px]"
+              style={{
+                background: 'color-mix(in srgb, var(--gv-accent) 14%, transparent)',
+                color: 'var(--gv-accent)',
+                border: '1px solid color-mix(in srgb, var(--gv-accent) 25%, transparent)',
+              }}
+            >
+              {p.slice(1, -1)}
+            </code>
+          );
+        }
+        if (/^<[^>]+>$/.test(p)) {
+          return (
+            <code
+              key={i}
+              className="px-1 py-0.5 rounded text-[11px] font-mono"
+              style={{
+                background: 'color-mix(in srgb, var(--gv-info) 14%, transparent)',
+                color: 'var(--gv-info)',
+                border: '1px solid color-mix(in srgb, var(--gv-info) 25%, transparent)',
+              }}
+            >
+              {p}
+            </code>
+          );
+        }
+        return <span key={i}>{p}</span>;
+      })}
+    </span>
   );
 }
 

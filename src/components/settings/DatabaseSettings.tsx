@@ -67,7 +67,7 @@ export default function DatabaseSettings() {
       </h2>
 
       {info && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-sm">
           <Stat label={t('settings.db_rows')} value={info.rows.toLocaleString()} />
           <Stat label={t('settings.db_size')} value={fmtBytes(info.sizeBytes)} />
           <Stat label={t('settings.db_oldest')} value={info.oldestEpoch ? new Date(info.oldestEpoch * 1000).toLocaleString() : '-'} />
@@ -132,9 +132,9 @@ export default function DatabaseSettings() {
 
 function Stat({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>{label}</div>
-      <div className="tabular-nums font-semibold" style={{ color: 'var(--gv-text)' }}>{value}</div>
+    <div className="min-w-0">
+      <div className="text-[10px] uppercase tracking-wider truncate" style={{ color: 'var(--gv-text-muted)' }}>{label}</div>
+      <div className="tabular-nums font-semibold text-[13px] truncate" title={value} style={{ color: 'var(--gv-text)' }}>{value}</div>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus, Trash2, Bell, Volume2, VolumeX, Edit3, Sparkles, Webhook,
-  Thermometer, Activity, MemoryStick, Zap, Fan,
+  Thermometer, Activity, MemoryStick, Zap, Fan, Cpu, Server, Gauge,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -10,22 +10,31 @@ import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { notify } from '../../store/toastStore';
 
-type Metric = 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed';
+type Metric =
+  | 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed'
+  | 'host_cpu' | 'host_load_1m' | 'host_memory';
 type Condition = 'above' | 'below';
 
 // Visual cue per metric so users scan rule rows without reading the metric column.
 const METRIC_ICON: Record<Metric, { icon: LucideIcon; color: string }> = {
-  temperature: { icon: Thermometer,  color: 'var(--gv-danger)' },
-  utilization: { icon: Activity,     color: 'var(--gv-info)' },
-  memory:      { icon: MemoryStick,  color: 'var(--gv-accent)' },
-  power:       { icon: Zap,          color: 'var(--gv-warn)' },
-  fan_speed:   { icon: Fan,          color: 'var(--gv-ok)' },
+  temperature:   { icon: Thermometer,  color: 'var(--gv-danger)' },
+  utilization:   { icon: Activity,     color: 'var(--gv-info)' },
+  memory:        { icon: MemoryStick,  color: 'var(--gv-accent)' },
+  power:         { icon: Zap,          color: 'var(--gv-warn)' },
+  fan_speed:     { icon: Fan,          color: 'var(--gv-ok)' },
+  host_cpu:      { icon: Cpu,          color: 'var(--gv-info)' },
+  host_load_1m:  { icon: Gauge,        color: 'var(--gv-warn)' },
+  host_memory:   { icon: Server,       color: 'var(--gv-accent)' },
 };
 
 // Display order shared by the Rules table and the Presets picker so
 // temperature rules cluster together, then utilization, memory, power,
-// fan — instead of arbitrary insertion order.
-const METRIC_ORDER: Metric[] = ['temperature', 'utilization', 'memory', 'power', 'fan_speed'];
+// fan, host_cpu, host_load, host_memory — instead of arbitrary
+// insertion order.
+const METRIC_ORDER: Metric[] = [
+  'temperature', 'utilization', 'memory', 'power', 'fan_speed',
+  'host_cpu', 'host_load_1m', 'host_memory',
+];
 
 function MetricIcon({ metric, className = 'w-4 h-4' }: Readonly<{ metric: Metric; className?: string }>) {
   const spec = METRIC_ICON[metric];
@@ -542,11 +551,18 @@ function RuleModal({
           <div>
             <label className="label">{t('alerts.metric')}</label>
             <select className="input" value={rule.metric} onChange={(e) => update({ metric: e.target.value as Metric })}>
-              <option value="temperature">{t('alerts.metrics.temperature')}</option>
-              <option value="utilization">{t('alerts.metrics.utilization')}</option>
-              <option value="memory">{t('alerts.metrics.memory')}</option>
-              <option value="power">{t('alerts.metrics.power')}</option>
-              <option value="fan_speed">{t('alerts.metrics.fan_speed')}</option>
+              <optgroup label={t('alerts.metric_group_gpu')}>
+                <option value="temperature">{t('alerts.metrics.temperature')}</option>
+                <option value="utilization">{t('alerts.metrics.utilization')}</option>
+                <option value="memory">{t('alerts.metrics.memory')}</option>
+                <option value="power">{t('alerts.metrics.power')}</option>
+                <option value="fan_speed">{t('alerts.metrics.fan_speed')}</option>
+              </optgroup>
+              <optgroup label={t('alerts.metric_group_host')}>
+                <option value="host_cpu">{t('alerts.metrics.host_cpu')}</option>
+                <option value="host_load_1m">{t('alerts.metrics.host_load_1m')}</option>
+                <option value="host_memory">{t('alerts.metrics.host_memory')}</option>
+              </optgroup>
             </select>
           </div>
           <div>

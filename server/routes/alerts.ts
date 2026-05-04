@@ -6,7 +6,10 @@ import { alertService } from '../services/alertService.js';
 const router = Router();
 router.use(requireAuth);
 
-const VALID_METRICS: AlertMetric[] = ['temperature', 'utilization', 'memory', 'power', 'fan_speed'];
+const VALID_METRICS: AlertMetric[] = [
+  'temperature', 'utilization', 'memory', 'power', 'fan_speed',
+  'host_cpu', 'host_load_1m', 'host_memory',
+];
 const VALID_CONDITIONS: ReadonlySet<AlertCondition> = new Set(['above', 'below']);
 
 router.get('/rules', (_req, res) => {
@@ -104,6 +107,10 @@ router.delete('/rules/:id', requireAdmin, (req, res) => {
 // arming them. Re-using a preset id duplicates it (we don't dedupe
 // on name) — fine for now since the user can delete unwanted rows.
 const ALERT_PRESETS = [
+  // GPU-scoped presets. Thresholds are tuned for mainstream NVIDIA
+  // consumer cards (RTX 30/40 series); power_high at 350W matches the
+  // RTX 3090 / 4080-class TGP — adjust upward for 4090 (450W) or
+  // downward for entry-level cards before enabling.
   { id: 'temp_critical',  name: 'Temperature critical',     metric: 'temperature' as AlertMetric, condition: 'above'  as AlertCondition, threshold: 85,  duration_s: 30,  cooldown_s: 300, notify_sound: 1 },
   { id: 'temp_high',      name: 'Temperature high',         metric: 'temperature' as AlertMetric, condition: 'above'  as AlertCondition, threshold: 80,  duration_s: 60,  cooldown_s: 300, notify_sound: 0 },
   { id: 'mem_saturated',  name: 'VRAM saturated',           metric: 'memory'      as AlertMetric, condition: 'above'  as AlertCondition, threshold: 95,  duration_s: 60,  cooldown_s: 300, notify_sound: 0 },
@@ -113,6 +120,15 @@ const ALERT_PRESETS = [
   { id: 'fan_runaway',    name: 'Fan runaway',              metric: 'fan_speed'   as AlertMetric, condition: 'above'  as AlertCondition, threshold: 90,  duration_s: 60,  cooldown_s: 600, notify_sound: 1 },
   { id: 'fan_stalled',    name: 'Fan stalled',              metric: 'fan_speed'   as AlertMetric, condition: 'below'  as AlertCondition, threshold: 5,   duration_s: 60,  cooldown_s: 600, notify_sound: 1 },
   { id: 'idle_anomaly',   name: 'GPU idle anomaly',         metric: 'utilization' as AlertMetric, condition: 'below'  as AlertCondition, threshold: 1,   duration_s: 600, cooldown_s: 1800, notify_sound: 0 },
+
+  // Host-scoped presets (apply to the machine, not a specific GPU).
+  // host_load_1m default is 4.0 — designed for 4-core+ boxes; lower it
+  // on smaller hosts (rule of thumb: roughly cores × 0.9 for "busy").
+  { id: 'host_cpu_critical',  name: 'Host CPU critical', metric: 'host_cpu'      as AlertMetric, condition: 'above' as AlertCondition, threshold: 95, duration_s: 60,  cooldown_s: 600,  notify_sound: 1 },
+  { id: 'host_cpu_high',      name: 'Host CPU high',     metric: 'host_cpu'      as AlertMetric, condition: 'above' as AlertCondition, threshold: 85, duration_s: 120, cooldown_s: 600,  notify_sound: 0 },
+  { id: 'host_load_high',     name: 'Host load high',    metric: 'host_load_1m'  as AlertMetric, condition: 'above' as AlertCondition, threshold: 4,  duration_s: 120, cooldown_s: 600,  notify_sound: 0 },
+  { id: 'host_mem_saturated', name: 'Host RAM saturated',metric: 'host_memory'   as AlertMetric, condition: 'above' as AlertCondition, threshold: 95, duration_s: 30,  cooldown_s: 300,  notify_sound: 1 },
+  { id: 'host_mem_high',      name: 'Host RAM high',     metric: 'host_memory'   as AlertMetric, condition: 'above' as AlertCondition, threshold: 90, duration_s: 60,  cooldown_s: 600,  notify_sound: 0 },
 ];
 
 router.get('/presets', (_req, res) => {
