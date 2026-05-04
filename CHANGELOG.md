@@ -5,6 +5,27 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.32] - 2026-05-04
+
+Make PCIe RX/TX actually populate when the bus-id formats between
+the CSV query and `-q -d PCI` happen to differ, and warm-yellow the
+process names in the per-GPU process table.
+
+### Fixed
+- **PCIe RX/TX stayed at "-"** when the CSV `pci.bus_id` returned by
+  `--query-gpu` and the per-block header from `nvidia-smi -q -d PCI`
+  disagreed on format (real driver inconsistency). The throughput
+  parser now publishes each block under both its bus-id and an
+  `idx:N` key (block order); the merge tries bus-id first and falls
+  back to index. A one-shot diagnostic line in the gpu logs now
+  reports the parsed map at startup so any remaining "-" values
+  can be diagnosed without redeploying.
+
+### Changed
+- **Process names in the per-GPU "Processes using this GPU" table**
+  render in warm yellow (var(--gv-warn)) so the eye finds the
+  binary path quickly against the rest of the columns.
+
 ## [0.1.31] - 2026-05-04
 
 System page: condense card metadata so bars/gauges dominate.

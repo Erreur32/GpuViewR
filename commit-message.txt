@@ -1,15 +1,15 @@
-release: v0.1.31 - System page Concept B (condensed metadata)
+release: v0.1.32 - PCIe RX/TX index fallback, yellow process names
+
+Fixed:
+- PCIe RX/TX could stay at "-" when the CSV pci.bus_id (from
+  --query-gpu) and the GPU block header (from nvidia-smi -q -d
+  PCI) disagreed on format. The throughput parser now stores each
+  block under both keys (bus-id + idx:N block order) and the
+  merge tries bus-id first, then index. Adds a one-shot
+  diagnostic log at startup describing the parsed map so any
+  remaining "-" can be debugged without a redeploy.
 
 Changed:
-- System page Host/CPU/Memory cards now condense their metadata
-  into a single dotted line on the title row (Concept B), instead
-  of a 3-column label-value grid. The card body is now reserved
-  for the bars/gauges, which roughly doubles their relative
-  vertical share.
-- Per-GPU sub-cards collapse the InfoField grid into two muted
-  inline lines: identity (driver, PCIe link) on the right of the
-  title, and live readings (temp, power, fan, clocks, bus id,
-  truncated UUID) directly underneath. Util/Memory bars sit
-  immediately below the metadata — no more 6-cell grid above.
-- Memory bar gains a sub-line "X used / Y total" so the removed
-  three-field grid stays glanceable.
+- Per-GPU "Processes using this GPU" table renders process names
+  in warm yellow (var(--gv-warn)) so binary paths stand out from
+  PID and VRAM columns at a glance.

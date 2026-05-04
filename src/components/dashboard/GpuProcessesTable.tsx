@@ -91,7 +91,13 @@ export default function GpuProcessesTable({ gpuIndex }: Readonly<{ gpuIndex: num
               {sorted.map((p) => (
                 <tr key={`${p.pid}-${p.gpu_uuid}`} className="border-t" style={{ borderColor: 'var(--gv-border)' }}>
                   <td className="py-1.5 pr-3 font-mono tabular-nums">{p.pid}</td>
-                  <td className="py-1.5 pr-3 truncate max-w-[420px]" title={p.process_name}>{p.process_name}</td>
+                  <td
+                    className="py-1.5 pr-3 truncate max-w-[420px]"
+                    style={{ color: 'var(--gv-warn)' }}
+                    title={p.process_name}
+                  >
+                    {p.process_name}
+                  </td>
                   <td className="py-1.5 pr-3 font-mono tabular-nums text-right">
                     {p.used_memory.toLocaleString()} <span style={{ color: 'var(--gv-text-dim)' }}>MiB</span>
                   </td>

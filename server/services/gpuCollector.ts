@@ -84,10 +84,14 @@ class GpuCollector extends EventEmitter {
   private lastFlush = Date.now();
   private readonly flushIntervalMs = 60_000; // persist every minute
   private lastSamples: GpuSample[] = [];
-  // PCIe RX/TX from the most recent `-q -d PCI` call, keyed by bus id
-  // ("00000000:01:00.0"). Refreshed in parallel with the CSV query each
-  // tick; merged into samples when handleOutput() runs.
+  // PCIe RX/TX from the most recent `-q -d PCI` call. Keyed two ways:
+  //   - by normalized bus id ("00000000:01:00.0") for accurate matching
+  //   - by GPU block order ("idx:0", "idx:1", …) as a fallback when the
+  //     bus-id format differs subtly between the CSV `pci.bus_id` and the
+  //     `-q -d PCI` header (real driver inconsistencies). Refreshed in
+  //     parallel with the CSV query each tick; merged in handleOutput().
   private lastPcieThroughput: Map<string, PcieThroughput> = new Map();
+  private pcieDiagLogged = false;
 
   start(): void {
     if (this.timer) return;
@@ -196,7 +200,18 @@ class GpuCollector extends EventEmitter {
     child.on('error', () => { /* keep last map; UI will read N/A as null */ });
     child.on('close', (code) => {
       if (code !== 0) return;
-      this.lastPcieThroughput = parsePciThroughput(stdout);
+      const map = parsePciThroughput(stdout);
+      this.lastPcieThroughput = map;
+      // One-shot diagnostic so users can tell whether the driver returned
+      // throughput at all and which keys we ended up with — saves a
+      // round-trip when "-" stays sticky after deploy.
+      if (!this.pcieDiagLogged) {
+        this.pcieDiagLogged = true;
+        const summary = Array.from(map.entries())
+          .map(([k, v]) => `${k}=rx:${v.rxKbps ?? 'null'}/tx:${v.txKbps ?? 'null'}`)
+          .join(', ');
+        logger.info('gpu', `PCIe throughput map (${map.size} entries): ${summary || '(empty)'}`);
+      }
     });
   }
 
@@ -209,7 +224,13 @@ class GpuCollector extends EventEmitter {
       const parts = row.split(',').map((p) => p.trim());
       if (parts.length < QUERY_FIELDS.length) continue;
       const busId = parts[12] || null;
-      const throughput = busId ? this.lastPcieThroughput.get(normalizeBusId(busId)) : undefined;
+      const gpuIdx = num(parts[0]);
+      // Try bus-id match first (most accurate); fall back to block order
+      // ("idx:N") for drivers where the CSV pci.bus_id and the `-q -d PCI`
+      // header use slightly different formats. Both keys are populated by
+      // parsePciThroughput().
+      const throughput = (busId && this.lastPcieThroughput.get(normalizeBusId(busId)))
+        ?? this.lastPcieThroughput.get(`idx:${gpuIdx}`);
       const sample: GpuSample = {
         gpu_index: num(parts[0]),
         name: parts[1] || 'GPU',
@@ -296,15 +317,19 @@ function parsePciThroughput(out: string): Map<string, PcieThroughput> {
   const result = new Map<string, PcieThroughput>();
   // Split on the per-GPU header. The first chunk is the file preamble.
   const blocks = out.split(/^GPU\s+/m).slice(1);
-  for (const block of blocks) {
+  blocks.forEach((block, blockIdx) => {
     // Header is the first line of the chunk (e.g. "00000000:01:00.0").
     const header = block.split('\n', 1)[0]?.trim();
-    if (!header) continue;
-    const busId = normalizeBusId(header);
+    if (!header) return;
     const tx = matchKbps(block, /Tx\s+Throughput\s*:\s*([^\n]+)/i);
     const rx = matchKbps(block, /Rx\s+Throughput\s*:\s*([^\n]+)/i);
-    result.set(busId, { txKbps: tx, rxKbps: rx });
-  }
+    const value = { txKbps: tx, rxKbps: rx };
+    result.set(normalizeBusId(header), value);
+    // Index-based fallback key. Lets the lookup match by GPU order when
+    // the CSV pci.bus_id and this block's header disagree on format
+    // (e.g. domain padding differences seen in some driver versions).
+    result.set(`idx:${blockIdx}`, value);
+  });
   return result;
 }
 
