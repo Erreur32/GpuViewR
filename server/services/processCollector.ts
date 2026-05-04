@@ -39,7 +39,7 @@ class ProcessCollector {
   // Per-pid CPU-time bookkeeping for delta-based CPU% calculation.
   // Keyed by pid; value is (utime+stime) in jiffies and the wall-clock
   // ts we sampled it at. Cleaned of stale pids on each refresh.
-  private cpuPrev: Map<number, { ticks: number; ts: number }> = new Map();
+  private readonly cpuPrev: Map<number, { ticks: number; ts: number }> = new Map();
 
   // Returns a recent snapshot, refreshing if older than CACHE_MS. Errors
   // resolve to an empty snapshot rather than rejecting so the caller can

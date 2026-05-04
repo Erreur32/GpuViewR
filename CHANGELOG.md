@@ -5,6 +5,18 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.35] - 2026-05-04
+
+Mark the per-pid CPU bookkeeping map as readonly to silence
+SonarCloud's S2933 maintainability smell.
+
+### Changed
+- `ProcessCollector.cpuPrev` is now declared `readonly`. The
+  reference is set once at construction and only the map's
+  contents (entries) are mutated via `set` / `delete`, so the
+  reassignment-prevention promise is correct and Sonar's
+  `typescript:S2933` no longer flags it.
+
 ## [0.1.34] - 2026-05-04
 
 Silence SonarCloud's S2245 PRNG hotspot on the mock GPU collector.
