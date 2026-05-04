@@ -1,11 +1,22 @@
-release: v0.1.37 - merged dashboard header + harmonized view order
+release: v0.1.38 - clearer PCIe wording + denser System bar mode
 
 Changed:
-- Dashboard collapses its two header rows into one. GPU name +
-  "GPU #N · driver X.Y.Z" now share the row with the multi-GPU
-  tabs (when applicable), the gauge/bar view selector, and the
-  range selector. ml-auto keeps the controls right-aligned;
-  flex-wrap drops them below on narrow viewports.
-- System page's view selector swaps to "Gauges first, Bars
-  second" to match the Dashboard layout. Keeps muscle memory
-  consistent when toggling between the two pages.
+- System tab: rename "Effective bandwidth" / "Bande passante
+  effective" to "Link bandwidth" / "Bande passante du lien" so it
+  no longer reads like a real-time RX/TX number. Added a small
+  hint explaining that NVIDIA cards downshift the link gen at
+  idle (ASPM), so e.g. seeing 4.00 GB/s on a PCIe 4.0 x8 link is
+  expected, not a fault.
+- "Degraded link" badge (System + Dashboard) now only fires on a
+  lane *width* mismatch — a real seating/BIOS issue. A lower
+  current PCIe gen vs max is normal idle ASPM behaviour and no
+  longer triggers a false positive. Same badge added to the
+  dashboard PCIe card to match.
+- System bar mode: bars are inlined with their value on a single
+  row (LABEL · bar · VALUE). Bars are thinner (h-1.5) and the
+  value text is bigger (text-base, bold). Saves a full line of
+  height per metric.
+- System gauge mode: Host / CPU / Memory now share one row on
+  >=xl screens (Host 2fr, CPU 1fr, Memory 1fr). Drops to "Host
+  full / CPU + Memory split" on md, and to a single column on
+  mobile.

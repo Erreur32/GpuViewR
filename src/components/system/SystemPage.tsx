@@ -116,8 +116,25 @@ export default function SystemPage() {
             label={t('system.zone_machine')}
             sub={t('system.zone_machine_sub')}
           />
-          <div className="space-y-4 pl-3 border-l-2" style={{ borderColor: 'color-mix(in srgb, var(--gv-info) 35%, transparent)' }}>
-            <section className="card p-4 space-y-3">
+          {/* Machine zone layout:
+              - bar mode: vertical stack (full-width bars read better)
+              - gauge mode + md  : Host full width / CPU + Memory side-by-side
+              - gauge mode + xl  : Host (2fr) + CPU (1fr) + Memory (1fr) all on one row */}
+          <div
+            className={
+              'pl-3 border-l-2 '
+              + (viewMode === 'gauge'
+                ? 'grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-4'
+                : 'space-y-4')
+            }
+            style={{ borderColor: 'color-mix(in srgb, var(--gv-info) 35%, transparent)' }}
+          >
+            <section
+              className={
+                'card p-4 space-y-3'
+                + (viewMode === 'gauge' ? ' md:col-span-2' : '')
+              }
+            >
               <CardHeader
                 icon={<Server className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
                 title={t('system.host')}
@@ -245,8 +262,11 @@ export default function SystemPage() {
 }
 
 // Dedicated PCIe connectivity panel under each GPU. Highlights the
-// effective bandwidth (most useful number) and flags a degraded link
-// when the current gen/width is below what the GPU + slot support.
+// link bandwidth (theoretical max for the active PCIe gen × width) and
+// flags a degraded link when the current gen/width is below what the
+// GPU + slot support. NVIDIA cards downshift the link gen at idle to
+// save power, so the headline number can sit well below the max — this
+// is normal ASPM behaviour, not a fault.
 function PcieSection({ gpu, t }: Readonly<{
   gpu: {
     pci_bus_id: string | null;
@@ -268,9 +288,11 @@ function PcieSection({ gpu, t }: Readonly<{
     gpu.pcie_bandwidth_GBps !== null;
   if (!hasAny) return null;
 
+  // Only flag a degraded link when the lane *width* is below max — that
+  // is a physical/BIOS issue. A lower current PCIe gen vs max is normal
+  // ASPM downshift at idle and would otherwise produce false positives.
   const degraded =
-    gpu.pcie_gen_current !== null && gpu.pcie_gen_max !== null && gpu.pcie_gen_current < gpu.pcie_gen_max
-    || gpu.pcie_width_current !== null && gpu.pcie_width_max !== null && gpu.pcie_width_current < gpu.pcie_width_max;
+    gpu.pcie_width_current !== null && gpu.pcie_width_max !== null && gpu.pcie_width_current < gpu.pcie_width_max;
 
   const linkText = gpu.pcie_gen_current !== null && gpu.pcie_width_current !== null
     ? `PCIe ${gpu.pcie_gen_current}.0 ×${gpu.pcie_width_current}`
@@ -325,6 +347,9 @@ function PcieSection({ gpu, t }: Readonly<{
               </span>
             )}
           </div>
+          <p className="text-[10px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+            {t('system.pcie_bandwidth_hint')}
+          </p>
         </div>
       )}
 
@@ -451,27 +476,19 @@ function UsageBar({ label, pct, valueText, valueSub, viewMode = 'bar' }: Readonl
   }
 
   return (
-    <div>
-      <div className="flex items-start justify-between mb-1 gap-2">
-        <span className="text-[10px] uppercase tracking-wider mt-0.5" style={{ color: 'var(--gv-text-muted)' }}>
-          {label}
-        </span>
-        <span className="text-right leading-tight">
-          <span
-            className="block text-xs font-mono tabular-nums font-semibold"
-            style={{ color }}
-          >
-            {display}
-          </span>
-          {valueSub && (
-            <span className="block text-[10px] font-mono tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>
-              {valueSub}
-            </span>
-          )}
-        </span>
-      </div>
+    // Single-line layout: LABEL · bar (flex-1, thin) · VALUE.
+    // Saves vertical space vs. the previous "value-on-top / bar-below"
+    // stack and lets the value text grow without making the row taller
+    // than a typical line of text.
+    <div className="flex items-center gap-3">
+      <span
+        className="text-[10px] uppercase tracking-wider shrink-0 truncate"
+        style={{ color: 'var(--gv-text-muted)', minWidth: '4.5rem', maxWidth: '8rem' }}
+      >
+        {label}
+      </span>
       <div
-        className="h-2 rounded-full relative overflow-hidden"
+        className="flex-1 h-1.5 rounded-full relative overflow-hidden"
         style={{
           // Full-width 5-band heat gradient as the *base* layer. Same stops
           // as the arc gauge so bar↔gauge stay in lockstep.
@@ -497,6 +514,19 @@ function UsageBar({ label, pct, valueText, valueSub, viewMode = 'bar' }: Readonl
           }}
         />
       </div>
+      <span className="shrink-0 text-right leading-tight">
+        <span
+          className="block text-base font-mono tabular-nums font-bold"
+          style={{ color }}
+        >
+          {display}
+        </span>
+        {valueSub && (
+          <span className="block text-[11px] font-mono tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>
+            {valueSub}
+          </span>
+        )}
+      </span>
     </div>
   );
 }

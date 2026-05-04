@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Thermometer, Activity, MemoryStick, Zap, Fan, LayoutGrid, BarChart3, ArrowDownToLine, ArrowUpFromLine, Cable } from 'lucide-react';
+import { Thermometer, Activity, MemoryStick, Zap, Fan, LayoutGrid, BarChart3, ArrowDownToLine, ArrowUpFromLine, Cable, AlertTriangle } from 'lucide-react';
 import type { GpuSample } from '../../store/gpuStore';
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
@@ -184,6 +184,14 @@ function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
     ? `PCIe ${sample.pcie_gen_current}.0 ×${sample.pcie_width_current}`
     : '-';
 
+  // Mirror the System tab: only flag a degraded link on lane *width*
+  // mismatch (a real seating/BIOS issue). Lower current gen vs max is
+  // normal ASPM downshift at idle and would produce false positives.
+  const degraded =
+    sample.pcie_width_current !== null && sample.pcie_width_current !== undefined
+    && sample.pcie_width_max !== null && sample.pcie_width_max !== undefined
+    && sample.pcie_width_current < sample.pcie_width_max;
+
   return (
     <div className="card p-4">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -192,10 +200,26 @@ function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
           <Cable className="w-4 h-4" />
           {t('dashboard.pcie_title')}
         </h3>
-        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono tabular-nums"
-              style={{ color: 'var(--gv-text-muted)', background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}>
-          {sample.pci_bus_id ?? '-'}
-        </span>
+        <div className="flex items-center gap-2">
+          {degraded && (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium"
+              title={t('system.pcie_degraded_hint')}
+              style={{
+                color: 'var(--gv-warn)',
+                background: 'color-mix(in srgb, var(--gv-warn) 15%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--gv-warn) 35%, transparent)',
+              }}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              {t('system.pcie_degraded')}
+            </span>
+          )}
+          <span className="text-[10px] px-2 py-0.5 rounded-full font-mono tabular-nums"
+                style={{ color: 'var(--gv-text-muted)', background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}>
+            {sample.pci_bus_id ?? '-'}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

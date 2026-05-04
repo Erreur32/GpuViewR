@@ -5,6 +5,37 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.38] - 2026-05-04
+
+Clearer PCIe wording on the System tab and a denser, more
+readable bar mode. Plus a small UX fix: the "Degraded link" badge
+was firing on idle GPUs because NVIDIA cards downshift the PCIe
+gen at idle to save power — that is not a hardware fault.
+
+### Changed
+- **System "Effective bandwidth" → "Link bandwidth"** (FR:
+  "Bande passante effective" → "Bande passante du lien"). The
+  number was always the theoretical bandwidth at the *current*
+  PCIe gen × width, not the live RX/TX throughput; the old label
+  read like the latter. Added an inline hint explaining that the
+  link gen drops at idle (ASPM) and is expected to sit below the
+  max — for example 4.00 GB/s on a PCIe 4.0 ×8 GPU at idle, vs.
+  15.76 GB/s under load.
+- **"Degraded link" badge** (System and Dashboard) now triggers
+  only on a lane *width* mismatch (real seating / BIOS issue).
+  Lower current gen vs max is normal idle behaviour and no
+  longer counts as a degradation. The same badge was also added
+  to the Dashboard PCIe card for parity.
+- **System bar mode is single-line per metric**: label, bar and
+  value share one row instead of stacking the value above the
+  bar. Bar height drops to `h-1.5`, the value gets `text-base`
+  bold. Each metric saves a full text line of vertical space.
+- **System gauge mode lays out Host / CPU / Memory on one row**
+  on `xl` screens (≥1280 px), with Host taking 2/4 of the width
+  for its three load-avg gauges, and CPU + Memory each 1/4. On
+  `md` it falls back to "Host full width / CPU + Memory
+  side-by-side", and on mobile to a single stacked column.
+
 ## [0.1.37] - 2026-05-04
 
 Save a full row of vertical space on the dashboard by merging the
