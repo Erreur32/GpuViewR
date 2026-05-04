@@ -7,16 +7,30 @@ import { notify } from '../../store/toastStore';
 
 type SubTab = 'notification' | 'homeassistant' | 'prometheus' | 'influxdb';
 
-interface PrometheusConfig { enabled: boolean; includeSystemStats: boolean }
-interface MqttConfig {
-  enabled: boolean; url: string; username?: string; password?: string;
-  topicPrefix: string; haDiscovery: boolean; intervalSeconds: number;
+// Shared shape for every exporter: an on/off switch and the
+// optional host-stats inclusion flag. Each concrete config extends
+// this base so we don't repeat the two lines four times.
+interface ExporterBase {
+  enabled: boolean;
   includeSystemStats: boolean;
 }
-interface InfluxConfig {
-  enabled: boolean; url: string; token: string; org: string; bucket: string;
-  measurement: string; intervalSeconds: number;
-  includeSystemStats: boolean;
+
+interface PrometheusConfig extends ExporterBase {}
+interface MqttConfig extends ExporterBase {
+  url: string;
+  username?: string;
+  password?: string;
+  topicPrefix: string;
+  haDiscovery: boolean;
+  intervalSeconds: number;
+}
+interface InfluxConfig extends ExporterBase {
+  url: string;
+  token: string;
+  org: string;
+  bucket: string;
+  measurement: string;
+  intervalSeconds: number;
 }
 type WebhookType = 'generic' | 'discord' | 'telegram';
 type WebhookMode = 'metrics' | 'alerts';
@@ -31,8 +45,7 @@ const WEBHOOK_PAYLOAD_FIELDS = [
 ] as const;
 type WebhookPayloadField = (typeof WEBHOOK_PAYLOAD_FIELDS)[number];
 
-interface WebhookConfig {
-  enabled: boolean;
+interface WebhookConfig extends ExporterBase {
   type: WebhookType;
   mode: WebhookMode;
   url: string;
@@ -41,7 +54,6 @@ interface WebhookConfig {
   intervalSeconds: number;
   payloadFields: WebhookPayloadField[];
   language: 'en' | 'fr';
-  includeSystemStats: boolean;
   token?: string;
   chatId?: string;
 }
@@ -245,6 +257,28 @@ function Toggle({ label, checked, onChange, disabled }: Readonly<{
   );
 }
 
+// Single toggle + helper-text block reused by every exporter to gate
+// the host-stats inclusion. Centralises the markup so changes to its
+// spacing/colour land in one place and SonarCloud doesn't flag the
+// repetition as duplicated code.
+function SystemStatsToggle({ labelKey, helpKey, checked, onChange, disabled }: Readonly<{
+  labelKey: string;
+  helpKey: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}>) {
+  const { t } = useTranslation();
+  return (
+    <div className="pt-2">
+      <Toggle label={t(labelKey)} checked={checked} onChange={onChange} disabled={disabled} />
+      <p className="text-[11px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+        {t(helpKey)}
+      </p>
+    </div>
+  );
+}
+
 function ActiveDot({ active, title }: Readonly<{ active: boolean; title: string }>) {
   if (!active) return null;
   return (
@@ -285,17 +319,13 @@ function PrometheusBlock({ cfg, info, disabled, onSave }: Readonly<{
       <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
         {t('settings.exports_prom_help')} <code>GET /metrics</code>
       </p>
-      <div className="pt-2">
-        <Toggle
-          label={t('settings.exports_prom_include_system')}
-          checked={includeSys}
-          onChange={setIncludeSys}
-          disabled={disabled}
-        />
-        <p className="text-[11px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
-          {t('settings.exports_prom_include_system_help')}
-        </p>
-      </div>
+      <SystemStatsToggle
+        labelKey="settings.exports_prom_include_system"
+        helpKey="settings.exports_prom_include_system_help"
+        checked={includeSys}
+        onChange={setIncludeSys}
+        disabled={disabled}
+      />
       <button className="btn-primary" disabled={disabled} onClick={() => onSave({ enabled, includeSystemStats: includeSys })}>
         <Save className="w-4 h-4" /> {t('common.save')}
       </button>
@@ -338,17 +368,13 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
       <p className="text-[11px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
         {t('settings.exports_mqtt_help')}
       </p>
-      <div className="pt-2">
-        <Toggle
-          label={t('settings.exports_mqtt_include_system')}
-          checked={s.includeSystemStats === true}
-          onChange={(v) => setS({ ...s, includeSystemStats: v })}
-          disabled={disabled}
-        />
-        <p className="text-[11px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
-          {t('settings.exports_mqtt_include_system_help')}
-        </p>
-      </div>
+      <SystemStatsToggle
+        labelKey="settings.exports_mqtt_include_system"
+        helpKey="settings.exports_mqtt_include_system_help"
+        checked={s.includeSystemStats === true}
+        onChange={(v) => setS({ ...s, includeSystemStats: v })}
+        disabled={disabled}
+      />
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
           <Save className="w-4 h-4" /> {t('common.save')}
@@ -446,17 +472,13 @@ function InfluxBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
         <Field label={t('settings.exports_inf_measurement')} value={s.measurement} onChange={(v) => setS({ ...s, measurement: v })} disabled={disabled} />
         <Field label={t('settings.exports_interval')} value={String(s.intervalSeconds)} onChange={(v) => setS({ ...s, intervalSeconds: Number.parseInt(v, 10) || 10 })} disabled={disabled} type="number" />
       </div>
-      <div className="pt-2">
-        <Toggle
-          label={t('settings.exports_inf_include_system')}
-          checked={s.includeSystemStats === true}
-          onChange={(v) => setS({ ...s, includeSystemStats: v })}
-          disabled={disabled}
-        />
-        <p className="text-[11px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
-          {t('settings.exports_inf_include_system_help')}
-        </p>
-      </div>
+      <SystemStatsToggle
+        labelKey="settings.exports_inf_include_system"
+        helpKey="settings.exports_inf_include_system_help"
+        checked={s.includeSystemStats === true}
+        onChange={(v) => setS({ ...s, includeSystemStats: v })}
+        disabled={disabled}
+      />
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
           <Save className="w-4 h-4" /> {t('common.save')}
@@ -557,15 +579,13 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
         </div>
       )}
 
-      <Toggle
-        label={t('settings.exports_webhook_include_system')}
+      <SystemStatsToggle
+        labelKey="settings.exports_webhook_include_system"
+        helpKey="settings.exports_webhook_include_system_help"
         checked={s.includeSystemStats !== false}
         onChange={(v) => setS({ ...s, includeSystemStats: v })}
         disabled={disabled}
       />
-      <p className="text-[11px] -mt-1" style={{ color: 'var(--gv-text-dim)' }}>
-        {t('settings.exports_webhook_include_system_help')}
-      </p>
 
       {s.type !== 'telegram' && (
         <Field

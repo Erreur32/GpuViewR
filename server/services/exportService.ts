@@ -1038,9 +1038,13 @@ function buildInfluxLine(measurement: string, s: GpuSample): string {
 
 // Prometheus label-value escaping: backslash → \\, quote → \", newline → \n.
 // Order matters: escape backslashes first, otherwise we'd escape the
-// backslashes we just inserted for quotes.
+// backslashes we just inserted for quotes. String.raw keeps the
+// literal backslashes readable instead of doubling each escape.
 function escapePromLabel(v: string): string {
-  return v.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\n');
+  return v
+    .replaceAll('\\', String.raw`\\`)
+    .replaceAll('"', String.raw`\"`)
+    .replaceAll('\n', String.raw`\n`);
 }
 
 function promHelpTypeLines(metrics: readonly PrometheusMetricSpec[]): string[] {
