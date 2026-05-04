@@ -633,7 +633,7 @@ class ExportService {
       if (kind === 'prometheus') return { ok: true, message: 'Prometheus is pull-based; scrape /metrics to test.' };
       if (kind === 'webhook') return await this.testWebhook(c.webhook);
       if (kind === 'influxdb') return await this.testInflux(c.influxdb);
-      if (kind === 'mqtt') return this.testMqtt(c.mqtt);
+      if (kind === 'mqtt') return await this.testMqtt(c.mqtt);
       return { ok: false, message: 'Unknown exporter' };
     } catch (err) {
       return { ok: false, message: (err as Error).message };
@@ -665,10 +665,40 @@ class ExportService {
     return { ok: true, message: 'InfluxDB test write sent.' };
   }
 
-  private testMqtt(cfg: MqttConfig): { ok: boolean; message: string } {
-    if (!this.mqttClient?.connected) return { ok: false, message: 'MQTT client not connected.' };
-    this.publishMqtt(cfg);
-    return { ok: true, message: 'MQTT test publish sent.' };
+  /**
+   * Open a fresh, short-lived connection to the broker with the current
+   * credentials and publish one test message. Independent of the
+   * long-running client so the user gets a clear pass/fail right after
+   * Save (no race against the background reconnect loop) and a
+   * meaningful broker error message when credentials/URL are wrong.
+   */
+  private testMqtt(cfg: MqttConfig): Promise<{ ok: boolean; message: string }> {
+    if (!cfg.url) return Promise.resolve({ ok: false, message: 'MQTT URL is empty.' });
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (result: { ok: boolean; message: string }) => {
+        if (settled) return;
+        settled = true;
+        try { client.end(true); } catch { /* ignore */ }
+        resolve(result);
+      };
+      const client = mqttConnect(cfg.url, {
+        username: cfg.username || undefined,
+        password: cfg.password || undefined,
+        reconnectPeriod: 0,
+        connectTimeout: 6000,
+      });
+      client.once('connect', () => {
+        const topic = `${cfg.topicPrefix || 'gpuviewr'}/test`;
+        const payload = JSON.stringify({ source: 'gpuviewr', kind: 'test', timestamp: new Date().toISOString() });
+        client.publish(topic, payload, { retain: false }, (err) => {
+          if (err) finish({ ok: false, message: `Connected, but publish failed: ${err.message}` });
+          else finish({ ok: true, message: `Connected to ${cfg.url} and published a test on ${topic}.` });
+        });
+      });
+      client.once('error', (err) => finish({ ok: false, message: `MQTT error: ${err.message}` }));
+      setTimeout(() => finish({ ok: false, message: 'Connection timed out after 8s. Check broker URL, port, and credentials.' }), 8000);
+    });
   }
 
   shutdown(): void {

@@ -36,7 +36,10 @@ router.post('/:kind/test', requireAuth, requireAdmin, async (req, res) => {
   const allowed: ExporterKind[] = ['prometheus', 'mqtt', 'influxdb', 'webhook'];
   if (!allowed.includes(kind)) return res.status(400).json({ error: 'Unknown exporter kind' });
   const r = await exportService.test(kind);
-  res.status(r.ok ? 200 : 502).json(r);
+  // Always 200: the body's `ok` flag is the authoritative result. Returning
+  // 502 made `api()` swallow the JSON message and surface a generic
+  // "Bad Gateway" error in the UI, hiding the actual broker reason.
+  res.json(r);
 });
 
 export default router;

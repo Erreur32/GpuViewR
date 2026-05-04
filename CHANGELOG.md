@@ -5,6 +5,24 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.25] - 2026-05-04
+
+Make the MQTT "Send test" button actually test the broker — and stop
+masking the real reason behind a generic "Bad Gateway".
+
+### Fixed
+- **MQTT test now opens its own short-lived connection** instead of
+  just polling `mqttClient.connected` on the long-running client.
+  The previous behavior raced the background reconnect: clicking
+  Test right after Save returned "MQTT client not connected"
+  before the broker handshake had a chance to complete.
+- **`POST /api/exports/:kind/test` no longer returns HTTP 502 on a
+  failed test.** It always returns 200 with `{ ok, message }`; the
+  client's `api()` wrapper was throwing on 502 with `res.statusText`
+  ("Bad Gateway"), hiding the actual broker error (auth refused,
+  connection refused, timeout, …). The UI now surfaces the real
+  message via the existing `notify('warn', message)` branch.
+
 ## [0.1.24] - 2026-05-04
 
 Give MQTT / Home Assistant its own settings sub-tab, with an in-app
