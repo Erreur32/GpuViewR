@@ -5,6 +5,27 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.30] - 2026-05-04
+
+PCIe RX and TX now show real, distinct, instantaneous traffic
+instead of the same theoretical link capacity in both tiles.
+
+### Fixed
+- **PCIe RX/TX tiles were both showing the link's theoretical max
+  bandwidth** (gen × width, in GB/s) — the same number, never
+  changing, with the wrong unit. The collector now also runs
+  `nvidia-smi -q -d PCI` per tick, parses the per-GPU `Tx/Rx
+  Throughput` lines (NVML PCIe counter, sampled ~20 ms), and
+  feeds real KiB/s into two separate tiles.
+
+### Added
+- **New "Link bandwidth" tile** alongside RX / TX / Link, showing
+  the theoretical unidirectional maximum of the active link
+  (still in GB/s) — what the previous RX/TX tiles were actually
+  measuring. RX/TX values are auto-formatted (KiB/s → MiB/s →
+  GiB/s) and fall back to "-" on cards where the driver returns
+  N/A. EN + FR.
+
 ## [0.1.29] - 2026-05-04
 
 Polish the Midnight and Graphite themes: cards stand out more,

@@ -44,6 +44,12 @@ export interface GpuSample {
   pcie_gen_max: number | null;
   pcie_width_current: number | null;
   pcie_width_max: number | null;
+  // Real-time PCIe traffic, in KiB/s. Sourced from `nvidia-smi -q -d PCI`
+  // (NVML PCIe throughput counter), separately from the CSV --query-gpu
+  // call which doesn't expose throughput. null when the driver returns
+  // N/A — common on GeForce cards without admin / on older drivers.
+  pcie_rx_kbps: number | null;
+  pcie_tx_kbps: number | null;
   timestamp: string;
   timestamp_epoch: number;
 }
@@ -66,6 +72,11 @@ function nowTimestamp(): { iso: string; epoch: number } {
   return { iso, epoch: Math.floor(d.getTime() / 1000) };
 }
 
+interface PcieThroughput {
+  rxKbps: number | null;
+  txKbps: number | null;
+}
+
 class GpuCollector extends EventEmitter {
   private timer: NodeJS.Timeout | null = null;
   private nvidiaSmiAvailable: boolean | null = null;
@@ -73,6 +84,10 @@ class GpuCollector extends EventEmitter {
   private lastFlush = Date.now();
   private readonly flushIntervalMs = 60_000; // persist every minute
   private lastSamples: GpuSample[] = [];
+  // PCIe RX/TX from the most recent `-q -d PCI` call, keyed by bus id
+  // ("00000000:01:00.0"). Refreshed in parallel with the CSV query each
+  // tick; merged into samples when handleOutput() runs.
+  private lastPcieThroughput: Map<string, PcieThroughput> = new Map();
 
   start(): void {
     if (this.timer) return;
@@ -143,6 +158,12 @@ class GpuCollector extends EventEmitter {
   }
 
   private tick(): void {
+    // Kick off the PCIe-throughput query in parallel; it lands into
+    // this.lastPcieThroughput by the time handleOutput() merges samples.
+    // Stale-by-one-tick is fine: the value is already an instantaneous
+    // ~20ms NVML sample, not an integral.
+    this.refreshPcieThroughput();
+
     const child = spawnNvidiaSmi([
       `--query-gpu=${QUERY_FIELDS.join(',')}`,
       '--format=csv,noheader,nounits',
@@ -161,6 +182,24 @@ class GpuCollector extends EventEmitter {
     });
   }
 
+  /**
+   * `nvidia-smi --query-gpu=` doesn't expose PCIe Tx/Rx throughput; only
+   * `nvidia-smi -q -d PCI` does (text output, sourced from NVML's
+   * NVML_PCIE_UTIL_RX_BYTES / TX_BYTES counters). Spawn it once per tick,
+   * parse per-GPU blocks keyed by Bus Id so we can match them back to the
+   * CSV samples that already carry pci_bus_id.
+   */
+  private refreshPcieThroughput(): void {
+    const child = spawnNvidiaSmi(['-q', '-d', 'PCI']);
+    let stdout = '';
+    child.stdout.on('data', (d) => (stdout += d.toString()));
+    child.on('error', () => { /* keep last map; UI will read N/A as null */ });
+    child.on('close', (code) => {
+      if (code !== 0) return;
+      this.lastPcieThroughput = parsePciThroughput(stdout);
+    });
+  }
+
   private handleOutput(out: string): void {
     const { iso, epoch } = nowTimestamp();
     const samples: GpuSample[] = [];
@@ -169,6 +208,8 @@ class GpuCollector extends EventEmitter {
       if (!row) continue;
       const parts = row.split(',').map((p) => p.trim());
       if (parts.length < QUERY_FIELDS.length) continue;
+      const busId = parts[12] || null;
+      const throughput = busId ? this.lastPcieThroughput.get(normalizeBusId(busId)) : undefined;
       const sample: GpuSample = {
         gpu_index: num(parts[0]),
         name: parts[1] || 'GPU',
@@ -182,11 +223,13 @@ class GpuCollector extends EventEmitter {
         fan_speed: numOrNull(parts[9]),
         clock_graphics: numOrNull(parts[10]),
         clock_memory: numOrNull(parts[11]),
-        pci_bus_id: parts[12] || null,
+        pci_bus_id: busId,
         pcie_gen_current: numOrNull(parts[13]),
         pcie_gen_max: numOrNull(parts[14]),
         pcie_width_current: numOrNull(parts[15]),
         pcie_width_max: numOrNull(parts[16]),
+        pcie_rx_kbps: throughput?.rxKbps ?? null,
+        pcie_tx_kbps: throughput?.txKbps ?? null,
         timestamp: iso,
         timestamp_epoch: epoch,
       };
@@ -232,6 +275,51 @@ class GpuCollector extends EventEmitter {
     this.buffer = [];
     this.lastFlush = Date.now();
   }
+}
+
+/**
+ * Parse `nvidia-smi -q -d PCI` plain-text output into a map keyed by
+ * normalized PCI bus id ("00000000:01:00.0", lower-case). Each entry
+ * holds Tx/Rx throughput in KiB/s, or null when the driver reported
+ * "N/A" / "Not Supported" for that field.
+ *
+ * The output groups blocks by `^GPU <bus-id>` headers; the per-GPU
+ * section then has lines like:
+ *
+ *     Tx Throughput                     : 50 KB/s
+ *     Rx Throughput                     : 0 KB/s
+ *
+ * Some fields can be "Not Active" / "N/A" depending on driver version
+ * and card class (GeForce often returns N/A without admin).
+ */
+function parsePciThroughput(out: string): Map<string, PcieThroughput> {
+  const result = new Map<string, PcieThroughput>();
+  // Split on the per-GPU header. The first chunk is the file preamble.
+  const blocks = out.split(/^GPU\s+/m).slice(1);
+  for (const block of blocks) {
+    // Header is the first line of the chunk (e.g. "00000000:01:00.0").
+    const header = block.split('\n', 1)[0]?.trim();
+    if (!header) continue;
+    const busId = normalizeBusId(header);
+    const tx = matchKbps(block, /Tx\s+Throughput\s*:\s*([^\n]+)/i);
+    const rx = matchKbps(block, /Rx\s+Throughput\s*:\s*([^\n]+)/i);
+    result.set(busId, { txKbps: tx, rxKbps: rx });
+  }
+  return result;
+}
+
+function matchKbps(block: string, re: RegExp): number | null {
+  const m = re.exec(block);
+  if (!m) return null;
+  const raw = m[1].trim();
+  if (!raw || /N\/?A|Not Supported|Not Active/i.test(raw)) return null;
+  // Driver formats vary slightly: "50 KB/s", "50KB/s", "50 KiB/s".
+  const num = Number.parseFloat(raw);
+  return Number.isFinite(num) ? num : null;
+}
+
+function normalizeBusId(id: string): string {
+  return id.trim().toLowerCase();
 }
 
 export const gpuCollector = new GpuCollector();

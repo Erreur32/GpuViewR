@@ -171,10 +171,12 @@ function pcieBandwidth(gen: number | null | undefined, width: number | null | un
 
 function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
   const { t } = useTranslation();
-  const rxTx = pcieBandwidth(sample.pcie_gen_current, sample.pcie_width_current);
-  const max = pcieBandwidth(sample.pcie_gen_max, sample.pcie_width_max);
+  const linkBw = pcieBandwidth(sample.pcie_gen_current, sample.pcie_width_current);
+  const linkMax = pcieBandwidth(sample.pcie_gen_max, sample.pcie_width_max);
+  const rxKbps = sample.pcie_rx_kbps;
+  const txKbps = sample.pcie_tx_kbps;
   // Hide the card entirely when the driver doesn't expose anything useful.
-  if (rxTx === null && !sample.pci_bus_id) return null;
+  if (linkBw === null && !sample.pci_bus_id) return null;
 
   const link = sample.pcie_gen_current && sample.pcie_width_current
     ? `PCIe ${sample.pcie_gen_current}.0 ×${sample.pcie_width_current}`
@@ -194,19 +196,18 @@ function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <PcieMetric
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <PcieThroughputTile
           icon={<ArrowDownToLine className="w-4 h-4" />}
           label={t('dashboard.pcie_rx')}
-          value={rxTx}
-          max={max}
+          kbps={rxKbps}
         />
-        <PcieMetric
+        <PcieThroughputTile
           icon={<ArrowUpFromLine className="w-4 h-4" />}
           label={t('dashboard.pcie_tx')}
-          value={rxTx}
-          max={max}
+          kbps={txKbps}
         />
+        <PcieLinkBwTile value={linkBw} max={linkMax} label={t('dashboard.pcie_link_bw')} />
         <div className="rounded-lg p-2.5"
              style={{ background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}>
           <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
@@ -224,9 +225,10 @@ function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
   );
 }
 
-function PcieMetric({ icon, label, value, max }: Readonly<{
-  icon: React.ReactNode; label: string; value: number | null; max: number | null;
+function PcieThroughputTile({ icon, label, kbps }: Readonly<{
+  icon: React.ReactNode; label: string; kbps: number | null;
 }>) {
+  const fmt = formatThroughput(kbps);
   return (
     <div
       className="rounded-lg p-2.5"
@@ -242,6 +244,27 @@ function PcieMetric({ icon, label, value, max }: Readonly<{
       </div>
       <div className="flex items-baseline gap-1.5 mt-1">
         <span className="text-lg font-semibold tabular-nums" style={{ color: 'var(--gv-info)' }}>
+          {fmt.value}
+        </span>
+        <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>{fmt.unit}</span>
+      </div>
+    </div>
+  );
+}
+
+function PcieLinkBwTile({ value, max, label }: Readonly<{
+  value: number | null; max: number | null; label: string;
+}>) {
+  return (
+    <div
+      className="rounded-lg p-2.5"
+      style={{ background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}
+    >
+      <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
+        {label}
+      </div>
+      <div className="flex items-baseline gap-1.5 mt-1">
+        <span className="text-lg font-semibold tabular-nums" style={{ color: 'var(--gv-text)' }}>
           {value === null ? '-' : value.toFixed(2)}
         </span>
         <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>GB/s</span>
@@ -253,4 +276,15 @@ function PcieMetric({ icon, label, value, max }: Readonly<{
       )}
     </div>
   );
+}
+
+// nvidia-smi reports PCIe throughput in KiB/s. Humanize so the tile
+// shows "50 KiB/s", "1.20 MiB/s", "3.40 GiB/s" instead of a five-digit
+// raw number. null → "-" so we don't pretend we have a measurement.
+function formatThroughput(kbps: number | null): { value: string; unit: string } {
+  if (kbps === null || !Number.isFinite(kbps)) return { value: '-', unit: 'KiB/s' };
+  if (kbps < 1024) return { value: kbps.toFixed(0), unit: 'KiB/s' };
+  const mib = kbps / 1024;
+  if (mib < 1024) return { value: mib.toFixed(2), unit: 'MiB/s' };
+  return { value: (mib / 1024).toFixed(2), unit: 'GiB/s' };
 }

@@ -101,6 +101,11 @@ export function buildFakeSamples(): GpuSample[] {
       pcie_gen_max: d.pcieGenMax,
       pcie_width_current: d.pcieWidth,
       pcie_width_max: d.pcieWidthMax,
+      // Synthesize asymmetric, non-trivially-different RX/TX so the UI
+      // demonstrably shows two distinct values in mock mode (the bug
+      // we just fixed was both tiles showing the same number).
+      pcie_rx_kbps: Math.round(wave(50, 8000, 22, d.phase + 0.3, 200)),
+      pcie_tx_kbps: Math.round(wave(20, 4000, 35, d.phase + 1.7, 200)),
       timestamp: iso,
       timestamp_epoch: epoch,
     };
