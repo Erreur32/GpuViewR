@@ -250,7 +250,18 @@
     "browser_notifs_unsupported": "not supported",
     "browser_notifs_denied_help": "Unblock GpuViewR in your browser's site settings to receive notifications.",
     "exports_sub_notification": "Notification",
+    "exports_sub_homeassistant": "Home Assistant",
     "exports_sub_metrics": "Metrics",
+    "exports_ha_help_title": "How to set this up on Home Assistant",
+    "exports_ha_help_intro": "GpuViewR publishes one retained MQTT message per GPU and (optionally) Home Assistant discovery topics, so each GPU appears as a device with sensors. Configure the broker on the HA side first, then point the form above at it.",
+    "exports_ha_help_steps": [
+      "Install an MQTT broker reachable by both Home Assistant and GpuViewR. The simplest path is the Mosquitto broker add-on (Settings → Add-ons → Add-on Store → 'Mosquitto broker' → Install → Start).",
+      "Create an MQTT user for GpuViewR (Settings → People → Users → Add user). Give it a username and password — this is what you fill in the Username / Password fields above.",
+      "Add the MQTT integration in HA (Settings → Devices & services → Add integration → MQTT). Enter the broker host (use 'core-mosquitto' if the add-on runs on the same HA instance, otherwise the broker IP), port 1883, and the user/password from step 2.",
+      "Back in this page, set Broker URL to mqtt://<broker-host>:1883, fill the same Username / Password, leave Topic prefix as 'gpuviewr' (or change it — it must not collide with another device), enable HA discovery, then Save and click 'Send test'.",
+      "Within ~10 seconds, sensors appear in HA under Settings → Devices & services → MQTT → 'GpuViewR GPU 0' (one device per GPU). Each device exposes utilization, temperature, memory, power, fan and clocks as separate entities you can graph or trigger automations on."
+    ],
+    "exports_ha_help_note": "If sensors don't appear, check the 'What's being sent' panel above for the resolved state/discovery topics, and verify the broker is reachable from both sides (HA → MQTT integration shows 'Connected', GpuViewR → 'Send test' returns success).",
     "exports_webhook_type": "Type",
     "exports_webhook_mode": "Mode",
     "exports_webhook_mode_alerts": "On alert event",

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Activity, Database, Webhook, Save, PlayCircle, BellRing, BarChart3, Eye } from 'lucide-react';
+import { Send, Activity, Database, Webhook, Save, PlayCircle, BellRing, BarChart3, Eye, Home, HelpCircle } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
 
-type SubTab = 'notification' | 'metrics';
+type SubTab = 'notification' | 'homeassistant' | 'metrics';
 
 interface PrometheusConfig { enabled: boolean }
 interface MqttConfig {
@@ -91,7 +91,8 @@ export default function ExportsSettings() {
   const [busy, setBusy] = useState(false);
   const [sub, setSub] = useState<SubTab>(() => {
     const saved = localStorage.getItem('gpuviewr.exportsSubTab') as SubTab | null;
-    return saved ?? 'notification';
+    if (saved === 'notification' || saved === 'homeassistant' || saved === 'metrics') return saved;
+    return 'notification';
   });
   const selectSub = (id: SubTab) => {
     setSub(id);
@@ -154,6 +155,15 @@ export default function ExportsSettings() {
         </button>
         <button
           role="tab"
+          aria-selected={sub === 'homeassistant'}
+          aria-pressed={sub === 'homeassistant'}
+          className="seg-btn inline-flex items-center gap-2"
+          onClick={() => selectSub('homeassistant')}
+        >
+          <Home className="w-4 h-4" /> {t('settings.exports_sub_homeassistant')}
+        </button>
+        <button
+          role="tab"
           aria-selected={sub === 'metrics'}
           aria-pressed={sub === 'metrics'}
           className="seg-btn inline-flex items-center gap-2"
@@ -167,10 +177,16 @@ export default function ExportsSettings() {
         <WebhookBlock cfg={cfg.webhook} disabled={!isAdmin || busy} onSave={(p) => save('webhook', p)} onTest={() => testIt('webhook')} />
       )}
 
+      {sub === 'homeassistant' && (
+        <div className="space-y-4">
+          <MqttBlock cfg={cfg.mqtt} info={info?.mqtt} disabled={!isAdmin || busy} onSave={(p) => save('mqtt', p)} onTest={() => testIt('mqtt')} />
+          <HomeAssistantHelp />
+        </div>
+      )}
+
       {sub === 'metrics' && (
         <div className="space-y-4">
           <PrometheusBlock cfg={cfg.prometheus} info={info?.prometheus} disabled={!isAdmin || busy} onSave={(p) => save('prometheus', p)} />
-          <MqttBlock cfg={cfg.mqtt} info={info?.mqtt} disabled={!isAdmin || busy} onSave={(p) => save('mqtt', p)} onTest={() => testIt('mqtt')} />
           <InfluxBlock cfg={cfg.influxdb} info={info?.influxdb} disabled={!isAdmin || busy} onSave={(p) => save('influxdb', p)} onTest={() => testIt('influxdb')} />
         </div>
       )}
@@ -680,6 +696,36 @@ function DispatchPanel({ rows, listTitle, listItems, extra, embedded }: Readonly
         </ul>
       </div>
       {extra && <div className="mt-3">{extra}</div>}
+    </details>
+  );
+}
+
+function HomeAssistantHelp() {
+  const { t } = useTranslation();
+  const steps: string[] = t('settings.exports_ha_help_steps', { returnObjects: true }) as string[];
+  return (
+    <details
+      className="rounded-xl p-4 text-sm"
+      style={{ background: 'var(--gv-surface-alt)', border: '1px dashed var(--gv-border)' }}
+    >
+      <summary
+        className="cursor-pointer select-none flex items-center gap-2 font-medium"
+        style={{ color: 'var(--gv-text)' }}
+      >
+        <HelpCircle className="w-4 h-4" />
+        {t('settings.exports_ha_help_title')}
+      </summary>
+      <p className="mt-3 text-xs" style={{ color: 'var(--gv-text-muted)' }}>
+        {t('settings.exports_ha_help_intro')}
+      </p>
+      <ol className="mt-2 space-y-1.5 text-xs list-decimal pl-5" style={{ color: 'var(--gv-text)' }}>
+        {steps.map((s, i) => (
+          <li key={i}>{s}</li>
+        ))}
+      </ol>
+      <p className="mt-3 text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+        {t('settings.exports_ha_help_note')}
+      </p>
     </details>
   );
 }

@@ -250,7 +250,18 @@
     "browser_notifs_unsupported": "non supportées",
     "browser_notifs_denied_help": "Débloquez GpuViewR dans les paramètres du site dans votre navigateur pour recevoir les notifications.",
     "exports_sub_notification": "Notification",
+    "exports_sub_homeassistant": "Home Assistant",
     "exports_sub_metrics": "Metrics",
+    "exports_ha_help_title": "Comment configurer côté Home Assistant",
+    "exports_ha_help_intro": "GpuViewR publie un message MQTT retenu par GPU et (optionnellement) les topics de discovery Home Assistant, pour que chaque GPU apparaisse comme un device avec ses capteurs. Configure d'abord le broker côté HA, puis renseigne le formulaire ci-dessus.",
+    "exports_ha_help_steps": [
+      "Installe un broker MQTT joignable par Home Assistant ET par GpuViewR. Le plus simple est l'add-on 'Mosquitto broker' (Paramètres → Modules complémentaires → Boutique → 'Mosquitto broker' → Installer → Démarrer).",
+      "Crée un utilisateur MQTT dédié à GpuViewR (Paramètres → Personnes → Utilisateurs → Ajouter). Note bien le username / password : ils iront dans les champs Username / Password ci-dessus.",
+      "Ajoute l'intégration MQTT dans HA (Paramètres → Appareils et services → Ajouter une intégration → MQTT). Hôte du broker : 'core-mosquitto' si l'add-on tourne sur la même instance HA, sinon l'IP du broker. Port 1883. Username / password de l'étape 2.",
+      "Reviens sur cette page : Broker URL = mqtt://<hôte-broker>:1883, mêmes Username / Password, laisse le Topic prefix sur 'gpuviewr' (sauf collision avec un autre device), active 'HA discovery', puis Enregistrer et 'Envoyer un test'.",
+      "Sous ~10 secondes, les capteurs apparaissent dans HA sous Paramètres → Appareils et services → MQTT → 'GpuViewR GPU 0' (un device par GPU). Chaque device expose utilisation, température, mémoire, conso, ventilateur et fréquences en entités distinctes — utilisables dans les dashboards ou les automatisations."
+    ],
+    "exports_ha_help_note": "Si rien n'apparaît, ouvre le panneau 'Ce qui est envoyé' au-dessus pour voir les topics state/discovery résolus, et vérifie que le broker est joignable des deux côtés (l'intégration HA → MQTT doit afficher 'Connecté', et 'Envoyer un test' côté GpuViewR doit réussir).",
     "exports_webhook_type": "Type",
     "exports_webhook_mode": "Mode",
     "exports_webhook_mode_alerts": "Sur événement d'alerte",

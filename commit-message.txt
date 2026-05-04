@@ -1,8 +1,10 @@
-release: v0.1.23 - downsample history for long ranges
+release: v0.1.24 - dedicated Home Assistant sub-tab with HA setup help
 
-Performance:
-- /gpu/history now bucket-averages rows server-side so the chart
-  payload is capped at ~1800 points regardless of range. At 1Hz
-  collection, 3d went from ~259k rows / ~30 MB JSON to ~1800
-  rows / ~250 KB. Buckets: 1h=2s, 6h=12s, 24h=48s, 3d=144s.
-  live/5m/15m stay raw. CSV export keeps full resolution.
+Added:
+- Exports & integrations now has a third sub-tab, "Home Assistant",
+  hosting the MQTT block previously grouped with Prometheus and
+  InfluxDB under Metrics. The new tab also includes a collapsible
+  in-app walkthrough explaining the HA-side configuration:
+  install Mosquitto broker add-on, create an MQTT user, add the
+  MQTT integration in HA, point this form at the broker, and the
+  GPU sensors auto-appear via HA discovery. EN + FR translations.

@@ -5,6 +5,21 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.24] - 2026-05-04
+
+Give MQTT / Home Assistant its own settings sub-tab, with an in-app
+walkthrough of the HA-side configuration.
+
+### Added
+- **New "Home Assistant" sub-tab** under Exports & integrations,
+  separate from the generic Metrics sub-tab (which now only hosts
+  Prometheus and InfluxDB). The MQTT block lives there alongside a
+  collapsible "How to set this up on Home Assistant" panel
+  describing the 5-step path: install Mosquitto add-on → create
+  MQTT user → add MQTT integration in HA → fill the form here →
+  sensors auto-appear under Settings → Devices & services → MQTT.
+  EN + FR i18n included.
+
 ## [0.1.23] - 2026-05-04
 
 Make long ranges (1h+) snappy by downsampling history server-side.
