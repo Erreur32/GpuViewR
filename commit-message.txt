@@ -1,39 +1,30 @@
-release: v0.1.41 - localized webhook alerts, host stats, alert grouping
+release: v0.1.42 - PCIe RX/TX tiles on System page, shared tile, sonar fixes
 
 Added:
-- Localized Discord/Telegram alert messages: new
-  server/services/alertFormatter.ts builds a single message in
-  English or French with bold values (Markdown for Discord, HTML
-  for Telegram). Wording mirrors the in-app "Recent events" rows,
-  e.g. "Utilization above 80% (observed 93%) on GPU #0".
-- Webhook language setting (en/fr, default en) on WebhookConfig,
-  surfaced in Settings -> Exports -> Webhook in alerts mode. Test
-  webhook now sends a synthetic firing alert through the same
-  formatter so the preview matches real alerts.
-- Host stats in webhook payloads: new
-  server/services/systemStats.ts exposes shared CPU usage, load
-  averages and memory usage. Discord/Telegram messages get a
-  "Host: CPU X% / Load ... / MEM Y%" footer (FR equivalent) and
-  the generic JSON payload gets a top-level system block. Toggleable
-  per webhook via includeSystemStats (default on).
-- Header logo deep-link: clicking the logo opens /settings/about.
-  The title still routes to the dashboard.
+- PCIe RX/TX tiles on the System page: each GPU card now shows the
+  same glass-style RX / TX fill bars as the Dashboard PCIe panel,
+  normalized against the GPU's theoretical link bandwidth. In gauge
+  view they line up on a single row with the Util and Memory gauges
+  (Util | RX | TX | Mem); in bar view they appear as a 2-column
+  row stacked between Util and Memory. Hidden when the driver
+  exposes neither RX nor TX.
+- Shared PcieThroughputTile component: extracted from Dashboard.tsx
+  to src/components/dashboard/PcieThroughputTile.tsx along with the
+  formatThroughput helper, so Dashboard and System render identical
+  tiles with no drift.
 
 Changed:
-- Alerts page: rules table now grouped by metric category
-  (temperature, utilization, memory, power, fan_speed), secondary
-  sort by threshold and name. Same METRIC_ORDER reused by presets
-  picker so both lists stay consistent.
-- Presets picker: already-installed presets are detected by
-  (metric, condition, threshold), default-deselected, greyed out
-  and disabled, with an "Already added" / "Déjà ajoutée" badge.
-  Prevents reinstalling duplicates.
-- System page: Host / CPU / Memory cards use flex-col + mt-auto so
-  gauges dock at the bottom. CPU's wrapped meta no longer pushes
-  its gauge below the other two cards.
+- System API exposes RX/TX: /api/system now includes pcie_rx_kbps
+  and pcie_tx_kbps per GPU, plumbed straight from the gpuCollector
+  sample.
 
-Removed:
-- Chart legend "reset color" x button: looked like a "delete legend"
-  affordance but only reset the custom colour. Removed entirely;
-  show/hide click and colour-picker on the swatch are unchanged.
-  Re-picking the original colour reverts an override.
+Fixed (SonarCloud):
+- alertFormatter: replace -> replaceAll. escapeHtml switches to
+  ES2021 String#replaceAll for the three HTML escape substitutions.
+- alertFormatter: redundant ternaries removed. The lang === 'fr'
+  branches in buildLines returned identical strings; collapsed to a
+  single template. Comment clarifies that lang still drives the
+  phrase table (I18N[lang]).
+- alertFormatter: nested template literals flattened. hostLine
+  extracts Math.round() results into named variables before
+  applying the bold marker, removing the inner template literals.

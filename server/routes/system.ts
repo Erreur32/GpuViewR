@@ -143,6 +143,8 @@ router.get('/', (_req, res) => {
       // is missing (older drivers, virtualised GPUs).
       pcie_bandwidth_GBps: pcieBandwidthGBps(s.pcie_gen_current, s.pcie_width_current),
       pcie_bandwidth_max_GBps: pcieBandwidthGBps(s.pcie_gen_max, s.pcie_width_max),
+      pcie_rx_kbps: s.pcie_rx_kbps ?? null,
+      pcie_tx_kbps: s.pcie_tx_kbps ?? null,
     })),
   });
 });

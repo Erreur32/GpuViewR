@@ -5,6 +5,43 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.42] - 2026-05-04
+
+System tab gets PCIe RX/TX fill bars per GPU, the throughput tile
+becomes a shared component reused by Dashboard and System, and a
+few SonarCloud findings on the alert formatter are fixed.
+
+### Added
+- **PCIe RX/TX tiles on the System page.** Each GPU card now shows
+  the same glass-style RX / TX fill bars as the Dashboard PCIe
+  panel, normalized against the GPU's theoretical link bandwidth.
+  In `gauge` view they sit on a single row with the Util and
+  Memory gauges (`Util | RX | TX | Mem`); in `bar` view they
+  appear as a 2-column row stacked between Util and Memory. Hidden
+  when the driver/runtime exposes neither RX nor TX.
+- **Shared `PcieThroughputTile` component.** Extracted from
+  `Dashboard.tsx` to `src/components/dashboard/PcieThroughputTile.tsx`
+  along with the `formatThroughput` helper, so both pages render
+  identical tiles with no drift.
+
+### Changed
+- **System API exposes RX/TX.** `/api/system` now includes
+  `pcie_rx_kbps` and `pcie_tx_kbps` per GPU, plumbed straight from
+  the gpuCollector sample.
+
+### Fixed (SonarCloud)
+- **alertFormatter: `replace` -> `replaceAll`.** `escapeHtml`
+  switches to ES2021 `String#replaceAll` for the three HTML escape
+  substitutions.
+- **alertFormatter: redundant ternaries removed.** The `lang === 'fr'`
+  branches in `buildLines` returned identical strings; collapsed
+  to a single template. Comment clarifies that `lang` still drives
+  the phrase table (`I18N[lang]`).
+- **alertFormatter: nested template literals flattened.**
+  `hostLine` extracts `Math.round(...)` results into named
+  variables before applying the bold marker, removing the inner
+  template literals.
+
 ## [0.1.41] - 2026-05-04
 
 Webhook & alert pass: localized Discord/Telegram alert messages

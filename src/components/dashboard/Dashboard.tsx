@@ -9,6 +9,7 @@ import RangeSelector from './RangeSelector';
 import GpuTabs from './GpuTabs';
 import StatsSection from './StatsSection';
 import GpuProcessesTable from './GpuProcessesTable';
+import PcieThroughputTile from './PcieThroughputTile';
 import UpdateBanner from '../ui/UpdateBanner';
 
 export default function Dashboard() {
@@ -253,65 +254,6 @@ function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
   );
 }
 
-function PcieThroughputTile({ icon, label, kbps, linkBwGBps }: Readonly<{
-  icon: React.ReactNode; label: string; kbps: number | null; linkBwGBps: number | null;
-}>) {
-  const fmt = formatThroughput(kbps);
-  // Normalize against theoretical link bandwidth on a log scale: linear
-  // would leave the bar invisible since idle traffic (~hundreds KiB/s)
-  // is 1e-5 of a PCIe 4.0 x16 link (~30M KiB/s). Log keeps the bar
-  // readable across the whole dynamic range while still saturating at
-  // 100% when the link is maxed out.
-  const maxKbps = linkBwGBps !== null && linkBwGBps > 0 ? (linkBwGBps * 1e9) / 1024 : null;
-  const pct = maxKbps !== null && kbps !== null && Number.isFinite(kbps) && kbps > 0
-    ? Math.max(0, Math.min(1, Math.log10(kbps + 1) / Math.log10(maxKbps + 1))) * 100
-    : 0;
-  return (
-    <div
-      className="relative overflow-hidden rounded-lg px-2.5 py-1.5"
-      style={{
-        background: 'color-mix(in srgb, var(--gv-info) 8%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--gv-info) 25%, transparent)',
-      }}
-    >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          // Gradient is anchored to the full tile width (sombre at the
-          // left edge, clair at the right edge) and stays fixed; we just
-          // reveal more of it via clip-path as the value grows. This way
-          // the dark band doesn't stretch/shrink with pct.
-          background:
-            'linear-gradient(90deg, color-mix(in srgb, var(--gv-info) 8%, var(--gv-bg)) 0%, color-mix(in srgb, var(--gv-info) 55%, transparent) 60%, var(--gv-info) 100%)',
-          backdropFilter: 'blur(2px)',
-          WebkitBackdropFilter: 'blur(2px)',
-          boxShadow:
-            'inset 0 0 12px color-mix(in srgb, var(--gv-info) 22%, transparent)',
-          clipPath: `inset(0 ${100 - pct}% 0 0)`,
-          transition: 'clip-path 320ms ease-out',
-        }}
-      />
-      <div className="relative flex items-center gap-1.5 text-[10px] uppercase tracking-wider"
-           style={{ color: 'var(--gv-info)' }}>
-        {icon}
-        {label}
-      </div>
-      <div className="relative flex items-baseline gap-1.5">
-        <span className="text-base font-semibold tabular-nums" style={{ color: 'var(--gv-info)' }}>
-          {fmt.value}
-        </span>
-        <span
-          className="text-[10px] font-medium"
-          style={{ color: 'color-mix(in srgb, var(--gv-info) 70%, var(--gv-text))' }}
-        >
-          {fmt.unit}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function PcieLinkBwTile({ value, max, label }: Readonly<{
   value: number | null; max: number | null; label: string;
 }>) {
@@ -339,16 +281,3 @@ function PcieLinkBwTile({ value, max, label }: Readonly<{
   );
 }
 
-// nvidia-smi reports PCIe throughput in KiB/s. Humanize so the tile
-// shows "50 KiB/s", "1.20 MiB/s", "3.40 GiB/s" instead of a five-digit
-// raw number. null collapses to "0 KiB/s" — at the user's request:
-// when the driver/runtime returns nothing, render an idle reading
-// rather than a generic dash, since visually "0" matches nvtop's
-// behavior on cards where the counter is unsupported or quiescent.
-function formatThroughput(kbps: number | null): { value: string; unit: string } {
-  const v = kbps !== null && Number.isFinite(kbps) ? kbps : 0;
-  if (v < 1024) return { value: v.toFixed(0), unit: 'KiB/s' };
-  const mib = v / 1024;
-  if (mib < 1024) return { value: mib.toFixed(2), unit: 'MiB/s' };
-  return { value: (mib / 1024).toFixed(2), unit: 'GiB/s' };
-}

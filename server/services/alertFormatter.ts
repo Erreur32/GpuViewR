@@ -95,7 +95,7 @@ const TELEGRAM: Marker = { bold: (s) => `<b>${escapeHtml(s)}</b>` };
 const PLAIN: Marker = { bold: (s) => s };
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 function inferCondition(state: 'firing' | 'resolved', observed: number, threshold: number): AlertCondition {
@@ -110,6 +110,9 @@ function buildLines(event: AlertEventLite, lang: AlertLang, m: Marker, condition
   title: string;
   description: string;
 } {
+  // `lang` selects the phrase table; the description string itself is
+  // identical across languages once we substitute the localized labels,
+  // so we don't branch on `lang` again below.
   const ph = I18N[lang];
   const unit = UNITS[event.metric];
   const metricLabel = ph.metrics[event.metric];
@@ -119,17 +122,13 @@ function buildLines(event: AlertEventLite, lang: AlertLang, m: Marker, condition
 
   if (event.state === 'firing') {
     const title = `${ph.firing_title} — ${event.rule_name}`;
-    const description = lang === 'fr'
-      ? `${m.bold(metricLabel)} ${ph.conditions[condition]} ${m.bold(thresholdStr)} (${ph.observed} ${m.bold(observedStr)}) ${m.bold(gpu)}`
-      : `${m.bold(metricLabel)} ${ph.conditions[condition]} ${m.bold(thresholdStr)} (${ph.observed} ${m.bold(observedStr)}) ${m.bold(gpu)}`;
+    const description = `${m.bold(metricLabel)} ${ph.conditions[condition]} ${m.bold(thresholdStr)} (${ph.observed} ${m.bold(observedStr)}) ${m.bold(gpu)}`;
     return { title, description };
   }
 
   // resolved
   const title = `${ph.resolved_title} — ${event.rule_name}`;
-  const description = lang === 'fr'
-    ? `${m.bold(metricLabel)} ${ph.resolved_to_normal} ${m.bold(gpu)} (${ph.observed} ${m.bold(observedStr)})`
-    : `${m.bold(metricLabel)} ${ph.resolved_to_normal} ${m.bold(gpu)} (${ph.observed} ${m.bold(observedStr)})`;
+  const description = `${m.bold(metricLabel)} ${ph.resolved_to_normal} ${m.bold(gpu)} (${ph.observed} ${m.bold(observedStr)})`;
   return { title, description };
 }
 
@@ -147,9 +146,11 @@ function loadStr(s: HostStatsLite): string {
 function hostLine(s: HostStatsLite, lang: AlertLang, m: Marker): string {
   const ph = I18N[lang].host_line;
   const sep = lang === 'fr' ? ' : ' : ': ';
-  const cpu = `${m.bold(`${Math.round(s.cpu.usagePct)}%`)}`;
-  const load = `${m.bold(loadStr(s))}`;
-  const mem = `${m.bold(`${Math.round(s.memory.usedPct)}%`)}`;
+  const cpuPct = `${Math.round(s.cpu.usagePct)}%`;
+  const memPct = `${Math.round(s.memory.usedPct)}%`;
+  const cpu = m.bold(cpuPct);
+  const load = m.bold(loadStr(s));
+  const mem = m.bold(memPct);
   return `${ph.host}${sep}${ph.cpu} ${cpu} · ${ph.load} ${load} · ${ph.mem} ${mem}`;
 }
 

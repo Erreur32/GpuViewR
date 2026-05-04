@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid, Cable, AlertTriangle, Info } from 'lucide-react';
+import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid, Cable, AlertTriangle, Info, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { api } from '../../lib/api';
+import PcieThroughputTile from '../dashboard/PcieThroughputTile';
 
 type ViewMode = 'bar' | 'gauge';
 
@@ -38,6 +39,8 @@ type SystemInfo = Readonly<{
     pcie_width_max: number | null;
     pcie_bandwidth_GBps: number | null;
     pcie_bandwidth_max_GBps: number | null;
+    pcie_rx_kbps: number | null;
+    pcie_tx_kbps: number | null;
   }>;
 }>;
 
@@ -239,21 +242,66 @@ export default function SystemPage() {
                           </span>
                         )}
                       </div>
-                      <div className={viewMode === 'gauge' ? 'grid grid-cols-2 gap-3' : 'space-y-2'}>
-                        <UsageBar
-                          label={t('system.gpu_util')}
-                          pct={g.utilization ?? 0}
-                          valueText={g.utilization === null ? 'N/A' : `${g.utilization.toFixed(2)}%`}
-                          viewMode={viewMode}
-                        />
-                        <UsageBar
-                          label={t('system.gpu_memory')}
-                          pct={memPct}
-                          valueText={`${g.memory_used.toLocaleString()} MiB`}
-                          valueSub={`/ ${(g.memory_total ?? 0).toLocaleString()} MiB`}
-                          viewMode={viewMode}
-                        />
-                      </div>
+                      {(() => {
+                        const hasThroughput = g.pcie_rx_kbps !== null || g.pcie_tx_kbps !== null;
+                        // Gauge mode: 1 row with Util | RX | TX | Mem so the
+                        // gauges stay on the same line (4 columns when RX/TX
+                        // are present, 2 otherwise).
+                        // Bar mode: vertical stack — Util, then a 2-col
+                        // RX/TX row, then Mem.
+                        const gridCls = viewMode === 'gauge'
+                          ? (hasThroughput ? 'grid grid-cols-1 sm:grid-cols-4 gap-3 items-center' : 'grid grid-cols-2 gap-3')
+                          : 'space-y-2';
+                        return (
+                          <div className={gridCls}>
+                            <UsageBar
+                              label={t('system.gpu_util')}
+                              pct={g.utilization ?? 0}
+                              valueText={g.utilization === null ? 'N/A' : `${g.utilization.toFixed(2)}%`}
+                              viewMode={viewMode}
+                            />
+                            {hasThroughput && viewMode === 'gauge' && (
+                              <>
+                                <PcieThroughputTile
+                                  icon={<ArrowDownToLine className="w-3.5 h-3.5" />}
+                                  label={t('dashboard.pcie_rx')}
+                                  kbps={g.pcie_rx_kbps}
+                                  linkBwGBps={g.pcie_bandwidth_GBps}
+                                />
+                                <PcieThroughputTile
+                                  icon={<ArrowUpFromLine className="w-3.5 h-3.5" />}
+                                  label={t('dashboard.pcie_tx')}
+                                  kbps={g.pcie_tx_kbps}
+                                  linkBwGBps={g.pcie_bandwidth_GBps}
+                                />
+                              </>
+                            )}
+                            {hasThroughput && viewMode !== 'gauge' && (
+                              <div className="grid grid-cols-2 gap-2">
+                                <PcieThroughputTile
+                                  icon={<ArrowDownToLine className="w-3.5 h-3.5" />}
+                                  label={t('dashboard.pcie_rx')}
+                                  kbps={g.pcie_rx_kbps}
+                                  linkBwGBps={g.pcie_bandwidth_GBps}
+                                />
+                                <PcieThroughputTile
+                                  icon={<ArrowUpFromLine className="w-3.5 h-3.5" />}
+                                  label={t('dashboard.pcie_tx')}
+                                  kbps={g.pcie_tx_kbps}
+                                  linkBwGBps={g.pcie_bandwidth_GBps}
+                                />
+                              </div>
+                            )}
+                            <UsageBar
+                              label={t('system.gpu_memory')}
+                              pct={memPct}
+                              valueText={`${g.memory_used.toLocaleString()} MiB`}
+                              valueSub={`/ ${(g.memory_total ?? 0).toLocaleString()} MiB`}
+                              viewMode={viewMode}
+                            />
+                          </div>
+                        );
+                      })()}
                       <PcieSection gpu={g} t={t} />
                     </div>
                   );
