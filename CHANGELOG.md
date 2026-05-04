@@ -5,6 +5,44 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.33] - 2026-05-04
+
+Fix the *real* reason PCIe RX/TX stayed at "-", and beef up the
+per-GPU process table with nvtop-equivalent columns.
+
+### Fixed
+- **PCIe throughput collector now actually runs.** `nvidia-smi -q
+  -d PCI` was the previous command, but `PCI` is not a valid value
+  for `--display`/`-d` (allowed list is MEMORY|UTILIZATION|ECC|
+  TEMPERATURE|POWER|CLOCK|COMPUTE|PIDS|PERFORMANCE|
+  SUPPORTED_CLOCKS|PAGE_RETIREMENT|ACCOUNTING|ENCODER_STATS|
+  FBC_STATS|ROW_REMAPPER). The spawn exited non-zero and our
+  callback returned silently, leaving the throughput map empty —
+  hence the "always -" symptom. Switched to the unfiltered
+  `nvidia-smi -q` dump, whose PCI section per GPU still includes
+  the `Tx Throughput` / `Rx Throughput` lines we parse.
+- **Spawn errors are now logged** (warn level) with the actual
+  exit code and stderr, so any future regression surfaces in
+  `docker compose logs` instead of a quiet failure.
+
+### Changed
+- **PCIe RX/TX show "0 KiB/s" when the driver returns nothing**
+  (or zero) instead of a "-" placeholder, on user request.
+  Visually matches nvtop's idle reading and conveys "we did
+  measure, traffic is just nil".
+
+### Added
+- **Per-GPU "Processes using this GPU" table now mirrors nvtop's
+  layout.** Adds three columns: Type (C / G / G+C badge sourced
+  from `nvidia-smi pmon`), GPU% (per-process SM utilization,
+  also from `pmon`), CPU% (sampled between refreshes from
+  /proc/<pid>/stat utime+stime delta). The Process cell now
+  shows the full /proc/<pid>/cmdline as a muted second line
+  under the basename — so you see `ollama runner --port 36451`
+  instead of just `ollama`.
+- Mock GPU mode synthesizes type, command, cpu_pct and gpu_pct
+  so dev/demo screens demonstrate the new columns.
+
 ## [0.1.32] - 2026-05-04
 
 Make PCIe RX/TX actually populate when the bus-id formats between

@@ -122,7 +122,16 @@ export function buildFakeProcesses(samples: GpuSample[]): GpuProcess[] {
   const procsByGpu = new Map<number, GpuProcess[]>();
   for (const fp of FAKE_PROCESSES) {
     const list = procsByGpu.get(fp.gpu) ?? [];
-    list.push({ pid: fp.pid, process_name: fp.name, gpu_uuid: uuidByIndex.get(fp.gpu) ?? '', used_memory: 0 });
+    list.push({
+      pid: fp.pid,
+      process_name: fp.name,
+      gpu_uuid: uuidByIndex.get(fp.gpu) ?? '',
+      used_memory: 0,
+      type: 'C',
+      command: `/usr/bin/${fp.name} --mock-arg --port ${30000 + fp.pid % 1000}`,
+      cpu_pct: Math.round(Math.random() * 80 * 10) / 10,
+      gpu_pct: Math.round(Math.random() * 90),
+    });
     procsByGpu.set(fp.gpu, list);
   }
   const out: GpuProcess[] = [];

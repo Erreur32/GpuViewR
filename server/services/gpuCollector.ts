@@ -194,23 +194,41 @@ class GpuCollector extends EventEmitter {
    * CSV samples that already carry pci_bus_id.
    */
   private refreshPcieThroughput(): void {
-    const child = spawnNvidiaSmi(['-q', '-d', 'PCI']);
+    // Earlier versions tried `-q -d PCI`, but PCI is NOT a valid value
+    // for nvidia-smi's --display filter (allowed: MEMORY|UTILIZATION|ECC|
+    // TEMPERATURE|POWER|CLOCK|COMPUTE|PIDS|PERFORMANCE|SUPPORTED_CLOCKS|
+    // PAGE_RETIREMENT|ACCOUNTING|ENCODER_STATS|FBC_STATS|ROW_REMAPPER).
+    // It exited non-zero silently and our throughput map stayed empty
+    // — the visible "always -" symptom. The unfiltered `-q` dump
+    // includes the PCI section per GPU (Tx/Rx Throughput lines), so
+    // we use it here. Output is bigger but acceptable at 1Hz.
+    const child = spawnNvidiaSmi(['-q']);
     let stdout = '';
+    let stderr = '';
     child.stdout.on('data', (d) => (stdout += d.toString()));
-    child.on('error', () => { /* keep last map; UI will read N/A as null */ });
+    child.stderr.on('data', (d) => (stderr += d.toString()));
+    child.on('error', (err) => {
+      if (!this.pcieDiagLogged) {
+        this.pcieDiagLogged = true;
+        logger.warn('gpu', `nvidia-smi -q spawn failed (PCIe RX/TX disabled): ${err.message}`);
+      }
+    });
     child.on('close', (code) => {
-      if (code !== 0) return;
+      if (code !== 0) {
+        if (!this.pcieDiagLogged) {
+          this.pcieDiagLogged = true;
+          logger.warn('gpu', `nvidia-smi -q exited ${code} (PCIe RX/TX disabled): ${stderr.trim() || '(no stderr)'}`);
+        }
+        return;
+      }
       const map = parsePciThroughput(stdout);
       this.lastPcieThroughput = map;
-      // One-shot diagnostic so users can tell whether the driver returned
-      // throughput at all and which keys we ended up with — saves a
-      // round-trip when "-" stays sticky after deploy.
       if (!this.pcieDiagLogged) {
         this.pcieDiagLogged = true;
         const summary = Array.from(map.entries())
           .map(([k, v]) => `${k}=rx:${v.rxKbps ?? 'null'}/tx:${v.txKbps ?? 'null'}`)
           .join(', ');
-        logger.info('gpu', `PCIe throughput map (${map.size} entries): ${summary || '(empty)'}`);
+        logger.info('gpu', `PCIe throughput map (${map.size} entries): ${summary || '(empty — driver did not report Tx/Rx)'}`);
       }
     });
   }

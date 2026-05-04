@@ -1,15 +1,22 @@
-release: v0.1.32 - PCIe RX/TX index fallback, yellow process names
+release: v0.1.33 - real PCIe RX/TX + nvtop-style process columns
 
 Fixed:
-- PCIe RX/TX could stay at "-" when the CSV pci.bus_id (from
-  --query-gpu) and the GPU block header (from nvidia-smi -q -d
-  PCI) disagreed on format. The throughput parser now stores each
-  block under both keys (bus-id + idx:N block order) and the
-  merge tries bus-id first, then index. Adds a one-shot
-  diagnostic log at startup describing the parsed map so any
-  remaining "-" can be debugged without a redeploy.
+- PCIe throughput collector spawned `nvidia-smi -q -d PCI`, but
+  PCI is not a valid value for --display (allowed list excludes
+  it). The spawn exited non-zero and the callback returned
+  silently, leaving the throughput map empty - the "RX/TX always
+  -" symptom. Switched to the unfiltered `nvidia-smi -q` dump,
+  whose per-GPU PCI section still contains Tx/Rx Throughput
+  lines for parsing.
+- Spawn errors now warn-log with exit code and stderr.
+
+Added:
+- Per-GPU process table now shows Type (C/G/G+C badge from
+  `nvidia-smi pmon`), GPU% (per-pid SM utilization from pmon),
+  CPU% (computed from /proc/<pid>/stat utime+stime delta), and
+  the full /proc/<pid>/cmdline as a muted second line under the
+  basename. Matches what nvtop displays.
 
 Changed:
-- Per-GPU "Processes using this GPU" table renders process names
-  in warm yellow (var(--gv-warn)) so binary paths stand out from
-  PID and VRAM columns at a glance.
+- PCIe RX/TX render "0 KiB/s" when the driver returns null,
+  not "-" - per user request.

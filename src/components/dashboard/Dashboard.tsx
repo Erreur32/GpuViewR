@@ -280,11 +280,14 @@ function PcieLinkBwTile({ value, max, label }: Readonly<{
 
 // nvidia-smi reports PCIe throughput in KiB/s. Humanize so the tile
 // shows "50 KiB/s", "1.20 MiB/s", "3.40 GiB/s" instead of a five-digit
-// raw number. null → "-" so we don't pretend we have a measurement.
+// raw number. null collapses to "0 KiB/s" — at the user's request:
+// when the driver/runtime returns nothing, render an idle reading
+// rather than a generic dash, since visually "0" matches nvtop's
+// behavior on cards where the counter is unsupported or quiescent.
 function formatThroughput(kbps: number | null): { value: string; unit: string } {
-  if (kbps === null || !Number.isFinite(kbps)) return { value: '-', unit: 'KiB/s' };
-  if (kbps < 1024) return { value: kbps.toFixed(0), unit: 'KiB/s' };
-  const mib = kbps / 1024;
+  const v = kbps !== null && Number.isFinite(kbps) ? kbps : 0;
+  if (v < 1024) return { value: v.toFixed(0), unit: 'KiB/s' };
+  const mib = v / 1024;
   if (mib < 1024) return { value: mib.toFixed(2), unit: 'MiB/s' };
   return { value: (mib / 1024).toFixed(2), unit: 'GiB/s' };
 }

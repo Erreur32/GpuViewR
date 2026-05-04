@@ -3,12 +3,18 @@ import { useTranslation } from 'react-i18next';
 import { Cpu } from 'lucide-react';
 import { api } from '../../lib/api';
 
+type GpuProcessType = 'C' | 'G' | 'G+C' | null;
+
 interface GpuProcess {
   pid: number;
   process_name: string;
   gpu_uuid: string;
   used_memory: number;
   gpu_index: number | null;
+  type?: GpuProcessType;
+  command?: string | null;
+  cpu_pct?: number | null;
+  gpu_pct?: number | null;
 }
 
 interface ApiResp {
@@ -83,24 +89,41 @@ export default function GpuProcessesTable({ gpuIndex }: Readonly<{ gpuIndex: num
             <thead>
               <tr className="text-left" style={{ color: 'var(--gv-text-muted)' }}>
                 <th className="py-1.5 pr-3 font-medium uppercase tracking-wider">{t('dashboard.processes_pid')}</th>
+                <th className="py-1.5 pr-3 font-medium uppercase tracking-wider">{t('dashboard.processes_type')}</th>
                 <th className="py-1.5 pr-3 font-medium uppercase tracking-wider">{t('dashboard.processes_name')}</th>
+                <th className="py-1.5 pr-3 font-medium uppercase tracking-wider text-right">{t('dashboard.processes_gpu_pct')}</th>
                 <th className="py-1.5 pr-3 font-medium uppercase tracking-wider text-right">{t('dashboard.processes_vram')}</th>
+                <th className="py-1.5 pr-3 font-medium uppercase tracking-wider text-right">{t('dashboard.processes_cpu_pct')}</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((p) => (
-                <tr key={`${p.pid}-${p.gpu_uuid}`} className="border-t" style={{ borderColor: 'var(--gv-border)' }}>
+                <tr key={`${p.pid}-${p.gpu_uuid}`} className="border-t align-top" style={{ borderColor: 'var(--gv-border)' }}>
                   <td className="py-1.5 pr-3 font-mono tabular-nums">{p.pid}</td>
-                  <td
-                    className="py-1.5 pr-3 truncate max-w-[420px]"
-                    style={{ color: 'var(--gv-warn)' }}
-                    title={p.process_name}
-                  >
-                    {p.process_name}
+                  <td className="py-1.5 pr-3"><TypeBadge type={p.type ?? null} /></td>
+                  <td className="py-1.5 pr-3 max-w-[480px]">
+                    <div
+                      className="font-semibold truncate"
+                      style={{ color: 'var(--gv-warn)' }}
+                      title={p.command ?? p.process_name}
+                    >
+                      {p.process_name}
+                    </div>
+                    {p.command && p.command !== p.process_name && (
+                      <div
+                        className="text-[10px] font-mono truncate opacity-80"
+                        style={{ color: 'var(--gv-text-dim)' }}
+                        title={p.command}
+                      >
+                        {p.command}
+                      </div>
+                    )}
                   </td>
+                  <td className="py-1.5 pr-3 font-mono tabular-nums text-right">{fmtPct(p.gpu_pct)}</td>
                   <td className="py-1.5 pr-3 font-mono tabular-nums text-right">
                     {p.used_memory.toLocaleString()} <span style={{ color: 'var(--gv-text-dim)' }}>MiB</span>
                   </td>
+                  <td className="py-1.5 pr-3 font-mono tabular-nums text-right">{fmtPct(p.cpu_pct)}</td>
                 </tr>
               ))}
             </tbody>
@@ -109,4 +132,34 @@ export default function GpuProcessesTable({ gpuIndex }: Readonly<{ gpuIndex: num
       )}
     </div>
   );
+}
+
+function TypeBadge({ type }: Readonly<{ type: 'C' | 'G' | 'G+C' | null }>) {
+  if (!type) return <span style={{ color: 'var(--gv-text-dim)' }}>-</span>;
+  // Compute → accent (blue), Graphics → info (cyan), G+C → warn (amber).
+  // Same colour family as the metric chips so the eye groups them.
+  const palette: Record<'C' | 'G' | 'G+C', { fg: string; label: string }> = {
+    C:   { fg: 'var(--gv-accent)', label: 'Compute'  },
+    G:   { fg: 'var(--gv-info)',   label: 'Graphics' },
+    'G+C': { fg: 'var(--gv-warn)', label: 'G+C'      },
+  };
+  const p = palette[type];
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider"
+      style={{
+        color: p.fg,
+        background: `color-mix(in srgb, ${p.fg} 14%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${p.fg} 30%, transparent)`,
+      }}
+      title={p.label}
+    >
+      {type}
+    </span>
+  );
+}
+
+function fmtPct(v: number | null | undefined): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '-';
+  return `${v.toFixed(v < 10 ? 1 : 0)}%`;
 }
