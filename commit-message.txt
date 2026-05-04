@@ -1,42 +1,39 @@
-release: v0.1.40 - dashboard fill-bars, simpler arc gauge, full-range mock
+release: v0.1.41 - localized webhook alerts, host stats, alert grouping
 
 Added:
-- PCIe RX/TX fill bars: glass-style fill scaled to the link's
-  theoretical bandwidth (log-scaled so idle traffic remains
-  visible). Gradient anchored to the full tile width and
-  revealed via clip-path, so the dark band stays at the left
-  edge and the bright tip stays at the right edge regardless of
-  value.
-- Theme-aware PCIe gradient stops: ends at var(--gv-info) (no
-  white mix) and starts from mix(info, var(--gv-bg)), so the
-  effect stays subtle in dark themes and doesn't wash out in
-  light themes.
+- Localized Discord/Telegram alert messages: new
+  server/services/alertFormatter.ts builds a single message in
+  English or French with bold values (Markdown for Discord, HTML
+  for Telegram). Wording mirrors the in-app "Recent events" rows,
+  e.g. "Utilization above 80% (observed 93%) on GPU #0".
+- Webhook language setting (en/fr, default en) on WebhookConfig,
+  surfaced in Settings -> Exports -> Webhook in alerts mode. Test
+  webhook now sends a synthetic firing alert through the same
+  formatter so the preview matches real alerts.
+- Host stats in webhook payloads: new
+  server/services/systemStats.ts exposes shared CPU usage, load
+  averages and memory usage. Discord/Telegram messages get a
+  "Host: CPU X% / Load ... / MEM Y%" footer (FR equivalent) and
+  the generic JSON payload gets a top-level system block. Toggleable
+  per webhook via includeSystemStats (default on).
+- Header logo deep-link: clicking the logo opens /settings/about.
+  The title still routes to the dashboard.
 
 Changed:
-- Bar gauge gradient (temp / util / memory / fan / power):
-  3-stop sombre -> pleine couleur -> leger eclat, anchored to
-  the full track and revealed via clip-path so the dark band
-  stays fixed as pct grows.
-- Arc gauge simplified: stroke thickened from 8 to 13, gradient
-  reduced to a clean dark->bright fade in the status colour (no
-  more white over-glow). Warn/danger tick marks remain.
-- Memory tile: removed redundant "MiB" from primary value
-  (shows "20 760" instead of "20 760 MiB"); unit still on the
-  "/ 24 576 MiB" sub-line.
-- MiB/s legibility: PCIe throughput unit (KiB/s, MiB/s, GiB/s)
-  now tinted with --gv-info instead of --gv-text-dim, fixing
-  low contrast on dark themes.
+- Alerts page: rules table now grouped by metric category
+  (temperature, utilization, memory, power, fan_speed), secondary
+  sort by threshold and name. Same METRIC_ORDER reused by presets
+  picker so both lists stay consistent.
+- Presets picker: already-installed presets are detected by
+  (metric, condition, threshold), default-deselected, greyed out
+  and disabled, with an "Already added" / "Déjà ajoutée" badge.
+  Prevents reinstalling duplicates.
+- System page: Host / CPU / Memory cards use flex-col + mt-auto so
+  gauges dock at the bottom. CPU's wrapped meta no longer pushes
+  its gauge below the other two cards.
 
 Removed:
-- Live-chart "pin" click: clicking the chart no longer toggles a
-  frozen-cursor mode (the feature was unreliable). Hover
-  tooltip and keyboard interactions unchanged. Unused
-  dashboard.click_pin / click_unpin translation keys removed.
-
-Dev / Mock:
-- Full-range sweeps: MOCK_GPU=1 now uses a clean
-  sweep(min, max, period, phase) helper for utilization, temp,
-  fan, power, memory and PCIe RX/TX, so every gauge visits both
-  extremes during a session. RX/TX sweep up to 95% of each
-  device's theoretical PCIe link bandwidth (PCI-SIG per-lane x
-  width).
+- Chart legend "reset color" x button: looked like a "delete legend"
+  affordance but only reset the custom colour. Removed entirely;
+  show/hide click and colour-picker on the swatch are unchanged.
+  Re-picking the original colour reverts an override.

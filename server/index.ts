@@ -17,6 +17,7 @@ import { setupGpuWebSocket } from './services/gpuStreamWS.js';
 import { alertService } from './services/alertService.js';
 import { updateService } from './services/updateService.js';
 import { exportService } from './services/exportService.js';
+import { startSystemStats } from './services/systemStats.js';
 import { ensurePortFreeOrExit, getDisplayIP, renderBanner } from './utils/banner.js';
 
 import authRoutes from './routes/auth.js';
@@ -55,6 +56,7 @@ async function bootstrap(): Promise<void> {
   alertService.init();
   updateService.init();
   exportService.init();
+  startSystemStats();
 
   const app = express();
   app.disable('x-powered-by');

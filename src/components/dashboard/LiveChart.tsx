@@ -53,7 +53,6 @@ type ChipProps = Readonly<{
   active: boolean;
   onClick: () => void;
   onColorChange: (color: string) => void;
-  onColorReset: () => void;
   isCustom: boolean;
 }>;
 
@@ -367,7 +366,6 @@ export default function LiveChart({ gpuIndex }: Props) {
             active={visible.temp}
             onClick={() => toggleSeries('temp')}
             onColorChange={(c) => setChartColor('temp', c)}
-            onColorReset={() => setChartColor('temp', null)}
             isCustom={!!chartColors.temp}
           />
           <Chip
@@ -377,7 +375,6 @@ export default function LiveChart({ gpuIndex }: Props) {
             active={visible.util}
             onClick={() => toggleSeries('util')}
             onColorChange={(c) => setChartColor('util', c)}
-            onColorReset={() => setChartColor('util', null)}
             isCustom={!!chartColors.util}
           />
           <Chip
@@ -387,7 +384,6 @@ export default function LiveChart({ gpuIndex }: Props) {
             active={visible.mem}
             onClick={() => toggleSeries('mem')}
             onColorChange={(c) => setChartColor('mem', c)}
-            onColorReset={() => setChartColor('mem', null)}
             isCustom={!!chartColors.mem}
           />
           <Chip
@@ -397,7 +393,6 @@ export default function LiveChart({ gpuIndex }: Props) {
             active={visible.fan}
             onClick={() => toggleSeries('fan')}
             onColorChange={(c) => setChartColor('fan', c)}
-            onColorReset={() => setChartColor('fan', null)}
             isCustom={!!chartColors.fan}
           />
           <Chip
@@ -407,7 +402,6 @@ export default function LiveChart({ gpuIndex }: Props) {
             active={visible.pow}
             onClick={() => toggleSeries('pow')}
             onColorChange={(c) => setChartColor('pow', c)}
-            onColorReset={() => setChartColor('pow', null)}
             isCustom={!!chartColors.pow}
           />
           <span
@@ -555,7 +549,7 @@ function CsvExportButton({ gpuIndex, range }: Readonly<{ gpuIndex: number; range
   );
 }
 
-function Chip({ colorVar, label, value, active, onClick, onColorChange, onColorReset, isCustom }: ChipProps) {
+function Chip({ colorVar, label, value, active, onClick, onColorChange, isCustom }: ChipProps) {
   return (
     <span
       className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded transition-opacity"
@@ -583,18 +577,6 @@ function Chip({ colorVar, label, value, active, onClick, onColorChange, onColorR
           onClick={(e) => e.stopPropagation()}
         />
       </label>
-      {isCustom && (
-        <button
-          type="button"
-          aria-label={`Reset ${label} color`}
-          title="Reset color"
-          onClick={(e) => { e.stopPropagation(); onColorReset(); }}
-          className="text-[9px] leading-none px-1 rounded"
-          style={{ color: 'var(--gv-text-dim)', background: 'transparent', border: '1px solid var(--gv-border)' }}
-        >
-          ×
-        </button>
-      )}
       <button
         type="button"
         onClick={onClick}

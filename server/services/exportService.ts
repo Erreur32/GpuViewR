@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { gpuCollector, type GpuSample } from './gpuCollector.js';
 import { AppConfigRepo, ensureAppConfigSchema } from '../database/models/AppConfig.js';
 import { logger } from '../utils/logger.js';
+import { formatAlert, type AlertEventLite, type AlertLang } from './alertFormatter.js';
+import { getSystemStats } from './systemStats.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Exporter "what's published" catalogs
@@ -148,6 +150,14 @@ export interface WebhookConfig {
   // Subset of WEBHOOK_PAYLOAD_FIELDS to include per sample (generic/metrics).
   // Empty array = include all (treated as "no filter" for backward compat).
   payloadFields: WebhookPayloadField[];
+  // Language used for the alert message body sent to Discord/Telegram.
+  // Generic mode also receives a `messages` block in the JSON payload so
+  // downstream consumers can show the same wording.
+  language: AlertLang;
+  // Append a host-stats footer (CPU / load / memory) to the alert
+  // message body, and include a `system: { ... }` block in the generic
+  // JSON payload. Disable to keep notifications GPU-only.
+  includeSystemStats: boolean;
   // Telegram-only
   token?: string;
   chatId?: string;
@@ -191,6 +201,8 @@ const DEFAULTS: ExportConfigs = {
     headers: {},
     intervalSeconds: 30,
     payloadFields: [...WEBHOOK_PAYLOAD_FIELDS],
+    language: 'en',
+    includeSystemStats: true,
     token: '',
     chatId: '',
   },
@@ -509,19 +521,23 @@ class ExportService {
 
   private async pushWebhook(cfg: WebhookConfig): Promise<void> {
     if (this.latestSamples.length === 0) return;
-    const body = {
+    const sys = cfg.includeSystemStats ? getSystemStats() : undefined;
+    const body: Record<string, unknown> = {
       source: 'gpuviewr',
       timestamp: new Date().toISOString(),
       samples: this.latestSamples.map((s) => filterSampleFields(s, cfg.payloadFields)),
     };
-    await this.sendWebhook(cfg, body, this.metricsSummary());
+    if (sys) body.system = sys;
+    await this.sendWebhook(cfg, body, this.metricsSummary(sys, cfg.language === 'fr' ? 'fr' : 'en'));
   }
 
   // Build a short, human-readable digest used by Discord embeds and
   // Telegram messages so a "metrics" push reads as a useful summary.
-  private metricsSummary(): string {
+  // Optionally appends a host-stats line (CPU / load / memory) so the
+  // notification carries context beyond the GPUs themselves.
+  private metricsSummary(sys?: ReturnType<typeof getSystemStats>, lang: AlertLang = 'en'): string {
     if (this.latestSamples.length === 0) return 'No GPU samples available.';
-    return this.latestSamples
+    const gpuLines = this.latestSamples
       .map((s) => {
         const memTotal = s.memory_total ?? 0;
         const memPct = memTotal > 0 ? Math.round((s.memory_used / memTotal) * 100) : null;
@@ -529,6 +545,13 @@ class ExportService {
         return `GPU #${s.gpu_index} ${s.name} · ${s.utilization ?? '-'}% · ${s.temperature}°C · ${Math.round(s.power)}W${memSeg}`;
       })
       .join('\n');
+    if (!sys) return gpuLines;
+    const hostLabel = lang === 'fr' ? 'Hôte' : 'Host';
+    const loadLabel = lang === 'fr' ? 'Charge' : 'Load';
+    const memLabel = lang === 'fr' ? 'Mém' : 'MEM';
+    const load = `${sys.load['1m'].toFixed(2)} / ${sys.load['5m'].toFixed(2)} / ${sys.load['15m'].toFixed(2)}`;
+    const hostLine = `${hostLabel}: CPU ${Math.round(sys.cpu.usagePct)}% · ${loadLabel} ${load} · ${memLabel} ${Math.round(sys.memory.usedPct)}%`;
+    return `${gpuLines}\n${hostLine}`;
   }
 
   private async dispatchWebhookAlert(cfg: WebhookConfig, event: unknown, rule: unknown): Promise<void> {
@@ -544,15 +567,87 @@ class ExportService {
       triggered_at: number;
     };
     const r = rule as { notify_browser?: boolean; notify_sound?: boolean };
-    const body = {
+    const lang: AlertLang = cfg.language === 'fr' ? 'fr' : 'en';
+    const eLite: AlertEventLite = {
+      rule_name: e.rule_name,
+      gpu_index: e.gpu_index,
+      metric: e.metric as AlertEventLite['metric'],
+      threshold: e.threshold,
+      observed: e.observed,
+      state: e.state,
+    };
+    const sys = cfg.includeSystemStats ? getSystemStats() : undefined;
+    const fmt = formatAlert(eLite, lang, sys);
+    const body: Record<string, unknown> = {
       source: 'gpuviewr',
       kind: 'alert',
       event: e,
       rule: r,
       timestamp: new Date(e.triggered_at * 1000).toISOString(),
+      messages: { language: lang, title: fmt.title, plain: fmt.plain },
     };
-    const summary = `${e.state === 'firing' ? '🚨' : '✅'} ${e.rule_name} (GPU #${e.gpu_index}) — ${e.metric} ${e.observed} ${e.state === 'firing' ? '>=' : '<'} ${e.threshold}`;
-    await this.sendWebhook(cfg, body, summary, e.state === 'firing' ? 0xe74c3c : 0x2ecc71);
+    if (sys) body.system = sys;
+    const color = e.state === 'firing' ? 0xe74c3c : 0x2ecc71;
+    await this.sendWebhookAlert(cfg, body, fmt, color);
+  }
+
+  private async sendWebhookAlert(
+    cfg: WebhookConfig,
+    body: object,
+    fmt: ReturnType<typeof formatAlert>,
+    color: number,
+  ): Promise<void> {
+    if (!cfg.url && cfg.type !== 'telegram') {
+      logger.warn('export', 'Webhook URL is empty');
+      return;
+    }
+    try {
+      let res: Response | null = null;
+      if (cfg.type === 'discord') res = await this.sendDiscordAlert(cfg, fmt, color);
+      else if (cfg.type === 'telegram') res = await this.sendTelegramAlert(cfg, fmt);
+      else res = await this.sendGeneric(cfg, body);
+      if (!res) return;
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        const detail = txt ? `: ${txt.slice(0, 200)}` : '';
+        throw new Error(`HTTP ${res.status}${detail}`);
+      }
+    } catch (err) {
+      logger.warn('export', `Webhook (${cfg.type}) failed: ${(err as Error).message}`);
+      throw err;
+    }
+  }
+
+  private sendDiscordAlert(cfg: WebhookConfig, fmt: ReturnType<typeof formatAlert>, color: number): Promise<Response> {
+    return fetch(cfg.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        embeds: [{
+          title: fmt.title,
+          description: fmt.discord,
+          color,
+          timestamp: new Date().toISOString(),
+        }],
+      }),
+    });
+  }
+
+  private async sendTelegramAlert(cfg: WebhookConfig, fmt: ReturnType<typeof formatAlert>): Promise<Response | null> {
+    if (!cfg.token || !cfg.chatId) {
+      logger.warn('export', 'Telegram webhook missing token or chatId');
+      return null;
+    }
+    return fetch(`https://api.telegram.org/bot${encodeURIComponent(cfg.token)}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: cfg.chatId,
+        text: fmt.telegram,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      }),
+    });
   }
 
   // Generic sender. Routes to type-specific senders for Discord and
@@ -647,12 +742,29 @@ class ExportService {
       return { ok: false, message: 'Webhook URL is empty.' };
     }
     if (w.mode === 'alerts' || w.type !== 'generic') {
-      await this.sendWebhook(w, {
+      // Send a synthetic firing alert through the same formatter so the
+      // test reflects exactly what a real alert will look like (bolds,
+      // language, embed colour).
+      const lang: AlertLang = w.language === 'fr' ? 'fr' : 'en';
+      const sampleEvent: AlertEventLite = {
+        rule_name: lang === 'fr' ? 'Test Utilisation Proc' : 'Test Utilization',
+        gpu_index: 0,
+        metric: 'utilization',
+        threshold: 80,
+        observed: 93,
+        state: 'firing',
+      };
+      const sys = w.includeSystemStats ? getSystemStats() : undefined;
+      const fmt = formatAlert(sampleEvent, lang, sys);
+      const body: Record<string, unknown> = {
         source: 'gpuviewr',
         kind: 'test',
         timestamp: new Date().toISOString(),
-        samples: this.latestSamples.slice(0, 1),
-      }, `🧪 GpuViewR webhook test — ${this.latestSamples.length} GPU(s) reporting.`);
+        messages: { language: lang, title: fmt.title, plain: fmt.plain },
+        event: sampleEvent,
+      };
+      if (sys) body.system = sys;
+      await this.sendWebhookAlert(w, body, fmt, 0xe74c3c);
     } else {
       await this.pushWebhook(w);
     }

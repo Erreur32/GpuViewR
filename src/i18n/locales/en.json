@@ -125,7 +125,8 @@
     "presets_help": "Pick the classic GPU alerts you want to add. They land disabled so you can tweak thresholds before arming them.",
     "presets_install": "Add {{count}}",
     "presets_installed": "Presets added (disabled).",
-    "presets_disabled_note": "Added rules start disabled — review and enable each one."
+    "presets_disabled_note": "Added rules start disabled — review and enable each one.",
+    "preset_already_installed": "Already added"
   },
   "logs": {
     "title": "Server logs",
@@ -273,6 +274,10 @@
     "exports_webhook_mode_metrics": "Periodic metrics",
     "exports_webhook_mode_alerts_help": "The webhook fires whenever an alert rule transitions to firing or resolved (event-driven).",
     "exports_webhook_mode_metrics_help": "The webhook posts the latest GPU samples on a fixed interval (data sink mode).",
+    "exports_webhook_language": "Message language",
+    "exports_webhook_language_help": "Language of the alert message body sent to Discord/Telegram (and the `messages` block in the generic JSON payload).",
+    "exports_webhook_include_system": "Include host stats (CPU / load / memory)",
+    "exports_webhook_include_system_help": "Appends a Host: CPU / Load / MEM line to Discord and Telegram messages, and adds a `system` block to the generic JSON payload. Disable to keep notifications GPU-only.",
     "updates": "Updates",
     "updates_enable": "Check for updates automatically",
     "updates_frequency": "Check frequency (hours)",

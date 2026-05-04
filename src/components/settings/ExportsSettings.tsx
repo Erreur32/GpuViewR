@@ -38,6 +38,8 @@ interface WebhookConfig {
   headers: Record<string, string>;
   intervalSeconds: number;
   payloadFields: WebhookPayloadField[];
+  language: 'en' | 'fr';
+  includeSystemStats: boolean;
   token?: string;
   chatId?: string;
 }
@@ -451,6 +453,34 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
         {s.mode === 'alerts'
           ? t('settings.exports_webhook_mode_alerts_help')
           : t('settings.exports_webhook_mode_metrics_help')}
+      </p>
+
+      {s.mode === 'alerts' && (
+        <div>
+          <label className="label">{t('settings.exports_webhook_language')}</label>
+          <select
+            className="input"
+            value={s.language ?? 'en'}
+            disabled={disabled}
+            onChange={(e) => setS({ ...s, language: e.target.value as 'en' | 'fr' })}
+          >
+            <option value="en">English</option>
+            <option value="fr">Français</option>
+          </select>
+          <p className="text-[11px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+            {t('settings.exports_webhook_language_help')}
+          </p>
+        </div>
+      )}
+
+      <Toggle
+        label={t('settings.exports_webhook_include_system')}
+        checked={s.includeSystemStats !== false}
+        onChange={(v) => setS({ ...s, includeSystemStats: v })}
+        disabled={disabled}
+      />
+      <p className="text-[11px] -mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+        {t('settings.exports_webhook_include_system_help')}
       </p>
 
       {s.type !== 'telegram' && (

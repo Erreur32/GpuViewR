@@ -5,6 +5,60 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.41] - 2026-05-04
+
+Webhook & alert pass: localized Discord/Telegram alert messages
+with bold values, optional host stats footer (CPU / load / memory),
+preset deduplication and category-grouped rule list, plus a few
+UI polish fixes on the System cards and the chart legend.
+
+### Added
+- **Localized Discord/Telegram alert messages.** New
+  `server/services/alertFormatter.ts` builds a single message in
+  English or French (per-webhook setting), with values rendered in
+  bold (Markdown for Discord, HTML for Telegram). The plain text
+  also lands in the generic JSON payload as a `messages` block.
+  Wording mirrors the in-app "Recent events" row, e.g. *"Utilization
+  above 80% (observed 93%) on GPU #0"*.
+- **Webhook language setting.** New `language` field on
+  `WebhookConfig` (`en` / `fr`, default `en`), exposed in
+  Settings → Exports → Webhook (visible in alerts mode). Test
+  webhook now sends a synthetic firing alert through the same
+  formatter so the preview matches what real alerts will look like.
+- **Host stats in webhook payloads.** New
+  `server/services/systemStats.ts` exposes shared CPU usage / load
+  averages / memory usage. Discord and Telegram alert messages get
+  a `Host: CPU X% · Load 1.2 / 0.8 / 0.5 · MEM Y%` footer (FR:
+  `Hôte : CPU X% · Charge … · Mém Y%`) and the generic JSON payload
+  receives a top-level `system` block. Toggleable per webhook via
+  the new `includeSystemStats` setting (default on).
+- **Logo deep-link.** Clicking the logo in the header now opens
+  `/settings/about` (the title still goes to the dashboard).
+
+### Changed
+- **Alerts page: rules grouped by metric category.** The rules
+  table is now sorted in a stable order — temperature first, then
+  utilization, memory, power, fan_speed — secondary sort by
+  threshold and name. Same `METRIC_ORDER` is reused by the presets
+  picker so both lists stay consistent.
+- **Presets picker: no duplicates.** Already-installed presets are
+  detected by `(metric, condition, threshold)`, default-deselected,
+  greyed out and disabled, with an "Already added" / "Déjà ajoutée"
+  badge. Prevents reinstalling the same rule twice.
+- **System page: gauges aligned across cards.** Host / CPU / Memory
+  cards switch from `space-y-3` to `flex flex-col gap-3` with
+  `mt-auto` on the gauge wrapper, so the gauges dock at the bottom
+  of each card. CPU's wrapped meta line no longer pushes its
+  gauge below the others.
+
+### Removed
+- **Chart legend "reset color" `×` button.** The little `×` next to
+  a custom-colored chip looked like a "delete legend" affordance
+  but only reset the colour. Removed entirely; the show/hide click
+  on the label and the colour-picker on the swatch are unchanged.
+  The white border on the swatch still flags a custom colour, and
+  re-picking the original colour reverts the override.
+
 ## [0.1.40] - 2026-05-04
 
 Dashboard polish pass: fill-bar previews on PCIe RX/TX tiles, a

@@ -131,7 +131,7 @@ export default function SystemPage() {
           >
             <section
               className={
-                'card p-4 space-y-3'
+                'card p-4 flex flex-col gap-3'
                 + (viewMode === 'gauge' ? ' md:col-span-2' : '')
               }
             >
@@ -146,10 +146,12 @@ export default function SystemPage() {
                   `up ${fmtUptime(info.host.uptime)}`,
                 ]}
               />
-              <LoadAvgBars loadavg={info.host.loadavg} cores={info.cpu.cores} label={t('system.loadavg')} viewMode={viewMode} />
+              <div className="mt-auto">
+                <LoadAvgBars loadavg={info.host.loadavg} cores={info.cpu.cores} label={t('system.loadavg')} viewMode={viewMode} />
+              </div>
             </section>
 
-            <section className="card p-4 space-y-3">
+            <section className="card p-4 flex flex-col gap-3">
               <CardHeader
                 icon={<Cpu className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
                 title={t('system.cpu')}
@@ -159,10 +161,12 @@ export default function SystemPage() {
                   `${info.cpu.speedMHz} MHz`,
                 ]}
               />
-              <UsageBar label={t('system.cpu_usage')} pct={info.cpu.usagePct} viewMode={viewMode} />
+              <div className="mt-auto">
+                <UsageBar label={t('system.cpu_usage')} pct={info.cpu.usagePct} viewMode={viewMode} />
+              </div>
             </section>
 
-            <section className="card p-4 space-y-3">
+            <section className="card p-4 flex flex-col gap-3">
               <CardHeader
                 icon={<MemoryStick className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
                 title={t('system.memory')}
@@ -172,13 +176,15 @@ export default function SystemPage() {
                   `${fmtBytes(info.memory.free)} free`,
                 ]}
               />
-              <UsageBar
-                label={t('system.mem_used')}
-                pct={info.memory.usedPct}
-                valueText={`${info.memory.usedPct.toFixed(1)}%`}
-                valueSub={`${fmtBytes(info.memory.used)} / ${fmtBytes(info.memory.total)}`}
-                viewMode={viewMode}
-              />
+              <div className="mt-auto">
+                <UsageBar
+                  label={t('system.mem_used')}
+                  pct={info.memory.usedPct}
+                  valueText={`${info.memory.usedPct.toFixed(1)}%`}
+                  valueSub={`${fmtBytes(info.memory.used)} / ${fmtBytes(info.memory.total)}`}
+                  viewMode={viewMode}
+                />
+              </div>
             </section>
           </div>
 

@@ -125,7 +125,8 @@
     "presets_help": "Sélectionnez les alertes GPU classiques à ajouter. Elles arrivent désactivées : vérifiez les seuils avant de les activer.",
     "presets_install": "Ajouter {{count}}",
     "presets_installed": "Préréglages ajoutés (désactivés).",
-    "presets_disabled_note": "Les règles ajoutées sont désactivées — vérifiez puis activez chacune."
+    "presets_disabled_note": "Les règles ajoutées sont désactivées — vérifiez puis activez chacune.",
+    "preset_already_installed": "Déjà ajoutée"
   },
   "logs": {
     "title": "Journaux serveur",
@@ -273,6 +274,10 @@
     "exports_webhook_mode_metrics": "Métriques périodiques",
     "exports_webhook_mode_alerts_help": "Le webhook est déclenché à chaque transition d'une règle d'alerte (firing / resolved).",
     "exports_webhook_mode_metrics_help": "Le webhook envoie les derniers échantillons GPU à intervalle fixe (mode data sink).",
+    "exports_webhook_language": "Langue du message",
+    "exports_webhook_language_help": "Langue du corps du message d'alerte envoyé à Discord/Telegram (et du bloc `messages` dans le payload JSON générique).",
+    "exports_webhook_include_system": "Inclure les stats machine (CPU / charge / mémoire)",
+    "exports_webhook_include_system_help": "Ajoute une ligne Hôte : CPU / Charge / Mém aux messages Discord/Telegram et un bloc `system` dans le payload JSON générique. À désactiver pour des notifications GPU uniquement.",
     "updates": "Mises à jour",
     "updates_enable": "Vérifier automatiquement les mises à jour",
     "updates_frequency": "Fréquence de vérification (heures)",

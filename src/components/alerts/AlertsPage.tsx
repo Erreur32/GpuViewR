@@ -22,6 +22,11 @@ const METRIC_ICON: Record<Metric, { icon: LucideIcon; color: string }> = {
   fan_speed:   { icon: Fan,          color: 'var(--gv-ok)' },
 };
 
+// Display order shared by the Rules table and the Presets picker so
+// temperature rules cluster together, then utilization, memory, power,
+// fan — instead of arbitrary insertion order.
+const METRIC_ORDER: Metric[] = ['temperature', 'utilization', 'memory', 'power', 'fan_speed'];
+
 function MetricIcon({ metric, className = 'w-4 h-4' }: Readonly<{ metric: Metric; className?: string }>) {
   const spec = METRIC_ICON[metric];
   const Icon = spec.icon;
@@ -198,7 +203,13 @@ export default function AlertsPage() {
               </tr>
             </thead>
             <tbody>
-              {rules.map((r) => (
+              {[...rules].sort((a, b) => {
+                const ai = METRIC_ORDER.indexOf(a.metric);
+                const bi = METRIC_ORDER.indexOf(b.metric);
+                if (ai !== bi) return ai - bi;
+                if (a.threshold !== b.threshold) return a.threshold - b.threshold;
+                return a.name.localeCompare(b.name);
+              }).map((r) => (
                 <tr key={r.id} style={{ borderTop: '1px solid var(--gv-border)' }}>
                   <td className="py-2 px-4">
                     <div className="flex items-start gap-2">
@@ -336,6 +347,7 @@ export default function AlertsPage() {
       {editing && <RuleModal rule={editing} onClose={() => setEditing(null)} onSave={save} setRule={setEditing} />}
       {presetsOpen && (
         <PresetsModal
+          installed={rules}
           onClose={() => setPresetsOpen(false)}
           onInstalled={async () => { setPresetsOpen(false); await load(); }}
         />
@@ -355,20 +367,40 @@ interface Preset {
   notify_sound: 0 | 1;
 }
 
-function PresetsModal({ onClose, onInstalled }: Readonly<{ onClose: () => void; onInstalled: () => void | Promise<void> }>) {
+function presetKey(p: Pick<Preset, 'metric' | 'condition' | 'threshold'>): string {
+  return `${p.metric}|${p.condition}|${p.threshold}`;
+}
+
+function PresetsModal({
+  installed, onClose, onInstalled,
+}: Readonly<{ installed: Rule[]; onClose: () => void; onInstalled: () => void | Promise<void> }>) {
   const { t } = useTranslation();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
+  // Already-installed rules keyed by (metric, condition, threshold) so
+  // re-opening the modal won't propose duplicates.
+  const installedKeys = new Set(installed.map((r) => presetKey(r)));
+
   useEffect(() => {
     api<{ presets: Preset[] }>('/alerts/presets')
       .then((r) => {
-        setPresets(r.presets);
-        // Default selection: useful sane ones, user can untick anything.
-        setSelected(new Set(r.presets.map((p) => p.id)));
+        // Sort by metric category so temp / util / mem / power / fan
+        // presets cluster together in the list.
+        const sorted = [...r.presets].sort((a, b) => {
+          const ai = METRIC_ORDER.indexOf(a.metric);
+          const bi = METRIC_ORDER.indexOf(b.metric);
+          if (ai !== bi) return ai - bi;
+          return a.threshold - b.threshold;
+        });
+        setPresets(sorted);
+        // Default selection: only presets not already installed.
+        setSelected(new Set(sorted.filter((p) => !installedKeys.has(presetKey(p))).map((p) => p.id)));
       })
       .catch(() => setPresets([]));
+    // installedKeys derives from `installed` once at open; don't refire on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggle = (id: string) => {
@@ -411,20 +443,41 @@ function PresetsModal({ onClose, onInstalled }: Readonly<{ onClose: () => void; 
 
         <ul className="divide-y max-h-[55vh] overflow-y-auto" style={{ borderColor: 'var(--gv-border)' }}>
           {presets.map((p) => {
-            const checked = selected.has(p.id);
+            const isInstalled = installedKeys.has(presetKey(p));
+            const checked = !isInstalled && selected.has(p.id);
             return (
-              <li key={p.id} className="py-2.5 flex items-start gap-3">
+              <li
+                key={p.id}
+                className="py-2.5 flex items-start gap-3"
+                style={isInstalled ? { opacity: 0.5 } : undefined}
+                title={isInstalled ? t('alerts.preset_already_installed') : undefined}
+              >
                 <input
                   type="checkbox"
                   className="mt-1"
                   checked={checked}
+                  disabled={isInstalled}
                   onChange={() => toggle(p.id)}
                 />
                 <span className="inline-flex shrink-0 mt-0.5" aria-hidden>
                   <MetricIcon metric={p.metric} className="w-4 h-4" />
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm">{p.name}</div>
+                  <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
+                    <span>{p.name}</span>
+                    {isInstalled && (
+                      <span
+                        className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+                        style={{
+                          color: 'var(--gv-ok)',
+                          background: 'color-mix(in srgb, var(--gv-ok) 14%, transparent)',
+                          border: '1px solid color-mix(in srgb, var(--gv-ok) 35%, transparent)',
+                        }}
+                      >
+                        {t('alerts.preset_already_installed')}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs tabular-nums" style={{ color: 'var(--gv-text-muted)' }}>
                     {t(`alerts.metrics.${p.metric}`)} {p.condition === 'above' ? '≥' : '≤'} {p.threshold}
                     {' · '}{t('alerts.duration')} {p.duration_s}s
