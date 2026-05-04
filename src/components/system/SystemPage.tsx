@@ -249,9 +249,14 @@ export default function SystemPage() {
                         // are present, 2 otherwise).
                         // Bar mode: vertical stack — Util, then a 2-col
                         // RX/TX row, then Mem.
-                        const gridCls = viewMode === 'gauge'
-                          ? (hasThroughput ? 'grid grid-cols-1 sm:grid-cols-4 gap-3 items-center' : 'grid grid-cols-2 gap-3')
-                          : 'space-y-2';
+                        let gridCls: string;
+                        if (viewMode !== 'gauge') {
+                          gridCls = 'space-y-2';
+                        } else if (hasThroughput) {
+                          gridCls = 'grid grid-cols-1 sm:grid-cols-4 gap-3 items-center';
+                        } else {
+                          gridCls = 'grid grid-cols-2 gap-3';
+                        }
                         return (
                           <div className={gridCls}>
                             <UsageBar

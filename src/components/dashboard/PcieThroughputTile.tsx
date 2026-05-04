@@ -14,12 +14,12 @@ export function formatThroughput(kbps: number | null): { value: string; unit: st
   return { value: (mib / 1024).toFixed(2), unit: 'GiB/s' };
 }
 
-export interface PcieThroughputTileProps {
+export type PcieThroughputTileProps = Readonly<{
   icon?: ReactNode;
   label: string;
   kbps: number | null;
   linkBwGBps: number | null;
-}
+}>;
 
 // Glass-style PCIe RX/TX tile shared by the dashboard PCIe panel and
 // the System page GPU cards. Fill is log-scaled against the link's
