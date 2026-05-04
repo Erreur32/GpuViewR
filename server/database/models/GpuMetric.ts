@@ -77,6 +77,49 @@ export const GpuMetricRepository = {
   },
 
   /**
+   * Bucket-averaged history for the chart. At 1Hz collection, a 3-day
+   * range is ~260k rows / ~30MB JSON — too heavy to ship and parse.
+   * The chart only paints ~1200px wide, so we average rows into
+   * bucketSec-wide buckets and return just the columns the chart
+   * actually reads (matches HistoryRow on the client). CSV export
+   * still goes through historyIterate() and keeps full resolution.
+   */
+  historyDownsampled(gpuIndex: number, sinceEpoch: number, bucketSec: number): Array<{
+    timestamp_epoch: number;
+    temperature: number;
+    utilization: number | null;
+    memory_used: number;
+    memory_total: number | null;
+    power: number;
+    fan_speed: number | null;
+  }> {
+    return getDatabase()
+      .prepare(
+        `SELECT
+           CAST(timestamp_epoch / ? AS INTEGER) * ? AS timestamp_epoch,
+           AVG(temperature) AS temperature,
+           AVG(utilization) AS utilization,
+           AVG(memory_used) AS memory_used,
+           MAX(memory_total) AS memory_total,
+           AVG(power) AS power,
+           AVG(fan_speed) AS fan_speed
+         FROM gpu_metrics
+         WHERE gpu_index = ? AND timestamp_epoch >= ?
+         GROUP BY CAST(timestamp_epoch / ? AS INTEGER)
+         ORDER BY timestamp_epoch ASC`,
+      )
+      .all(bucketSec, bucketSec, gpuIndex, sinceEpoch, bucketSec) as Array<{
+        timestamp_epoch: number;
+        temperature: number;
+        utilization: number | null;
+        memory_used: number;
+        memory_total: number | null;
+        power: number;
+        fan_speed: number | null;
+      }>;
+  },
+
+  /**
    * Streaming variant for CSV export. Pass gpuIndex=null to fetch every GPU
    * (ordered by gpu_index then time so all rows for one GPU stay grouped).
    * Uses better-sqlite3 .iterate() so memory stays bounded for multi-day

@@ -15,13 +15,22 @@ router.get('/current', (_req, res) => {
   res.json({ samples: gpuCollector.getLatest() });
 });
 
+// Cap chart payloads to ~this many points regardless of range. The chart is
+// ~1200px wide, so above ~1 point per pixel the surplus is invisible but
+// costs JSON size, parse time, and a 6-series setData(). Anything below the
+// cap (live/5m/15m at 1Hz) ships raw; longer ranges are bucket-averaged.
+const HISTORY_TARGET_POINTS = 1800;
+
 router.get('/history', (req, res) => {
   const gpuIndex = Number.parseInt(String(req.query.gpu || '0'), 10);
   const range = String(req.query.range || '1h');
   const seconds = parseRange(range);
   const since = Math.floor(Date.now() / 1000) - seconds;
-  const rows = GpuMetricRepository.history(gpuIndex, since);
-  res.json({ gpuIndex, range, count: rows.length, history: rows });
+  const bucketSec = Math.max(1, Math.ceil(seconds / HISTORY_TARGET_POINTS));
+  const rows = bucketSec > 1
+    ? GpuMetricRepository.historyDownsampled(gpuIndex, since, bucketSec)
+    : GpuMetricRepository.history(gpuIndex, since);
+  res.json({ gpuIndex, range, count: rows.length, bucketSec, history: rows });
 });
 
 // Streaming CSV export. `gpu=all` exports every GPU; otherwise a single GPU

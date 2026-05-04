@@ -5,6 +5,19 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.23] - 2026-05-04
+
+Make long ranges (1h+) snappy by downsampling history server-side.
+
+### Performance
+- **Server-side bucket-average for the chart's history endpoint.**
+  At 1Hz collection, `3d` returned ~259k rows (~30 MB JSON) which
+  dominated load time on range switch. The endpoint now caps the
+  payload to ~1800 points by averaging rows into buckets sized to
+  the range: `1h` → 2 s buckets, `6h` → 12 s, `24h` → 48 s,
+  `3d` → 144 s. `live` / `5m` / `15m` stay raw (under the cap).
+  CSV export still streams full resolution.
+
 ## [0.1.22] - 2026-05-04
 
 Make the chart's time window truly rolling for every range, not just
