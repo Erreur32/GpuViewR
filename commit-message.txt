@@ -1,9 +1,10 @@
-release: v0.1.27 - active indicator dot on Exports sub-tabs
+release: v0.1.28 - separate Prometheus / InfluxDB tabs, gauge style first
 
-Added:
-- Green status dot rendered on each Exports sub-tab label when
-  the relevant exporter(s) are active: Notification (webhook
-  enabled), Home Assistant (MQTT enabled AND broker connected
-  via info.mqtt.connected), Metrics (at least one of Prometheus
-  / InfluxDB enabled). The dot has a tooltip ("Active" / "Active
-  and connected") and disappears otherwise. EN + FR translations.
+Changed:
+- Exports & integrations now has four sub-tabs: Notification,
+  Home Assistant, Prometheus, InfluxDB. The previous combined
+  "Metrics" tab is split so each backend has its own page with
+  its own active-dot indicator. Legacy localStorage value
+  "metrics" migrates to "prometheus" on first load.
+- Customize page reorders sections so "Gauge style" (arc/bar)
+  is the first section, ahead of Theme and Chart palette.

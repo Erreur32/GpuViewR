@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Activity, Database, Webhook, Save, PlayCircle, BellRing, BarChart3, Eye, Home, HelpCircle } from 'lucide-react';
+import { Send, Activity, Database, Webhook, Save, PlayCircle, BellRing, Eye, Home, HelpCircle } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
 
-type SubTab = 'notification' | 'homeassistant' | 'metrics';
+type SubTab = 'notification' | 'homeassistant' | 'prometheus' | 'influxdb';
 
 interface PrometheusConfig { enabled: boolean }
 interface MqttConfig {
@@ -90,8 +90,12 @@ export default function ExportsSettings() {
   const [info, setInfo] = useState<DispatchInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [sub, setSub] = useState<SubTab>(() => {
-    const saved = localStorage.getItem('gpuviewr.exportsSubTab') as SubTab | null;
-    if (saved === 'notification' || saved === 'homeassistant' || saved === 'metrics') return saved;
+    const saved = localStorage.getItem('gpuviewr.exportsSubTab');
+    // 'metrics' is the legacy combined tab from <= 0.1.27; land it on
+    // prometheus (the first half of the split) so existing users keep a
+    // recognisable destination after upgrade.
+    if (saved === 'metrics') return 'prometheus';
+    if (saved === 'notification' || saved === 'homeassistant' || saved === 'prometheus' || saved === 'influxdb') return saved;
     return 'notification';
   });
   const selectSub = (id: SubTab) => {
@@ -169,16 +173,23 @@ export default function ExportsSettings() {
         </button>
         <button
           role="tab"
-          aria-selected={sub === 'metrics'}
-          aria-pressed={sub === 'metrics'}
+          aria-selected={sub === 'prometheus'}
+          aria-pressed={sub === 'prometheus'}
           className="seg-btn inline-flex items-center gap-2"
-          onClick={() => selectSub('metrics')}
+          onClick={() => selectSub('prometheus')}
         >
-          <BarChart3 className="w-4 h-4" /> {t('settings.exports_sub_metrics')}
-          <ActiveDot
-            active={cfg.prometheus.enabled || cfg.influxdb.enabled}
-            title={t('settings.exports_active')}
-          />
+          <Activity className="w-4 h-4" /> {t('settings.exports_sub_prometheus')}
+          <ActiveDot active={cfg.prometheus.enabled} title={t('settings.exports_active')} />
+        </button>
+        <button
+          role="tab"
+          aria-selected={sub === 'influxdb'}
+          aria-pressed={sub === 'influxdb'}
+          className="seg-btn inline-flex items-center gap-2"
+          onClick={() => selectSub('influxdb')}
+        >
+          <Database className="w-4 h-4" /> {t('settings.exports_sub_influxdb')}
+          <ActiveDot active={cfg.influxdb.enabled} title={t('settings.exports_active')} />
         </button>
       </div>
 
@@ -193,11 +204,12 @@ export default function ExportsSettings() {
         </div>
       )}
 
-      {sub === 'metrics' && (
-        <div className="space-y-4">
-          <PrometheusBlock cfg={cfg.prometheus} info={info?.prometheus} disabled={!isAdmin || busy} onSave={(p) => save('prometheus', p)} />
-          <InfluxBlock cfg={cfg.influxdb} info={info?.influxdb} disabled={!isAdmin || busy} onSave={(p) => save('influxdb', p)} onTest={() => testIt('influxdb')} />
-        </div>
+      {sub === 'prometheus' && (
+        <PrometheusBlock cfg={cfg.prometheus} info={info?.prometheus} disabled={!isAdmin || busy} onSave={(p) => save('prometheus', p)} />
+      )}
+
+      {sub === 'influxdb' && (
+        <InfluxBlock cfg={cfg.influxdb} info={info?.influxdb} disabled={!isAdmin || busy} onSave={(p) => save('influxdb', p)} onTest={() => testIt('influxdb')} />
       )}
     </section>
   );

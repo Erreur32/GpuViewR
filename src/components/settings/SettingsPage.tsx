@@ -120,14 +120,6 @@ export default function SettingsPage() {
 
       {tab === 'theme' && (
         <div className="space-y-6">
-          <section className="card p-5 space-y-4">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Moon className="w-4 h-4" /> {t('settings.theme')}
-            </h2>
-            <ThemeRow title={t('settings.dark_themes')} themes={dark} current={themeId} onSelect={setThemeId} />
-            <ThemeRow title={t('settings.light_themes')} themes={light} current={themeId} onSelect={setThemeId} />
-          </section>
-
           <section className="card p-5 space-y-3">
             <h2 className="font-semibold flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> {t('settings.gauge_view')}</h2>
             <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>{t('settings.gauge_view_help')}</p>
@@ -139,6 +131,14 @@ export default function SettingsPage() {
                 <BarChart3 className="w-4 h-4" /> {t('dashboard.view_bar')}
               </button>
             </div>
+          </section>
+
+          <section className="card p-5 space-y-4">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Moon className="w-4 h-4" /> {t('settings.theme')}
+            </h2>
+            <ThemeRow title={t('settings.dark_themes')} themes={dark} current={themeId} onSelect={setThemeId} />
+            <ThemeRow title={t('settings.light_themes')} themes={light} current={themeId} onSelect={setThemeId} />
           </section>
 
           <section className="card p-5 space-y-4">

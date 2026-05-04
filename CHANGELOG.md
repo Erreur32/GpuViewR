@@ -5,6 +5,22 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.28] - 2026-05-04
+
+Split the combined Metrics tab and put the gauge style picker first
+on the Customize page.
+
+### Changed
+- **Exports & integrations now has four sub-tabs** instead of three:
+  Notification · Home Assistant · **Prometheus** · **InfluxDB**.
+  The previous combined "Metrics" tab is gone — each backend has
+  its own page so the labels and active-dot indicators reflect the
+  exact exporter you are looking at. Existing users with the old
+  `metrics` value in localStorage land on Prometheus by default.
+- **Customize page reorders sections** so "Gauge style" (arc/bar)
+  is the first section, above Theme and Chart palette. Faster
+  access since it's the most-toggled setting.
+
 ## [0.1.27] - 2026-05-04
 
 Show an at-a-glance "active" indicator on each Exports sub-tab.
