@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.21] - 2026-05-04
+
+Default the dashboard chart to **Live** on first run, and drop the
+now-redundant 1m/2m migration shim.
+
+### Changed
+- Chart range defaults to `live` (was `1h`) for fresh
+  installs. Users with an existing `gpuviewr.range` in
+  localStorage keep their selection.
+- The dedicated `1m`/`2m` → `live` migration (added in v0.1.9
+  for upgrades from ≤ 0.1.8) is removed. Any unknown stored
+  range now falls back to `live`, which subsumes the old
+  migration with less code.
+
 ## [0.1.20] - 2026-05-03
 
 Asset cleanup release: working alert sound, square favicon and a

@@ -1,29 +1,10 @@
-release: v0.1.20 - working alert sound, square favicon, public PNG optimisation
-
-Fixed:
-- Alert sound: replaced public/alert.mp3 (a 107-byte HTML
-  placeholder) with a real MP3 binary so the browser actually
-  decodes and plays it on alert. Browser autoplay policy still
-  requires a user gesture before the first sound — clicking
-  once on the page is enough.
+release: v0.1.21 - default chart range to live
 
 Changed:
-- Favicon now points at /logo.png (256x256 square PNG) instead
-  of the 1254x1254 gpuviewr_logo.png. The tab icon renders
-  crisp at native size with no browser-side scaling.
-- Public PNGs optimised with Lanczos downscaling + a light
-  unsharp mask + max PNG compression (no JPEG conversion so
-  screenshot text stays sharp):
-    GPUViewR.png       : 1.32 MB -> 57 KB  (1254  -> 256, -96%)
-    gpuviewr_logo.png  : 1.32 MB -> 57 KB  (1254  -> 256, -96%)
-    GpuViewR-Ban.png   : 1.28 MB -> 522 KB (1983w -> 1256w, -59%)
-    *_screnshot*.png   : ~950 KB -> ~510 KB (2560w -> 1920w, ~-46%)
-    logo.png           : 261 KB  -> 108 KB (836w  -> 512w, -59%)
-    logo_test.png      : 587 KB  -> 213 KB (836w  -> 512w, -64%)
-  Total public/*.png : 6.7 MB -> 1.99 MB (-70%).
-- README image reference moved from the deleted
-  public/gpuviewr_screnshot.png to gpuviewr_screnshot_v1.png.
-
-Note: public/alert.mp3 + the optimised PNGs are baked into the
-runtime Docker image at build time; bumping the tag is what
-gets the new assets to GHCR users.
+- Dashboard chart now defaults to "live" on first run instead of
+  "1h". Existing users keep their last selected range; only the
+  fallback for fresh localStorage changes.
+- Removed the dedicated 1m/2m -> live migration introduced in
+  v0.1.9 for upgrades from <= 0.1.8. Any unknown stored range
+  (including 1m/2m) now falls back to "live", which covers the
+  same case with less code.
