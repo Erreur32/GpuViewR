@@ -936,23 +936,59 @@ function HomeAssistantHelp() {
   );
 }
 
+type HelpToken =
+  | { kind: 'text';        text: string; offset: number }
+  | { kind: 'quoted';      text: string; offset: number }   // single-quoted label
+  | { kind: 'placeholder'; text: string; offset: number };  // <name> tag
+
+// Linear scanner used by HelpStepText. We deliberately don't use a
+// regex with `[^']+` / `[^>]+` quantifiers (Sonar S5852 flags those
+// as super-linear / ReDoS-prone even when they aren't) — a hand-rolled
+// scan over the string is O(n), exits cleanly on missing closers and
+// keeps the React keys content-derived via the offset.
+function tokenizeHelpStep(text: string): HelpToken[] {
+  const tokens: HelpToken[] = [];
+  let i = 0;
+  let plainStart = 0;
+  const flushPlain = (end: number) => {
+    if (end > plainStart) {
+      tokens.push({ kind: 'text', text: text.slice(plainStart, end), offset: plainStart });
+    }
+  };
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "'" || ch === '<') {
+      const closer = ch === "'" ? "'" : '>';
+      const end = text.indexOf(closer, i + 1);
+      // Fall back to plain text if there's no matching closer.
+      if (end === -1) { i += 1; continue; }
+      flushPlain(i);
+      const inner = text.slice(i, end + 1);
+      tokens.push({
+        kind: ch === "'" ? 'quoted' : 'placeholder',
+        text: inner,
+        offset: i,
+      });
+      i = end + 1;
+      plainStart = i;
+    } else {
+      i += 1;
+    }
+  }
+  flushPlain(text.length);
+  return tokens;
+}
+
 // Render a step body with breadcrumb arrows and obvious tokens (paths
 // containing →, single-quoted names) emphasized so the eye picks up
 // menu paths and field names without re-reading the whole sentence.
 function HelpStepText({ text }: Readonly<{ text: string }>) {
-  // Highlight chunks wrapped in single quotes (UI labels) and bracketed
-  // <placeholders> so they stand out without splitting the sentence.
-  // Use the cumulative byte offset within the text as the React key:
-  // it's content-derived (so stable across re-renders for the same
-  // input) without falling back to the array index.
-  const parts = text.split(/('[^']+'|<[^>]+>)/g);
-  let cursor = 0;
+  const tokens = tokenizeHelpStep(text);
   return (
     <span style={{ color: 'var(--gv-text)' }}>
-      {parts.map((p) => {
-        const key = `${cursor}:${p.slice(0, 6)}`;
-        cursor += p.length;
-        if (/^'[^']+'$/.test(p)) {
+      {tokens.map((tok) => {
+        const key = `${tok.offset}:${tok.kind}`;
+        if (tok.kind === 'quoted') {
           return (
             <code
               key={key}
@@ -963,11 +999,11 @@ function HelpStepText({ text }: Readonly<{ text: string }>) {
                 border: '1px solid color-mix(in srgb, var(--gv-accent) 25%, transparent)',
               }}
             >
-              {p.slice(1, -1)}
+              {tok.text.slice(1, -1)}
             </code>
           );
         }
-        if (/^<[^>]+>$/.test(p)) {
+        if (tok.kind === 'placeholder') {
           return (
             <code
               key={key}
@@ -978,11 +1014,11 @@ function HelpStepText({ text }: Readonly<{ text: string }>) {
                 border: '1px solid color-mix(in srgb, var(--gv-info) 25%, transparent)',
               }}
             >
-              {p}
+              {tok.text}
             </code>
           );
         }
-        return <span key={key}>{p}</span>;
+        return <span key={key}>{tok.text}</span>;
       })}
     </span>
   );
