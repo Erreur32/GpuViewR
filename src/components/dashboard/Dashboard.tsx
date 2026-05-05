@@ -10,6 +10,8 @@ import GpuTabs from './GpuTabs';
 import StatsSection from './StatsSection';
 import GpuProcessesTable from './GpuProcessesTable';
 import PcieThroughputTile from './PcieThroughputTile';
+import AllGpusGrid from './AllGpusGrid';
+import MultiGpuChart from './MultiGpuChart';
 import UpdateBanner from '../ui/UpdateBanner';
 
 export default function Dashboard() {
@@ -20,6 +22,7 @@ export default function Dashboard() {
   const selectedGpu = useUiStore((s) => s.selectedGpu);
   const gaugeView = useUiStore((s) => s.gaugeView);
   const setGaugeView = useUiStore((s) => s.setGaugeView);
+  const dashboardView = useUiStore((s) => s.dashboardView);
 
   if (samples.length === 0) {
     return (
@@ -29,6 +32,25 @@ export default function Dashboard() {
           {t('dashboard.no_gpu')}
         </div>
       </>
+    );
+  }
+
+  // "All GPUs" overview — compact tile per device, no per-GPU chart or
+  // process table to keep the page reasonable past 4 cards.
+  if (dashboardView === 'all' && samples.length > 1) {
+    return (
+      <div className="space-y-6">
+        <UpdateBanner />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h2 className="text-xl font-semibold leading-none" style={{ color: 'var(--gv-text)' }}>
+            {t('dashboard.gpus_all_title', { count: samples.length })}
+          </h2>
+          <GpuTabs samples={samples} />
+          <div className="ml-auto"><RangeSelector /></div>
+        </div>
+        <AllGpusGrid samples={samples} />
+        <MultiGpuChart samples={samples} />
+      </div>
     );
   }
 

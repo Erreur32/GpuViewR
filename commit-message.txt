@@ -1,46 +1,58 @@
-release: v0.1.43 - host stats on all exporters, host alert presets, MQTT polish
+release: v0.2.0 - public demo build, all-GPUs dashboard view, combined live chart
 
 Added:
-- Host metrics on every exporter, toggleable via includeSystemStats
-  (off by default):
-  - Prometheus: gpuviewr_host_* gauges on /metrics (CPU usage ratio,
-    load 1m / 5m / 15m, memory used bytes/ratio).
-  - MQTT: retained JSON on <prefix>/host/state, plus HA discovery
-    for the host sensors when haDiscovery is on.
-  - InfluxDB: extra point per push on <measurement>_host with
-    cpu_usage_pct, load_1m/5m/15m and memory_used_pct.
-  - Webhook (already in 0.1.41), now mirrored everywhere.
-- Host-scoped alert presets. AlertMetric extended with host_cpu,
-  host_load_1m, host_memory. New presets:
-    Host CPU critical (>95% / 60s, sound)
-    Host CPU high (>85% / 120s)
-    Host load high (>4.0 / 120s, tuned for >=4 cores)
-    Host RAM saturated (>95% / 30s, sound)
-    Host RAM high (>90% / 60s)
-- Rule editor: metric <select> split into an <optgroup> "GPU" / "Host"
-  for clarity. METRIC_ICON, METRIC_ORDER and i18n cover the three new
-  metrics.
-- gpuviewr_host appears as its own HA device when MQTT discovery +
-  host stats are both on.
+- Public demo build for GitHub Pages: src/lib/demo/{data,mockApi,mockWs,
+  index}.ts implements deterministic fake data, fetch + WebSocket
+  interceptors and auto-login. Loaded only when VITE_DEMO=1 (dynamic
+  import, tree-shaken in prod). vite.config.ts injects a strict
+  Content-Security-Policy and noindex meta in the demo HTML so the
+  static site only talks to its own origin and is not indexed.
+- npm scripts: build:demo, build:demo:root, preview:demo,
+  preview:demo:root. Demo banner ("DEMO MODE - synthetic data") shown
+  on every page in the demo bundle.
+- .github/workflows/pages.yml deploys dist-demo to
+  https://erreur32.github.io/GpuViewR/ on every push to main.
+- "All GPUs" dashboard view (Layers icon in the GPU tabs bar): renders
+  a compact tile per device in a responsive grid (1 / 2 / 3 columns),
+  with 5 metric bars (Temp / Util / Mem / Fan / Power), per-GPU
+  utilization sparkline and PCIe link + RX/TX inline.
+- Combined live chart under the All-GPUs grid (MultiGpuChart): one
+  uPlot line per GPU on a single chart, with a metric selector
+  (Util / Temp / Mem / Fan / Power), a fixed 8-color palette and a
+  hover tooltip comparing all GPUs at the same instant.
+- Live demo link added at the top of README.md.
 
 Changed:
-- MQTT settings layout: broker URL, status, push interval moved out
-  of the "What's being sent" disclosure into a flat status block
-  above (no more text overlap). Disclosure keeps only payload spec.
-- MQTT toggles: "Publier les stats machine" gets its own padded
-  block + helper; "Sensors auto-appear in Home Assistant" is now
-  glued to the HA discovery toggle instead of floating.
-- HA help restyled: numbered colored badges, info-tinted step rows,
-  accent-tinted inline labels ('value') and info-tinted placeholders
-  (<broker-host>). Em-dashes removed from steps.
+- Sparkline now uses useId() to generate a unique linearGradient id per
+  instance. Previously every sparkline shared "sl-grad" so the
+  browser only kept one gradient, painting all area fills the wrong
+  color. Gradient stops widened from 2 to 3 (45 / 12 / 0 %) for
+  better visual definition.
+- Settings -> Theme: "Style des jauges" / "Gauge style" section
+  removed. The gauge / bar toggle stays on each tab (Dashboard +
+  System) and the two are independent: clicking a mode on Dashboard
+  no longer touches System (System has its own local persisted choice).
+- Asset paths (GPUViewR.png, alert.mp3) now use
+  import.meta.env.BASE_URL so they resolve correctly under both '/'
+  (production) and '/GpuViewR/' (GitHub Pages demo).
+- BrowserRouter now picks up its basename from import.meta.env.BASE_URL,
+  letting the SPA work under any sub-path.
+- ci(pages): Build & Push Docker Image workflow gained a
+  workflow_dispatch trigger so manual rebuilds (e.g. for upstream OS
+  patches) no longer require a no-op commit.
 
-Removed em-dashes:
-- "Les règles ajoutées sont désactivées — verifiez..." -> ":" form.
-- HA help steps 2/4/5 reworded to drop the em-dash.
+Removed:
+- uiStore: no schema change for the per-page gauge view (each tab
+  stays independent). New dashboardView ('single' | 'all') flag
+  persisted under gpuviewr.dashboard_view; selectedGpu remains an
+  index so the single-GPU choice is preserved across mode switches.
+- i18n keys settings.gauge_view and settings.gauge_view_help (no
+  longer referenced after the Settings cleanup).
 
 Internal:
-- alertService no longer needs `as unknown as GpuSample`. New
-  EvalSample = GpuSample | HostSample union + isHostSample type
-  guard, readMetric narrows cleanly.
-- buildInfluxHostLine() centralizes the host line-protocol format;
-  INFLUX_HOST_FIELD_KEYS drives writer + dispatch panel.
+- vite.config.ts: VITE_BASE_PATH env var drives the build base, output
+  switches to dist-demo when VITE_DEMO=1, plus a small inline plugin
+  injects the CSP / noindex meta tags only in the demo HTML.
+- sonar(S5332): demo placeholder URLs (Influx config, Prometheus
+  endpoint, Influx writeUrl) switched from http:// to https:// so the
+  hotspot scanner stops flagging them.

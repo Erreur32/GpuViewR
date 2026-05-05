@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Moon, LayoutGrid, BarChart3, Languages, Clock, Sliders, Share2, Database, RefreshCw, Activity, Info, Palette, RotateCcw, Volume2, VolumeX, Bell, BellOff, BellRing } from 'lucide-react';
+import { Moon, Languages, Clock, Sliders, Share2, Database, RefreshCw, Activity, Info, Palette, RotateCcw, Volume2, VolumeX, Bell, BellOff, BellRing } from 'lucide-react';
 import { useUiStore, DEFAULT_THRESHOLDS, type ChartSeriesKey } from '../../store/uiStore';
 import { THEMES } from '../../lib/themes';
 import UpdateSettings from './UpdateSettings';
@@ -37,7 +37,7 @@ const LANGUAGES = [
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();
   const {
-    themeId, setThemeId, gaugeView, setGaugeView, timeFormat, setTimeFormat,
+    themeId, setThemeId, timeFormat, setTimeFormat,
     chartThresholds, chartThresholdsEnabled,
     setChartThreshold, setChartThresholdsEnabled, resetChartThresholds,
     chartColors, setChartColor, resetChartColors,
@@ -120,19 +120,6 @@ export default function SettingsPage() {
 
       {tab === 'theme' && (
         <div className="space-y-6">
-          <section className="card p-5 space-y-3">
-            <h2 className="font-semibold flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> {t('settings.gauge_view')}</h2>
-            <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>{t('settings.gauge_view_help')}</p>
-            <div className="seg">
-              <button className="seg-btn inline-flex items-center gap-2" aria-pressed={gaugeView === 'arc'} onClick={() => setGaugeView('arc')}>
-                <LayoutGrid className="w-4 h-4" /> {t('dashboard.view_arc')}
-              </button>
-              <button className="seg-btn inline-flex items-center gap-2" aria-pressed={gaugeView === 'bar'} onClick={() => setGaugeView('bar')}>
-                <BarChart3 className="w-4 h-4" /> {t('dashboard.view_bar')}
-              </button>
-            </div>
-          </section>
-
           <section className="card p-5 space-y-4">
             <h2 className="font-semibold flex items-center gap-2">
               <Moon className="w-4 h-4" /> {t('settings.theme')}

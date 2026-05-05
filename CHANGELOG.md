@@ -5,6 +5,61 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-05-05
+
+A public browser-only demo lands on GitHub Pages, the Dashboard gains
+an "All GPUs" overview with a combined live chart, and the gauge-view
+selector is dropped from Settings (each tab now keeps its own choice).
+
+### Added
+- **Public demo build for GitHub Pages.** `npm run build:demo`
+  produces `dist-demo/` (~235 KB gzip), which the new
+  `.github/workflows/pages.yml` deploys to
+  https://erreur32.github.io/GpuViewR/. The bundle ships zero secrets,
+  installs a `fetch` + `WebSocket` mock that returns deterministic fake
+  data for two synthetic GPUs (RTX 4090 + RTX 3080), and shows a
+  persistent "DEMO MODE" banner. Strict CSP (`default-src 'self'`,
+  `connect-src 'self'`, no inline scripts) and `noindex` meta are
+  injected only in the demo HTML.
+- **"All GPUs" dashboard view.** A new "All" button in the GPU tabs
+  bar (Layers icon) renders every device side by side in a responsive
+  grid (1 / 2 / 3 columns). Each tile shows a header (name + index +
+  driver), a top-right utilization sparkline, five compact metric
+  bars (Temp / Util / Mem / Fan / Power) coloured by status, and a
+  PCIe link footer with RX / TX inline.
+- **Combined live chart in the All-GPUs view.** One uPlot line per
+  GPU on a single chart, with a metric selector (Util / Temp / Mem /
+  Fan / Power), an 8-colour palette and a tooltip that compares
+  every GPU at the cursor's instant.
+- Live demo link in `README.md` right under the tagline.
+
+### Changed
+- **Sparkline gradient fix.** Every sparkline used a fixed
+  `<linearGradient id="sl-grad">`, so SVG-defs collisions made all
+  gauges paint with the wrong colour. The id is now generated via
+  `useId()` so each instance owns its gradient. Stops widened from
+  2 to 3 (45 / 12 / 0 %) for crisper definition.
+- **Gauge view setting removed from Settings → Theme.** The gauge /
+  bar toggle stays on each tab (Dashboard, System) and the two are
+  independent: clicking a mode on Dashboard no longer touches System.
+- Hardcoded `/GPUViewR.png` and `/alert.mp3` paths now go through
+  `import.meta.env.BASE_URL`, so the icons and the alert sound work
+  under both `/` (production) and `/GpuViewR/` (GitHub Pages).
+- Build & Push Docker Image workflow gained a `workflow_dispatch`
+  trigger so manual rebuilds for upstream OS patches no longer need a
+  no-op commit.
+
+### Internal
+- New `dashboardView` flag on `uiStore` (`'single' | 'all'`),
+  persisted under `gpuviewr.dashboard_view`. `selectedGpu` stays an
+  index so the per-GPU choice survives mode switches.
+- `vite.config.ts`: `VITE_BASE_PATH` env var drives the build base,
+  output switches to `dist-demo` when `VITE_DEMO=1`, and a tiny
+  inline plugin injects the CSP / noindex meta only in the demo
+  HTML.
+- sonar(S5332): demo placeholder URLs (Influx, Prometheus endpoint)
+  flipped from `http://` to `https://`.
+
 ## [0.1.43] - 2026-05-04
 
 Host stats reach every exporter (Prometheus, MQTT, InfluxDB, Webhook),

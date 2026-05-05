@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { applyTheme, getTheme } from '../lib/themes';
 
 export type GaugeView = 'arc' | 'bar';
+export type DashboardView = 'single' | 'all';
 export type Range = 'live' | '5m' | '15m' | '1h' | '6h' | '24h' | '3d';
 export type ChartSeriesKey = 'util' | 'temp' | 'pow' | 'mem' | 'fan';
 export type ChartColors = Partial<Record<ChartSeriesKey, string>>;
@@ -29,6 +30,7 @@ const ROYAL_DEFAULT_COLORS: Required<ChartColors> = {
 interface UiState {
   themeId: string;
   gaugeView: GaugeView;
+  dashboardView: DashboardView;
   range: Range;
   selectedGpu: number;
   soundEnabled: boolean;
@@ -40,6 +42,7 @@ interface UiState {
 
   setThemeId: (id: string) => void;
   setGaugeView: (v: GaugeView) => void;
+  setDashboardView: (v: DashboardView) => void;
   setRange: (r: Range) => void;
   setSelectedGpu: (i: number) => void;
   setSoundEnabled: (v: boolean) => void;
@@ -56,6 +59,7 @@ interface UiState {
 const KEYS = {
   theme: 'gpuviewr.theme',
   view: 'gpuviewr.gauge_view',
+  dashboardView: 'gpuviewr.dashboard_view',
   range: 'gpuviewr.range',
   selectedGpu: 'gpuviewr.selected_gpu',
   sound: 'gpuviewr.sound',
@@ -105,6 +109,7 @@ function readChartThresholds(): ChartThresholds {
 export const useUiStore = create<UiState>((set, get) => ({
   themeId: 'midnight',
   gaugeView: 'arc',
+  dashboardView: 'single',
   range: 'live',
   selectedGpu: 0,
   soundEnabled: false,
@@ -123,6 +128,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   setGaugeView: (v) => {
     localStorage.setItem(KEYS.view, v);
     set({ gaugeView: v });
+  },
+  setDashboardView: (v) => {
+    localStorage.setItem(KEYS.dashboardView, v);
+    set({ dashboardView: v });
   },
   setRange: (r) => {
     localStorage.setItem(KEYS.range, r);
@@ -171,6 +180,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   hydrate: () => {
     const themeId = readLS(KEYS.theme, 'midnight');
     const gaugeView = (readLS(KEYS.view, 'arc') as GaugeView) || 'arc';
+    const dashboardView: DashboardView = readLS(KEYS.dashboardView, 'single') === 'all' ? 'all' : 'single';
     // Migrate legacy values ('1m', '2m') that no longer exist in the
     // Range union to the closest current option so the UI does not break
     // for users upgrading from <= 0.1.8.
@@ -200,7 +210,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     }
     applyTheme(themeId);
     set({
-      themeId, gaugeView, range, selectedGpu, soundEnabled: sound, chartColors: effectiveColors, timeFormat,
+      themeId, gaugeView, dashboardView, range, selectedGpu, soundEnabled: sound, chartColors: effectiveColors, timeFormat,
       chartThresholds, chartThresholdsEnabled, chartPaletteInitialized: initialized,
     });
   },

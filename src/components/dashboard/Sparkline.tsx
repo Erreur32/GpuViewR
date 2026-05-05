@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 interface Props {
   values: number[];
   max?: number;
@@ -15,6 +17,12 @@ export default function Sparkline({
   stroke,
   className = '',
 }: Props) {
+  // One gradient id per Sparkline instance. With a fixed id the area
+  // fills of every gauge shared a single <linearGradient> definition,
+  // so the browser picked a single winning color for the whole page —
+  // making every sparkline look like the wrong metric.
+  const gradId = `sl-grad-${useId().replace(/:/g, '')}`;
+
   if (values.length < 2) {
     return <div className={className} style={{ width, height }} />;
   }
@@ -26,7 +34,6 @@ export default function Sparkline({
     const y = height - (values[i] / m) * height;
     path += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
   }
-  // Area fill
   const area = path + `L${width},${height} L0,${height} Z`;
   const color = stroke || 'currentColor';
   return (
@@ -38,12 +45,13 @@ export default function Sparkline({
       preserveAspectRatio="none"
     >
       <defs>
-        <linearGradient id="sl-grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor={color} stopOpacity="0.45" />
+          <stop offset="60%"  stopColor={color} stopOpacity="0.12" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d={area} fill="url(#sl-grad)" />
+      <path d={area} fill={`url(#${gradId})`} />
       <path d={path} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
