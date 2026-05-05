@@ -133,11 +133,12 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
       const ts = seriesMap.get(s.gpu_index)?.t ?? [];
       if (ts.length > longest.length) longest = ts;
     }
-    if (longest.length === 0) {
+    const last = longest.at(-1);
+    if (last === undefined) {
       plotRef.current.setData([[]] as unknown as AlignedData);
       return;
     }
-    const cutoff = (longest.at(-1) as number) - rangeToSeconds(range);
+    const cutoff = last - rangeToSeconds(range);
     const tArr: number[] = [];
     for (const ts of longest) if (ts >= cutoff) tArr.push(ts);
 
