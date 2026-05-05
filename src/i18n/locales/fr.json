@@ -136,7 +136,11 @@
     "presets_install": "Ajouter {{count}}",
     "presets_installed": "Préréglages ajoutés (désactivés).",
     "presets_disabled_note": "Les règles ajoutées sont désactivées : vérifiez puis activez chacune.",
-    "preset_already_installed": "Déjà ajoutée"
+    "preset_already_installed": "Déjà ajoutée",
+    "rules_count": "{{count}} règle(s) configurée(s)",
+    "firing": "En alerte",
+    "resolved": "Résolue",
+    "just_now": "À l'instant"
   },
   "logs": {
     "title": "Journaux serveur",

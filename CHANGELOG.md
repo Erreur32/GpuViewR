@@ -5,6 +5,18 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-05-05
+
+### Changed
+- Alerts tab: Rules section is now collapsed by default, showing a rule
+  count. It auto-expands when a rule is created or presets are installed,
+  so Recent Events stay visible instead of being buried below a large
+  rules table.
+- Alerts tab: rules table split into GPU / System groups with category
+  headers; per-rule "All GPUs" subtitle removed for a cleaner row layout.
+- Alerts tab: Recent Events now show the metric icon, a pulsing status
+  dot for firing alerts, a colored state badge, and relative timestamps.
+
 ## [0.2.0] - 2026-05-05
 
 A public browser-only demo lands on GitHub Pages, the Dashboard gains

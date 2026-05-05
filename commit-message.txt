@@ -1,58 +1,10 @@
-release: v0.2.0 - public demo build, all-GPUs dashboard view, combined live chart
-
-Added:
-- Public demo build for GitHub Pages: src/lib/demo/{data,mockApi,mockWs,
-  index}.ts implements deterministic fake data, fetch + WebSocket
-  interceptors and auto-login. Loaded only when VITE_DEMO=1 (dynamic
-  import, tree-shaken in prod). vite.config.ts injects a strict
-  Content-Security-Policy and noindex meta in the demo HTML so the
-  static site only talks to its own origin and is not indexed.
-- npm scripts: build:demo, build:demo:root, preview:demo,
-  preview:demo:root. Demo banner ("DEMO MODE - synthetic data") shown
-  on every page in the demo bundle.
-- .github/workflows/pages.yml deploys dist-demo to
-  https://erreur32.github.io/GpuViewR/ on every push to main.
-- "All GPUs" dashboard view (Layers icon in the GPU tabs bar): renders
-  a compact tile per device in a responsive grid (1 / 2 / 3 columns),
-  with 5 metric bars (Temp / Util / Mem / Fan / Power), per-GPU
-  utilization sparkline and PCIe link + RX/TX inline.
-- Combined live chart under the All-GPUs grid (MultiGpuChart): one
-  uPlot line per GPU on a single chart, with a metric selector
-  (Util / Temp / Mem / Fan / Power), a fixed 8-color palette and a
-  hover tooltip comparing all GPUs at the same instant.
-- Live demo link added at the top of README.md.
+release: v0.2.1 - collapsible alert rules, grouped GPU/System display, enhanced event visuals
 
 Changed:
-- Sparkline now uses useId() to generate a unique linearGradient id per
-  instance. Previously every sparkline shared "sl-grad" so the
-  browser only kept one gradient, painting all area fills the wrong
-  color. Gradient stops widened from 2 to 3 (45 / 12 / 0 %) for
-  better visual definition.
-- Settings -> Theme: "Style des jauges" / "Gauge style" section
-  removed. The gauge / bar toggle stays on each tab (Dashboard +
-  System) and the two are independent: clicking a mode on Dashboard
-  no longer touches System (System has its own local persisted choice).
-- Asset paths (GPUViewR.png, alert.mp3) now use
-  import.meta.env.BASE_URL so they resolve correctly under both '/'
-  (production) and '/GpuViewR/' (GitHub Pages demo).
-- BrowserRouter now picks up its basename from import.meta.env.BASE_URL,
-  letting the SPA work under any sub-path.
-- ci(pages): Build & Push Docker Image workflow gained a
-  workflow_dispatch trigger so manual rebuilds (e.g. for upstream OS
-  patches) no longer require a no-op commit.
-
-Removed:
-- uiStore: no schema change for the per-page gauge view (each tab
-  stays independent). New dashboardView ('single' | 'all') flag
-  persisted under gpuviewr.dashboard_view; selectedGpu remains an
-  index so the single-GPU choice is preserved across mode switches.
-- i18n keys settings.gauge_view and settings.gauge_view_help (no
-  longer referenced after the Settings cleanup).
-
-Internal:
-- vite.config.ts: VITE_BASE_PATH env var drives the build base, output
-  switches to dist-demo when VITE_DEMO=1, plus a small inline plugin
-  injects the CSP / noindex meta tags only in the demo HTML.
-- sonar(S5332): demo placeholder URLs (Influx config, Prometheus
-  endpoint, Influx writeUrl) switched from http:// to https:// so the
-  hotspot scanner stops flagging them.
+- Alerts tab: Rules section collapsed by default with rule count badge,
+  auto-expands on rule create or preset install so Recent Events remain
+  visible.
+- Alerts tab: rules table split into GPU / System groups with category
+  headers; per-rule "All GPUs" subtitle removed.
+- Alerts tab: Recent Events now show metric icon, pulsing firing dot,
+  colored state badge, and relative timestamps.

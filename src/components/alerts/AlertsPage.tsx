@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Plus, Trash2, Bell, Volume2, VolumeX, Edit3, Sparkles, Webhook,
   Thermometer, Activity, MemoryStick, Zap, Fan, Cpu, Server, Gauge,
+  ChevronDown, ChevronRight, Clock,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -40,6 +41,20 @@ function MetricIcon({ metric, className = 'w-4 h-4' }: Readonly<{ metric: Metric
   const spec = METRIC_ICON[metric];
   const Icon = spec.icon;
   return <Icon className={className} style={{ color: spec.color }} />;
+}
+
+function relativeTime(epoch: number, t: (key: string) => string): string {
+  const now = Date.now();
+  const diff = now - epoch * 1000;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 10) return t('alerts.just_now');
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}min`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}j`;
 }
 
 interface Rule {
@@ -92,6 +107,7 @@ export default function AlertsPage() {
   const [events, setEvents] = useState<AlertEvent[]>([]);
   const [editing, setEditing] = useState<Partial<Rule> | null>(null);
   const [presetsOpen, setPresetsOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   async function load() {
     const r = await api<{ rules: Rule[] }>('/alerts/rules');
@@ -111,6 +127,7 @@ export default function AlertsPage() {
         await api('/alerts/rules', { method: 'POST', body: JSON.stringify(editing) });
       }
       setEditing(null);
+      setRulesOpen(true);
       notify('success', t('alerts.saved'));
       await load();
     } catch (err) {
@@ -192,141 +209,178 @@ export default function AlertsPage() {
       </header>
 
       <section className="card overflow-hidden">
-        <div className="px-4 py-3 text-sm font-semibold uppercase tracking-wider"
-             style={{ color: 'var(--gv-text-muted)', borderBottom: '1px solid var(--gv-border)' }}>
+        <button
+          type="button"
+          className="w-full px-4 py-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider hover:brightness-110 transition"
+          style={{ color: 'var(--gv-text-muted)', borderBottom: rulesOpen || rules.length === 0 ? '1px solid var(--gv-border)' : 'none' }}
+          onClick={() => setRulesOpen((v) => !v)}
+        >
+          {rulesOpen
+            ? <ChevronDown className="w-4 h-4" />
+            : <ChevronRight className="w-4 h-4" />}
           {t('alerts.rules')}
-        </div>
-        {rules.length === 0 ? (
-          <div className="p-6 text-center text-sm" style={{ color: 'var(--gv-text-muted)' }}>
-            {t('alerts.no_rules')}
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: 'var(--gv-surface-alt)', color: 'var(--gv-text-muted)' }}>
-                <th className="text-left py-2 px-4 text-xs uppercase tracking-wider font-medium">{t('alerts.rule_name')}</th>
-                <th className="text-left py-2 px-4 text-xs uppercase tracking-wider font-medium">{t('alerts.condition')}</th>
-                <th className="text-left py-2 px-4 text-xs uppercase tracking-wider font-medium">{t('alerts.duration')}</th>
-                <th className="text-left py-2 px-4 text-xs uppercase tracking-wider font-medium">{t('alerts.notify')}</th>
-                <th className="text-right py-2 px-4 text-xs uppercase tracking-wider font-medium">{t('alerts.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...rules].sort((a, b) => {
-                const ai = METRIC_ORDER.indexOf(a.metric);
-                const bi = METRIC_ORDER.indexOf(b.metric);
-                if (ai !== bi) return ai - bi;
-                if (a.threshold !== b.threshold) return a.threshold - b.threshold;
-                return a.name.localeCompare(b.name);
-              }).map((r) => (
-                <tr key={r.id} style={{ borderTop: '1px solid var(--gv-border)' }}>
-                  <td className="py-2 px-4">
-                    <div className="flex items-start gap-2">
-                      <span title={t(`alerts.metrics.${r.metric}`)} className="inline-flex shrink-0 mt-0.5">
-                        <MetricIcon metric={r.metric} className="w-4 h-4" />
-                      </span>
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{r.name}</div>
-                        <div className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
-                          {r.gpu_index === null ? t('alerts.all_gpus') : `GPU #${r.gpu_index}`}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-2 px-4 tabular-nums">
-                    {t(`alerts.metrics.${r.metric}`)} {r.condition === 'above' ? '≥' : '≤'} {r.threshold}
-                  </td>
-                  <td className="py-2 px-4 tabular-nums">{r.duration_s}s</td>
-                  <td className="py-2 px-4">
-                    <div className="flex items-center gap-2">
-                      {!!r.notify_browser && (
-                        <span title={t('alerts.notify_browser')} className="inline-flex">
-                          <Bell className="w-3.5 h-3.5" style={{ color: 'var(--gv-info)' }} />
-                        </span>
-                      )}
-                      {!!r.notify_sound && (
-                        <span title={t('alerts.notify_sound')} className="inline-flex">
-                          <Volume2 className="w-3.5 h-3.5" style={{ color: 'var(--gv-warn)' }} />
-                        </span>
-                      )}
-                      <span
-                        title={r.notify_webhook ? t('alerts.webhook_active_hint') : t('alerts.webhook_inactive_hint')}
-                        className="inline-flex cursor-help"
-                      >
-                        <Webhook
-                          className="w-3.5 h-3.5"
-                          style={{
-                            color: r.notify_webhook ? 'var(--gv-accent)' : 'var(--gv-text-dim)',
-                            opacity: r.notify_webhook ? 1 : 0.5,
-                          }}
-                        />
-                      </span>
-                    </div>
-                  </td>
-                  <td className="py-2 px-4 text-right">
-                    <div className="inline-flex items-center gap-2">
-                      <label
-                        className="inline-flex items-center cursor-pointer"
-                        title={t('alerts.toggle_webhook_hint')}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!r.notify_webhook}
-                          onChange={() => isAdmin && toggleWebhook(r)}
-                          disabled={!isAdmin}
-                          className="sr-only peer"
-                        />
-                        <span className="inline-flex items-center gap-1 w-auto h-5 px-1.5 rounded-full transition-colors text-[10px] font-medium uppercase tracking-wider" style={{
-                          background: r.notify_webhook ? 'color-mix(in srgb, var(--gv-accent) 18%, transparent)' : 'var(--gv-surface-alt)',
-                          color: r.notify_webhook ? 'var(--gv-accent)' : 'var(--gv-text-dim)',
-                          border: `1px solid ${r.notify_webhook ? 'color-mix(in srgb, var(--gv-accent) 35%, transparent)' : 'var(--gv-border)'}`,
-                        }}>
-                          <Webhook className="w-3 h-3" />
-                          {r.notify_webhook ? 'ON' : 'OFF'}
-                        </span>
-                      </label>
-                      <label
-                        className="inline-flex items-center cursor-pointer"
-                        aria-label={t('alerts.enabled')}
-                      >
-                        <input
-                          type="checkbox"
-                          aria-label={t('alerts.enabled')}
-                          checked={!!r.enabled}
-                          onChange={() => isAdmin && toggle(r)}
-                          disabled={!isAdmin}
-                          className="sr-only peer"
-                        />
-                        <span className="w-9 h-5 rounded-full transition-colors relative" style={{
-                          background: r.enabled ? 'var(--gv-accent)' : 'var(--gv-surface-alt)',
-                        }}>
-                          <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform"
-                                style={{ transform: r.enabled ? 'translateX(16px)' : 'translateX(0)' }} />
-                        </span>
-                      </label>
-                      {isAdmin && (
-                        <>
-                          <button className="btn-ghost !p-1.5" onClick={() => setEditing(r)} aria-label="Edit">
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button className="btn-ghost !p-1.5" onClick={() => remove(r.id)} aria-label="Delete">
-                            <Trash2 className="w-3.5 h-3.5" style={{ color: 'var(--gv-danger)' }} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
+          {!rulesOpen && rules.length > 0 && (
+            <span className="normal-case ml-1 text-xs font-normal" style={{ color: 'var(--gv-text-dim)' }}>
+              · {t('alerts.rules_count', { count: rules.length })}
+            </span>
+          )}
+        </button>
+        {rulesOpen && (
+          rules.length === 0 ? (
+            <div className="p-6 text-center text-sm" style={{ color: 'var(--gv-text-muted)' }}>
+              {t('alerts.no_rules')}
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: 'var(--gv-surface-alt)', color: 'var(--gv-text-muted)' }}>
+                  <th className="text-left py-2 px-4 text-xs uppercase tracking-wider font-medium">{t('alerts.rule_name')}</th>
+                  <th className="text-left py-2 px-4 text-xs uppercase tracking-wider font-medium">{t('alerts.condition')}</th>
+                  <th className="text-left py-2 px-4 text-xs uppercase tracking-wider font-medium">{t('alerts.duration')}</th>
+                  <th className="text-left py-2 px-4 text-xs uppercase tracking-wider font-medium">{t('alerts.notify')}</th>
+                  <th className="text-right py-2 px-4 text-xs uppercase tracking-wider font-medium">{t('alerts.actions')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              {(() => {
+                const sorted = [...rules].sort((a, b) => {
+                  const ai = METRIC_ORDER.indexOf(a.metric);
+                  const bi = METRIC_ORDER.indexOf(b.metric);
+                  if (ai !== bi) return ai - bi;
+                  if (a.threshold !== b.threshold) return a.threshold - b.threshold;
+                  return a.name.localeCompare(b.name);
+                });
+                const gpuMetrics: Metric[] = ['temperature', 'utilization', 'memory', 'power', 'fan_speed'];
+                const gpu = sorted.filter((r) => gpuMetrics.includes(r.metric));
+                const host = sorted.filter((r) => !gpuMetrics.includes(r.metric));
+                const groups: { label: string; rules: Rule[] }[] = [];
+                if (gpu.length) groups.push({ label: t('alerts.metric_group_gpu'), rules: gpu });
+                if (host.length) groups.push({ label: t('alerts.metric_group_host'), rules: host });
+                return groups.map((grp) => (
+                  <tbody key={grp.label}>
+                    <tr>
+                      <td colSpan={5} className="px-4 py-1.5 text-[10px] uppercase tracking-widest font-semibold"
+                          style={{ color: 'var(--gv-text-dim)', background: 'var(--gv-surface-alt)' }}>
+                        {grp.label}
+                      </td>
+                    </tr>
+                    {grp.rules.map((r) => (
+                      <tr key={r.id} style={{ borderTop: '1px solid var(--gv-border)' }}>
+                        <td className="py-2 px-4">
+                          <div className="flex items-center gap-2">
+                            <span title={t(`alerts.metrics.${r.metric}`)} className="inline-flex shrink-0">
+                              <MetricIcon metric={r.metric} className="w-4 h-4" />
+                            </span>
+                            <span className="font-medium truncate">{r.name}</span>
+                          </div>
+                        </td>
+                    <td className="py-2 px-4 tabular-nums">
+                      {t(`alerts.metrics.${r.metric}`)} {r.condition === 'above' ? '≥' : '≤'} {r.threshold}
+                    </td>
+                    <td className="py-2 px-4 tabular-nums">{r.duration_s}s</td>
+                    <td className="py-2 px-4">
+                      <div className="flex items-center gap-2">
+                        {!!r.notify_browser && (
+                          <span title={t('alerts.notify_browser')} className="inline-flex">
+                            <Bell className="w-3.5 h-3.5" style={{ color: 'var(--gv-info)' }} />
+                          </span>
+                        )}
+                        {!!r.notify_sound && (
+                          <span title={t('alerts.notify_sound')} className="inline-flex">
+                            <Volume2 className="w-3.5 h-3.5" style={{ color: 'var(--gv-warn)' }} />
+                          </span>
+                        )}
+                        <span
+                          title={r.notify_webhook ? t('alerts.webhook_active_hint') : t('alerts.webhook_inactive_hint')}
+                          className="inline-flex cursor-help"
+                        >
+                          <Webhook
+                            className="w-3.5 h-3.5"
+                            style={{
+                              color: r.notify_webhook ? 'var(--gv-accent)' : 'var(--gv-text-dim)',
+                              opacity: r.notify_webhook ? 1 : 0.5,
+                            }}
+                          />
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-2 px-4 text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <label
+                          className="inline-flex items-center cursor-pointer"
+                          title={t('alerts.toggle_webhook_hint')}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!r.notify_webhook}
+                            onChange={() => isAdmin && toggleWebhook(r)}
+                            disabled={!isAdmin}
+                            className="sr-only peer"
+                          />
+                          <span className="inline-flex items-center gap-1 w-auto h-5 px-1.5 rounded-full transition-colors text-[10px] font-medium uppercase tracking-wider" style={{
+                            background: r.notify_webhook ? 'color-mix(in srgb, var(--gv-accent) 18%, transparent)' : 'var(--gv-surface-alt)',
+                            color: r.notify_webhook ? 'var(--gv-accent)' : 'var(--gv-text-dim)',
+                            border: `1px solid ${r.notify_webhook ? 'color-mix(in srgb, var(--gv-accent) 35%, transparent)' : 'var(--gv-border)'}`,
+                          }}>
+                            <Webhook className="w-3 h-3" />
+                            {r.notify_webhook ? 'ON' : 'OFF'}
+                          </span>
+                        </label>
+                        <label
+                          className="inline-flex items-center cursor-pointer"
+                          aria-label={t('alerts.enabled')}
+                        >
+                          <input
+                            type="checkbox"
+                            aria-label={t('alerts.enabled')}
+                            checked={!!r.enabled}
+                            onChange={() => isAdmin && toggle(r)}
+                            disabled={!isAdmin}
+                            className="sr-only peer"
+                          />
+                          <span className="w-9 h-5 rounded-full transition-colors relative" style={{
+                            background: r.enabled ? 'var(--gv-accent)' : 'var(--gv-surface-alt)',
+                          }}>
+                            <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+                                  style={{ transform: r.enabled ? 'translateX(16px)' : 'translateX(0)' }} />
+                          </span>
+                        </label>
+                        {isAdmin && (
+                          <>
+                            <button className="btn-ghost !p-1.5" onClick={() => setEditing(r)} aria-label="Edit">
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button className="btn-ghost !p-1.5" onClick={() => remove(r.id)} aria-label="Delete">
+                              <Trash2 className="w-3.5 h-3.5" style={{ color: 'var(--gv-danger)' }} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                    ))}
+                  </tbody>
+                ));
+              })()}
+            </table>
+          )
         )}
       </section>
 
+      <style>{`
+        @keyframes gv-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
       <section className="card overflow-hidden">
-        <div className="px-4 py-3 text-sm font-semibold uppercase tracking-wider"
-             style={{ color: 'var(--gv-text-muted)', borderBottom: '1px solid var(--gv-border)' }}>
+        <div className="px-4 py-3 text-sm font-semibold uppercase tracking-wider flex items-center gap-2"
+             style={{ color: 'var(--gv-text-muted)', borderBottom: events.length === 0 ? 'none' : '1px solid var(--gv-border)' }}>
           {t('alerts.recent_events')}
+          {events.length > 0 && (
+            <span className="normal-case ml-auto text-xs font-normal" style={{ color: 'var(--gv-text-dim)' }}>
+              {events.length}
+            </span>
+          )}
         </div>
         {events.length === 0 ? (
           <div className="p-6 text-center text-sm" style={{ color: 'var(--gv-text-muted)' }}>
@@ -335,18 +389,34 @@ export default function AlertsPage() {
         ) : (
           <ul className="divide-y" style={{ borderColor: 'var(--gv-border)' }}>
             {events.map((e) => (
-              <li key={e.id} className="px-4 py-2.5 flex items-start gap-3 text-sm">
-                <span className="mt-0.5 inline-block w-2 h-2 rounded-full" style={{
-                  background: e.state === 'firing' ? 'var(--gv-danger)' : 'var(--gv-ok)',
-                  boxShadow: `0 0 8px ${e.state === 'firing' ? 'var(--gv-danger)' : 'var(--gv-ok)'}`,
-                }} />
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium">{e.rule_name}</div>
-                  <div className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>{e.message}</div>
-                </div>
-                <span className="text-xs tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>
-                  {new Date(e.triggered_at * 1000).toLocaleString()}
+              <li key={e.id} className="px-4 py-3 flex items-start gap-3 text-sm hover:brightness-110 transition"
+                  style={{ background: e.state === 'firing' ? 'color-mix(in srgb, var(--gv-danger) 6%, transparent)' : 'transparent' }}>
+                <span className="relative mt-1 flex-shrink-0 flex items-center justify-center">
+                  <span className="absolute w-2.5 h-2.5 rounded-full"
+                        style={{
+                          background: e.state === 'firing' ? 'var(--gv-danger)' : 'var(--gv-ok)',
+                          animation: e.state === 'firing' ? 'gv-pulse 1.5s ease-in-out infinite' : 'none',
+                        }} />
                 </span>
+                <span className="flex-shrink-0 mt-0.5" aria-hidden>
+                  <MetricIcon metric={e.metric as Metric} className="w-4 h-4" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium truncate">{e.rule_name}</span>
+                    <span className="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-px rounded" style={{
+                      background: e.state === 'firing' ? 'color-mix(in srgb, var(--gv-danger) 18%, transparent)' : 'color-mix(in srgb, var(--gv-ok) 18%, transparent)',
+                      color: e.state === 'firing' ? 'var(--gv-danger)' : 'var(--gv-ok)',
+                    }}>
+                      {e.state === 'firing' ? t('alerts.firing') : t('alerts.resolved')}
+                    </span>
+                  </div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--gv-text-muted)' }}>{e.message}</div>
+                </div>
+                <div className="flex-shrink-0 flex items-center gap-1 text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+                  <Clock className="w-3 h-3" />
+                  <span className="tabular-nums whitespace-nowrap">{relativeTime(e.triggered_at, t)}</span>
+                </div>
               </li>
             ))}
           </ul>
@@ -358,7 +428,7 @@ export default function AlertsPage() {
         <PresetsModal
           installed={rules}
           onClose={() => setPresetsOpen(false)}
-          onInstalled={async () => { setPresetsOpen(false); await load(); }}
+          onInstalled={async () => { setPresetsOpen(false); setRulesOpen(true); await load(); }}
         />
       )}
     </div>

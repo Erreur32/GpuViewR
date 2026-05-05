@@ -136,7 +136,11 @@
     "presets_install": "Add {{count}}",
     "presets_installed": "Presets added (disabled).",
     "presets_disabled_note": "Added rules start disabled: review and enable each one.",
-    "preset_already_installed": "Already added"
+    "preset_already_installed": "Already added",
+    "rules_count": "{{count}} rule(s) configured",
+    "firing": "Firing",
+    "resolved": "Resolved",
+    "just_now": "Just now"
   },
   "logs": {
     "title": "Server logs",
