@@ -2,6 +2,7 @@ import { Layers } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUiStore } from '../../store/uiStore';
 import type { GpuSample } from '../../store/gpuStore';
+import { shortGpuName } from '../../lib/gpuName';
 
 export default function GpuTabs({ samples }: { samples: GpuSample[] }) {
   const { t } = useTranslation();
@@ -35,16 +36,9 @@ export default function GpuTabs({ samples }: { samples: GpuSample[] }) {
           onClick={() => { setDashboardView('single'); setSelected(s.gpu_index); }}
           title={s.name}
         >
-          GPU #{s.gpu_index} <span className="opacity-60 ml-1">{shortName(s.name)}</span>
+          GPU #{s.gpu_index} <span className="opacity-60 ml-1">{shortGpuName(s.name)}</span>
         </button>
       ))}
     </div>
   );
-}
-
-function shortName(name: string): string {
-  return name
-    .replace(/^NVIDIA\s+/i, '')
-    .replace(/\s+(?:GeForce|Quadro|Tesla)\s+/i, ' ')
-    .trim();
 }

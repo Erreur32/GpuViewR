@@ -7,6 +7,7 @@ import type { GpuSample } from '../../store/gpuStore';
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
 import { fmtClock, fmtDateTime, makeAxisTimeFormatter, rangeToSeconds } from '../../lib/time';
+import { shortGpuName } from '../../lib/gpuName';
 
 // Per-GPU palette — eight high-contrast hues so up to eight GPUs stay
 // visually distinguishable on the same chart. Past that, we wrap around;
@@ -226,7 +227,7 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
             <span className="inline-block w-2.5 h-2.5 rounded-full"
                   style={{ background: GPU_COLORS[i % GPU_COLORS.length] }} />
             <span>GPU #{s.gpu_index}</span>
-            <span className="opacity-60">{shortName(s.name)}</span>
+            <span className="opacity-60">{shortGpuName(s.name)}</span>
           </span>
         ))}
       </div>
@@ -271,6 +272,3 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
   );
 }
 
-function shortName(name: string): string {
-  return name.replace(/^NVIDIA\s+/i, '').replace(/\s+(?:GeForce|Quadro|Tesla)\s+/i, ' ').trim();
-}
