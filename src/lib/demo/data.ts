@@ -289,7 +289,7 @@ export function fakeExportsConfig() {
     influxdb: {
       enabled: false,
       includeSystemStats: true,
-      url: 'http://influxdb.example.com:8086',
+      url: 'https://influxdb.example.com:8086',
       token: '',
       org: 'demo-org',
       bucket: 'gpuviewr',
@@ -317,7 +317,7 @@ export function fakeExportsInfo() {
   return {
     prometheus: {
       enabled: true,
-      endpoint: { method: 'GET' as const, path: '/metrics', url: 'http://demo.local:3015/metrics' },
+      endpoint: { method: 'GET' as const, path: '/metrics', url: 'https://demo.local:3015/metrics' },
       metrics: [
         { name: 'gpuviewr_temperature_celsius',     help: 'GPU temperature in °C',          type: 'gauge' as const, unit: '°C' },
         { name: 'gpuviewr_utilization_percent',     help: 'GPU utilization in percent',     type: 'gauge' as const, unit: '%' },
@@ -348,7 +348,7 @@ export function fakeExportsInfo() {
     },
     influxdb: {
       enabled: false,
-      writeUrl: 'http://influxdb.example.com:8086/api/v2/write?org=demo-org&bucket=gpuviewr',
+      writeUrl: 'https://influxdb.example.com:8086/api/v2/write?org=demo-org&bucket=gpuviewr',
       measurement: 'gpu_metrics',
       intervalSeconds: 10,
       tagKeys: ['gpu_index', 'name', 'uuid'],
