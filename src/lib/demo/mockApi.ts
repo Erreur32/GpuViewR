@@ -43,6 +43,7 @@ function specOrDefault(idx: number) {
 // Mutable in-memory state so toggling alert rules / installing presets
 // feels real for the duration of the demo session. Cleared on reload.
 let demoRules: DemoRule[] = fakeAlertRules();
+let demoEvents: ReturnType<typeof fakeAlertEvents> = fakeAlertEvents();
 let demoExports = fakeExportsConfig();
 let demoUpdateConfig = fakeUpdateConfig().config;
 
@@ -166,7 +167,21 @@ function handleAlerts(ctx: RouteCtx): Response | null {
     const ids = (ctx.body as { ids?: string[] })?.ids ?? [];
     return json({ created: ids.length });
   }
-  if (p === '/api/alerts/events') return json({ events: fakeAlertEvents() });
+  if (p === '/api/alerts/events') {
+    if (ctx.method === 'GET') return json({ events: demoEvents });
+    if (ctx.method === 'DELETE') {
+      const count = demoEvents.length;
+      demoEvents = [];
+      return json({ ok: true, count });
+    }
+  }
+  const eventMatch = /^\/api\/alerts\/events\/(\d+)$/.exec(p);
+  if (eventMatch && ctx.method === 'DELETE') {
+    const id = parseInt(eventMatch[1], 10);
+    const before = demoEvents.length;
+    demoEvents = demoEvents.filter((e) => e.id !== id);
+    return json({ ok: before !== demoEvents.length });
+  }
   return null;
 }
 

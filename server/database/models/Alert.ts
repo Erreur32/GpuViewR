@@ -157,4 +157,12 @@ export const AlertEventRepo = {
     const r = getDatabase().prepare('DELETE FROM alert_events WHERE triggered_at < ?').run(epoch);
     return Number(r.changes || 0);
   },
+  delete(id: number): boolean {
+    const r = getDatabase().prepare('DELETE FROM alert_events WHERE id = ?').run(id);
+    return Number(r.changes || 0) > 0;
+  },
+  deleteAll(): number {
+    const r = getDatabase().prepare('DELETE FROM alert_events').run();
+    return Number(r.changes || 0);
+  },
 };

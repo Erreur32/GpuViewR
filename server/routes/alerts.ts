@@ -167,6 +167,18 @@ router.get('/events', (req, res) => {
   res.json({ events: AlertEventRepo.list(limit) });
 });
 
+router.delete('/events/:id', (_req, res) => {
+  const id = Number.parseInt(_req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+  const ok = AlertEventRepo.delete(id);
+  res.json({ ok });
+});
+
+router.delete('/events', (_req, res) => {
+  const count = AlertEventRepo.deleteAll();
+  res.json({ ok: true, count });
+});
+
 function validate(body: Record<string, unknown>, partial = false): string | null {
   const must = (key: string) => !partial && (body[key] === undefined || body[key] === null);
   if (must('name')) return 'name is required';

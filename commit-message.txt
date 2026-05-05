@@ -1,10 +1,10 @@
-release: v0.2.1 - collapsible alert rules, grouped GPU/System display, enhanced event visuals
+release: v0.2.2 - grouped rules display, per-event and clear-all event deletion
 
 Changed:
-- Alerts tab: Rules section collapsed by default with rule count badge,
-  auto-expands on rule create or preset install so Recent Events remain
-  visible.
 - Alerts tab: rules table split into GPU / System groups with category
   headers; per-rule "All GPUs" subtitle removed.
-- Alerts tab: Recent Events now show metric icon, pulsing firing dot,
-  colored state badge, and relative timestamps.
+
+Added:
+- Per-event delete button (hover to reveal) and "Clear all" button for
+  recent events. Backend DELETE /events/:id and DELETE /events routes,
+  plus AlertEventRepo.delete/deleteAll.

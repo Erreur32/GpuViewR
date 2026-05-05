@@ -166,6 +166,25 @@ export default function AlertsPage() {
     }
   }
 
+  async function deleteEvent(id: number) {
+    try {
+      await api(`/alerts/events/${id}`, { method: 'DELETE' });
+      await load();
+    } catch (err) {
+      notify('error', t('common.error'), (err as Error).message);
+    }
+  }
+
+  async function clearEvents() {
+    try {
+      await api('/alerts/events', { method: 'DELETE' });
+      notify('success', t('alerts.events_cleared'));
+      await load();
+    } catch (err) {
+      notify('error', t('common.error'), (err as Error).message);
+    }
+  }
+
   async function requestBrowserPerm() {
     if (typeof Notification === 'undefined') return;
     const p = await Notification.requestPermission();
@@ -377,9 +396,20 @@ export default function AlertsPage() {
              style={{ color: 'var(--gv-text-muted)', borderBottom: events.length === 0 ? 'none' : '1px solid var(--gv-border)' }}>
           {t('alerts.recent_events')}
           {events.length > 0 && (
-            <span className="normal-case ml-auto text-xs font-normal" style={{ color: 'var(--gv-text-dim)' }}>
-              {events.length}
+            <span className="normal-case text-xs font-normal" style={{ color: 'var(--gv-text-dim)' }}>
+              ({events.length})
             </span>
+          )}
+          {events.length > 0 && (
+            <button
+              type="button"
+              className="ml-auto btn-ghost !py-1 !px-2 text-xs normal-case"
+              onClick={clearEvents}
+              title={t('alerts.clear_all_events')}
+            >
+              <Trash2 className="w-3 h-3" />
+              {t('alerts.clear_all_events')}
+            </button>
           )}
         </div>
         {events.length === 0 ? (
@@ -389,7 +419,7 @@ export default function AlertsPage() {
         ) : (
           <ul className="divide-y" style={{ borderColor: 'var(--gv-border)' }}>
             {events.map((e) => (
-              <li key={e.id} className="px-4 py-3 flex items-start gap-3 text-sm hover:brightness-110 transition"
+              <li key={e.id} className="px-4 py-3 flex items-start gap-3 text-sm hover:brightness-110 transition group"
                   style={{ background: e.state === 'firing' ? 'color-mix(in srgb, var(--gv-danger) 6%, transparent)' : 'transparent' }}>
                 <span className="relative mt-1 flex-shrink-0 flex items-center justify-center">
                   <span className="absolute w-2.5 h-2.5 rounded-full"
@@ -417,6 +447,14 @@ export default function AlertsPage() {
                   <Clock className="w-3 h-3" />
                   <span className="tabular-nums whitespace-nowrap">{relativeTime(e.triggered_at, t)}</span>
                 </div>
+                <button
+                  type="button"
+                  className="btn-ghost !p-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => deleteEvent(e.id)}
+                  title={t('alerts.delete_event')}
+                >
+                  <Trash2 className="w-3.5 h-3.5" style={{ color: 'var(--gv-danger)' }} />
+                </button>
               </li>
             ))}
           </ul>

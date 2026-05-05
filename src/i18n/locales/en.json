@@ -140,7 +140,10 @@
     "rules_count": "{{count}} rule(s) configured",
     "firing": "Firing",
     "resolved": "Resolved",
-    "just_now": "Just now"
+    "just_now": "Just now",
+    "delete_event": "Delete event",
+    "clear_all_events": "Clear all",
+    "events_cleared": "Events cleared"
   },
   "logs": {
     "title": "Server logs",

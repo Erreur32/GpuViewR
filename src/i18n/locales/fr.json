@@ -140,7 +140,10 @@
     "rules_count": "{{count}} règle(s) configurée(s)",
     "firing": "En alerte",
     "resolved": "Résolue",
-    "just_now": "À l'instant"
+    "just_now": "À l'instant",
+    "delete_event": "Supprimer l'événement",
+    "clear_all_events": "Tout effacer",
+    "events_cleared": "Événements supprimés"
   },
   "logs": {
     "title": "Journaux serveur",
