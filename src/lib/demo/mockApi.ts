@@ -33,7 +33,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 function gpuParam(url: URL): number {
-  return Math.max(0, parseInt(url.searchParams.get('gpu') || '0', 10) || 0);
+  return Math.max(0, Number.parseInt(url.searchParams.get('gpu') || '0', 10) || 0);
 }
 
 function specOrDefault(idx: number) {
@@ -149,7 +149,7 @@ function handleAlerts(ctx: RouteCtx): Response | null {
   }
   const ruleMatch = /^\/api\/alerts\/rules\/(\d+)$/.exec(p);
   if (ruleMatch) {
-    const id = parseInt(ruleMatch[1], 10);
+    const id = Number.parseInt(ruleMatch[1], 10);
     if (ctx.method === 'PATCH') {
       const body = (ctx.body as RuleBody) ?? {};
       demoRules = demoRules.map((r) => (r.id === id ? applyRulePatch(r, body) : r));
@@ -177,7 +177,7 @@ function handleAlerts(ctx: RouteCtx): Response | null {
   }
   const eventMatch = /^\/api\/alerts\/events\/(\d+)$/.exec(p);
   if (eventMatch && ctx.method === 'DELETE') {
-    const id = parseInt(eventMatch[1], 10);
+    const id = Number.parseInt(eventMatch[1], 10);
     const before = demoEvents.length;
     demoEvents = demoEvents.filter((e) => e.id !== id);
     return json({ ok: before !== demoEvents.length });
