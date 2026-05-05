@@ -6,36 +6,11 @@ import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
 import { notify } from '../../store/toastStore';
 import { api } from '../../lib/api';
-import { fmtClock, fmtDateTime } from '../../lib/time';
+import { fmtClock, fmtDateTime, makeAxisTimeFormatter, rangeToSeconds } from '../../lib/time';
 
 interface Props { gpuIndex: number; }
 
 import type { HistoryRow } from '../../store/gpuStore';
-
-// In "Live" mode the chart shows the last LIVE_WINDOW_S seconds as a
-// rolling scope. 90s gives ~90 points at the default 1Hz tick — dense
-// enough to see real movement, sparse enough that the line still
-// breathes and individual hover targets stay clickable.
-const LIVE_WINDOW_S = 90;
-
-// Mirrors parseRange() in server/routes/gpu.ts so the client can apply
-// the same rolling-window cutoff to merged (history + live) data: the
-// chart's left edge must slide forward as time passes so "5m" always
-// shows the last 5 minutes, not "the 5 minutes that started when you
-// clicked the button".
-function rangeToSeconds(range: string): number {
-  if (range === 'live') return LIVE_WINDOW_S;
-  const m = /^(\d+(?:\.\d+)?)([smhd])$/.exec(range);
-  if (!m) return 3600;
-  const n = Number.parseFloat(m[1]);
-  switch (m[2]) {
-    case 's': return Math.max(1, Math.floor(n));
-    case 'm': return Math.floor(n * 60);
-    case 'h': return Math.floor(n * 3600);
-    case 'd': return Math.floor(n * 86400);
-    default: return 3600;
-  }
-}
 
 interface CursorValues {
   t: number | null;
@@ -143,30 +118,7 @@ export default function LiveChart({ gpuIndex }: Props) {
         W: { auto: true },
       },
       axes: [
-        {
-          stroke: muted,
-          grid: { stroke: grid },
-          values: (_u, vals) => {
-            const pad = (n: number) => String(n).padStart(2, '0');
-            const step = vals.length > 1 ? Math.abs(vals[1] - vals[0]) : 60;
-            const showSeconds = step < 60;
-            return vals.map((v) => {
-              const d = new Date(v * 1000);
-              if (timeFormatRef.current === '24h') {
-                return showSeconds
-                  ? `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-                  : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-              }
-              let h = d.getHours();
-              const ampm = h >= 12 ? 'PM' : 'AM';
-              h = h % 12;
-              if (h === 0) h = 12;
-              return showSeconds
-                ? `${pad(h)}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ampm}`
-                : `${pad(h)}:${pad(d.getMinutes())} ${ampm}`;
-            });
-          },
-        },
+        { stroke: muted, grid: { stroke: grid }, values: makeAxisTimeFormatter(timeFormatRef) },
         { stroke: muted, grid: { stroke: grid }, scale: '%', values: (_u, vals) => vals.map((v) => v + '%') },
         { side: 1, stroke: muted, grid: { show: false }, scale: 'W', values: (_u, vals) => vals.map((v) => v + ' W') },
       ],

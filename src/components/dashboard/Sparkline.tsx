@@ -21,7 +21,7 @@ export default function Sparkline({
   // fills of every gauge shared a single <linearGradient> definition,
   // so the browser picked a single winning color for the whole page —
   // making every sparkline look like the wrong metric.
-  const gradId = `sl-grad-${useId().replace(/:/g, '')}`;
+  const gradId = `sl-grad-${useId().replaceAll(':', '')}`;
 
   if (values.length < 2) {
     return <div className={className} style={{ width, height }} />;

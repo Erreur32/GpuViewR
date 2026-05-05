@@ -6,7 +6,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { GpuSample } from '../../store/gpuStore';
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
-import { fmtClock, fmtDateTime } from '../../lib/time';
+import { fmtClock, fmtDateTime, makeAxisTimeFormatter, rangeToSeconds } from '../../lib/time';
 
 // Per-GPU palette — eight high-contrast hues so up to eight GPUs stay
 // visually distinguishable on the same chart. Past that, we wrap around;
@@ -25,22 +25,6 @@ const METRICS: ReadonlyArray<{ key: Metric; labelKey: string; icon: LucideIcon; 
   { key: 'fan_speed',    labelKey: 'dashboard.metrics.fan',         icon: Fan,         unit: '%', scale: '%' },
   { key: 'power',        labelKey: 'dashboard.metrics.power',       icon: Zap,         unit: 'W', scale: 'W' },
 ];
-
-const LIVE_WINDOW_S = 90;
-
-function rangeToSeconds(range: string): number {
-  if (range === 'live') return LIVE_WINDOW_S;
-  const m = /^(\d+(?:\.\d+)?)([smhd])$/.exec(range);
-  if (!m) return 600;
-  const n = Number.parseFloat(m[1]);
-  switch (m[2]) {
-    case 's': return Math.max(1, Math.floor(n));
-    case 'm': return Math.floor(n * 60);
-    case 'h': return Math.floor(n * 3600);
-    case 'd': return Math.floor(n * 86400);
-    default: return 600;
-  }
-}
 
 export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample[] }>) {
   const { t } = useTranslation();
@@ -89,30 +73,7 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
         W: { auto: true },
       },
       axes: [
-        {
-          stroke: muted,
-          grid: { stroke: grid },
-          values: (_u, vals) => {
-            const pad = (n: number) => String(n).padStart(2, '0');
-            const step = vals.length > 1 ? Math.abs(vals[1] - vals[0]) : 60;
-            const showSeconds = step < 60;
-            return vals.map((v) => {
-              const d = new Date(v * 1000);
-              if (timeFormatRef.current === '24h') {
-                return showSeconds
-                  ? `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-                  : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-              }
-              let h = d.getHours();
-              const ampm = h >= 12 ? 'PM' : 'AM';
-              h = h % 12;
-              if (h === 0) h = 12;
-              return showSeconds
-                ? `${pad(h)}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ampm}`
-                : `${pad(h)}:${pad(d.getMinutes())} ${ampm}`;
-            });
-          },
-        },
+        { stroke: muted, grid: { stroke: grid }, values: makeAxisTimeFormatter(timeFormatRef) },
         {
           stroke: muted,
           grid: { stroke: grid },
@@ -176,7 +137,7 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
       plotRef.current.setData([[]] as unknown as AlignedData);
       return;
     }
-    const cutoff = longest[longest.length - 1] - rangeToSeconds(range);
+    const cutoff = (longest.at(-1) as number) - rangeToSeconds(range);
     const tArr: number[] = [];
     for (const ts of longest) if (ts >= cutoff) tArr.push(ts);
 
@@ -225,9 +186,12 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
     ? (plotRef.current.data[0]?.[cursorIdx] as number | undefined) ?? null
     : null;
 
-  const fmt = (v: number | null) => v === null || !Number.isFinite(v)
-    ? '-'
-    : `${v.toFixed(v < 10 ? 1 : 0)}${meta.scale === 'W' ? ' W' : meta.unit}`;
+  const unitSuffix = meta.scale === 'W' ? ' W' : meta.unit;
+  const fmt = (v: number | null) => {
+    if (v === null || !Number.isFinite(v)) return '-';
+    const decimals = v < 10 ? 1 : 0;
+    return `${v.toFixed(decimals)}${unitSuffix}`;
+  };
 
   return (
     <div className="card p-4">
@@ -235,7 +199,8 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
         <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
           {t('dashboard.gpus_combined_chart')}
         </h3>
-        <div className="seg flex-wrap" role="group" aria-label={t('dashboard.metric')}>
+        <fieldset className="seg flex-wrap">
+          <legend className="sr-only">{t('dashboard.metric')}</legend>
           {METRICS.map((m) => {
             const Icon = m.icon;
             return (
@@ -250,7 +215,7 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
               </button>
             );
           })}
-        </div>
+        </fieldset>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs mb-2">
@@ -297,9 +262,9 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
       </div>
 
       <div className="text-[10px] mt-1.5" style={{ color: 'var(--gv-text-dim)' }}>
-        {cursorTime !== null
-          ? fmtClock(cursorTime, timeFormat)
-          : t('dashboard.gpus_combined_help')}
+        {cursorTime === null
+          ? t('dashboard.gpus_combined_help')
+          : fmtClock(cursorTime, timeFormat)}
       </div>
     </div>
   );

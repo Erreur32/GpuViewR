@@ -18,7 +18,7 @@ export default function GpuTabs({ samples }: { samples: GpuSample[] }) {
       <button
         type="button"
         role="tab"
-        aria-pressed={isAll}
+        aria-selected={isAll}
         className="seg-btn inline-flex items-center gap-1.5"
         onClick={() => setDashboardView('all')}
         title={t('dashboard.gpus_all_help')}
@@ -30,7 +30,7 @@ export default function GpuTabs({ samples }: { samples: GpuSample[] }) {
           key={s.gpu_index}
           type="button"
           role="tab"
-          aria-pressed={!isAll && s.gpu_index === selected}
+          aria-selected={!isAll && s.gpu_index === selected}
           className="seg-btn"
           onClick={() => { setDashboardView('single'); setSelected(s.gpu_index); }}
           title={s.name}

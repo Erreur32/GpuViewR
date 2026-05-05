@@ -2,21 +2,8 @@ import { useTranslation } from 'react-i18next';
 import { Thermometer, Activity, MemoryStick, Fan, Zap, Cable, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import type { GpuSample } from '../../store/gpuStore';
 import { useGpuStore } from '../../store/gpuStore';
+import { statusFor, colorFor } from '../../lib/status';
 import Sparkline from './Sparkline';
-
-type Status = 'ok' | 'warn' | 'danger';
-
-function statusFor(value: number, warn: number, danger: number): Status {
-  if (value >= danger) return 'danger';
-  if (value >= warn) return 'warn';
-  return 'ok';
-}
-
-function colorFor(status: Status): string {
-  if (status === 'danger') return 'var(--gv-danger)';
-  if (status === 'warn') return 'var(--gv-warn)';
-  return 'var(--gv-ok)';
-}
 
 const PCIE_PER_LANE_GBPS: Record<number, number> = {
   1: 0.25, 2: 0.5, 3: 0.985, 4: 1.969, 5: 3.938, 6: 7.563,
