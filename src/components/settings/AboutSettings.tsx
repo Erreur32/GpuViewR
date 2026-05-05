@@ -189,7 +189,7 @@ export default function AboutSettings() {
       <section className="card p-5 space-y-4">
         <div className="flex items-center gap-4 flex-wrap">
           <img
-            src="/GPUViewR.png"
+            src={`${import.meta.env.BASE_URL}GPUViewR.png`}
             alt="GpuViewR logo"
             width={72}
             height={72}

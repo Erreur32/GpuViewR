@@ -24,11 +24,13 @@ interface WsPayload {
   notify_sound?: boolean;
 }
 
+const ASSET_BASE = import.meta.env.BASE_URL;
+
 let alertSound: HTMLAudioElement | null = null;
 function playAlertSound() {
   try {
     if (!alertSound) {
-      alertSound = new Audio('/alert.mp3');
+      alertSound = new Audio(`${ASSET_BASE}alert.mp3`);
       alertSound.volume = 0.45;
     }
     alertSound.currentTime = 0;
@@ -41,7 +43,7 @@ function playAlertSound() {
 function maybeNotifyBrowser(title: string, body: string) {
   if (typeof Notification === 'undefined') return;
   if (Notification.permission === 'granted') {
-    try { new Notification(title, { body, icon: '/GPUViewR.png' }); } catch { /* ignore */ }
+    try { new Notification(title, { body, icon: `${ASSET_BASE}GPUViewR.png` }); } catch { /* ignore */ }
   }
 }
 

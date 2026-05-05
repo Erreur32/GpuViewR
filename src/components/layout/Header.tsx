@@ -37,7 +37,7 @@ export default function Header() {
             className="shrink-0"
           >
             <img
-              src="/GPUViewR.png"
+              src={`${import.meta.env.BASE_URL}GPUViewR.png`}
               alt="GpuViewR"
               width={36}
               height={36}

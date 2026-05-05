@@ -26,7 +26,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center gap-3 mb-8">
           <img
-            src="/GPUViewR.png"
+            src={`${import.meta.env.BASE_URL}GPUViewR.png`}
             alt="GpuViewR"
             width={72}
             height={72}
