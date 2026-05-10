@@ -205,7 +205,14 @@ export default function SystemPage() {
                 className="pl-3 border-l-2"
                 style={{ borderColor: 'color-mix(in srgb, var(--gv-warn) 35%, transparent)' }}
               >
-                <SystemTemperaturesPanel temperatures={info.temperatures} />
+                <SystemTemperaturesPanel
+                  temperatures={info.temperatures}
+                  gpus={info.gpus.map((g) => ({
+                    gpu_index: g.gpu_index,
+                    name: g.name,
+                    temperature: g.temperature,
+                  }))}
+                />
               </div>
             </>
           )}

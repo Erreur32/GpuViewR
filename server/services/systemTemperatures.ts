@@ -37,6 +37,17 @@ function parseMilliC(raw: string | null): number | null {
   return Math.round(n / 100) / 10;
 }
 
+// Sanity window for a "live" reading. hwmon exposes every channel a
+// driver declares — including unwired motherboard pins and virtual
+// sensors — and the kernel does not validate them. Common artefacts:
+//   - 0°C / -0.1°C  : channel never populated
+//   - large negatives: stale/uninitialised register
+//   - >150°C        : transient bus error or wrong scale
+// Dropping them at the source keeps the UI from showing fake bars.
+function isPlausibleTempC(c: number): boolean {
+  return c >= 5 && c <= 150;
+}
+
 export function readHostTemperatures(): HostTempSensor[] {
   if (!fs.existsSync(HWMON_ROOT)) return [];
 
@@ -68,6 +79,8 @@ export function readHostTemperatures(): HostTempSensor[] {
       const idx = extractIdx(f);
       const valueC = parseMilliC(safeRead(path.join(dir, f)));
       if (valueC === null) continue;
+      // Skip phantom/unwired channels — see isPlausibleTempC.
+      if (!isPlausibleTempC(valueC)) continue;
       const labelRaw = safeRead(path.join(dir, `temp${idx}_label`));
       const label = labelRaw && labelRaw.length > 0 ? labelRaw : `temp${idx}`;
       const maxC = parseMilliC(safeRead(path.join(dir, `temp${idx}_max`)));

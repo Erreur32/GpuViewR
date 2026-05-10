@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Thermometer, Flame, Cpu, HardDrive, Server, ChevronDown, ChevronRight } from 'lucide-react';
+import { Thermometer, Cpu, HardDrive, Server, ChevronDown, ChevronRight, Gpu } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface HostTempSensor {
@@ -13,20 +13,35 @@ export interface HostTempSensor {
 
 interface Props {
   temperatures: ReadonlyArray<HostTempSensor>;
+  // Optional GPU readings, used to populate the GPU sub-frame on
+  // systems where the kernel doesn't expose GPU temps via hwmon
+  // (NVIDIA proprietary stack reports through nvidia-smi, not hwmon).
+  gpus?: ReadonlyArray<{ gpu_index: number; name: string; temperature: number }>;
 }
+
+type Category = 'cpu' | 'gpu' | 'other';
 
 // Pretty source labels per known hwmon driver. Anything unknown falls
 // through to the raw kernel name.
-const SOURCE_META: Record<string, { name: string; icon: LucideIcon }> = {
-  coretemp:    { name: 'CPU (Intel)',     icon: Cpu },
-  k10temp:     { name: 'CPU (AMD)',       icon: Cpu },
-  zenpower:    { name: 'CPU (AMD Zen)',   icon: Cpu },
-  cpu_thermal: { name: 'CPU',             icon: Cpu },
-  acpitz:      { name: 'ACPI thermal',    icon: Server },
-  nvme:        { name: 'NVMe SSD',        icon: HardDrive },
-  drivetemp:   { name: 'SATA drive',      icon: HardDrive },
-  iwlwifi_1:   { name: 'Wi-Fi',           icon: Server },
+const SOURCE_META: Record<string, { name: string; icon: LucideIcon; category: Category }> = {
+  coretemp:    { name: 'CPU (Intel)',     icon: Cpu,       category: 'cpu' },
+  k10temp:     { name: 'CPU (AMD)',       icon: Cpu,       category: 'cpu' },
+  zenpower:    { name: 'CPU (AMD Zen)',   icon: Cpu,       category: 'cpu' },
+  k8temp:      { name: 'CPU (AMD K8)',    icon: Cpu,       category: 'cpu' },
+  cpu_thermal: { name: 'CPU',             icon: Cpu,       category: 'cpu' },
+  amdgpu:      { name: 'GPU (AMD)',       icon: Gpu,       category: 'gpu' },
+  nouveau:     { name: 'GPU (Nouveau)',   icon: Gpu,       category: 'gpu' },
+  radeon:      { name: 'GPU (Radeon)',    icon: Gpu,       category: 'gpu' },
+  nvidia:      { name: 'GPU (NVIDIA)',    icon: Gpu,       category: 'gpu' },
+  acpitz:      { name: 'ACPI thermal',    icon: Server,    category: 'other' },
+  nvme:        { name: 'NVMe SSD',        icon: HardDrive, category: 'other' },
+  drivetemp:   { name: 'SATA drive',      icon: HardDrive, category: 'other' },
+  iwlwifi_1:   { name: 'Wi-Fi',           icon: Server,    category: 'other' },
 };
+
+function categoryOf(source: string): Category {
+  return SOURCE_META[source]?.category ?? 'other';
+}
 
 // 5-band heat scale. Mirrors UsageBar/UsageArc severity in SystemPage so
 // the eye groups thermal state by the same colour cues.
@@ -82,9 +97,38 @@ function groupBySource(sensors: ReadonlyArray<HostTempSensor>): Group[] {
 
 const STORAGE_KEY = 'gpuviewr.systemTempsOpen';
 
-export default function SystemTemperaturesPanel({ temperatures }: Readonly<Props>) {
+// Promote GPU readings from info.gpus into synthetic hwmon-shaped
+// sensors so the GPU sub-frame works on NVIDIA boxes (proprietary
+// driver doesn't register hwmon nodes). Skipped when the kernel
+// already exposes a GPU hwmon source (amdgpu/nouveau) — those carry
+// richer per-channel labels we don't want to overwrite.
+function buildSensors(
+  temperatures: ReadonlyArray<HostTempSensor>,
+  gpus: ReadonlyArray<{ gpu_index: number; name: string; temperature: number }> | undefined,
+): HostTempSensor[] {
+  const merged: HostTempSensor[] = [...temperatures];
+  if (!gpus || gpus.length === 0) return merged;
+  const hasGpuHwmon = temperatures.some((s) => categoryOf(s.source) === 'gpu');
+  if (hasGpuHwmon) return merged;
+  for (const g of gpus) {
+    if (!Number.isFinite(g.temperature) || g.temperature < 5 || g.temperature > 150) continue;
+    merged.push({
+      source: 'nvidia',
+      label: `GPU ${g.gpu_index} · ${g.name}`,
+      valueC: g.temperature,
+      maxC: null,
+      critC: null,
+    });
+  }
+  return merged;
+}
+
+export default function SystemTemperaturesPanel({ temperatures, gpus }: Readonly<Props>) {
   const { t } = useTranslation();
-  const groups = useMemo(() => groupBySource(temperatures), [temperatures]);
+  const sensors = useMemo(() => buildSensors(temperatures, gpus), [temperatures, gpus]);
+  const groups = useMemo(() => groupBySource(sensors), [sensors]);
+  const cpuSensors = useMemo(() => sensors.filter((s) => categoryOf(s.source) === 'cpu'), [sensors]);
+  const gpuSensors = useMemo(() => sensors.filter((s) => categoryOf(s.source) === 'gpu'), [sensors]);
   const [open, setOpen] = useState<boolean>(
     () => (typeof localStorage === 'undefined' ? true : localStorage.getItem(STORAGE_KEY) !== '0'),
   );
@@ -100,8 +144,6 @@ export default function SystemTemperaturesPanel({ temperatures }: Readonly<Props
 
   const hottest = groups[0].hottest;
   const heroColor = tempColor(hottest.valueC);
-  const heroCrit = defaultCrit(groups[0].source, hottest.critC);
-  const heroPct = Math.max(0, Math.min(100, (hottest.valueC / heroCrit) * 100));
   const isHot = hottest.valueC >= 75;
 
   return (
@@ -121,7 +163,7 @@ export default function SystemTemperaturesPanel({ temperatures }: Readonly<Props
           <Thermometer className="w-4 h-4" style={{ color: 'var(--gv-warn)' }} />
           {t('system.temps_title')}
           <span className="text-xs font-normal" style={{ color: 'var(--gv-text-muted)' }}>
-            ({temperatures.length})
+            ({sensors.length})
           </span>
           {!open && (
             <span
@@ -133,20 +175,33 @@ export default function SystemTemperaturesPanel({ temperatures }: Readonly<Props
             </span>
           )}
         </button>
-        <span className="text-[11px]" style={{ color: 'var(--gv-text-dim)' }}>
-          {t('system.temps_hint')}
+        <span className="text-[11px] flex items-center gap-3 flex-wrap" style={{ color: 'var(--gv-text-dim)' }}>
+          <span>
+            <span className="font-mono tabular-nums" style={{ color: 'var(--gv-text)' }}>
+              {avgC(sensors).toFixed(1)}°C
+            </span>{' '}
+            {t('system.temps_avg')}
+          </span>
+          <span>
+            <span className="font-mono tabular-nums" style={{ color: 'var(--gv-text)' }}>
+              {groups.length}
+            </span>{' '}
+            {t('system.temps_sources')}
+          </span>
         </span>
       </header>
 
       {open && <>
 
-      {/* Hero — hottest sensor on the box, glowing readout + a
-          heatmap strip of every reading colour-coded by °C. */}
+      {/* Hero — split into two sub-frames (CPU / GPU) so each silicon
+          domain gets its own hottest reading + heat bar. The
+          surrounding glow follows the overall hottest sensor so the
+          card still flashes when *something* is in trouble. */}
       <div
-        className="relative rounded-2xl p-3 overflow-hidden"
+        className="relative rounded-2xl p-3 overflow-hidden space-y-4"
         style={{
           background:
-            `radial-gradient(circle at 20% 0%, color-mix(in srgb, ${heroColor} 22%, transparent), transparent 60%),`
+            `radial-gradient(circle at 20% 0%, color-mix(in srgb, ${heroColor} 18%, transparent), transparent 60%),`
             + ' var(--gv-surface-alt)',
           border: `1px solid color-mix(in srgb, ${heroColor} 30%, var(--gv-border))`,
           boxShadow: isHot
@@ -154,87 +209,20 @@ export default function SystemTemperaturesPanel({ temperatures }: Readonly<Props
             : 'none',
         }}
       >
-        <div className="flex items-end justify-between gap-4 flex-wrap">
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: 'var(--gv-text-muted)' }}>
-              {t('system.temps_hottest')}
-            </div>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span
-                className={'text-3xl font-bold tabular-nums leading-none ' + (isHot ? 'temp-hot-pulse' : '')}
-                style={{
-                  color: heroColor,
-                  textShadow: `0 0 14px color-mix(in srgb, ${heroColor} 45%, transparent)`,
-                }}
-              >
-                {hottest.valueC.toFixed(1)}
-              </span>
-              <span className="text-lg font-semibold" style={{ color: heroColor }}>°C</span>
-              {isHot && (
-                <Flame className="w-5 h-5 temp-hot-pulse" style={{ color: heroColor }} />
-              )}
-            </div>
-            <div className="text-xs mt-1" style={{ color: 'var(--gv-text-muted)' }}>
-              <span className="font-medium" style={{ color: 'var(--gv-text)' }}>{hottest.label}</span>
-              <span className="opacity-70"> · {groups[0].prettyName}</span>
-            </div>
-          </div>
-
-          {/* Sensor count + average for at-a-glance context */}
-          <div className="text-right text-[11px]" style={{ color: 'var(--gv-text-muted)' }}>
-            <div>
-              <span className="font-mono tabular-nums" style={{ color: 'var(--gv-text)' }}>
-                {avgC(temperatures).toFixed(1)}°C
-              </span>
-              <span className="opacity-70"> {t('system.temps_avg')}</span>
-            </div>
-            <div className="mt-0.5">
-              <span className="font-mono tabular-nums" style={{ color: 'var(--gv-text)' }}>
-                {groups.length}
-              </span>
-              <span className="opacity-70"> {t('system.temps_sources')}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Hottest sensor heat bar — pct toward critical */}
-        <div className="mt-3">
-          <div
-            className="h-1.5 rounded-full relative overflow-hidden"
-            style={{ background: 'color-mix(in srgb, var(--gv-bg) 70%, #000 30%)' }}
-          >
-            <div
-              className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
-              style={{
-                width: `${heroPct}%`,
-                background:
-                  'linear-gradient(90deg,'
-                  + ' var(--gv-info, #3b82f6) 0%,'
-                  + ' var(--gv-ok, #22c55e) 25%,'
-                  + ' var(--gv-warn, #f59e0b) 55%,'
-                  + ' var(--gv-orange, #f97316) 80%,'
-                  + ' var(--gv-danger, #ef4444) 100%)',
-                boxShadow: `0 0 10px color-mix(in srgb, ${heroColor} 40%, transparent)`,
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-between text-[10px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
-            <span>0°C</span>
-            <span className="tabular-nums">
-              {heroPct.toFixed(0)}% / {heroCrit}°C {t('system.temps_crit')}
-            </span>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <CategoryFrame label={t('system.temps_cpu')} Icon={Cpu} sensors={cpuSensors} t={t} />
+          <CategoryFrame label={t('system.temps_gpu')} Icon={Gpu} sensors={gpuSensors} t={t} />
         </div>
 
         {/* Heatmap strip — one segment per sensor, colour by reading.
             Compact, shows the entire system thermal landscape in a
             single horizontal glance. */}
-        <div className="mt-4">
+        <div>
           <div className="text-[10px] uppercase tracking-[0.18em] mb-1.5" style={{ color: 'var(--gv-text-muted)' }}>
             {t('system.temps_map')}
           </div>
           <div className="flex flex-wrap gap-[3px]">
-            {temperatures.map((s, i) => {
+            {sensors.map((s, i) => {
               const c = tempColor(s.valueC);
               return (
                 <span
@@ -324,4 +312,114 @@ function avgC(sensors: ReadonlyArray<HostTempSensor>): number {
   let sum = 0;
   for (const s of sensors) sum += s.valueC;
   return sum / sensors.length;
+}
+
+// Per-category sub-frame: hottest sensor in the category + a heat bar
+// scaled to that sensor's critical threshold. Shows an empty state
+// when the host has no sensors in this category (e.g. NVIDIA-only
+// box without the userland tools, or an iGPU-less server for CPU).
+function CategoryFrame({
+  label, Icon, sensors, t,
+}: Readonly<{
+  label: string;
+  Icon: LucideIcon;
+  sensors: ReadonlyArray<HostTempSensor>;
+  t: (key: string) => string;
+}>) {
+  if (sensors.length === 0) {
+    return (
+      <div
+        className="rounded-xl p-3 flex flex-col gap-1.5"
+        style={{
+          background: 'var(--gv-surface)',
+          border: '1px dashed var(--gv-border)',
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <Icon className="w-4 h-4 opacity-60" />
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
+            {label}
+          </span>
+        </div>
+        <div className="text-[11px]" style={{ color: 'var(--gv-text-dim)' }}>
+          {t('system.temps_no_sensors')}
+        </div>
+      </div>
+    );
+  }
+  const hottest = sensors.reduce((a, b) => (b.valueC > a.valueC ? b : a));
+  const color = tempColor(hottest.valueC);
+  const crit = defaultCrit(hottest.source, hottest.critC);
+  const pct = Math.max(0, Math.min(100, (hottest.valueC / crit) * 100));
+  const prettyName = SOURCE_META[hottest.source]?.name ?? hottest.source;
+  return (
+    <div
+      className="rounded-xl p-3 flex flex-col gap-2"
+      style={{
+        // Use --gv-surface (the card surface, not --gv-bg) so the panel
+        // sits *above* its parent on every theme — light themes get a
+        // soft tinted card, dark themes get a slightly lifted panel.
+        // The 8% colour wash keeps the category accent visible without
+        // washing out the text on light backgrounds.
+        background: `color-mix(in srgb, ${color} 8%, var(--gv-surface))`,
+        border: `1px solid color-mix(in srgb, ${color} 35%, var(--gv-border))`,
+      }}
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Icon className="w-4 h-4 shrink-0" style={{ color }} />
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color }}>
+            {label}
+          </span>
+          <span className="text-[10px] opacity-60 ml-0.5">({sensors.length})</span>
+        </div>
+        <span
+          className="text-2xl font-bold font-mono tabular-nums leading-none"
+          style={{
+            color,
+            textShadow: `0 0 12px color-mix(in srgb, ${color} 40%, transparent)`,
+          }}
+        >
+          {hottest.valueC.toFixed(1)}°
+        </span>
+      </div>
+      <div className="text-[11px] truncate" style={{ color: 'var(--gv-text-muted)' }}>
+        <span className="font-medium" style={{ color: 'var(--gv-text)' }}>{hottest.label}</span>
+        <span className="opacity-70"> · {prettyName}</span>
+      </div>
+      <div>
+        {/* Same gradient-base + mask-trailing-end pattern as
+            SystemPage's UsageBar so the bar reads identically across
+            light/dark themes — the 85% bg / 15% black mask is the
+            shared track tone used everywhere on the System page. */}
+        <div
+          className="h-1.5 rounded-full relative overflow-hidden"
+          style={{
+            background:
+              'linear-gradient(90deg,'
+              + ' var(--gv-info, #3b82f6) 0%,'
+              + ' var(--gv-ok, #22c55e) 20%,'
+              + ' var(--gv-warn, #f59e0b) 50%,'
+              + ' var(--gv-orange, #f97316) 75%,'
+              + ' var(--gv-danger, #ef4444) 90%,'
+              + ' var(--gv-danger, #ef4444) 100%)',
+          }}
+        >
+          <div
+            className="absolute inset-y-0 right-0 transition-[width] duration-500"
+            style={{
+              width: `${100 - pct}%`,
+              background: 'color-mix(in srgb, var(--gv-bg) 85%, #000 15%)',
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between text-[10px] mt-1" style={{ color: 'var(--gv-text-dim)' }}>
+          <span>0°C</span>
+          <span className="tabular-nums">
+            {pct.toFixed(0)}% / {crit}°C {t('system.temps_crit')}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
 }

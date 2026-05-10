@@ -398,6 +398,9 @@
     "temps_avg": "average",
     "temps_sources": "sources",
     "temps_crit": "critical",
-    "temps_map": "Thermal map"
+    "temps_map": "Thermal map",
+    "temps_cpu": "CPU",
+    "temps_gpu": "GPU",
+    "temps_no_sensors": "No sensors reported"
   }
 }

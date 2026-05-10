@@ -398,6 +398,9 @@
     "temps_avg": "moyenne",
     "temps_sources": "sources",
     "temps_crit": "critique",
-    "temps_map": "Carte thermique"
+    "temps_map": "Carte thermique",
+    "temps_cpu": "CPU",
+    "temps_gpu": "GPU",
+    "temps_no_sensors": "Aucun capteur détecté"
   }
 }
