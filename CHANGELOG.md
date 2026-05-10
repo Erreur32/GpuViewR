@@ -5,6 +5,33 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-05-10
+
+### Added
+- **Host temperature sensors on the System page.** New backend module
+  reads `/sys/class/hwmon/*` (CPU package, per-core temps, NVMe drives,
+  ACPI thermal zones) and exposes them via `GET /api/system` under a
+  new `temperatures` field. The System page renders a dedicated thermal
+  panel: a glowing hero readout for the hottest sensor (with breathing
+  pulse ≥ 75°C and percent-toward-critical bar), a heatmap strip of
+  every reading, and source-grouped chip cards (CPU / NVMe / ACPI…)
+  with per-chip heat fill. Panel is collapsible and the state persists
+  across reloads. Other System graphs are untouched.
+- **Live demo refreshed.** Synthetic hwmon sensors (coretemp package +
+  8 cores, NVMe Composite/Sensor1/Sensor2, ACPI thermal) wave over time
+  so the demo's new thermal panel animates alongside the GPU mocks.
+
+### Changed
+- **Unified metric order across the entire UI.** Cards, gauges, chart
+  legends, tooltip rows, alert metric selectors, threshold/colour
+  pickers and webhook payload field lists now read in the same order
+  everywhere: utilization → memory → fan → temperature → power. Prior
+  pages mixed several orderings. Affected: Dashboard, All-GPUs grid,
+  StatsSection, LiveChart, MultiGpuChart, SettingsPage colour & threshold
+  pickers (and the theme preview gradient), AlertsPage METRIC_ORDER,
+  ExportsSettings webhook fields, plus the demo Prometheus / MQTT /
+  Influx / webhook samples.
+
 ## [0.2.2] - 2026-05-05
 
 ### Changed

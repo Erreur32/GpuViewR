@@ -1,10 +1,19 @@
-release: v0.2.2 - grouped rules display, per-event and clear-all event deletion
-
-Changed:
-- Alerts tab: rules table split into GPU / System groups with category
-  headers; per-rule "All GPUs" subtitle removed.
+release: v0.2.3 - host thermal panel + unified metric order
 
 Added:
-- Per-event delete button (hover to reveal) and "Clear all" button for
-  recent events. Backend DELETE /events/:id and DELETE /events routes,
-  plus AlertEventRepo.delete/deleteAll.
+- Host temperature sensors on the System page. New backend reads
+  /sys/class/hwmon (CPU package + cores, NVMe, ACPI) and exposes them
+  via /api/system. New collapsible thermal panel: glowing hottest-sensor
+  hero with breathing pulse >=75 deg C, heatmap strip of every reading,
+  and source-grouped chip cards (CPU / NVMe / ACPI). Other System
+  graphs untouched.
+- Live demo refreshed with synthetic hwmon sensors so the public
+  GitHub Pages demo shows the new panel.
+
+Changed:
+- Unified metric order across the entire UI (utilization, memory, fan,
+  temperature, power) for cards, gauge rows, chart legends, tooltip
+  rows, alert metric selectors, colour & threshold pickers and webhook
+  payload fields. Affected: Dashboard, All-GPUs grid, StatsSection,
+  LiveChart, MultiGpuChart, SettingsPage, AlertsPage, ExportsSettings
+  and the demo mocks.
