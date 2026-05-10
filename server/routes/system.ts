@@ -9,6 +9,7 @@ import { GpuMetricRepository } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { readHostTemperatures } from '../services/systemTemperatures.js';
 
 const RETENTION_KEY = 'retention_days';
 const DEFAULT_RETENTION_DAYS = config.retentionDays;
@@ -119,6 +120,7 @@ router.get('/', (_req, res) => {
       uptime: process.uptime(),
       rss: process.memoryUsage().rss,
     },
+    temperatures: readHostTemperatures(),
     gpus: samples.map((s) => ({
       gpu_index: s.gpu_index,
       name: s.name,

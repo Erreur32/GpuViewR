@@ -167,7 +167,7 @@ export default function SettingsPage() {
                     <div
                       className="h-8 rounded-md"
                       style={{
-                        background: `linear-gradient(90deg, ${p.colors.util} 0%, ${p.colors.util} 20%, ${p.colors.temp} 20%, ${p.colors.temp} 40%, ${p.colors.pow} 40%, ${p.colors.pow} 60%, ${p.colors.mem} 60%, ${p.colors.mem} 80%, ${p.colors.fan} 80%, ${p.colors.fan} 100%)`,
+                        background: `linear-gradient(90deg, ${p.colors.util} 0%, ${p.colors.util} 20%, ${p.colors.mem} 20%, ${p.colors.mem} 40%, ${p.colors.fan} 40%, ${p.colors.fan} 60%, ${p.colors.temp} 60%, ${p.colors.temp} 80%, ${p.colors.pow} 80%, ${p.colors.pow} 100%)`,
                         boxShadow: active ? `0 0 12px color-mix(in srgb, ${p.colors.util} 50%, transparent)` : 'none',
                       }}
                     />
@@ -184,18 +184,6 @@ export default function SettingsPage() {
                 onClear={() => setChartColor('util' as ChartSeriesKey, null)}
               />
               <ColorPicker
-                label={t('dashboard.metrics.temperature')}
-                value={chartColors.temp}
-                onChange={(c) => setChartColor('temp' as ChartSeriesKey, c)}
-                onClear={() => setChartColor('temp' as ChartSeriesKey, null)}
-              />
-              <ColorPicker
-                label={t('dashboard.metrics.power')}
-                value={chartColors.pow}
-                onChange={(c) => setChartColor('pow' as ChartSeriesKey, c)}
-                onClear={() => setChartColor('pow' as ChartSeriesKey, null)}
-              />
-              <ColorPicker
                 label={t('dashboard.metrics.memory')}
                 value={chartColors.mem}
                 onChange={(c) => setChartColor('mem' as ChartSeriesKey, c)}
@@ -206,6 +194,18 @@ export default function SettingsPage() {
                 value={chartColors.fan}
                 onChange={(c) => setChartColor('fan' as ChartSeriesKey, c)}
                 onClear={() => setChartColor('fan' as ChartSeriesKey, null)}
+              />
+              <ColorPicker
+                label={t('dashboard.metrics.temperature')}
+                value={chartColors.temp}
+                onChange={(c) => setChartColor('temp' as ChartSeriesKey, c)}
+                onClear={() => setChartColor('temp' as ChartSeriesKey, null)}
+              />
+              <ColorPicker
+                label={t('dashboard.metrics.power')}
+                value={chartColors.pow}
+                onChange={(c) => setChartColor('pow' as ChartSeriesKey, c)}
+                onClear={() => setChartColor('pow' as ChartSeriesKey, null)}
               />
             </div>
           </section>
@@ -265,24 +265,6 @@ export default function SettingsPage() {
                 clearLabel={t('settings.thresholds_clear')}
               />
               <ThresholdField
-                label={t('dashboard.metrics.temperature')}
-                unit="°C"
-                value={chartThresholds.temp}
-                placeholder={DEFAULT_THRESHOLDS.temp}
-                disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold('temp' as ChartSeriesKey, v)}
-                clearLabel={t('settings.thresholds_clear')}
-              />
-              <ThresholdField
-                label={t('dashboard.metrics.power')}
-                unit="W"
-                value={chartThresholds.pow}
-                placeholder={DEFAULT_THRESHOLDS.pow}
-                disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold('pow' as ChartSeriesKey, v)}
-                clearLabel={t('settings.thresholds_clear')}
-              />
-              <ThresholdField
                 label={t('dashboard.metrics.memory')}
                 unit="%"
                 value={chartThresholds.mem}
@@ -298,6 +280,24 @@ export default function SettingsPage() {
                 placeholder={DEFAULT_THRESHOLDS.fan}
                 disabled={!chartThresholdsEnabled}
                 onChange={(v) => setChartThreshold('fan' as ChartSeriesKey, v)}
+                clearLabel={t('settings.thresholds_clear')}
+              />
+              <ThresholdField
+                label={t('dashboard.metrics.temperature')}
+                unit="°C"
+                value={chartThresholds.temp}
+                placeholder={DEFAULT_THRESHOLDS.temp}
+                disabled={!chartThresholdsEnabled}
+                onChange={(v) => setChartThreshold('temp' as ChartSeriesKey, v)}
+                clearLabel={t('settings.thresholds_clear')}
+              />
+              <ThresholdField
+                label={t('dashboard.metrics.power')}
+                unit="W"
+                value={chartThresholds.pow}
+                placeholder={DEFAULT_THRESHOLDS.pow}
+                disabled={!chartThresholdsEnabled}
+                onChange={(v) => setChartThreshold('pow' as ChartSeriesKey, v)}
                 clearLabel={t('settings.thresholds_clear')}
               />
             </div>

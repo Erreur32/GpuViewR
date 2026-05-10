@@ -389,6 +389,15 @@
     "gpu_power": "Power draw",
     "gpu_fan": "Fan",
     "gpu_clk_gr": "GPU clock",
-    "gpu_clk_mem": "Memory clock"
+    "gpu_clk_mem": "Memory clock",
+    "zone_thermal": "Thermals",
+    "zone_thermal_sub": "Host temperature sensors reported by the kernel (hwmon)",
+    "temps_title": "Temperature sensors",
+    "temps_hint": "Live readings from /sys/class/hwmon",
+    "temps_hottest": "Hottest sensor",
+    "temps_avg": "average",
+    "temps_sources": "sources",
+    "temps_crit": "critical",
+    "temps_map": "Thermal map"
   }
 }

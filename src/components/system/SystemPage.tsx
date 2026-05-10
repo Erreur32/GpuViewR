@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid, Cable, AlertTriangle, Info, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid, Cable, AlertTriangle, Info, ArrowDownToLine, ArrowUpFromLine, Thermometer } from 'lucide-react';
 import { api } from '../../lib/api';
 import PcieThroughputTile from '../dashboard/PcieThroughputTile';
+import SystemTemperaturesPanel, { type HostTempSensor } from './SystemTemperaturesPanel';
 
 type ViewMode = 'bar' | 'gauge';
 
@@ -19,6 +20,7 @@ type SystemInfo = Readonly<{
   cpu: { model: string; cores: number; speedMHz: number; usagePct: number };
   memory: { total: number; free: number; used: number; usedPct: number };
   process: { nodeVersion: string; pid: number; uptime: number; rss: number };
+  temperatures?: ReadonlyArray<HostTempSensor>;
   gpus: Array<{
     gpu_index: number;
     name: string;
@@ -190,6 +192,23 @@ export default function SystemPage() {
               </div>
             </section>
           </div>
+
+          {info.temperatures && info.temperatures.length > 0 && (
+            <>
+              <ZoneHeader
+                color="var(--gv-warn)"
+                icon={<Thermometer className="w-4 h-4" />}
+                label={t('system.zone_thermal')}
+                sub={t('system.zone_thermal_sub')}
+              />
+              <div
+                className="pl-3 border-l-2"
+                style={{ borderColor: 'color-mix(in srgb, var(--gv-warn) 35%, transparent)' }}
+              >
+                <SystemTemperaturesPanel temperatures={info.temperatures} />
+              </div>
+            </>
+          )}
 
           <ZoneHeader
             color="var(--gv-accent)"

@@ -29,11 +29,11 @@ const METRIC_ICON: Record<Metric, { icon: LucideIcon; color: string }> = {
 };
 
 // Display order shared by the Rules table and the Presets picker so
-// temperature rules cluster together, then utilization, memory, power,
-// fan, host_cpu, host_load, host_memory — instead of arbitrary
+// utilization rules cluster together, then memory, fan, temperature,
+// power, host_cpu, host_load, host_memory — instead of arbitrary
 // insertion order.
 const METRIC_ORDER: Metric[] = [
-  'temperature', 'utilization', 'memory', 'power', 'fan_speed',
+  'utilization', 'memory', 'fan_speed', 'temperature', 'power',
   'host_cpu', 'host_load_1m', 'host_memory',
 ];
 
@@ -268,7 +268,7 @@ export default function AlertsPage() {
                   if (a.threshold !== b.threshold) return a.threshold - b.threshold;
                   return a.name.localeCompare(b.name);
                 });
-                const gpuMetrics: Metric[] = ['temperature', 'utilization', 'memory', 'power', 'fan_speed'];
+                const gpuMetrics: Metric[] = ['utilization', 'memory', 'fan_speed', 'temperature', 'power'];
                 const gpu = sorted.filter((r) => gpuMetrics.includes(r.metric));
                 const host = sorted.filter((r) => !gpuMetrics.includes(r.metric));
                 const groups: { label: string; rules: Rule[] }[] = [];
@@ -503,7 +503,7 @@ function PresetsModal({
   useEffect(() => {
     api<{ presets: Preset[] }>('/alerts/presets')
       .then((r) => {
-        // Sort by metric category so temp / util / mem / power / fan
+        // Sort by metric category so util / mem / fan / temp / power
         // presets cluster together in the list.
         const sorted = [...r.presets].sort((a, b) => {
           const ai = METRIC_ORDER.indexOf(a.metric);
@@ -660,11 +660,11 @@ function RuleModal({
             <label className="label">{t('alerts.metric')}</label>
             <select className="input" value={rule.metric} onChange={(e) => update({ metric: e.target.value as Metric })}>
               <optgroup label={t('alerts.metric_group_gpu')}>
-                <option value="temperature">{t('alerts.metrics.temperature')}</option>
                 <option value="utilization">{t('alerts.metrics.utilization')}</option>
                 <option value="memory">{t('alerts.metrics.memory')}</option>
-                <option value="power">{t('alerts.metrics.power')}</option>
                 <option value="fan_speed">{t('alerts.metrics.fan_speed')}</option>
+                <option value="temperature">{t('alerts.metrics.temperature')}</option>
+                <option value="power">{t('alerts.metrics.power')}</option>
               </optgroup>
               <optgroup label={t('alerts.metric_group_host')}>
                 <option value="host_cpu">{t('alerts.metrics.host_cpu')}</option>

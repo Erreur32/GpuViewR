@@ -70,15 +70,6 @@ function CompactGpuTile({ sample }: Readonly<{ sample: GpuSample }>) {
 
       <div className="grid grid-cols-1 gap-1.5">
         <MetricRow
-          icon={<Thermometer className="w-3.5 h-3.5" />}
-          label={t('dashboard.metrics.temperature')}
-          value={sample.temperature}
-          max={100}
-          warn={75}
-          danger={85}
-          unit="°C"
-        />
-        <MetricRow
           icon={<Activity className="w-3.5 h-3.5" />}
           label={t('dashboard.metrics.utilization')}
           value={sample.utilization ?? 0}
@@ -107,6 +98,15 @@ function CompactGpuTile({ sample }: Readonly<{ sample: GpuSample }>) {
           warn={75}
           danger={90}
           unit="%"
+        />
+        <MetricRow
+          icon={<Thermometer className="w-3.5 h-3.5" />}
+          label={t('dashboard.metrics.temperature')}
+          value={sample.temperature}
+          max={100}
+          warn={75}
+          danger={85}
+          unit="°C"
         />
         <MetricRow
           icon={<Zap className="w-3.5 h-3.5" />}

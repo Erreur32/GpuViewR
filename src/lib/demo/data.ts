@@ -305,7 +305,7 @@ export function fakeExportsConfig() {
       method: 'POST' as const,
       headers: {} as Record<string, string>,
       intervalSeconds: 30,
-      payloadFields: ['gpu_index', 'name', 'temperature', 'utilization', 'memory_used', 'memory_total', 'power', 'timestamp'],
+      payloadFields: ['gpu_index', 'name', 'utilization', 'memory_used', 'memory_total', 'fan_speed', 'temperature', 'power', 'timestamp'],
       language: 'en' as const,
       token: '',
       chatId: '',
@@ -319,12 +319,12 @@ export function fakeExportsInfo() {
       enabled: true,
       endpoint: { method: 'GET' as const, path: '/metrics', url: 'https://demo.local:3015/metrics' },
       metrics: [
-        { name: 'gpuviewr_temperature_celsius',     help: 'GPU temperature in °C',          type: 'gauge' as const, unit: '°C' },
         { name: 'gpuviewr_utilization_percent',     help: 'GPU utilization in percent',     type: 'gauge' as const, unit: '%' },
         { name: 'gpuviewr_memory_used_mib',         help: 'GPU memory used in MiB',         type: 'gauge' as const, unit: 'MiB' },
         { name: 'gpuviewr_memory_total_mib',        help: 'GPU memory total in MiB',        type: 'gauge' as const, unit: 'MiB' },
-        { name: 'gpuviewr_power_watts',             help: 'GPU power draw in W',            type: 'gauge' as const, unit: 'W' },
         { name: 'gpuviewr_fan_percent',             help: 'GPU fan speed in percent',       type: 'gauge' as const, unit: '%' },
+        { name: 'gpuviewr_temperature_celsius',     help: 'GPU temperature in °C',          type: 'gauge' as const, unit: '°C' },
+        { name: 'gpuviewr_power_watts',             help: 'GPU power draw in W',            type: 'gauge' as const, unit: 'W' },
       ],
       hostMetrics: [
         { name: 'gpuviewr_host_cpu_percent',  help: 'Host CPU usage in percent', type: 'gauge' as const, unit: '%' },
@@ -339,7 +339,7 @@ export function fakeExportsInfo() {
       intervalSeconds: 10,
       stateTopicPattern: 'gpuviewr/gpu/{index}/state',
       resolvedStateTopics: ['gpuviewr/gpu/0/state', 'gpuviewr/gpu/1/state'],
-      payloadKeys: ['temperature', 'utilization', 'memory_used', 'memory_total', 'power', 'fan_speed'],
+      payloadKeys: ['utilization', 'memory_used', 'memory_total', 'fan_speed', 'temperature', 'power'],
       host: {
         stateTopic: 'gpuviewr/host/state',
         payloadKeys: ['cpu_pct', 'load_1m', 'memory_used_pct'],
@@ -352,7 +352,7 @@ export function fakeExportsInfo() {
       measurement: 'gpu_metrics',
       intervalSeconds: 10,
       tagKeys: ['gpu_index', 'name', 'uuid'],
-      fieldKeys: ['temperature', 'utilization', 'memory_used', 'memory_total', 'power', 'fan_speed', 'clock_graphics', 'clock_memory'],
+      fieldKeys: ['utilization', 'memory_used', 'memory_total', 'fan_speed', 'temperature', 'power', 'clock_graphics', 'clock_memory'],
       hostFieldKeys: ['cpu_pct', 'load_1m', 'memory_used_pct'],
     },
   };
@@ -388,6 +388,7 @@ export function fakeSystem() {
       uptime: 86_400,
       rss: 180 * 1024 * 1024,
     },
+    temperatures: fakeHostTemperatures(now),
     gpus: DEMO_GPUS.map((spec) => {
       const s = sampleAt(spec, now);
       const perLane: Record<number, number> = { 1: 0.25, 2: 0.5, 3: 0.985, 4: 1.969, 5: 3.938, 6: 7.563 };
@@ -417,6 +418,35 @@ export function fakeSystem() {
       };
     }),
   };
+}
+
+// Synthetic host hwmon sensors so the demo's System page shows the new
+// thermal panel. Values wave over time so the heatmap and hero glow
+// animate alongside the GPU mocks. Mirrors the shape returned by
+// server/services/systemTemperatures.ts.
+function fakeHostTemperatures(now: number): ReadonlyArray<{
+  source: string; label: string; valueC: number; maxC: number | null; critC: number | null;
+}> {
+  const w = (period: number, phase: number): number =>
+    Math.sin((now / 1000) * (2 * Math.PI / period) + phase);
+  const round1 = (n: number): number => Math.round(n * 10) / 10;
+  // CPU package + 8 cores. One core runs hotter to mimic a single-thread peak.
+  const pkg = round1(62 + 14 * w(45, 0));
+  const cores = Array.from({ length: 8 }, (_, i) => {
+    const base = 48 + (i === 3 ? 18 : 6 * Math.abs(w(20, i * 0.7)));
+    const ripple = 4 * w(11 + i, i);
+    return { i, valueC: round1(base + ripple) };
+  });
+  return [
+    { source: 'coretemp', label: 'Package id 0', valueC: pkg, maxC: 95, critC: 100 },
+    ...cores.map((c) => ({
+      source: 'coretemp', label: `Core ${c.i}`, valueC: c.valueC, maxC: 95, critC: 100,
+    })),
+    { source: 'nvme', label: 'Composite', valueC: round1(43 + 5 * w(60, 1.2)), maxC: 82, critC: 85 },
+    { source: 'nvme', label: 'Sensor 1',  valueC: round1(41 + 4 * w(70, 0.4)), maxC: 82, critC: 85 },
+    { source: 'nvme', label: 'Sensor 2',  valueC: round1(42 + 4 * w(80, 2.1)), maxC: 82, critC: 85 },
+    { source: 'acpitz', label: 'temp1',   valueC: round1(28 + 2 * w(120, 0)), maxC: null, critC: null },
+  ];
 }
 
 export function fakeDb() {

@@ -100,18 +100,6 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <GaugeCard
           variant={gaugeView}
-          label={t('dashboard.metrics.temperature')}
-          value={active.temperature}
-          unit="°C"
-          max={100}
-          warn={75}
-          danger={85}
-          icon={<Thermometer className="w-4 h-4" />}
-          history={series?.temperature}
-          ts={active.timestamp_epoch}
-        />
-        <GaugeCard
-          variant={gaugeView}
           label={t('dashboard.metrics.utilization')}
           value={active.utilization ?? 0}
           displayValue={active.utilization === null ? 'N/A' : undefined}
@@ -148,6 +136,18 @@ export default function Dashboard() {
           danger={90}
           icon={<Fan className="w-4 h-4" />}
           history={series?.fan_speed?.map((v) => v ?? 0)}
+          ts={active.timestamp_epoch}
+        />
+        <GaugeCard
+          variant={gaugeView}
+          label={t('dashboard.metrics.temperature')}
+          value={active.temperature}
+          unit="°C"
+          max={100}
+          warn={75}
+          danger={85}
+          icon={<Thermometer className="w-4 h-4" />}
+          history={series?.temperature}
           ts={active.timestamp_epoch}
         />
         <GaugeCard

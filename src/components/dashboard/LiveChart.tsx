@@ -68,7 +68,7 @@ export default function LiveChart({ gpuIndex }: Props) {
   const toggleSeries = (key: 'util' | 'temp' | 'pow' | 'mem' | 'fan') => {
     setVisible((v) => {
       const next = { ...v, [key]: !v[key] };
-      const idxMap = { util: 1, temp: 2, pow: 3, mem: 4, fan: 5 } as const;
+      const idxMap = { util: 1, mem: 2, fan: 3, temp: 4, pow: 5 } as const;
       plotRef.current?.setSeries(idxMap[key], { show: next[key] });
       return next;
     });
@@ -125,10 +125,10 @@ export default function LiveChart({ gpuIndex }: Props) {
       series: [
         {},
         { label: t('dashboard.metrics.utilization'), stroke: accent, width: 2, scale: '%', fill: makeGradient(accent) },
-        { label: t('dashboard.metrics.temperature'), stroke: warn, width: 2, scale: '%', fill: makeGradient(warn) },
-        { label: t('dashboard.metrics.power'), stroke: ok, width: 2, scale: 'W', fill: makeGradient(ok) },
         { label: t('dashboard.metrics.memory'), stroke: info, width: 2, scale: '%', fill: makeGradient(info) },
         { label: t('dashboard.metrics.fan'), stroke: fanColor, width: 2, scale: '%', fill: makeGradient(fanColor) },
+        { label: t('dashboard.metrics.temperature'), stroke: warn, width: 2, scale: '%', fill: makeGradient(warn) },
+        { label: t('dashboard.metrics.power'), stroke: ok, width: 2, scale: 'W', fill: makeGradient(ok) },
       ],
       // We render our own legend chip row below the chart, so disable the
       // built-in legend (which only shows values on hover and clutters the layout).
@@ -147,10 +147,10 @@ export default function LiveChart({ gpuIndex }: Props) {
               setCursor({
                 t: u.data[0]?.[idx] ?? null,
                 utilization: (u.data[1]?.[idx] as number | undefined) ?? null,
-                temperature: (u.data[2]?.[idx] as number | undefined) ?? null,
-                power: (u.data[3]?.[idx] as number | undefined) ?? null,
-                memory: (u.data[4]?.[idx] as number | undefined) ?? null,
-                fan: (u.data[5]?.[idx] as number | undefined) ?? null,
+                memory: (u.data[2]?.[idx] as number | undefined) ?? null,
+                fan: (u.data[3]?.[idx] as number | undefined) ?? null,
+                temperature: (u.data[4]?.[idx] as number | undefined) ?? null,
+                power: (u.data[5]?.[idx] as number | undefined) ?? null,
               });
               // Flip the tooltip horizontally / vertically when it would
               // overflow the chart, so it sticks naturally next to the
@@ -269,7 +269,7 @@ export default function LiveChart({ gpuIndex }: Props) {
       }
     }
 
-    plotRef.current.setData([tArr, utilArr, tempArr, powArr, memArr, fanArr] as AlignedData);
+    plotRef.current.setData([tArr, utilArr, memArr, fanArr, tempArr, powArr] as AlignedData);
   }, [historic, series, range, latestSample?.memory_total]);
 
   // What the legend shows: the cursor value if hovering, else the live latest sample.
@@ -312,15 +312,6 @@ export default function LiveChart({ gpuIndex }: Props) {
         </div>
         <div className="flex items-center gap-3 text-xs">
           <Chip
-            colorVar={chartColors.temp ?? 'var(--gv-warn)'}
-            label={t('dashboard.metrics.temperature')}
-            value={fmt(display.temp, '°C')}
-            active={visible.temp}
-            onClick={() => toggleSeries('temp')}
-            onColorChange={(c) => setChartColor('temp', c)}
-            isCustom={!!chartColors.temp}
-          />
-          <Chip
             colorVar={chartColors.util ?? 'var(--gv-accent)'}
             label={t('dashboard.metrics.utilization')}
             value={fmt(display.util, '%')}
@@ -346,6 +337,15 @@ export default function LiveChart({ gpuIndex }: Props) {
             onClick={() => toggleSeries('fan')}
             onColorChange={(c) => setChartColor('fan', c)}
             isCustom={!!chartColors.fan}
+          />
+          <Chip
+            colorVar={chartColors.temp ?? 'var(--gv-warn)'}
+            label={t('dashboard.metrics.temperature')}
+            value={fmt(display.temp, '°C')}
+            active={visible.temp}
+            onClick={() => toggleSeries('temp')}
+            onColorChange={(c) => setChartColor('temp', c)}
+            isCustom={!!chartColors.temp}
           />
           <Chip
             colorVar={chartColors.pow ?? 'var(--gv-ok)'}
@@ -397,15 +397,6 @@ export default function LiveChart({ gpuIndex }: Props) {
             <div className="font-semibold tabular-nums mb-1" style={{ color: 'var(--gv-text-muted)' }}>
               {fmtDateTime(cursor.t, timeFormat)}
             </div>
-            {visible.temp && (
-              <div className="flex items-center justify-between gap-3">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.temp ?? 'var(--gv-warn)' }} />
-                  {t('dashboard.metrics.temperature')}
-                </span>
-                <span className="font-semibold tabular-nums">{fmt(cursor.temperature, '°C')}</span>
-              </div>
-            )}
             {visible.util && (
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-1.5">
@@ -431,6 +422,15 @@ export default function LiveChart({ gpuIndex }: Props) {
                   {t('dashboard.metrics.fan')}
                 </span>
                 <span className="font-semibold tabular-nums">{fmt(cursor.fan, '%')}</span>
+              </div>
+            )}
+            {visible.temp && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: chartColors.temp ?? 'var(--gv-warn)' }} />
+                  {t('dashboard.metrics.temperature')}
+                </span>
+                <span className="font-semibold tabular-nums">{fmt(cursor.temperature, '°C')}</span>
               </div>
             )}
             {visible.pow && (

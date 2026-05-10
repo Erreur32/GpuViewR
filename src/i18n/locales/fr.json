@@ -389,6 +389,15 @@
     "gpu_power": "Puissance",
     "gpu_fan": "Ventilateur",
     "gpu_clk_gr": "Fréquence GPU",
-    "gpu_clk_mem": "Fréquence mémoire"
+    "gpu_clk_mem": "Fréquence mémoire",
+    "zone_thermal": "Températures",
+    "zone_thermal_sub": "Capteurs de température de l'hôte (hwmon noyau)",
+    "temps_title": "Capteurs de température",
+    "temps_hint": "Lectures temps réel de /sys/class/hwmon",
+    "temps_hottest": "Capteur le plus chaud",
+    "temps_avg": "moyenne",
+    "temps_sources": "sources",
+    "temps_crit": "critique",
+    "temps_map": "Carte thermique"
   }
 }

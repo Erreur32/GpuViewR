@@ -21,9 +21,9 @@ type Metric = 'utilization' | 'temperature' | 'memory' | 'power' | 'fan_speed';
 
 const METRICS: ReadonlyArray<{ key: Metric; labelKey: string; icon: LucideIcon; unit: string; scale: '%' | 'W' }> = [
   { key: 'utilization',  labelKey: 'dashboard.metrics.utilization', icon: Activity,    unit: '%', scale: '%' },
-  { key: 'temperature',  labelKey: 'dashboard.metrics.temperature', icon: Thermometer, unit: '°C', scale: '%' },
   { key: 'memory',       labelKey: 'dashboard.metrics.memory',      icon: MemoryStick, unit: '%', scale: '%' },
   { key: 'fan_speed',    labelKey: 'dashboard.metrics.fan',         icon: Fan,         unit: '%', scale: '%' },
+  { key: 'temperature',  labelKey: 'dashboard.metrics.temperature', icon: Thermometer, unit: '°C', scale: '%' },
   { key: 'power',        labelKey: 'dashboard.metrics.power',       icon: Zap,         unit: 'W', scale: 'W' },
 ];
 

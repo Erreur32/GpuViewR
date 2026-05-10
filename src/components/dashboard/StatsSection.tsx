@@ -81,14 +81,6 @@ export default function StatsSection({ gpuIndex }: Props) {
 
   const rows = [
     {
-      key: 'temperature',
-      icon: <Thermometer className="w-4 h-4" />, unit: '°C',
-      min: blend(s?.temp_min, live?.temperature, 'min'),
-      max: blend(s?.temp_max, live?.temperature, 'max'),
-      avg: s?.temp_avg ?? live?.temperature,
-      status: statusFor(s?.temp_avg ?? live?.temperature, 75, 85),
-    },
-    {
       key: 'utilization',
       icon: <Activity className="w-4 h-4" />, unit: '%',
       min: blend(s?.util_min, live?.utilization, 'min'),
@@ -111,6 +103,14 @@ export default function StatsSection({ gpuIndex }: Props) {
       max: blend(s?.fan_max, live?.fan_speed, 'max'),
       avg: s?.fan_avg ?? live?.fan_speed,
       status: statusFor(s?.fan_avg ?? live?.fan_speed, 75, 90),
+    },
+    {
+      key: 'temperature',
+      icon: <Thermometer className="w-4 h-4" />, unit: '°C',
+      min: blend(s?.temp_min, live?.temperature, 'min'),
+      max: blend(s?.temp_max, live?.temperature, 'max'),
+      avg: s?.temp_avg ?? live?.temperature,
+      status: statusFor(s?.temp_avg ?? live?.temperature, 75, 85),
     },
     {
       key: 'power',

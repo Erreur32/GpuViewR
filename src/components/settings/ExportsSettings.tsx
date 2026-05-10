@@ -37,9 +37,11 @@ type WebhookMode = 'metrics' | 'alerts';
 
 const WEBHOOK_PAYLOAD_FIELDS = [
   'gpu_index', 'name', 'uuid', 'driver_version',
-  'temperature', 'utilization',
+  'utilization',
   'memory_used', 'memory_total',
-  'power', 'fan_speed',
+  'fan_speed',
+  'temperature',
+  'power',
   'clock_graphics', 'clock_memory',
   'timestamp', 'timestamp_epoch',
 ] as const;
