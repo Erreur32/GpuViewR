@@ -48,47 +48,48 @@ function isPlausibleTempC(c: number): boolean {
   return c >= 5 && c <= 150;
 }
 
-export function readHostTemperatures(): HostTempSensor[] {
-  if (!fs.existsSync(HWMON_ROOT)) return [];
-
-  let entries: string[];
+function listDirSafe(p: string): string[] {
   try {
-    entries = fs.readdirSync(HWMON_ROOT);
+    return fs.readdirSync(p);
   } catch {
     return [];
   }
+}
 
+// Read every plausible tempN sensor under a single hwmon directory.
+// Splitting this out keeps the top-level loop flat (Sonar S3776 cap).
+function readSensorsFromDir(dir: string, source: string): HostTempSensor[] {
+  const tempFiles = listDirSafe(dir)
+    .filter((f) => /^temp\d+_input$/.test(f))
+    .sort((a, b) => extractIdx(a) - extractIdx(b));
   const out: HostTempSensor[] = [];
-  for (const entry of entries) {
+  for (const f of tempFiles) {
+    const sensor = readOneSensor(dir, source, extractIdx(f));
+    if (sensor) out.push(sensor);
+  }
+  return out;
+}
+
+// Materialise one HostTempSensor from a tempN_* sysfs group, or
+// return null when the channel is missing or implausible.
+function readOneSensor(dir: string, source: string, idx: number): HostTempSensor | null {
+  const valueC = parseMilliC(safeRead(path.join(dir, `temp${idx}_input`)));
+  if (valueC === null || !isPlausibleTempC(valueC)) return null;
+  const labelRaw = safeRead(path.join(dir, `temp${idx}_label`));
+  const label = labelRaw && labelRaw.length > 0 ? labelRaw : `temp${idx}`;
+  const maxC = parseMilliC(safeRead(path.join(dir, `temp${idx}_max`)));
+  const critC = parseMilliC(safeRead(path.join(dir, `temp${idx}_crit`)));
+  return { source, label, valueC, maxC, critC };
+}
+
+export function readHostTemperatures(): HostTempSensor[] {
+  if (!fs.existsSync(HWMON_ROOT)) return [];
+  const out: HostTempSensor[] = [];
+  for (const entry of listDirSafe(HWMON_ROOT)) {
     const dir = path.join(HWMON_ROOT, entry);
     const source = safeRead(path.join(dir, 'name')) ?? entry;
-
-    let files: string[];
-    try {
-      files = fs.readdirSync(dir);
-    } catch {
-      continue;
-    }
-
-    // Sort by the trailing index so temp1, temp2, ... come out in order.
-    const tempFiles = files
-      .filter((f) => /^temp\d+_input$/.test(f))
-      .sort((a, b) => extractIdx(a) - extractIdx(b));
-
-    for (const f of tempFiles) {
-      const idx = extractIdx(f);
-      const valueC = parseMilliC(safeRead(path.join(dir, f)));
-      if (valueC === null) continue;
-      // Skip phantom/unwired channels — see isPlausibleTempC.
-      if (!isPlausibleTempC(valueC)) continue;
-      const labelRaw = safeRead(path.join(dir, `temp${idx}_label`));
-      const label = labelRaw && labelRaw.length > 0 ? labelRaw : `temp${idx}`;
-      const maxC = parseMilliC(safeRead(path.join(dir, `temp${idx}_max`)));
-      const critC = parseMilliC(safeRead(path.join(dir, `temp${idx}_crit`)));
-      out.push({ source, label, valueC, maxC, critC });
-    }
+    out.push(...readSensorsFromDir(dir, source));
   }
-
   return out;
 }
 

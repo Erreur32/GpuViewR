@@ -5,6 +5,32 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-05-10
+
+### Fixed
+- **Phantom hwmon sensors no longer leak to the UI.** The host
+  thermal pipeline now applies a 5–150°C plausibility window in
+  `readHostTemperatures()`, so unwired motherboard pins and
+  uninitialised virtual sensors (acpitz et al.) stop surfacing as
+  fake 0°C / negative readings on the System page.
+- **Sonar S3776 (cognitive complexity).** Refactored
+  `readHostTemperatures()` to extract per-directory and per-sensor
+  helpers (`listDirSafe`, `readSensorsFromDir`, `readOneSensor`),
+  bringing the function below the 15-complexity gate.
+
+### Changed
+- **System thermal panel hero is split into CPU + GPU sub-frames.**
+  Each domain shows its own hottest sensor and heat bar. NVIDIA hosts
+  (no GPU hwmon node) populate the GPU sub-frame from `info.gpus[]`
+  via a synthetic `nvidia` source. Heatmap strip and source-grouped
+  chip cards stay as before.
+- **Sub-frame styling now follows theme tokens.** Inner cards sit on
+  `--gv-surface` (the lift token) instead of `--gv-bg`, and the heat
+  bar mirrors `SystemPage.UsageBar` (gradient base + masked trailing
+  portion) for consistent contrast across light/dark themes.
+- **i18n.** Added `system.temps_cpu`, `system.temps_gpu`,
+  `system.temps_no_sensors` to en/fr.
+
 ## [0.2.3] - 2026-05-10
 
 ### Added

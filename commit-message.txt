@@ -1,19 +1,24 @@
-release: v0.2.3 - host thermal panel + unified metric order
+release: v0.2.4 - thermal panel polish (CPU/GPU split, phantom sensor filter)
 
-Added:
-- Host temperature sensors on the System page. New backend reads
-  /sys/class/hwmon (CPU package + cores, NVMe, ACPI) and exposes them
-  via /api/system. New collapsible thermal panel: glowing hottest-sensor
-  hero with breathing pulse >=75 deg C, heatmap strip of every reading,
-  and source-grouped chip cards (CPU / NVMe / ACPI). Other System
-  graphs untouched.
-- Live demo refreshed with synthetic hwmon sensors so the public
-  GitHub Pages demo shows the new panel.
+Fixed:
+- Phantom hwmon sensors no longer leak to the UI. The host thermal
+  pipeline applies a 5-150 deg C plausibility window in
+  readHostTemperatures(), so unwired motherboard pins and uninitialised
+  virtual sensors (acpitz et al.) stop surfacing as fake 0 / negative
+  readings on the System page.
+- Sonar S3776 (cognitive complexity). Refactored readHostTemperatures()
+  into listDirSafe / readSensorsFromDir / readOneSensor helpers,
+  bringing the function below the 15-complexity gate.
 
 Changed:
-- Unified metric order across the entire UI (utilization, memory, fan,
-  temperature, power) for cards, gauge rows, chart legends, tooltip
-  rows, alert metric selectors, colour & threshold pickers and webhook
-  payload fields. Affected: Dashboard, All-GPUs grid, StatsSection,
-  LiveChart, MultiGpuChart, SettingsPage, AlertsPage, ExportsSettings
-  and the demo mocks.
+- System thermal panel hero is split into CPU + GPU sub-frames. Each
+  domain shows its own hottest sensor and heat bar. NVIDIA hosts (no
+  GPU hwmon node) populate the GPU sub-frame from info.gpus[] via a
+  synthetic 'nvidia' source. Heatmap strip and source-grouped chip
+  cards stay as before.
+- Sub-frame styling now follows theme tokens. Inner cards sit on
+  --gv-surface instead of --gv-bg, and the heat bar mirrors
+  SystemPage UsageBar (gradient base + masked trailing portion) for
+  consistent contrast across light and dark themes.
+- i18n: added system.temps_cpu, system.temps_gpu and
+  system.temps_no_sensors to en/fr.
