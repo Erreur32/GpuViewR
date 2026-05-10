@@ -283,6 +283,7 @@ export default function SystemTemperaturesPanel({ temperatures }: Readonly<Props
                 {g.sensors.map((s, i) => {
                   const c = tempColor(s.valueC);
                   const pct = Math.max(0, Math.min(100, (s.valueC / groupCrit) * 100));
+                  const critSuffix = s.critC ? ` (crit ${s.critC}°C)` : '';
                   return (
                     <div
                       key={`${s.label}-${i}`}
@@ -292,7 +293,7 @@ export default function SystemTemperaturesPanel({ temperatures }: Readonly<Props
                         border: `1px solid color-mix(in srgb, ${c} 30%, transparent)`,
                         minWidth: '4.5rem',
                       }}
-                      title={`${s.label} — ${s.valueC.toFixed(1)}°C${s.critC ? ` (crit ${s.critC}°C)` : ''}`}
+                      title={`${s.label} — ${s.valueC.toFixed(1)}°C${critSuffix}`}
                     >
                       <div
                         className="absolute inset-y-0 left-0 opacity-25"

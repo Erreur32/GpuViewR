@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Moon, Languages, Clock, Sliders, Share2, Database, RefreshCw, Activity, Info, Palette, RotateCcw, Volume2, VolumeX, Bell, BellOff, BellRing } from 'lucide-react';
-import { useUiStore, DEFAULT_THRESHOLDS, type ChartSeriesKey } from '../../store/uiStore';
+import { useUiStore, DEFAULT_THRESHOLDS } from '../../store/uiStore';
 import { THEMES } from '../../lib/themes';
 import UpdateSettings from './UpdateSettings';
 import DatabaseSettings from './DatabaseSettings';
@@ -45,11 +45,11 @@ export default function SettingsPage() {
   } = useUiStore();
 
   const applyChartPreset = (preset: ChartPreset) => {
-    setChartColor('util' as ChartSeriesKey, preset.colors.util);
-    setChartColor('temp' as ChartSeriesKey, preset.colors.temp);
-    setChartColor('pow' as ChartSeriesKey, preset.colors.pow);
-    setChartColor('mem' as ChartSeriesKey, preset.colors.mem);
-    setChartColor('fan' as ChartSeriesKey, preset.colors.fan);
+    setChartColor('util', preset.colors.util);
+    setChartColor('temp', preset.colors.temp);
+    setChartColor('pow', preset.colors.pow);
+    setChartColor('mem', preset.colors.mem);
+    setChartColor('fan', preset.colors.fan);
   };
   // The active tab is driven by the URL (/settings/<tab>) so deep-links and
   // refresh land back on the right panel. We keep the localStorage key so a
@@ -180,32 +180,32 @@ export default function SettingsPage() {
               <ColorPicker
                 label={t('dashboard.metrics.utilization')}
                 value={chartColors.util}
-                onChange={(c) => setChartColor('util' as ChartSeriesKey, c)}
-                onClear={() => setChartColor('util' as ChartSeriesKey, null)}
+                onChange={(c) => setChartColor('util', c)}
+                onClear={() => setChartColor('util', null)}
               />
               <ColorPicker
                 label={t('dashboard.metrics.memory')}
                 value={chartColors.mem}
-                onChange={(c) => setChartColor('mem' as ChartSeriesKey, c)}
-                onClear={() => setChartColor('mem' as ChartSeriesKey, null)}
+                onChange={(c) => setChartColor('mem', c)}
+                onClear={() => setChartColor('mem', null)}
               />
               <ColorPicker
                 label={t('dashboard.metrics.fan')}
                 value={chartColors.fan}
-                onChange={(c) => setChartColor('fan' as ChartSeriesKey, c)}
-                onClear={() => setChartColor('fan' as ChartSeriesKey, null)}
+                onChange={(c) => setChartColor('fan', c)}
+                onClear={() => setChartColor('fan', null)}
               />
               <ColorPicker
                 label={t('dashboard.metrics.temperature')}
                 value={chartColors.temp}
-                onChange={(c) => setChartColor('temp' as ChartSeriesKey, c)}
-                onClear={() => setChartColor('temp' as ChartSeriesKey, null)}
+                onChange={(c) => setChartColor('temp', c)}
+                onClear={() => setChartColor('temp', null)}
               />
               <ColorPicker
                 label={t('dashboard.metrics.power')}
                 value={chartColors.pow}
-                onChange={(c) => setChartColor('pow' as ChartSeriesKey, c)}
-                onClear={() => setChartColor('pow' as ChartSeriesKey, null)}
+                onChange={(c) => setChartColor('pow', c)}
+                onClear={() => setChartColor('pow', null)}
               />
             </div>
           </section>
@@ -261,7 +261,7 @@ export default function SettingsPage() {
                 value={chartThresholds.util}
                 placeholder={DEFAULT_THRESHOLDS.util}
                 disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold('util' as ChartSeriesKey, v)}
+                onChange={(v) => setChartThreshold('util', v)}
                 clearLabel={t('settings.thresholds_clear')}
               />
               <ThresholdField
@@ -270,7 +270,7 @@ export default function SettingsPage() {
                 value={chartThresholds.mem}
                 placeholder={DEFAULT_THRESHOLDS.mem}
                 disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold('mem' as ChartSeriesKey, v)}
+                onChange={(v) => setChartThreshold('mem', v)}
                 clearLabel={t('settings.thresholds_clear')}
               />
               <ThresholdField
@@ -279,7 +279,7 @@ export default function SettingsPage() {
                 value={chartThresholds.fan}
                 placeholder={DEFAULT_THRESHOLDS.fan}
                 disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold('fan' as ChartSeriesKey, v)}
+                onChange={(v) => setChartThreshold('fan', v)}
                 clearLabel={t('settings.thresholds_clear')}
               />
               <ThresholdField
@@ -288,7 +288,7 @@ export default function SettingsPage() {
                 value={chartThresholds.temp}
                 placeholder={DEFAULT_THRESHOLDS.temp}
                 disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold('temp' as ChartSeriesKey, v)}
+                onChange={(v) => setChartThreshold('temp', v)}
                 clearLabel={t('settings.thresholds_clear')}
               />
               <ThresholdField
@@ -297,7 +297,7 @@ export default function SettingsPage() {
                 value={chartThresholds.pow}
                 placeholder={DEFAULT_THRESHOLDS.pow}
                 disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold('pow' as ChartSeriesKey, v)}
+                onChange={(v) => setChartThreshold('pow', v)}
                 clearLabel={t('settings.thresholds_clear')}
               />
             </div>
