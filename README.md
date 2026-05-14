@@ -19,7 +19,7 @@
  
 **Real-time NVIDIA GPU monitoring dashboard, packaged as a single Docker image.**
 
-[**🔴 Live demo**](https://erreur32.github.io/GpuViewR/) (synthetic data, runs entirely in the browser)
+[**🔴 Live demo**](https://erreur32.github.io/GpuViewR/) · [**🛰️ Fleet demo**](https://erreur32.github.io/GpuViewR/?fleet=1) (4 fake hosts, multi-host UI) — synthetic data, runs entirely in the browser
 
 [Screenshot](#screenshot) · [Quick start](#quick-start) · [Configuration](#configuration) · [First login](#first-login) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Multi-host](#multi-host) · [Roadmap](#roadmap)
 

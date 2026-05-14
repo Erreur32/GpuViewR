@@ -2,6 +2,7 @@
 // real API surface (open/close/onmessage/readyState) for `useGpuStream` to
 // work unchanged, but emits synthetic samples instead of opening a socket.
 import { liveSamples } from './mockApi';
+import { isFleetDemo, DEMO_FLEET_HOSTS, liveSamplesForHost } from './mockFleet';
 
 const TICK_MS = 1000;
 
@@ -35,6 +36,19 @@ class MockWebSocket {
 
   private emit(type: 'snapshot' | 'sample') {
     if (this.readyState !== MockWebSocket.OPEN) return;
+    if (isFleetDemo()) {
+      // One frame per host so the gpuStore keys samples per host id.
+      for (const host of DEMO_FLEET_HOSTS) {
+        if (host.status === 'offline') continue;
+        const payload = {
+          type,
+          host_id: host.id,
+          samples: liveSamplesForHost(host),
+        };
+        this.onmessage?.(new MessageEvent('message', { data: JSON.stringify(payload) }));
+      }
+      return;
+    }
     const samples = liveSamples();
     const ev = new MessageEvent('message', {
       data: JSON.stringify({ type, samples }),

@@ -1,4 +1,5 @@
 // Browser-side mock for /api/* in the public demo build.
+import { isFleetDemo, fakeFleetHosts, fakeFleetHealth } from './mockFleet';
 // All write endpoints are no-ops that return shapes the UI expects, so
 // nothing leaves the tab and nothing is persisted server-side.
 import {
@@ -91,12 +92,39 @@ function handleAuth(ctx: RouteCtx): Response | null {
 
 function handleHealthSystem(ctx: RouteCtx): Response | null {
   if (ctx.url.pathname === '/api/health') {
+    if (isFleetDemo()) return json(fakeFleetHealth());
     return json({
       ok: true,
       nodeEnv: 'demo',
       mockGpu: true,
       version: '0.0.0-demo',
       uptime: Math.floor(performance.now() / 1000),
+    });
+  }
+  if (ctx.url.pathname === '/api/hosts') {
+    // Fleet demo: return the 4 fake hosts. Single demo: just the
+    // local row so the FleetIndicator stays hidden (≤1 host).
+    if (isFleetDemo()) return json({ hosts: fakeFleetHosts() });
+    return json({ hosts: [{
+      id: 'local', label: 'local', hostname: null, kind: 'local',
+      endpoint: null, capabilities: null, agent_version: null,
+      protocol_ver: 1, enrolled_at: Math.floor(Date.now() / 1000) - 86400,
+      last_seen: Math.floor(Date.now() / 1000) - 2, status: 'online',
+    }] });
+  }
+  // Demo-only stub: enrollment returns a synthetic one-shot token so
+  // the modal flow looks realistic; no state is persisted.
+  if (ctx.url.pathname === '/api/hosts' && ctx.method === 'POST') {
+    return json({
+      host: {
+        id: crypto.randomUUID(),
+        label: (ctx.body as { label?: string })?.label ?? 'demo-host',
+        hostname: null, kind: 'agent', endpoint: null,
+        capabilities: null, agent_version: null, protocol_ver: 1,
+        enrolled_at: Math.floor(Date.now() / 1000), last_seen: null,
+        status: 'pending',
+      },
+      token: 'gpvr_demo-token-not-real-' + Math.random().toString(36).slice(2),
     });
   }
   if (ctx.url.pathname === '/api/system') return json(fakeSystem());

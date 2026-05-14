@@ -2,8 +2,13 @@
 // real build never ships this code or its fake data.
 import { installMockFetch } from './mockApi';
 import { installMockWebSocket } from './mockWs';
+import { isFleetDemo } from './mockFleet';
 
 export function bootstrapDemo(): void {
+  // Reads ?fleet=1 / ?fleet=0 query param and persists in localStorage,
+  // so the multi-host showcase mode survives navigation. Single mode
+  // is the default and is what the public live demo link opens with.
+  isFleetDemo();
   installMockFetch();
   installMockWebSocket();
   // Auto-login so the public demo skips the login screen entirely.
