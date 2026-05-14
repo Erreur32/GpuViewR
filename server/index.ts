@@ -34,6 +34,7 @@ import metricsRoutes from './routes/metrics.js';
 import infoRoutes from './routes/info.js';
 import processesRoutes from './routes/processes.js';
 import hostsRoutes from './routes/hosts.js';
+import agentDistributionRoutes from './routes/agentDistribution.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -104,6 +105,11 @@ async function bootstrap(): Promise<void> {
   app.use('/api/processes', processesRoutes);
   app.use('/api/hosts', hostsRoutes);
   app.use('/metrics', metricsLimiter, metricsRoutes);
+  // /install.sh + /agent.mjs — unauthenticated by design, the agent
+  // token itself is the auth. Mounted at root, before the SPA
+  // catch-all below, so the bash + JS bodies aren't shadowed by
+  // index.html on hub installs that serve the dist bundle.
+  app.use(agentDistributionRoutes);
 
   const distDir = path.resolve(__dirname, '..', 'dist');
   if (fs.existsSync(distDir)) {

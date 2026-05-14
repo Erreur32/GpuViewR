@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Copy, AlertTriangle } from 'lucide-react';
+import { X, Copy, AlertTriangle, Container, Terminal } from 'lucide-react';
 import { useHostsStore } from '../../store/hostsStore';
 import { notify } from '../../store/toastStore';
 
 type Props = Readonly<{ onClose: () => void }>;
 type Stage = 'form' | 'token';
+type InstallMode = 'docker' | 'curl';
 
 // Returned by POST /api/hosts — copied locally because the modal owns
 // the lifecycle (the store keeps only the hash post-enroll, so we hold
@@ -13,7 +14,8 @@ type Stage = 'form' | 'token';
 interface EnrollResult {
   hostId: string;
   token: string;
-  hubUrl: string;
+  hubHttp: string;
+  hubWs: string;
 }
 
 export default function EnrollHostModal({ onClose }: Props) {
@@ -24,6 +26,7 @@ export default function EnrollHostModal({ onClose }: Props) {
   const [result, setResult] = useState<EnrollResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState<'id' | 'token' | 'cmd' | null>(null);
+  const [mode, setMode] = useState<InstallMode>('curl');
 
   const submit = async () => {
     if (!label.trim() || submitting) return;
@@ -31,8 +34,9 @@ export default function EnrollHostModal({ onClose }: Props) {
     try {
       const r = await enroll(label.trim());
       const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const hubUrl = `${proto}://${window.location.host}/agent`;
-      setResult({ hostId: r.host.id, token: r.token, hubUrl });
+      const hubHttp = `${window.location.protocol}//${window.location.host}`;
+      const hubWs = `${proto}://${window.location.host}/agent`;
+      setResult({ hostId: r.host.id, token: r.token, hubHttp, hubWs });
       setStage('token');
     } catch (err) {
       notify('error', t('hosts.enroll_failed'), (err as Error).message);
@@ -48,7 +52,14 @@ export default function EnrollHostModal({ onClose }: Props) {
   };
 
   const dockerCmd = result
-    ? `docker run -d --name gpuviewr-agent \\\n  --gpus all \\\n  --restart unless-stopped \\\n  -e HUB_URL=${result.hubUrl} \\\n  -e HOST_ID=${result.hostId} \\\n  -e AGENT_TOKEN=${result.token} \\\n  ghcr.io/erreur32/gpuviewr-agent:latest`
+    ? `docker run -d --name gpuviewr-agent \\\n  --gpus all \\\n  --restart unless-stopped \\\n  -e HUB_URL=${result.hubWs} \\\n  -e HOST_ID=${result.hostId} \\\n  -e AGENT_TOKEN=${result.token} \\\n  ghcr.io/erreur32/gpuviewr-agent:latest`
+    : '';
+
+  // Bare-metal one-liner: the install.sh script splits "host_id.secret"
+  // back into HOST_ID + AGENT_TOKEN env vars, so we only need a single
+  // --token flag à la Beszel. Backend unchanged.
+  const curlCmd = result
+    ? `curl -fsSL ${result.hubHttp}/install.sh | sudo bash -s -- \\\n  --url ${result.hubHttp} \\\n  --token ${result.hostId}.${result.token}`
     : '';
 
   return (
@@ -145,14 +156,39 @@ export default function EnrollHostModal({ onClose }: Props) {
               sensitive
             />
 
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
+              {/* Mode picker — curl is highlighted as recommended for new
+                  installs since it's a single line, no Docker dependency. */}
+              <div className="seg" role="group">
+                <button
+                  type="button"
+                  className="seg-btn inline-flex items-center gap-1.5"
+                  aria-pressed={mode === 'curl'}
+                  onClick={() => setMode('curl')}
+                >
+                  <Terminal size={14} /> {t('hosts.install_mode_curl')}
+                </button>
+                <button
+                  type="button"
+                  className="seg-btn inline-flex items-center gap-1.5"
+                  aria-pressed={mode === 'docker'}
+                  onClick={() => setMode('docker')}
+                >
+                  <Container size={14} /> {t('hosts.install_mode_docker')}
+                </button>
+              </div>
+
+              <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
+                {mode === 'curl' ? t('hosts.install_curl_hint') : t('hosts.install_docker_hint')}
+              </p>
+
               <div className="flex items-center justify-between">
                 <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>
-                  {t('hosts.docker_cmd')}
+                  {mode === 'curl' ? t('hosts.curl_cmd') : t('hosts.docker_cmd')}
                 </span>
                 <button
                   type="button"
-                  onClick={() => copy(dockerCmd, 'cmd')}
+                  onClick={() => copy(mode === 'curl' ? curlCmd : dockerCmd, 'cmd')}
                   className="text-xs inline-flex items-center gap-1.5"
                   style={{ color: copied === 'cmd' ? 'var(--gv-ok)' : 'var(--gv-text-muted)' }}
                 >
@@ -166,7 +202,7 @@ export default function EnrollHostModal({ onClose }: Props) {
                   border: '1px solid var(--gv-border)',
                   color: 'var(--gv-text)',
                 }}
-              >{dockerCmd}</pre>
+              >{mode === 'curl' ? curlCmd : dockerCmd}</pre>
             </div>
 
             <div className="flex justify-end">

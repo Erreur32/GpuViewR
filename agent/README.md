@@ -4,7 +4,38 @@ Lightweight remote collector for the GpuViewR fleet. Lives on each machine you w
 
 > v0.3.0 — GPU samples only. `system / temps / processes` capabilities are negotiated in the hello frame but ship as no-ops on the wire side until jalon 5 of the multi-host plan ([Docs/MULTI_HOST_PLAN.md](../Docs/MULTI_HOST_PLAN.md)).
 
-## Quick start (Docker, recommended)
+## Quick start (curl install.sh, recommended)
+
+The hub serves a one-liner installer at `/install.sh`. Run as root on
+the remote machine after `Settings → Hosts → + Add host` on the hub:
+
+```bash
+curl -fsSL https://gpu.example.com/install.sh | sudo bash -s -- \
+  --url https://gpu.example.com \
+  --token <host_id>.<secret>
+```
+
+The script:
+- detects distro (Debian 11+/Ubuntu 22+/Rocky/Alma/RHEL 9+/Fedora),
+- installs Node 22 via NodeSource if missing,
+- creates a `gpuviewr-agent` system user and `/opt/gpuviewr-agent/`,
+- downloads the agent bundle from `${HUB_URL}/agent.mjs`,
+- writes `/etc/gpuviewr-agent.env` (mode 0600) and `/etc/systemd/system/gpuviewr-agent.service`,
+- starts the unit (`systemctl enable --now gpuviewr-agent`).
+
+Tail the agent's connect handshake:
+
+```bash
+journalctl -u gpuviewr-agent -f
+```
+
+Uninstall later:
+
+```bash
+curl -fsSL https://gpu.example.com/install.sh | sudo bash -s -- --uninstall
+```
+
+## Quick start (Docker)
 
 1. **On the hub**: `Settings → Hosts → + Add host`. Type a label, hit Generate. The modal shows your `HOST_ID` + `AGENT_TOKEN` **once**. Copy them.
 

@@ -295,9 +295,26 @@ You only need agents if you want to monitor _other_ machines.
 
 1. **On the hub**, sign in as admin. Go to **Settings → Hosts → + Add host**.
    Type a label (e.g. `rtx-rig`), click Generate.
-2. The hub shows the **host id**, the **agent token** and a ready-to-paste
-   `docker run` snippet — copy them now, the token is **shown only once**.
-3. **On the remote machine**:
+2. The modal switches to a copy-once view with two install modes: a
+   single-line `curl ... install.sh` (recommended) and a `docker run`
+   alternative. Both contain the same one-shot token; the modal stresses
+   that the token is **shown only once**.
+3. **On the remote machine**, pick one:
+
+   **Mode A — curl install (no Docker required)**
+
+   ```bash
+   curl -fsSL https://gpu.example.com/install.sh | sudo bash -s -- \
+     --url https://gpu.example.com \
+     --token <host_id>.<secret>
+   ```
+
+   The script (served by the hub itself, see [agentDistribution.ts](server/routes/agentDistribution.ts))
+   installs Node 22 via NodeSource if missing, downloads `agent.mjs` from
+   the hub, creates a `gpuviewr-agent` system user + a systemd unit, and
+   starts the service. Watch logs with `journalctl -u gpuviewr-agent -f`.
+
+   **Mode B — Docker**
 
    ```bash
    docker run -d --name gpuviewr-agent \
@@ -311,6 +328,10 @@ You only need agents if you want to monitor _other_ machines.
 
    Pre-reqs: NVIDIA Container Toolkit on the remote, outbound TCP to the
    hub. Inside 1-3 s the new host appears `online` in the hub UI.
+
+   > Hub maintainer: the curl path needs `agent/dist/agent.mjs` to exist
+   > on the hub side. Run `npm run build:agent` once after a fresh clone
+   > to build it; the Docker hub image bundles it automatically.
 
 A drop-in [`docker-compose.agent.yml`](docker-compose.agent.yml) is
 provided at the repo root for users who prefer compose, and a bare-metal

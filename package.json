@@ -19,6 +19,7 @@
     "dev:mock": "cross-env MOCK_GPU=1 npm run dev",
     "predev:demo": "lsof -ti:5181 2>/dev/null | xargs -r kill -9; true",
     "dev:demo": "cross-env VITE_DEMO=1 vite",
+    "build:agent": "npm install --prefix agent --no-audit --no-fund && npm run build --prefix agent",
     "dev:client": "vite",
     "dev:server": "cross-env NODE_ENV=development tsx watch --include=.env --include=server/**/*.ts server/index.ts",
     "build": "vite build",
