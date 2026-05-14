@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 const SERVER_PORT = process.env.PORT || process.env.SERVER_PORT || '3015';
 const CLIENT_PORT = parseInt(process.env.VITE_PORT || '5181', 10);
@@ -35,6 +36,8 @@ const demoCspPlugin = {
       "font-src 'self' data: https://fonts.gstatic.com",
       "connect-src 'self'",
       "media-src 'self'",
+      "manifest-src 'self'",
+      "worker-src 'self'",
       "base-uri 'self'",
       "form-action 'self'",
     ].join('; ');
@@ -43,8 +46,35 @@ const demoCspPlugin = {
   },
 };
 
+const pwaPlugin = VitePWA({
+  registerType: 'autoUpdate',
+  includeAssets: ['logo.png', 'GPUViewR.png', 'alert.mp3'],
+  manifest: {
+    name: 'GpuViewR',
+    short_name: 'GpuViewR',
+    description: 'Real-time NVIDIA GPU monitoring dashboard',
+    theme_color: '#0b1220',
+    background_color: '#020617',
+    display: 'standalone',
+    start_url: BASE_PATH,
+    scope: BASE_PATH,
+    icons: [
+      { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+      { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+      { src: 'pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+  },
+  workbox: {
+    globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+    navigateFallback: `${BASE_PATH}index.html`,
+    // Live data must never be cached — these endpoints stream real metrics.
+    navigateFallbackDenylist: [/^\/api\//, /^\/ws\//],
+    runtimeCaching: [],
+  },
+});
+
 export default defineConfig({
-  plugins: [react(), demoCspPlugin],
+  plugins: [react(), demoCspPlugin, pwaPlugin],
   base: BASE_PATH,
   define: {
     __APP_VERSION__: JSON.stringify(DEMO ? `${PKG_VERSION}-demo` : PKG_VERSION),

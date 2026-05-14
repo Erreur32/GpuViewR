@@ -1,24 +1,21 @@
-release: v0.2.4 - thermal panel polish (CPU/GPU split, phantom sensor filter)
+feat(pwa): installable Chromium app
 
-Fixed:
-- Phantom hwmon sensors no longer leak to the UI. The host thermal
-  pipeline applies a 5-150 deg C plausibility window in
-  readHostTemperatures(), so unwired motherboard pins and uninitialised
-  virtual sensors (acpitz et al.) stop surfacing as fake 0 / negative
-  readings on the System page.
-- Sonar S3776 (cognitive complexity). Refactored readHostTemperatures()
-  into listDirSafe / readSensorsFromDir / readOneSensor helpers,
-  bringing the function below the 15-complexity gate.
+Add Progressive Web App support via vite-plugin-pwa so GpuViewR can
+be installed from the browser's install prompt and run as a
+standalone Chromium app.
 
-Changed:
-- System thermal panel hero is split into CPU + GPU sub-frames. Each
-  domain shows its own hottest sensor and heat bar. NVIDIA hosts (no
-  GPU hwmon node) populate the GPU sub-frame from info.gpus[] via a
-  synthetic 'nvidia' source. Heatmap strip and source-grouped chip
-  cards stay as before.
-- Sub-frame styling now follows theme tokens. Inner cards sit on
-  --gv-surface instead of --gv-bg, and the heat bar mirrors
-  SystemPage UsageBar (gradient base + masked trailing portion) for
-  consistent contrast across light and dark themes.
-- i18n: added system.temps_cpu, system.temps_gpu and
-  system.temps_no_sensors to en/fr.
+- A generated service worker precaches the app shell (HTML/JS/CSS
+  and PWA icons) so the window opens even when the backend is
+  unreachable; the existing useGpuStream reconnect logic then drives
+  the footer "disconnected" pastille until /api and /ws come back.
+- Live data endpoints (/api/*, /ws/*) are excluded from the SW's
+  navigation fallback so metrics are never served stale from cache.
+- New PWA icons (pwa-192x192.png, pwa-512x512.png and a maskable
+  512x512 variant) generated from gpuviewr.svg; apple-touch-icon
+  link in index.html for iOS home-screen.
+- Demo CSP whitelists manifest-src 'self' and worker-src 'self' so
+  the service worker registers correctly on GitHub Pages.
+
+Version bump and CHANGELOG entry are deferred to a follow-up
+release commit, once CI / SonarCloud / Snyk have validated the
+PWA changes.
