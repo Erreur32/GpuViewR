@@ -1,21 +1,19 @@
-feat(pwa): installable Chromium app
+release: v0.2.5 - installable PWA (standalone Chromium app)
 
-Add Progressive Web App support via vite-plugin-pwa so GpuViewR can
-be installed from the browser's install prompt and run as a
-standalone Chromium app.
+Added:
+- Progressive Web App support via vite-plugin-pwa. GpuViewR can be
+  installed as a standalone Chromium app from the browser's install
+  prompt. A generated service worker precaches the app shell so the
+  window opens even when the backend is unreachable; the existing
+  useGpuStream reconnect logic then drives the footer "disconnected"
+  pastille until /api and /ws come back.
+- Live data endpoints (/api/*, /ws/*) are explicitly excluded from
+  the service worker's navigation fallback, so metrics are never
+  served stale from cache.
+- New PWA icons (pwa-192x192.png, pwa-512x512.png, maskable variant)
+  generated from gpuviewr.svg, and an apple-touch-icon link in
+  index.html for iOS home-screen.
 
-- A generated service worker precaches the app shell (HTML/JS/CSS
-  and PWA icons) so the window opens even when the backend is
-  unreachable; the existing useGpuStream reconnect logic then drives
-  the footer "disconnected" pastille until /api and /ws come back.
-- Live data endpoints (/api/*, /ws/*) are excluded from the SW's
-  navigation fallback so metrics are never served stale from cache.
-- New PWA icons (pwa-192x192.png, pwa-512x512.png and a maskable
-  512x512 variant) generated from gpuviewr.svg; apple-touch-icon
-  link in index.html for iOS home-screen.
+Changed:
 - Demo CSP whitelists manifest-src 'self' and worker-src 'self' so
   the service worker registers correctly on GitHub Pages.
-
-Version bump and CHANGELOG entry are deferred to a follow-up
-release commit, once CI / SonarCloud / Snyk have validated the
-PWA changes.

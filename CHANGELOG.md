@@ -5,6 +5,27 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-05-14
+
+### Added
+- **Progressive Web App support.** GpuViewR can now be installed as
+  a standalone Chromium app via the browser's install prompt. A
+  generated service worker (via `vite-plugin-pwa`) precaches the
+  app shell (HTML/JS/CSS/icons) so the window opens even when the
+  backend is unreachable — the existing WebSocket reconnect logic
+  in `useGpuStream` then drives the footer "disconnected" pastille
+  until `/api` and `/ws` come back. Live data endpoints are
+  explicitly excluded from the SW's navigation fallback so metrics
+  are never served stale from cache.
+- **PWA icons.** New `pwa-192x192.png`, `pwa-512x512.png` and a
+  maskable variant generated from `gpuviewr.svg`, plus an
+  `apple-touch-icon` link in `index.html` for iOS home-screen.
+
+### Changed
+- **Demo CSP** now whitelists `manifest-src 'self'` and
+  `worker-src 'self'` so the service worker registers correctly on
+  GitHub Pages.
+
 ## [0.2.4] - 2026-05-10
 
 ### Fixed
