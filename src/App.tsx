@@ -36,7 +36,25 @@ export default function App() {
   return (
     <>
       <Routes>
-        <Route path="/login" element={token ? <Navigate to="/" replace /> : <LoginPage />} />
+        {/* Restore the original URL after login: when an unauthenticated
+            user lands on /fleet, the protected branch below replaces to
+            /login with state.from = current location; after the token is
+            set, we read it back so the user lands on /fleet, not /. */}
+        <Route
+          path="/login"
+          element={
+            token ? (
+              <Navigate
+                to={
+                  (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/'
+                }
+                replace
+              />
+            ) : (
+              <LoginPage />
+            )
+          }
+        />
         <Route
           element={
             token ? (

@@ -35,6 +35,11 @@ const POLL_MS = 15_000;
 interface HostsState {
   hosts: HostRecord[];
   loading: boolean;
+  /** Flips to true after the first refresh() completes (success OR
+   *  failure). Guards UI code that decides to redirect based on
+   *  hosts.length so we don't bounce away from /fleet during the
+   *  brief window between mount and the first GET /api/hosts response. */
+  hydrated: boolean;
   error: string | null;
   /** Drives which host the Dashboard currently visualises. Defaults
    *  to the local hub so single-host installs behave as before. */
@@ -55,6 +60,7 @@ interface HostsState {
 export const useHostsStore = create<HostsState>((set, get) => ({
   hosts: [],
   loading: false,
+  hydrated: false,
   error: null,
   selectedHostId: LOCAL_HOST_ID,
 
@@ -62,9 +68,11 @@ export const useHostsStore = create<HostsState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const r = await api<{ hosts: HostRecord[] }>('/hosts');
-      set({ hosts: r.hosts, loading: false });
+      set({ hosts: r.hosts, loading: false, hydrated: true });
     } catch (err) {
-      set({ error: (err as Error).message, loading: false });
+      // Flip hydrated on failure too: a broken /api/hosts shouldn't trap
+      // routes that gate on hosts.length in a perpetual loading state.
+      set({ error: (err as Error).message, loading: false, hydrated: true });
     }
   },
 

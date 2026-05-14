@@ -6,11 +6,13 @@ import { useHostsStore, effectiveStatus, LOCAL_HOST_ID } from '../../store/hosts
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
 import HostCard from './HostCard';
+import FleetChart from './FleetChart';
 
 export default function FleetPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const hosts = useHostsStore((s) => s.hosts);
+  const hydrated = useHostsStore((s) => s.hydrated);
   const setSelected = useHostsStore((s) => s.setSelectedHost);
   const samplesByHost = useGpuStore((s) => s.latestByHost);
   const fleetView = useUiStore((s) => s.fleetView);
@@ -27,6 +29,7 @@ export default function FleetPage() {
     let online = 0;
     let lagging = 0;
     let offline = 0;
+    let pending = 0;
     let totalGpus = 0;
     let totalPower = 0;
     for (const h of hosts) {
@@ -34,28 +37,37 @@ export default function FleetPage() {
       if (s === 'online') online++;
       else if (s === 'lagging') lagging++;
       else if (s === 'offline') offline++;
+      else if (s === 'pending') pending++;
+      // 'disabled' silently absorbed — admin disabled it on purpose,
+      // so it shouldn't drag the green dot down.
       const samples = samplesByHost.get(h.id);
       if (samples && s !== 'offline' && s !== 'disabled') {
         totalGpus += samples.size;
         for (const v of samples.values()) totalPower += v.power;
       }
     }
-    return { online, lagging, offline, total: hosts.length, totalGpus, totalPower };
+    return { online, lagging, offline, pending, total: hosts.length, totalGpus, totalPower };
   }, [hosts, samplesByHost]);
 
   // Mono-host install: /fleet is meaningless. Redirect to the regular
   // Dashboard so a bookmark or accidental click never lands on an
-  // empty page. Multi-host installs get the proper fleet view.
-  if (hosts.length <= 1) return <Navigate to="/" replace />;
+  // empty page. BUT only after the first /api/hosts response — otherwise
+  // a hard refresh of /fleet bounces to / before the list arrives.
+  if (hydrated && hosts.length <= 1) return <Navigate to="/" replace />;
 
-  let onlineAccent: string;
-  if (agg.offline > 0) onlineAccent = 'var(--gv-warn)';
-  else if (agg.lagging > 0) onlineAccent = 'var(--gv-warn)';
-  else onlineAccent = 'var(--gv-ok)';
+  // Green only if EVERY non-disabled host is online. A pending or
+  // lagging or offline host pulls the aggregate to warn so the
+  // "1/2 — all good" inconsistency the user reported can't happen.
+  const allOnline = agg.online === agg.total;
+  const onlineAccent = allOnline ? 'var(--gv-ok)' : 'var(--gv-warn)';
 
-  const onlineHint = (agg.offline > 0 || agg.lagging > 0)
-    ? t('fleet.aggregate_online_hint_warn', { offline: agg.offline, lagging: agg.lagging })
-    : t('fleet.aggregate_online_hint_ok');
+  const hintParts: string[] = [];
+  if (agg.offline > 0) hintParts.push(t('fleet.count_offline', { count: agg.offline }));
+  if (agg.lagging > 0) hintParts.push(t('fleet.count_lagging', { count: agg.lagging }));
+  if (agg.pending > 0) hintParts.push(t('fleet.count_pending', { count: agg.pending }));
+  const onlineHint = allOnline
+    ? t('fleet.aggregate_online_hint_ok')
+    : hintParts.join(' · ');
 
   return (
     <div className="space-y-6">
@@ -109,6 +121,8 @@ export default function FleetPage() {
           hint={t('fleet.aggregate_power_hint', { watts: Math.round(agg.totalPower) })}
         />
       </div>
+
+      <FleetChart />
 
       {/* Detailed view shows per-GPU mini-tiles, so cards are wider —
           drop to 1-2 columns. Simple view keeps the 1/2/3 column grid. */}
