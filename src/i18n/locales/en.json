@@ -346,7 +346,9 @@
     "disconnected": "Offline"
   },
   "footer": {
-    "aggregate_help": "Aggregate across all GPUs: average temperature · average utilization · average fan · total power"
+    "aggregate_help": "Aggregate across all GPUs: average temperature · average utilization · average fan · total power",
+    "ws_connected_help": "Live WebSocket stream from the hub — GPU metrics are flowing in real time.",
+    "ws_disconnected_help": "WebSocket stream offline — values shown are the last known sample; the page will reconnect automatically."
   },
   "system": {
     "title": "System",
@@ -413,8 +415,8 @@
     "gpus_count_other": "{{count}} GPUs",
     "hottest_gpu": "Hottest GPU",
     "view_label": "Fleet view",
-    "view_simple": "Simple",
-    "view_detailed": "Detailed",
+    "view_simple": "Compact",
+    "view_detailed": "Bars",
     "host_offline": "Host is offline — last known samples shown elsewhere",
     "no_samples_yet": "Waiting for the first frame…",
     "aggregate_online": "Online",

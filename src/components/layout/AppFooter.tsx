@@ -69,9 +69,18 @@ export default function AppFooter() {
             icon={connected
               ? <Wifi className="w-3 h-3" style={{ color: 'var(--gv-ok)' }} />
               : <WifiOff className="w-3 h-3" style={{ color: 'var(--gv-warn)' }} />}
-            label={connected ? t('common.connected') : t('common.disconnected')}
+            // defaultValue keeps the visible label sane even if a stale
+            // service-worker cache serves a JS bundle from before these
+            // keys existed in the locales (i18next would otherwise echo
+            // the key, surfacing "common.connected" in the footer).
+            label={connected
+              ? t('common.connected', { defaultValue: 'Live' })
+              : t('common.disconnected', { defaultValue: 'Offline' })}
             color={connected ? 'var(--gv-ok)' : 'var(--gv-warn)'}
             pulse={connected}
+            title={connected
+              ? t('footer.ws_connected_help', { defaultValue: 'Live WebSocket stream from the hub — GPU metrics are flowing in real time.' })
+              : t('footer.ws_disconnected_help', { defaultValue: 'WebSocket stream offline — values shown are the last known sample; the page will reconnect automatically.' })}
           />
 
           {gpuCount > 0 && (

@@ -11,10 +11,13 @@ FROM node:22-bookworm-slim@sha256:9f6d597feaca7d3a5dde341efe65e6f9e62a08bfa1c4d6
 WORKDIR /build
 
 # Copy only the files needed to bundle.
-COPY agent/package.json agent/package-lock.json* ./agent/
+COPY agent/package.json agent/package-lock.json ./agent/
 # Pre-install deps including dev (esbuild, tsx, typescript).
+# `npm ci` is reproducible from the lockfile — Scorecard "Pinned-
+# Dependencies" wants exact versions, not floating ranges, and `ci`
+# guarantees that without a manual SHA list.
 WORKDIR /build/agent
-RUN npm install --no-audit --no-fund --loglevel=error
+RUN npm ci --no-audit --no-fund --loglevel=error
 
 # Bring in agent sources + the single shared parser file from the hub.
 WORKDIR /build

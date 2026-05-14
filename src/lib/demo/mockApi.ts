@@ -26,6 +26,17 @@ import {
 
 const realFetch = globalThis.fetch.bind(globalThis);
 
+// Cosmetic random suffix for the demo's fake enrollment token. The value
+// never leaves the browser tab — the modal just needs *something* that
+// looks like a token. Uses crypto.getRandomValues so static analyzers
+// (Sonar S2245) don't flag the call as weak PRNG even though the
+// security model here is "demo, no real auth ever".
+function demoTokenSuffix(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -124,7 +135,7 @@ function handleHealthSystem(ctx: RouteCtx): Response | null {
         enrolled_at: Math.floor(Date.now() / 1000), last_seen: null,
         status: 'pending',
       },
-      token: 'gpvr_demo-token-not-real-' + Math.random().toString(36).slice(2),
+      token: 'gpvr_demo-token-not-real-' + demoTokenSuffix(),
     });
   }
   if (ctx.url.pathname === '/api/system') return json(fakeSystem());

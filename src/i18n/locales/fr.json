@@ -346,7 +346,9 @@
     "disconnected": "Hors-ligne"
   },
   "footer": {
-    "aggregate_help": "Agrégat sur tous les GPU : température moyenne · utilisation moyenne · ventilo moyen · puissance totale"
+    "aggregate_help": "Agrégat sur tous les GPU : température moyenne · utilisation moyenne · ventilo moyen · puissance totale",
+    "ws_connected_help": "Flux WebSocket en direct depuis le hub — les métriques GPU arrivent en temps réel.",
+    "ws_disconnected_help": "Flux WebSocket hors ligne — les valeurs affichées datent du dernier échantillon ; la page se reconnectera automatiquement."
   },
   "system": {
     "title": "Système",
@@ -413,8 +415,8 @@
     "gpus_count_other": "{{count}} GPUs",
     "hottest_gpu": "GPU la plus chaude",
     "view_label": "Vue flotte",
-    "view_simple": "Simple",
-    "view_detailed": "Détaillée",
+    "view_simple": "Compacte",
+    "view_detailed": "Barres",
     "host_offline": "Hôte hors-ligne — dernières mesures visibles ailleurs",
     "no_samples_yet": "En attente de la première mesure…",
     "aggregate_online": "En ligne",

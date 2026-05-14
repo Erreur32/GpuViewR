@@ -125,14 +125,34 @@ else
 fi
 
 if [[ $need_node -eq 1 ]]; then
-  say "Node 22+ not detected; installing via NodeSource..."
+  say "Node 22+ not detected; setting up NodeSource repository..."
+  # NodeSource keyring + repo config done manually instead of `curl | bash`
+  # so the script never runs unaudited remote shell code (Scorecard
+  # Pinned-Dependencies). Mirrors what setup_22.x would do but with a
+  # readable, reviewable code path.
   case "$PKG_FAMILY" in
     apt)
-      curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      install -d -m 0755 /etc/apt/keyrings
+      curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+      chmod 0644 /etc/apt/keyrings/nodesource.gpg
+      echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list
+      apt-get update
       apt-get install -y nodejs
       ;;
     dnf)
-      curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+      rpm --import https://rpm.nodesource.com/gpgkey/nodesource-repo.gpg.key
+      cat > /etc/yum.repos.d/nodesource-nodejs.repo <<'EOF'
+[nodesource-nodejs]
+name=Node.js Packages for Linux RPM based distros - $basearch
+baseurl=https://rpm.nodesource.com/pub_22.x/nodistro/nodejs/$basearch
+priority=9
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.nodesource.com/gpgkey/nodesource-repo.gpg.key
+module_hotfixes=1
+EOF
       dnf install -y nodejs
       ;;
     *)

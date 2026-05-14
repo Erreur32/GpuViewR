@@ -29,3 +29,15 @@ export const metricsLimiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
 });
+
+// Public, unauthenticated bare-metal install endpoints (/install.sh,
+// /agent.mjs). They're hit at most a handful of times per host during
+// enrollment; anything beyond that is either pathological retry loops
+// or scraping. A tight cap keeps the hub safe without affecting any
+// real install workflow.
+export const installLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
