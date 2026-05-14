@@ -255,3 +255,21 @@ export function closeDatabase(): void {
     db = null;
   }
 }
+
+/**
+ * Test-only: replace the module-level singleton with an arbitrary
+ * Database instance (typically `:memory:`) so unit tests can drive
+ * HostsRepo/GpuMetricRepository/AlertEventRepo without writing to
+ * the dev data dir. Caller is responsible for closing the instance
+ * (via closeDatabase or directly).
+ *
+ * Runs applySchema + runMigrations on the instance so it's usable
+ * immediately. Not exported through any production code path; only
+ * imported by *.test.ts files.
+ */
+export function _setDatabaseForTests(database: Database.Database): void {
+  if (db) db.close();
+  db = database;
+  applySchema(db);
+  runMigrations(db);
+}

@@ -15,25 +15,39 @@ export interface SampleEvent {
   samples: GpuSample[];
 }
 
+export interface HostStatusEvent {
+  host_id: string;
+  status: 'online' | 'lagging' | 'offline' | 'disabled' | 'pending';
+  last_seen: number | null;
+}
+
 export type SampleListener = (event: SampleEvent) => void;
+export type HostStatusListener = (event: HostStatusEvent) => void;
 
 class MetricsBus {
   private readonly emitter = new EventEmitter();
   private readonly latestByHost = new Map<string, GpuSample[]>();
 
-  on(event: 'sample', listener: SampleListener): this {
-    this.emitter.on(event, listener);
+  on(event: 'sample', listener: SampleListener): this;
+  on(event: 'host_status', listener: HostStatusListener): this;
+  on(event: 'sample' | 'host_status', listener: SampleListener | HostStatusListener): this {
+    this.emitter.on(event, listener as (e: unknown) => void);
     return this;
   }
 
-  off(event: 'sample', listener: SampleListener): this {
-    this.emitter.off(event, listener);
+  off(event: 'sample', listener: SampleListener): this;
+  off(event: 'host_status', listener: HostStatusListener): this;
+  off(event: 'sample' | 'host_status', listener: SampleListener | HostStatusListener): this {
+    this.emitter.off(event, listener as (e: unknown) => void);
     return this;
   }
 
-  emit(event: 'sample', payload: SampleEvent): boolean {
+  emit(event: 'sample', payload: SampleEvent): boolean;
+  emit(event: 'host_status', payload: HostStatusEvent): boolean;
+  emit(event: 'sample' | 'host_status', payload: SampleEvent | HostStatusEvent): boolean {
     if (event === 'sample') {
-      this.latestByHost.set(payload.host_id, payload.samples);
+      const e = payload as SampleEvent;
+      this.latestByHost.set(e.host_id, e.samples);
     }
     return this.emitter.emit(event, payload);
   }
@@ -43,8 +57,8 @@ class MetricsBus {
     return this.latestByHost.get(host_id) ?? [];
   }
 
-  /** Read-only snapshot of every host's last frame — used by jalon 6
-   *  WS broadcast to bootstrap a freshly connected UI client. */
+  /** Read-only snapshot of every host's last frame — used by the v0.3.1
+   *  fleet view to bootstrap a freshly connected UI client. */
   getAllLatest(): ReadonlyMap<string, GpuSample[]> {
     return this.latestByHost;
   }

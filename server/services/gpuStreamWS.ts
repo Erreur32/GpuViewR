@@ -2,7 +2,7 @@ import type { Server as HttpServer } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { authService } from './authService.js';
 import { gpuCollector } from './gpuCollector.js';
-import { metricsBus, type SampleEvent } from './_metricsBus.js';
+import { metricsBus, type SampleEvent, type HostStatusEvent } from './_metricsBus.js';
 import { alertService } from './alertService.js';
 import { logger } from '../utils/logger.js';
 import type { AlertEvent, AlertRule } from '../database/models/Alert.js';
@@ -25,17 +25,23 @@ export function setupGpuWebSocket(server: HttpServer): void {
     if (snapshot.length) safeSend(ws, { type: 'snapshot', samples: snapshot });
 
     // Unwrap the bus envelope: legacy clients on /ws/gpu still expect
-    // { type:'sample', samples:[...] } without host_id. Multi-host clients
-    // (v0.3.1) will get a richer payload via a new code path.
-    const onSample = (e: SampleEvent) => safeSend(ws, { type: 'sample', samples: e.samples });
+    // { type:'sample', samples:[...] } without host_id. host_id is added
+    // to the payload so v0.3.1 fleet UI can dispatch per-host without
+    // breaking single-host clients that ignore extra fields.
+    const onSample = (e: SampleEvent) =>
+      safeSend(ws, { type: 'sample', host_id: e.host_id, samples: e.samples });
+    const onHostStatus = (e: HostStatusEvent) =>
+      safeSend(ws, { type: 'host_status', host_id: e.host_id, status: e.status, last_seen: e.last_seen });
     const onAlert = (event: AlertEvent, rule: AlertRule) =>
       safeSend(ws, { type: 'alert', event, notify_browser: !!rule.notify_browser, notify_sound: !!rule.notify_sound });
 
     metricsBus.on('sample', onSample);
+    metricsBus.on('host_status', onHostStatus);
     alertService.on('event', onAlert);
 
     ws.on('close', () => {
       metricsBus.off('sample', onSample);
+      metricsBus.off('host_status', onHostStatus);
       alertService.off('event', onAlert);
       logger.debug('ws', `client disconnected (user=${payload.username})`);
     });

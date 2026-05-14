@@ -14,6 +14,8 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { apiLimiter, authLimiter, metricsLimiter } from './middleware/rateLimit.js';
 import { gpuCollector, startRetentionJob } from './services/gpuCollector.js';
 import { setupGpuWebSocket } from './services/gpuStreamWS.js';
+import { setupAgentIngestWS } from './services/agentIngestWS.js';
+import { startHostsWatchdog } from './services/hostsWatchdog.js';
 import { alertService } from './services/alertService.js';
 import { updateService } from './services/updateService.js';
 import { exportService } from './services/exportService.js';
@@ -31,6 +33,7 @@ import exportsRoutes from './routes/exports.js';
 import metricsRoutes from './routes/metrics.js';
 import infoRoutes from './routes/info.js';
 import processesRoutes from './routes/processes.js';
+import hostsRoutes from './routes/hosts.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -99,6 +102,7 @@ async function bootstrap(): Promise<void> {
   app.use('/api/exports', exportsRoutes);
   app.use('/api/info', infoRoutes);
   app.use('/api/processes', processesRoutes);
+  app.use('/api/hosts', hostsRoutes);
   app.use('/metrics', metricsLimiter, metricsRoutes);
 
   const distDir = path.resolve(__dirname, '..', 'dist');
@@ -115,9 +119,11 @@ async function bootstrap(): Promise<void> {
 
   const server = http.createServer(app);
   setupGpuWebSocket(server);
+  setupAgentIngestWS(server, readVersion());
 
   gpuCollector.start();
   startRetentionJob();
+  startHostsWatchdog();
 
   server.listen(config.port, '0.0.0.0', () => {
     printBoot();
