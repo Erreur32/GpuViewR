@@ -374,16 +374,11 @@ lives in [`Docs/MULTI_HOST_PLAN.md`](Docs/MULTI_HOST_PLAN.md).
 - **Multi-host fan-out** — hub + agents, host-tagged exports,
   host-scoped alerts. See [Multi-host](#multi-host) above.
 
-### Planned (v0.3.1)
+### Planned (v0.3.x)
 
-- **Fleet UI** — `/fleet` overview page with one card per enrolled
-  host (status pill, top temp, total power), `/host/:id` drill-down,
-  `Settings → Hosts` admin table. Backend is ready; UI is currently
-  a standalone preview at `npm run dev:preview` (see
-  [`src/preview-multi/`](src/preview-multi/)).
 - **Remote system / process collection** — agents currently ship
   GPU samples only; CPU / load / memory / process names from the
-  remote host are reserved for v0.3.1.
+  remote host are reserved for a follow-up release.
 
 ---
 
