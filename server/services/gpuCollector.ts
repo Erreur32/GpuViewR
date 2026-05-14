@@ -4,7 +4,7 @@ import { logger } from '../utils/logger.js';
 import { spawnNvidiaSmi, spawnSyncNvidiaSmi } from '../utils/nvidiaSmi.js';
 import { GpuDeviceRepository, GpuMetricRepository, type GpuMetric } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
-import { LOCAL_HOST_ID } from '../database/models/Host.js';
+import { HostsRepo, LOCAL_HOST_ID } from '../database/models/Host.js';
 import { buildFakeSamples } from './mockGpu.js';
 import {
   QUERY_FIELDS,
@@ -38,6 +38,27 @@ class GpuCollector extends EventEmitter {
   //     parallel with the CSV query each tick; merged in handleOutput().
   private lastPcieThroughput: Map<string, PcieThroughput> = new Map();
   private pcieDiagLogged = false;
+  // Throttle DB writes for the local host's last_seen heartbeat. The
+  // WS ingest path uses the same 5s window — keeps the SQLite UPDATE
+  // rate sane while still surfacing a fresh value on the Hosts page.
+  private lastSeenWroteAt = 0;
+  private static readonly LAST_SEEN_THROTTLE_MS = 5_000;
+
+  /** Touch hosts.last_seen for the local row so the Hosts settings
+   *  table shows a fresh heartbeat (the WS ingest path does the same
+   *  for remote agents). No-op until the throttle window elapses. */
+  private touchLocalLastSeen(): void {
+    const now = Date.now();
+    if (now - this.lastSeenWroteAt < GpuCollector.LAST_SEEN_THROTTLE_MS) return;
+    this.lastSeenWroteAt = now;
+    try {
+      HostsRepo.markSeen(LOCAL_HOST_ID);
+    } catch (err) {
+      // Don't let a SQLite hiccup take down the collect loop — the
+      // heartbeat is best-effort metadata, not the sample pipeline.
+      logger.debug('gpu', `markSeen(local) failed: ${(err as Error).message}`);
+    }
+  }
 
   start(): void {
     if (this.timer) return;
@@ -86,6 +107,7 @@ class GpuCollector extends EventEmitter {
       });
     }
     metricsBus.emit('sample', { host_id: LOCAL_HOST_ID, samples });
+    this.touchLocalLastSeen();
     if (Date.now() - this.lastFlush >= this.flushIntervalMs) this.flushBuffer();
   }
 
@@ -249,6 +271,7 @@ class GpuCollector extends EventEmitter {
     if (samples.length === 0) return;
     this.lastSamples = samples;
     metricsBus.emit('sample', { host_id: LOCAL_HOST_ID, samples });
+    this.touchLocalLastSeen();
 
     if (Date.now() - this.lastFlush >= this.flushIntervalMs) this.flushBuffer();
   }
