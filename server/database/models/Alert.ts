@@ -28,6 +28,7 @@ export interface AlertRule {
 
 export interface AlertEvent {
   id: number;
+  host_id: string;
   rule_id: number;
   rule_name: string;
   gpu_index: number;
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS alert_rules (
 
 CREATE TABLE IF NOT EXISTS alert_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  host_id TEXT NOT NULL DEFAULT 'local',
   rule_id INTEGER NOT NULL,
   rule_name TEXT NOT NULL,
   gpu_index INTEGER NOT NULL,
@@ -71,6 +73,7 @@ CREATE TABLE IF NOT EXISTS alert_events (
 
 CREATE INDEX IF NOT EXISTS idx_alert_events_triggered ON alert_events(triggered_at);
 CREATE INDEX IF NOT EXISTS idx_alert_events_rule ON alert_events(rule_id);
+CREATE INDEX IF NOT EXISTS idx_alert_events_host ON alert_events(host_id, triggered_at);
 `;
 
 export function ensureAlertSchema(): void {
@@ -138,9 +141,9 @@ export const AlertEventRepo = {
   insert(e: Omit<AlertEvent, 'id'>): AlertEvent {
     const r = getDatabase().prepare(
       `INSERT INTO alert_events
-       (rule_id, rule_name, gpu_index, metric, threshold, observed, state, triggered_at, message)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(e.rule_id, e.rule_name, e.gpu_index, e.metric, e.threshold, e.observed, e.state, e.triggered_at, e.message);
+       (host_id, rule_id, rule_name, gpu_index, metric, threshold, observed, state, triggered_at, message)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(e.host_id, e.rule_id, e.rule_name, e.gpu_index, e.metric, e.threshold, e.observed, e.state, e.triggered_at, e.message);
     return { ...e, id: Number(r.lastInsertRowid) };
   },
   list(limit = 100, sinceEpoch?: number): AlertEvent[] {

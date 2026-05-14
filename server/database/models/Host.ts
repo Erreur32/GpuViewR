@@ -1,0 +1,175 @@
+// Multi-host registry. Sole consumer for jalon 2: the local install
+// seeds a single row with id='local', kind='local'. Jalon 3 adds the
+// enrollment path that creates kind='agent' rows with a bcrypt token
+// hash. Jalon 5/onwards may add kind='prometheus' for byo-telemetry.
+//
+// The id is intentionally an opaque string (UUIDv4 for agents,
+// the literal 'local' for the hub) so renaming a label or even the
+// underlying hostname never breaks historical correlation in
+// gpu_metrics / alert_events.
+
+import { getDatabase } from '../connection.js';
+
+/** Hub-side identifier for the local nvidia-smi producer. */
+export const LOCAL_HOST_ID = 'local';
+
+export type HostKind = 'local' | 'agent' | 'prometheus';
+export type HostStatus = 'pending' | 'online' | 'offline' | 'disabled';
+
+export interface HostRecord {
+  id: string;
+  label: string;
+  hostname: string | null;
+  kind: HostKind;
+  endpoint: string | null;
+  /** bcrypt hash of the enrollment token. NULL for kind='local'. */
+  token_hash: string | null;
+  /** JSON string of { gpu, system, temps, processes } booleans, or null until first hello. */
+  capabilities: string | null;
+  agent_version: string | null;
+  protocol_ver: number;
+  enrolled_at: number;
+  last_seen: number | null;
+  status: HostStatus;
+}
+
+export interface HostInsertInput {
+  id: string;
+  label: string;
+  hostname?: string | null;
+  kind: HostKind;
+  endpoint?: string | null;
+  token_hash?: string | null;
+  capabilities?: string | null;
+  agent_version?: string | null;
+  protocol_ver?: number;
+  status?: HostStatus;
+}
+
+const DDL = `
+CREATE TABLE IF NOT EXISTS hosts (
+  id            TEXT PRIMARY KEY,
+  label         TEXT NOT NULL,
+  hostname      TEXT,
+  kind          TEXT NOT NULL,
+  endpoint      TEXT,
+  token_hash    TEXT,
+  capabilities  TEXT,
+  agent_version TEXT,
+  protocol_ver  INTEGER NOT NULL DEFAULT 1,
+  enrolled_at   INTEGER NOT NULL,
+  last_seen     INTEGER,
+  status        TEXT NOT NULL DEFAULT 'pending'
+);
+
+CREATE INDEX IF NOT EXISTS idx_hosts_status ON hosts(status);
+CREATE INDEX IF NOT EXISTS idx_hosts_kind   ON hosts(kind);
+`;
+
+export function ensureHostsSchema(db = getDatabase()): void {
+  db.exec(DDL);
+}
+
+export const HostsRepo = {
+  list(): HostRecord[] {
+    return getDatabase()
+      .prepare('SELECT * FROM hosts ORDER BY enrolled_at ASC')
+      .all() as HostRecord[];
+  },
+
+  findById(id: string): HostRecord | undefined {
+    return getDatabase()
+      .prepare('SELECT * FROM hosts WHERE id = ?')
+      .get(id) as HostRecord | undefined;
+  },
+
+  findByTokenHash(token_hash: string): HostRecord | undefined {
+    return getDatabase()
+      .prepare('SELECT * FROM hosts WHERE token_hash = ?')
+      .get(token_hash) as HostRecord | undefined;
+  },
+
+  insert(input: HostInsertInput): HostRecord {
+    const now = Math.floor(Date.now() / 1000);
+    getDatabase()
+      .prepare(
+        `INSERT INTO hosts
+         (id, label, hostname, kind, endpoint, token_hash, capabilities,
+          agent_version, protocol_ver, enrolled_at, last_seen, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+      )
+      .run(
+        input.id,
+        input.label,
+        input.hostname ?? null,
+        input.kind,
+        input.endpoint ?? null,
+        input.token_hash ?? null,
+        input.capabilities ?? null,
+        input.agent_version ?? null,
+        input.protocol_ver ?? 1,
+        now,
+        input.status ?? 'pending',
+      );
+    return this.findById(input.id)!;
+  },
+
+  update(id: string, patch: Partial<Omit<HostRecord, 'id' | 'enrolled_at'>>): HostRecord | undefined {
+    const cur = this.findById(id);
+    if (!cur) return undefined;
+    const m = { ...cur, ...patch };
+    getDatabase()
+      .prepare(
+        `UPDATE hosts SET
+           label = ?, hostname = ?, kind = ?, endpoint = ?, token_hash = ?,
+           capabilities = ?, agent_version = ?, protocol_ver = ?,
+           last_seen = ?, status = ?
+         WHERE id = ?`,
+      )
+      .run(
+        m.label, m.hostname, m.kind, m.endpoint, m.token_hash,
+        m.capabilities, m.agent_version, m.protocol_ver,
+        m.last_seen, m.status, id,
+      );
+    return this.findById(id);
+  },
+
+  delete(id: string): boolean {
+    const r = getDatabase().prepare('DELETE FROM hosts WHERE id = ?').run(id);
+    return Number(r.changes || 0) > 0;
+  },
+
+  /** Touch `last_seen` to now and flip status to 'online' if it was offline/pending. */
+  markSeen(id: string): void {
+    const now = Math.floor(Date.now() / 1000);
+    getDatabase()
+      .prepare(
+        `UPDATE hosts
+         SET last_seen = ?, status = CASE WHEN status IN ('offline','pending') THEN 'online' ELSE status END
+         WHERE id = ?`,
+      )
+      .run(now, id);
+  },
+
+  setStatus(id: string, status: HostStatus): void {
+    getDatabase().prepare('UPDATE hosts SET status = ? WHERE id = ?').run(status, id);
+  },
+
+  /**
+   * Idempotent: insert the 'local' row if missing. Called from
+   * `runMigrations()` after the table is created so an upgrading
+   * v0.2.5 install or a fresh install both end up with the same
+   * canonical row pointing at the hub's own nvidia-smi.
+   */
+  seedLocalIfMissing(db = getDatabase()): void {
+    const existing = db.prepare('SELECT id FROM hosts WHERE id = ?').get(LOCAL_HOST_ID);
+    if (existing) return;
+    const now = Math.floor(Date.now() / 1000);
+    db.prepare(
+      `INSERT INTO hosts
+       (id, label, hostname, kind, endpoint, token_hash, capabilities,
+        agent_version, protocol_ver, enrolled_at, last_seen, status)
+       VALUES (?, ?, NULL, 'local', NULL, NULL, NULL, NULL, 1, ?, NULL, 'online')`,
+    ).run(LOCAL_HOST_ID, 'local', now);
+  },
+};

@@ -35,7 +35,7 @@ class AlertService extends EventEmitter {
 
   init(): void {
     ensureAlertSchema();
-    metricsBus.on('sample', (e: SampleEvent) => this.evaluate(e.samples));
+    metricsBus.on('sample', (e: SampleEvent) => this.evaluate(e.host_id, e.samples));
     logger.success('alert', 'Alert evaluator hooked');
     // Retention: prune events older than 30 days every hour
     setInterval(() => {
@@ -58,7 +58,7 @@ class AlertService extends EventEmitter {
     return this.cachedRules;
   }
 
-  private evaluate(samples: GpuSample[]): void {
+  private evaluate(host_id: string, samples: GpuSample[]): void {
     const rules = this.rules();
     if (rules.length === 0) return;
     const now = Math.floor(Date.now() / 1000);
@@ -68,19 +68,19 @@ class AlertService extends EventEmitter {
     for (const rule of rules) {
       if (HOST_METRICS.has(rule.metric)) {
         hostSample ??= buildHostSample();
-        this.evaluateOne(rule, hostSample, now);
+        this.evaluateOne(host_id, rule, hostSample, now);
         continue;
       }
       for (const sample of samples) {
-        this.evaluateOne(rule, sample, now);
+        this.evaluateOne(host_id, rule, sample, now);
       }
     }
   }
 
-  // Per (rule, sample) tick. Split out of evaluate() so the outer loop
-  // stays a flat 2-level iteration (Sonar S3776). Sample is either a
-  // real GpuSample or the synthetic HostSample built once per tick.
-  private evaluateOne(rule: AlertRule, sample: EvalSample, now: number): void {
+  // Per (rule, sample) tick. State is keyed by (rule, host, gpu) so the
+  // same global rule (host_id NULL) fires independently per host A vs B
+  // — exactly the behaviour D4 in Docs/MULTI_HOST_PLAN.md mandates.
+  private evaluateOne(host_id: string, rule: AlertRule, sample: EvalSample, now: number): void {
     if (rule.gpu_index !== null && rule.gpu_index !== sample.gpu_index) return;
     const observed = readMetric(sample, rule.metric);
     if (observed === null) return;
@@ -89,35 +89,35 @@ class AlertService extends EventEmitter {
       ? observed >= rule.threshold
       : observed <= rule.threshold;
 
-    const key = `${rule.id}:${sample.gpu_index}`;
+    const key = `${rule.id}:${host_id}:${sample.gpu_index}`;
     const st: RuleState = this.state.get(key) ?? { crossedSince: 0, lastFired: 0, firing: false };
 
-    if (crossed) this.handleCrossed(rule, sample, observed, st, now);
-    else this.handleCleared(rule, sample, observed, st);
+    if (crossed) this.handleCrossed(host_id, rule, sample, observed, st, now);
+    else this.handleCleared(host_id, rule, sample, observed, st);
 
     this.state.set(key, st);
   }
 
-  private handleCrossed(rule: AlertRule, sample: EvalSample, observed: number, st: RuleState, now: number): void {
+  private handleCrossed(host_id: string, rule: AlertRule, sample: EvalSample, observed: number, st: RuleState, now: number): void {
     if (st.crossedSince === 0) st.crossedSince = now;
     const sustained = now - st.crossedSince >= rule.duration_s;
     const cooled = now - st.lastFired >= rule.cooldown_s;
     if (!sustained) return;
     if (st.firing && !cooled) return;
-    this.fire(rule, sample, observed, 'firing');
+    this.fire(host_id, rule, sample, observed, 'firing');
     st.firing = true;
     st.lastFired = now;
   }
 
-  private handleCleared(rule: AlertRule, sample: EvalSample, observed: number, st: RuleState): void {
+  private handleCleared(host_id: string, rule: AlertRule, sample: EvalSample, observed: number, st: RuleState): void {
     if (st.firing) {
-      this.fire(rule, sample, observed, 'resolved');
+      this.fire(host_id, rule, sample, observed, 'resolved');
       st.firing = false;
     }
     st.crossedSince = 0;
   }
 
-  private fire(rule: AlertRule, sample: EvalSample, observed: number, state: 'firing' | 'resolved'): void {
+  private fire(host_id: string, rule: AlertRule, sample: EvalSample, observed: number, state: 'firing' | 'resolved'): void {
     // Host-scoped rules don't carry a meaningful gpu_index — surface
     // them as "host" in the message so the AlertsPage and webhook
     // formatter don't show "GPU #-1".
@@ -126,6 +126,7 @@ class AlertService extends EventEmitter {
       ? `${rule.name}: ${rule.metric} ${rule.condition} ${rule.threshold} (observed ${round(observed)}) on ${target}`
       : `${rule.name} resolved on ${target} (observed ${round(observed)})`;
     const event = AlertEventRepo.insert({
+      host_id,
       rule_id: rule.id,
       rule_name: rule.name,
       gpu_index: sample.gpu_index,

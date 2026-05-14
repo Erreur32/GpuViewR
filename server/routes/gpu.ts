@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { gpuCollector } from '../services/gpuCollector.js';
 import { GpuDeviceRepository, GpuMetricRepository } from '../database/models/GpuMetric.js';
+import { LOCAL_HOST_ID } from '../database/models/Host.js';
 
 const router = Router();
 
@@ -28,8 +29,8 @@ router.get('/history', (req, res) => {
   const since = Math.floor(Date.now() / 1000) - seconds;
   const bucketSec = Math.max(1, Math.ceil(seconds / HISTORY_TARGET_POINTS));
   const rows = bucketSec > 1
-    ? GpuMetricRepository.historyDownsampled(gpuIndex, since, bucketSec)
-    : GpuMetricRepository.history(gpuIndex, since);
+    ? GpuMetricRepository.historyDownsampled(LOCAL_HOST_ID, gpuIndex, since, bucketSec)
+    : GpuMetricRepository.history(LOCAL_HOST_ID, gpuIndex, since);
   res.json({ gpuIndex, range, count: rows.length, bucketSec, history: rows });
 });
 
@@ -60,7 +61,7 @@ router.get('/history.csv', (req, res) => {
   res.write('﻿');
   res.write(CSV_COLUMNS.join(',') + '\n');
 
-  const iter = GpuMetricRepository.historyIterate(gpuIndex, since);
+  const iter = GpuMetricRepository.historyIterate(LOCAL_HOST_ID, gpuIndex, since);
   for (const row of iter) {
     const r = row as unknown as Record<string, unknown>;
     res.write(CSV_COLUMNS.map((c) => csvField(r[c])).join(',') + '\n');
@@ -81,7 +82,7 @@ router.get('/stats', (req, res) => {
   const range = String(req.query.range || '24h');
   const seconds = parseRange(range);
   const since = Math.floor(Date.now() / 1000) - seconds;
-  res.json({ gpuIndex, range, stats: GpuMetricRepository.stats(gpuIndex, since) });
+  res.json({ gpuIndex, range, stats: GpuMetricRepository.stats(LOCAL_HOST_ID, gpuIndex, since) });
 });
 
 function parseRange(input: string): number {

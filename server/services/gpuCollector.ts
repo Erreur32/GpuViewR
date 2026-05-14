@@ -4,6 +4,7 @@ import { logger } from '../utils/logger.js';
 import { spawnNvidiaSmi, spawnSyncNvidiaSmi } from '../utils/nvidiaSmi.js';
 import { GpuDeviceRepository, GpuMetricRepository, type GpuMetric } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
+import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import { buildFakeSamples } from './mockGpu.js';
 import {
   QUERY_FIELDS,
@@ -21,11 +22,6 @@ import { metricsBus } from './_metricsBus.js';
 // in alertService / exportService / mockGpu / gpuStreamWS still resolves.
 // The canonical home is now _nvidiaParsers.ts (shared with the agent).
 export type { GpuSample };
-
-// Internal tag for the local nvidia-smi producer. Anchors the legacy
-// single-host install on a stable host_id so the existing DB row keys
-// and per-host last-sample map keep a fixed identifier post-migration.
-const LOCAL_HOST_ID = 'local';
 
 class GpuCollector extends EventEmitter {
   private timer: NodeJS.Timeout | null = null;
@@ -67,6 +63,7 @@ class GpuCollector extends EventEmitter {
     this.lastSamples = samples;
     for (const s of samples) {
       GpuDeviceRepository.upsert({
+        host_id: LOCAL_HOST_ID,
         gpu_index: s.gpu_index,
         name: s.name,
         uuid: s.uuid,
@@ -74,6 +71,7 @@ class GpuCollector extends EventEmitter {
         driver_version: s.driver_version,
       });
       this.buffer.push({
+        host_id: LOCAL_HOST_ID,
         gpu_index: s.gpu_index,
         timestamp: s.timestamp,
         timestamp_epoch: s.timestamp_epoch,
@@ -225,6 +223,7 @@ class GpuCollector extends EventEmitter {
       samples.push(sample);
 
       GpuDeviceRepository.upsert({
+        host_id: LOCAL_HOST_ID,
         gpu_index: sample.gpu_index,
         name: sample.name,
         uuid: sample.uuid,
@@ -233,6 +232,7 @@ class GpuCollector extends EventEmitter {
       });
 
       this.buffer.push({
+        host_id: LOCAL_HOST_ID,
         gpu_index: sample.gpu_index,
         timestamp: sample.timestamp,
         timestamp_epoch: sample.timestamp_epoch,
