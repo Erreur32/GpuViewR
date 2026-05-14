@@ -8,6 +8,7 @@
 // underlying hostname never breaks historical correlation in
 // gpu_metrics / alert_events.
 
+import os from 'node:os';
 import { getDatabase } from '../connection.js';
 
 /** Hub-side identifier for the local nvidia-smi producer. */
@@ -156,20 +157,25 @@ export const HostsRepo = {
   },
 
   /**
-   * Idempotent: insert the 'local' row if missing. Called from
-   * `runMigrations()` after the table is created so an upgrading
-   * v0.2.5 install or a fresh install both end up with the same
-   * canonical row pointing at the hub's own nvidia-smi.
+   * Idempotent: insert the 'local' row if missing and (re)refresh
+   * its system hostname on every boot so the Hosts table never
+   * shows a stale value when the admin renames the box. Called
+   * from `runMigrations()` after the table is created.
    */
   seedLocalIfMissing(db = getDatabase()): void {
+    const sysHostname = os.hostname() || null;
     const existing = db.prepare('SELECT id FROM hosts WHERE id = ?').get(LOCAL_HOST_ID);
-    if (existing) return;
+    if (existing) {
+      // Refresh hostname only — preserve last_seen / status set elsewhere.
+      db.prepare('UPDATE hosts SET hostname = ? WHERE id = ?').run(sysHostname, LOCAL_HOST_ID);
+      return;
+    }
     const now = Math.floor(Date.now() / 1000);
     db.prepare(
       `INSERT INTO hosts
        (id, label, hostname, kind, endpoint, token_hash, capabilities,
         agent_version, protocol_ver, enrolled_at, last_seen, status)
-       VALUES (?, ?, NULL, 'local', NULL, NULL, NULL, NULL, 1, ?, NULL, 'online')`,
-    ).run(LOCAL_HOST_ID, 'local', now);
+       VALUES (?, ?, ?, 'local', NULL, NULL, NULL, NULL, 1, ?, NULL, 'online')`,
+    ).run(LOCAL_HOST_ID, 'local', sysHostname, now);
   },
 };

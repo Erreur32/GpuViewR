@@ -102,8 +102,11 @@ function HostRow({
 
   // Show the system hostname (when the schema has it) as the secondary
   // line. Falls back to the truncated id so a freshly-enrolled host
-  // still has *something* to identify it.
-  const secondary = host.hostname ?? `${host.id.slice(0, 13)}…`;
+  // still has *something* to identify it. Skip the line entirely if
+  // it'd just repeat the label (the local row before hostname is
+  // populated, for example).
+  const secondaryRaw = host.hostname ?? `${host.id.slice(0, 13)}…`;
+  const secondary = secondaryRaw === host.label ? null : secondaryRaw;
 
   return (
     <tr className="border-t" style={{ borderColor: 'var(--gv-border)' }}>
@@ -112,9 +115,11 @@ function HostRow({
           <span className="font-medium">{host.label}</span>
           {isLocal && <HubBadge t={t} />}
         </div>
-        <div className="text-xs font-mono" style={{ color: 'var(--gv-text-dim)' }} title={host.id}>
-          {secondary}
-        </div>
+        {secondary && (
+          <div className="text-xs font-mono" style={{ color: 'var(--gv-text-dim)' }} title={host.id}>
+            {secondary}
+          </div>
+        )}
       </td>
       <td className="px-4 py-3">
         {/* lastSeenEpoch={null} → render only the status dot + label.
