@@ -21,7 +21,7 @@
 
 [**🔴 Live demo**](https://erreur32.github.io/GpuViewR/) (synthetic data, runs entirely in the browser)
 
-[Screenshot](#screenshot) · [Quick start](#quick-start) · [Configuration](#configuration) · [First login](#first-login) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Roadmap](#roadmap)
+[Screenshot](#screenshot) · [Quick start](#quick-start) · [Configuration](#configuration) · [First login](#first-login) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Multi-host](#multi-host) · [Roadmap](#roadmap)
 
 </div>
 
@@ -41,6 +41,7 @@
 
 - 🌍 **i18n**: English / French out of the box
 - 🔢 **Multi-GPU**: automatic tabs when 2+ devices are detected
+- 🛰️ **Multi-host (v0.3.0)**: one hub aggregates `nvidia-smi` from N remote machines via a lightweight WebSocket agent — see [Multi-host](#multi-host)
 - 🐳 **Single Docker image**: multi-arch (amd64 / arm64), Node 22 Debian slim
 
 ---
@@ -267,15 +268,101 @@ the UI shows a toast immediately and (optionally) raises a browser
 notification. When the metric returns into range, a `resolved` event is
 emitted and a green toast confirms it.
 
+Rules can also be **scoped to a single host** (multi-host installs only —
+leave empty for "fires on every host"), and the resulting event carries
+its `host_id` so Discord / Telegram digests prefix lines with the host
+they came from.
+
+---
+
+## Multi-host
+
+Since **v0.3.0** a single GpuViewR install can monitor GPUs across many
+machines. Architecture: one **hub** (this Docker container) plus N
+lightweight **agents** that push `nvidia-smi` samples to it over an
+outbound WebSocket.
+
+| Component | What it does | Lives where |
+|---|---|---|
+| **Hub** | UI, auth, DB, alerts engine, exports (Prom/MQTT/Influx/Webhook), `/agent` WS endpoint | Wherever you ran the Quick start above |
+| **Agent** | Spawns local `nvidia-smi`, ships `GpuSample`s to the hub | One per remote machine you want to monitor |
+
+The local `nvidia-smi` of the hub is treated as a first-class host
+(reserved id `local`), so single-host installs keep working zero-touch.
+You only need agents if you want to monitor _other_ machines.
+
+### Adding a remote host
+
+1. **On the hub**, sign in as admin. Go to **Settings → Hosts → + Add host**.
+   Type a label (e.g. `rtx-rig`), click Generate.
+2. The hub shows the **host id**, the **agent token** and a ready-to-paste
+   `docker run` snippet — copy them now, the token is **shown only once**.
+3. **On the remote machine**:
+
+   ```bash
+   docker run -d --name gpuviewr-agent \
+     --gpus all \
+     --restart unless-stopped \
+     -e HUB_URL=wss://gpu.example.com/agent \
+     -e HOST_ID=<uuid-from-hub> \
+     -e AGENT_TOKEN=<token-from-hub> \
+     ghcr.io/erreur32/gpuviewr-agent:latest
+   ```
+
+   Pre-reqs: NVIDIA Container Toolkit on the remote, outbound TCP to the
+   hub. Inside 1-3 s the new host appears `online` in the hub UI.
+
+A drop-in [`docker-compose.agent.yml`](docker-compose.agent.yml) is
+provided at the repo root for users who prefer compose, and a bare-metal
+systemd path (Node SEA binary) is documented in
+[`agent/README.md`](agent/README.md) for hosts without Docker.
+
+### OS support
+
+The agent runs on:
+
+- **Linux glibc** (Debian 11+ / Ubuntu 22+ / RHEL 9+ / Rocky / Fedora 38+ / openSUSE) on `x86_64` and `arm64` (Jetson / Grace) — Docker or systemd.
+- **Windows via WSL2** — the agent runs inside the WSL2 Linux distro, not native Windows.
+- **Alpine bare-metal** hosts — Docker only (the agent container is glibc, the host OS doesn't matter).
+
+Native Windows and macOS are **not** supported — see
+[`Docs/MULTI_HOST_PLAN.md`](Docs/MULTI_HOST_PLAN.md) §15.0 for the
+reasoning.
+
+### Exports become host-aware
+
+When at least one agent is enrolled, the Prometheus / InfluxDB / MQTT /
+Webhook exports gain a `host` dimension so dashboards can filter and
+group by machine. This **changes the wire format** even for users who
+stay mono-host — see [`Docs/MIGRATION.md`](Docs/MIGRATION.md#v02x--v03x--multi-host-migration)
+for the breaking-change recap and Grafana / Home Assistant /
+Influx migration snippets.
+
+### Architecture & decisions
+
+Full design (transport, auth model, schema migration, agent buffering,
+fleet UI plan, the nine decisions D1-D9 that drove the implementation)
+lives in [`Docs/MULTI_HOST_PLAN.md`](Docs/MULTI_HOST_PLAN.md).
+
 ---
 
 ## Roadmap
 
+### Available since v0.3.0
 
-### Planned
+- **Multi-host fan-out** — hub + agents, host-tagged exports,
+  host-scoped alerts. See [Multi-host](#multi-host) above.
 
-- **Multi-host fan-out** — one GpuViewR aggregating remote agents
-  (agent↔hub protocol, auth, shared schema)
+### Planned (v0.3.1)
+
+- **Fleet UI** — `/fleet` overview page with one card per enrolled
+  host (status pill, top temp, total power), `/host/:id` drill-down,
+  `Settings → Hosts` admin table. Backend is ready; UI is currently
+  a standalone preview at `npm run dev:preview` (see
+  [`src/preview-multi/`](src/preview-multi/)).
+- **Remote system / process collection** — agents currently ship
+  GPU samples only; CPU / load / memory / process names from the
+  remote host are reserved for v0.3.1.
 
 ---
 
