@@ -1,4 +1,3 @@
-import type { Server as HttpServer } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { authService } from './authService.js';
 import { gpuCollector } from './gpuCollector.js';
@@ -7,8 +6,16 @@ import { alertService } from './alertService.js';
 import { logger } from '../utils/logger.js';
 import type { AlertEvent, AlertRule } from '../database/models/Alert.js';
 
-export function setupGpuWebSocket(server: HttpServer): void {
-  const wss = new WebSocketServer({ server, path: '/ws/gpu' });
+/**
+ * Returns the WebSocketServer in noServer mode. The HTTP `upgrade`
+ * event is dispatched centrally in index.ts so multiple WS endpoints
+ * (/ws/gpu + /agent) can coexist on the same http.Server — the `ws`
+ * library's `path:` option is an anti-pattern when more than one
+ * WSS attaches to the same server (the first one to handle 'upgrade'
+ * rejects everything else with 400).
+ */
+export function setupGpuWebSocket(): WebSocketServer {
+  const wss = new WebSocketServer({ noServer: true });
 
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url || '/', 'http://localhost');
@@ -49,6 +56,7 @@ export function setupGpuWebSocket(server: HttpServer): void {
   });
 
   logger.success('ws', 'GPU WebSocket ready on /ws/gpu');
+  return wss;
 }
 
 function safeSend(ws: WebSocket, payload: unknown): void {

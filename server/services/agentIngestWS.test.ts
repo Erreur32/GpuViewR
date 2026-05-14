@@ -54,7 +54,15 @@ before(async () => {
   });
 
   server = http.createServer();
-  setupAgentIngestWS(server, '0.3.0-test');
+  const wss = setupAgentIngestWS('0.3.0-test');
+  server.on('upgrade', (req, socket, head) => {
+    const path = (req.url || '/').split('?')[0];
+    if (path === '/agent') {
+      wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+    } else {
+      socket.destroy();
+    }
+  });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const addr = server.address() as AddressInfo;
   baseUrl = `ws://127.0.0.1:${addr.port}`;

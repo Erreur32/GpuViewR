@@ -12,7 +12,7 @@
 // The rate limit (RATE_LIMIT_PER_SEC) is per-session; an offending
 // agent gets 1008 Policy Violation and must reconnect with backoff.
 
-import type { Server as HttpServer, IncomingMessage } from 'node:http';
+import type { IncomingMessage } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcryptjs';
 import { HostsRepo, LOCAL_HOST_ID, type HostRecord } from '../database/models/Host.js';
@@ -73,8 +73,12 @@ function safeSend(ws: WebSocket, payload: unknown): void {
   }
 }
 
-export function setupAgentIngestWS(server: HttpServer, hubVersion: string): void {
-  const wss = new WebSocketServer({ server, path: '/agent' });
+/**
+ * Returns the WSS in noServer mode. The HTTP `upgrade` event is
+ * dispatched centrally in index.ts (see gpuStreamWS for the rationale).
+ */
+export function setupAgentIngestWS(hubVersion: string): WebSocketServer {
+  const wss = new WebSocketServer({ noServer: true });
 
   wss.on('connection', (ws, req) => {
     handleConnection(ws, req, hubVersion).catch((err) => {
@@ -84,6 +88,7 @@ export function setupAgentIngestWS(server: HttpServer, hubVersion: string): void
   });
 
   logger.success('agent', 'Agent WebSocket ready on /agent');
+  return wss;
 }
 
 async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion: string): Promise<void> {

@@ -118,8 +118,22 @@ async function bootstrap(): Promise<void> {
   app.use(errorHandler);
 
   const server = http.createServer(app);
-  setupGpuWebSocket(server);
-  setupAgentIngestWS(server, readVersion());
+  // Two WS endpoints share the same http server. The `ws` library's
+  // `path:` option doesn't work when multiple WebSocketServer instances
+  // attach to the same server (the first one rejects every other
+  // path with 400). Use noServer mode + a central upgrade router.
+  const gpuWss = setupGpuWebSocket();
+  const agentWss = setupAgentIngestWS(readVersion());
+  server.on('upgrade', (req, socket, head) => {
+    const path = (req.url || '/').split('?')[0];
+    if (path === '/ws/gpu') {
+      gpuWss.handleUpgrade(req, socket, head, (ws) => gpuWss.emit('connection', ws, req));
+    } else if (path === '/agent') {
+      agentWss.handleUpgrade(req, socket, head, (ws) => agentWss.emit('connection', ws, req));
+    } else {
+      socket.destroy();
+    }
+  });
 
   gpuCollector.start();
   startRetentionJob();

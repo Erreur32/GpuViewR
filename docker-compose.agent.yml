@@ -1,0 +1,50 @@
+# ===========================================
+# GpuViewR Agent — remote host monitor
+# ===========================================
+#
+# This compose file is meant to live ON THE REMOTE MACHINE you want
+# to monitor — NOT on the hub. The hub gives you HOST_ID + AGENT_TOKEN
+# from Settings -> Hosts -> Add host. Drop them into a `.env` next to
+# this file, then `docker compose -f docker-compose.agent.yml up -d`.
+#
+# Prerequisites on the remote host:
+#   1. NVIDIA Container Toolkit installed
+#      https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#   2. `nvidia-smi` works in a container:
+#      docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
+# ===========================================
+
+services:
+  agent:
+    image: ghcr.io/erreur32/gpuviewr-agent:latest
+    # To build locally instead, comment the image line above and use:
+    # build:
+    #   context: .
+    #   dockerfile: agent/Dockerfile
+    container_name: gpuviewr-agent
+    restart: unless-stopped
+
+    # NVIDIA Container Toolkit hand-off so nvidia-smi works inside.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    environment:
+      # Required — get these from the hub UI at enrollment time.
+      HUB_URL: ${HUB_URL}              # e.g. wss://gpu.example.com/agent
+      HOST_ID: ${HOST_ID}              # UUID printed once by the hub
+      AGENT_TOKEN: ${AGENT_TOKEN}      # opaque secret, also one-shot
+
+      # Optional — sensible defaults.
+      TICK_MS: ${TICK_MS:-1000}
+      FEATURES: ${FEATURES:-gpu,system,temps,processes}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RECONNECT_MAX_MS: ${RECONNECT_MAX_MS:-30000}
+      # AGENT_BUFFER_PERSIST: 0       # ring-only by default
+      # NVIDIA_SMI_PATH: nvidia-smi
+      # TLS_INSECURE: 0               # 1 only in dev against self-signed
+      # AGENT_LABEL: rtx-rig          # suggested label sent in the hello frame

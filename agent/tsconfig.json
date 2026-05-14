@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "noEmit": true,
+    "rootDir": "..",
+    "outDir": "./dist",
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "../server/services/_nvidiaParsers.ts"
+  ]
+}
