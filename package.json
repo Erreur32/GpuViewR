@@ -23,6 +23,7 @@
     "build:demo:root": "cross-env VITE_DEMO=1 VITE_BASE_PATH=/ vite build",
     "preview:demo": "vite preview --outDir dist-demo --base=/GpuViewR/",
     "preview:demo:root": "vite preview --outDir dist-demo --base=/",
+    "predev:preview": "lsof -ti:5273 2>/dev/null | xargs -r kill -9; true",
     "dev:preview": "vite --config vite.preview.config.ts",
     "build:preview": "vite build --config vite.preview.config.ts",
     "preview:preview": "vite preview --config vite.preview.config.ts --outDir dist-preview",
