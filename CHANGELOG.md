@@ -54,6 +54,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 See [Docs/MIGRATION.md](Docs/MIGRATION.md) for upgrade notes and
 Grafana / HA / Influx migration snippets.
 
+## [0.2.6] - 2026-05-15
+
+### Security
+- **Rate-limit on `/install.sh` and `/agent.mjs`** (CodeQL #42/#43).
+  A dedicated `installLimiter` (30 req/min/IP) is now applied at the
+  router level; the comment header that already claimed
+  rate-limiting is now actually true.
+- **`agent/Dockerfile`** now uses `npm ci` against the pinned
+  lockfile instead of `npm install`, so builds are reproducible
+  (Scorecard Pinned-Dependencies #39).
+- **`agent/install.sh.tpl`** no longer pipes
+  `https://deb.nodesource.com/setup_22.x` into bash. The NodeSource
+  APT/DNF repository is now registered manually with the GPG key, so
+  the install script never executes unaudited remote shell code
+  (Scorecard Pinned-Dependencies #40/#41).
+- **`crypto.getRandomValues`** replaces `Math.random` in the demo's
+  `mockApi` token suffix (Sonar S2245). The value is cosmetic and
+  the file only runs in demo builds, but the static analyzer is no
+  longer noisy.
+
+### Added
+- **Fleet `/fleet` range selector.** `FleetChart` now mirrors the
+  Dashboard's `RangeSelector`. `live` keeps the rolling 60s in-memory
+  window; longer ranges (`5m` … `3d`) fetch `/gpu/history` per
+  (host, gpu) and aggregate per host.
+- **Compact tile design on the Fleet "simple" view.** Each host card
+  shares the same `MetricRow` component as the Dashboard's "All GPUs"
+  page — progress-bar metrics (util / memory / temperature / power),
+  a per-host util sparkline and a PCIe / agent footer.
+- **Footer WS pill tooltip.** The "Live" / "Offline" badge now has
+  an explanatory `title` attribute (en + fr) so a new visitor
+  understands what it's tracking.
+
+### Changed
+- **Fleet density toggle renamed** "Simple/Detailed" → Compact/Bars
+  ("Compacte/Barres" in fr), matching the new tile layout.
+- **Footer WS pill is i18n-resilient.** `t('common.connected' /
+  'common.disconnected')` now passes a `defaultValue`, so a stale
+  service-worker cache that ships a JS bundle from before those keys
+  existed can no longer surface the raw key in the UI.
+- **Modal accessibility.** All modal backdrops (EnrollHost,
+  RotateToken, DeleteHost) use real `<button>` overlays with an
+  Escape-key handler, and segmented controls switched from
+  `role="group"` to `role="toolbar"` with an `aria-label`.
+
+### Fixed
+- **30+ SonarCloud findings cleared in a single sweep.** Highlights:
+  `exportService.metricsSummary` split into focused helpers
+  (cognitive complexity 21 → well under 15), negated ternaries
+  flipped, `void operator` and unused imports removed, nested
+  ternaries extracted, unnecessary type assertions dropped,
+  `window.*` → `globalThis.*`, `alerts.ts` `host_id` coercer
+  narrowed via `typeof`, `clipboard.ts` uses `childNode.remove()`
+  with a documented `execCommand` fallback for insecure contexts.
+
+### Demo
+- **`?fleet=1` deep-link entry.** When a visitor lands on the base
+  URL with `?fleet=1`, `bootstrapDemo` `replaceState`s to `/fleet`
+  before React mounts, so the multi-host UI is the first screen they
+  see (no flash of the single-host dashboard). README updated to
+  link directly to `https://erreur32.github.io/GpuViewR/fleet?fleet=1`.
+
 ## [0.2.5] - 2026-05-14
 
 ### Added

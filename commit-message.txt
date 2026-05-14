@@ -1,19 +1,44 @@
-release: v0.2.5 - installable PWA (standalone Chromium app)
+release: v0.2.6 - SonarCloud/CodeQL sweep + Fleet UX polish
 
-Added:
-- Progressive Web App support via vite-plugin-pwa. GpuViewR can be
-  installed as a standalone Chromium app from the browser's install
-  prompt. A generated service worker precaches the app shell so the
-  window opens even when the backend is unreachable; the existing
-  useGpuStream reconnect logic then drives the footer "disconnected"
-  pastille until /api and /ws come back.
-- Live data endpoints (/api/*, /ws/*) are explicitly excluded from
-  the service worker's navigation fallback, so metrics are never
-  served stale from cache.
-- New PWA icons (pwa-192x192.png, pwa-512x512.png, maskable variant)
-  generated from gpuviewr.svg, and an apple-touch-icon link in
-  index.html for iOS home-screen.
+Security:
+- CodeQL #42/#43 — rate-limit /install.sh and /agent.mjs with a
+  dedicated installLimiter (30 req/min/IP). The route header comment
+  claiming rate-limiting is now actually true.
+- Scorecard Pinned-Dependencies — agent/Dockerfile switched
+  `npm install` -> `npm ci` for reproducible builds; install.sh.tpl
+  no longer runs `curl https://deb.nodesource.com/setup_22.x | bash -`,
+  it registers the NodeSource APT/DNF repo manually with the GPG key.
+- Sonar S2245 — demo mockApi token suffix moved from `Math.random`
+  to `crypto.getRandomValues`.
 
-Changed:
-- Demo CSP whitelists manifest-src 'self' and worker-src 'self' so
-  the service worker registers correctly on GitHub Pages.
+Fleet UX:
+- /fleet "simple" view now mirrors the Dashboard's compact tile
+  design: shared MetricRow component, progress-bar metrics (util /
+  memory / temp / power) per host + util sparkline + PCIe footer.
+- FleetChart gains the same RangeSelector as the Dashboard. `live`
+  keeps the rolling 60s in-memory window; longer ranges fetch
+  /gpu/history per (host, gpu) and aggregate per host.
+- Renamed Fleet density toggle: "Simple/Detailed" -> Compact/Bars
+  ("Compacte/Barres" in fr) to match the new layout.
+- Footer WS pill uses i18next `defaultValue` so a stale service
+  worker cache from before the connected/disconnected keys existed
+  can no longer surface the raw key in the UI. Added explanatory
+  tooltips on the pill (en + fr).
+
+Code quality (30+ SonarCloud findings cleared):
+- Modal backdrops use real <button> overlays with Escape-key handler;
+  role="group" -> role="toolbar" with aria-label across Fleet +
+  Hosts settings segmented controls.
+- exportService.metricsSummary split into focused helpers
+  (cognitive complexity 21 -> well under 15).
+- Removed negated ternaries, void operators, nested ternaries,
+  unused imports, unnecessary type assertions.
+- window.* -> globalThis.*; alerts host_id coercer narrows via
+  typeof instead of String(unknown).
+- clipboard fallback uses childNode.remove() and documents the
+  intentional execCommand deprecation suppression.
+
+Demo:
+- bootstrapDemo redirects ?fleet=1 visitors landing on the base URL
+  straight to /fleet so the multi-host UI is the first screen they
+  see. README link points to /fleet?fleet=1 to match.
