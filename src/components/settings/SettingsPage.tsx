@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Moon, Languages, Clock, Sliders, Share2, Database, RefreshCw, Activity, Info, Palette, RotateCcw, Volume2, VolumeX, Bell, BellOff, BellRing } from 'lucide-react';
+import { Moon, Languages, Clock, Sliders, Share2, Database, RefreshCw, Activity, Info, Palette, RotateCcw, Volume2, VolumeX, Bell, BellOff, BellRing, Server } from 'lucide-react';
 import { useUiStore, DEFAULT_THRESHOLDS } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
+import { useHostsStore } from '../../store/hostsStore';
 import { THEMES } from '../../lib/themes';
 import UpdateSettings from './UpdateSettings';
 import DatabaseSettings from './DatabaseSettings';
 import ExportsSettings from './ExportsSettings';
 import AboutSettings from './AboutSettings';
+import HostsSettingsTab from './HostsSettingsTab';
 
-type TabId = 'general' | 'theme' | 'exports' | 'database' | 'updates' | 'about';
+type TabId = 'general' | 'theme' | 'exports' | 'hosts' | 'database' | 'updates' | 'about';
 
 interface ChartPreset {
   id: string;
@@ -56,7 +59,16 @@ export default function SettingsPage() {
   // bare /settings hit still restores the user's last visited tab.
   const navigate = useNavigate();
   const { tab: tabParam } = useParams<{ tab: string }>();
-  const VALID_TABS: ReadonlyArray<TabId> = ['general', 'theme', 'exports', 'database', 'updates', 'about'];
+  // Surface the Hosts tab only when there's a reason to use it:
+  // either the install is multi-host already, or the user is admin
+  // and may want to enrol the first remote. Mono-host non-admin
+  // users see no new tab — matches the zero-touch decision.
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
+  const hostCount = useHostsStore((s) => s.hosts.length);
+  const showHostsTab = isAdmin || hostCount > 1;
+  const VALID_TABS: ReadonlyArray<TabId> = showHostsTab
+    ? ['general', 'theme', 'exports', 'hosts', 'database', 'updates', 'about']
+    : ['general', 'theme', 'exports', 'database', 'updates', 'about'];
   const fallback = (localStorage.getItem('gpuviewr.settingsTab') as TabId | null) ?? 'general';
   const tab: TabId = (VALID_TABS as readonly string[]).includes(tabParam ?? '')
     ? (tabParam as TabId)
@@ -88,6 +100,7 @@ export default function SettingsPage() {
     { id: 'general', label: t('settings.tab_general'), icon: Sliders },
     { id: 'theme', label: t('settings.tab_custom'), icon: Palette },
     { id: 'exports', label: t('settings.tab_exports'), icon: Share2 },
+    ...(showHostsTab ? [{ id: 'hosts' as TabId, label: t('settings.tab_hosts'), icon: Server }] : []),
     { id: 'database', label: t('settings.tab_database'), icon: Database },
     { id: 'updates', label: t('settings.tab_updates'), icon: RefreshCw },
     { id: 'about', label: t('settings.tab_about'), icon: Info },
@@ -316,6 +329,7 @@ export default function SettingsPage() {
       )}
 
       {tab === 'exports' && <ExportsSettings />}
+      {tab === 'hosts' && showHostsTab && <HostsSettingsTab />}
       {tab === 'database' && <DatabaseSettings />}
       {tab === 'updates' && <UpdateSettings />}
       {tab === 'about' && <AboutSettings />}

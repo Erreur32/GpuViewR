@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useGpuStore, type GpuSample } from '../store/gpuStore';
+import { LOCAL_HOST_ID, useHostsStore, type HostStatus } from '../store/hostsStore';
 import { useUiStore } from '../store/uiStore';
 import { notify } from '../store/toastStore';
 
@@ -17,11 +18,20 @@ interface AlertWsEvent {
 }
 
 interface WsPayload {
-  type: 'snapshot' | 'sample' | 'alert';
+  type: 'snapshot' | 'sample' | 'alert' | 'host_status';
+  // Multi-host: every sample / snapshot frame now carries host_id since
+  // jalon 3. Legacy mono-host payloads without the field are mapped to
+  // 'local' so the hook stays forward + backward compatible.
+  host_id?: string;
   samples?: GpuSample[];
   event?: AlertWsEvent;
   notify_browser?: boolean;
   notify_sound?: boolean;
+  // host_status frames: agent went online/offline. The hostsStore
+  // updates its row in place and the FleetIndicator / FleetPage
+  // re-render with the new dot colour.
+  status?: HostStatus;
+  last_seen?: number | null;
 }
 
 const ASSET_BASE = import.meta.env.BASE_URL;
@@ -72,7 +82,16 @@ export function useGpuStream(): void {
         try {
           const payload = JSON.parse(String(ev.data)) as WsPayload;
           if ((payload.type === 'snapshot' || payload.type === 'sample') && payload.samples?.length) {
-            ingest(payload.samples);
+            // host_id was added to the envelope in jalon 3; default
+            // to 'local' so we stay compatible with any v0.2.x payload
+            // that might somehow reach a v0.3 client during upgrades.
+            ingest(payload.host_id ?? LOCAL_HOST_ID, payload.samples);
+          } else if (payload.type === 'host_status' && payload.host_id && payload.status) {
+            useHostsStore.getState().applyStatusEvent(
+              payload.host_id,
+              payload.status,
+              payload.last_seen ?? null,
+            );
           } else if (payload.type === 'alert' && payload.event) {
             const e = payload.event;
             const kind = e.state === 'firing' ? 'warn' : 'success';

@@ -3,6 +3,7 @@ import uPlot, { type AlignedData } from 'uplot';
 import { useTranslation } from 'react-i18next';
 import { Download } from 'lucide-react';
 import { useGpuStore } from '../../store/gpuStore';
+import { useHostsStore } from '../../store/hostsStore';
 import { useUiStore } from '../../store/uiStore';
 import { notify } from '../../store/toastStore';
 import { api } from '../../lib/api';
@@ -46,6 +47,10 @@ export default function LiveChart({ gpuIndex }: Props) {
   const latestSample = useGpuStore((s) => s.latest.get(gpuIndex));
   const cachedHistory = useGpuStore((s) => s.history.get(`${gpuIndex}|${range}`));
   const setHistoryCache = useGpuStore((s) => s.setHistory);
+  // Track which host's data we're charting so we can scope history
+  // fetches + cache keys correctly. Defaults to 'local' for mono-host
+  // installs (the only situation pre-v0.3.0).
+  const selectedHostId = useHostsStore((s) => s.selectedHostId);
   const [historic, setHistoric] = useState<HistoryRow[]>(() => cachedHistory?.rows ?? []);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null, memory: null, fan: null });
@@ -80,19 +85,19 @@ export default function LiveChart({ gpuIndex }: Props) {
   // fetch refreshes the cache and the local state.
   useEffect(() => {
     let cancelled = false;
-    const cached = useGpuStore.getState().getHistory(gpuIndex, range);
+    const cached = useGpuStore.getState().getHistory(selectedHostId, gpuIndex, range);
     if (cached) setHistoric(cached);
     setLoadingHistory(true);
-    api<{ history: HistoryRow[] }>(`/gpu/history?gpu=${gpuIndex}&range=${range}`)
+    api<{ history: HistoryRow[] }>(`/gpu/history?host=${encodeURIComponent(selectedHostId)}&gpu=${gpuIndex}&range=${range}`)
       .then((r) => {
         if (cancelled) return;
         setHistoric(r.history);
-        setHistoryCache(gpuIndex, range, r.history);
+        setHistoryCache(selectedHostId, gpuIndex, range, r.history);
       })
       .catch(() => { if (!cancelled && !cached) setHistoric([]); })
       .finally(() => { if (!cancelled) setLoadingHistory(false); });
     return () => { cancelled = true; };
-  }, [gpuIndex, range, setHistoryCache]);
+  }, [selectedHostId, gpuIndex, range, setHistoryCache]);
 
   // Build / rebuild chart on theme change
   useEffect(() => {

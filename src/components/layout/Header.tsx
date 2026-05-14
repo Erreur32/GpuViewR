@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { LogOut, BellRing, FileText, Settings, LayoutDashboard, Server, FlaskConical } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../lib/api';
+import FleetIndicator from '../fleet/FleetIndicator';
 
 const VERSION = `v${__APP_VERSION__}`;
 const IS_DEV = import.meta.env.DEV;
@@ -87,6 +88,9 @@ export default function Header() {
 
         <nav className="flex items-center gap-1 ml-2">
           <NavItem to="/"        icon={<LayoutDashboard className="w-4 h-4" />} label={t('nav.dashboard')} end />
+          {/* FleetIndicator self-hides on mono-host installs (hosts.length <= 1)
+              so the nav stays identical to v0.2.x for single-host users. */}
+          <FleetIndicator />
           <NavItem to="/system"  icon={<Server className="w-4 h-4" />}          label={t('nav.system')} />
           <NavItem to="/alerts"  icon={<BellRing className="w-4 h-4" />}        label={t('nav.alerts')} />
           <NavItem to="/logs"    icon={<FileText className="w-4 h-4" />}        label={t('nav.logs')} />

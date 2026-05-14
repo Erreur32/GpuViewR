@@ -1,8 +1,11 @@
+import { useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Thermometer, Activity, MemoryStick, Zap, Fan, LayoutGrid, BarChart3, ArrowDownToLine, ArrowUpFromLine, Cable, AlertTriangle } from 'lucide-react';
+import { Thermometer, Activity, MemoryStick, Zap, Fan, LayoutGrid, BarChart3, ArrowDownToLine, ArrowUpFromLine, Cable, AlertTriangle, Server } from 'lucide-react';
 import type { GpuSample } from '../../store/gpuStore';
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
+import { useHostsStore, LOCAL_HOST_ID } from '../../store/hostsStore';
 import GaugeCard from './GaugeCard';
 import LiveChart from './LiveChart';
 import RangeSelector from './RangeSelector';
@@ -16,6 +19,19 @@ import UpdateBanner from '../ui/UpdateBanner';
 
 export default function Dashboard() {
   const { t } = useTranslation();
+  // /host/:hostId binds the Dashboard to a specific host. The
+  // bare / route falls back to 'local' so single-host installs keep
+  // working with no URL changes. When the param differs from the
+  // store's selected host, push the change so the gpuStore re-projects.
+  const { hostId } = useParams<{ hostId: string }>();
+  const hosts = useHostsStore((s) => s.hosts);
+  const selectedHostId = useHostsStore((s) => s.selectedHostId);
+  const setSelectedHost = useHostsStore((s) => s.setSelectedHost);
+  useEffect(() => {
+    const target = hostId ?? LOCAL_HOST_ID;
+    if (target !== selectedHostId) setSelectedHost(target);
+  }, [hostId, selectedHostId, setSelectedHost]);
+
   const latest = useGpuStore((s) => s.latest);
   const seriesMap = useGpuStore((s) => s.series);
   const samples = Array.from(latest.values()).sort((a, b) => a.gpu_index - b.gpu_index);
@@ -72,6 +88,7 @@ export default function Dashboard() {
         <span className="text-xs leading-none" style={{ color: 'var(--gv-text-dim)' }}>
           GPU #{active.gpu_index} · driver {active.driver_version || '-'}
         </span>
+        <HostSelector hosts={hosts} selectedHostId={selectedHostId} />
         <GpuTabs samples={samples} />
 
         <div className="flex flex-wrap items-center gap-2 ml-auto">
@@ -300,6 +317,35 @@ function PcieLinkBwTile({ value, max, label }: Readonly<{
         )}
       </div>
     </div>
+  );
+}
+
+// Host selector — only renders past mono-host installs (zero-touch for
+// existing single-machine users). URL syncs to /host/:hostId on change
+// so the choice is bookmarkable and survives a hard reload.
+function HostSelector({
+  hosts, selectedHostId,
+}: Readonly<{ hosts: ReturnType<typeof useHostsStore.getState>['hosts']; selectedHostId: string }>) {
+  const navigate = useNavigate();
+  if (hosts.length <= 1) return null;
+  return (
+    <label className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--gv-text-muted)' }}>
+      <Server className="w-3.5 h-3.5" />
+      <select
+        value={selectedHostId}
+        onChange={(e) => {
+          const id = e.target.value;
+          navigate(id === LOCAL_HOST_ID ? '/' : `/host/${id}`);
+        }}
+        className="select"
+        style={{ width: 'auto', padding: '0.25rem 1.75rem 0.25rem 0.5rem', fontSize: '0.75rem' }}
+        aria-label="Host"
+      >
+        {hosts.map((h) => (
+          <option key={h.id} value={h.id}>{h.label}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 
