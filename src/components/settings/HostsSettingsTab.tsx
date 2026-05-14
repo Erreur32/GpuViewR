@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, KeyRound, Trash2, Copy, AlertTriangle, X, Terminal, Container } from 'lucide-react';
+import { Plus, KeyRound, Trash2, Copy, AlertTriangle, X, Terminal, Container, Server } from 'lucide-react';
+
+// Same constant the footer uses — Vite injects the package.json version
+// at build time, so this stays in sync with what the hub actually runs.
+const HUB_VERSION = __APP_VERSION__;
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
@@ -96,19 +100,33 @@ function HostRow({
     ? '—'
     : `${formatRelative(now - host.last_seen)} ${t('common.ago')}`;
 
+  // Show the system hostname (when the schema has it) as the secondary
+  // line. Falls back to the truncated id so a freshly-enrolled host
+  // still has *something* to identify it.
+  const secondary = host.hostname ?? `${host.id.slice(0, 13)}…`;
+
   return (
     <tr className="border-t" style={{ borderColor: 'var(--gv-border)' }}>
       <td className="px-4 py-3">
-        <div className="font-medium">{host.label}</div>
-        <div className="text-xs font-mono" style={{ color: 'var(--gv-text-dim)' }}>
-          {host.id.slice(0, 13)}…
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium">{host.label}</span>
+          {isLocal && <HubBadge t={t} />}
+        </div>
+        <div className="text-xs font-mono" style={{ color: 'var(--gv-text-dim)' }} title={host.id}>
+          {secondary}
         </div>
       </td>
       <td className="px-4 py-3">
         <StatusPill status={status} lastSeenEpoch={host.last_seen} />
       </td>
       <td className="px-4 py-3 font-mono text-xs">
-        {host.agent_version ? `v${host.agent_version}` : <span style={{ color: 'var(--gv-text-dim)' }}>{host.kind}</span>}
+        {isLocal ? (
+          <span title={t('hosts.hub_version_help')}>v{HUB_VERSION}</span>
+        ) : host.agent_version ? (
+          <span title={t('hosts.agent_version_help')}>v{host.agent_version}</span>
+        ) : (
+          <span style={{ color: 'var(--gv-text-dim)' }}>{host.kind}</span>
+        )}
       </td>
       <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--gv-text-muted)' }}>
         {lastSeenLabel}
@@ -128,6 +146,27 @@ function HostRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+// Distinguishes the host row that is the hub itself (no remote agent —
+// the hub collects via local nvidia-smi). Helps the admin see at a
+// glance which row they can't enroll/rotate/delete, and matches the
+// "This host" wording used elsewhere.
+function HubBadge({ t }: Readonly<{ t: (key: string) => string }>) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wider"
+      style={{
+        color: 'var(--gv-info)',
+        background: 'color-mix(in srgb, var(--gv-info) 14%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--gv-info) 35%, transparent)',
+      }}
+      title={t('hosts.hub_badge_help')}
+    >
+      <Server className="w-2.5 h-2.5" />
+      {t('hosts.hub_badge')}
+    </span>
   );
 }
 
