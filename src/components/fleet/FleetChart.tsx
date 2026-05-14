@@ -21,8 +21,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import uPlot, { type AlignedData } from 'uplot';
 import { useTranslation } from 'react-i18next';
-import { useGpuStore } from '../../store/gpuStore';
+import { useGpuStore, type HistoryRow } from '../../store/gpuStore';
 import { useHostsStore, type HostRecord } from '../../store/hostsStore';
+import { useUiStore, type Range } from '../../store/uiStore';
+import { api } from '../../lib/api';
+import { rangeToSeconds } from '../../lib/time';
+import RangeSelector from '../dashboard/RangeSelector';
 
 type Metric = 'temperature' | 'utilization' | 'power';
 type Mode = 'per-host' | 'total';
@@ -40,6 +44,15 @@ const METRIC_UNIT: Record<Metric, string> = {
   power: 'W',
 };
 
+function pickMetricArray(
+  series: { temperature: readonly number[]; utilization: readonly (number | null)[]; power: readonly number[] },
+  metric: Metric,
+): readonly (number | null)[] {
+  if (metric === 'temperature') return series.temperature;
+  if (metric === 'utilization') return series.utilization;
+  return series.power;
+}
+
 function buildHostSeries(
   hostId: string,
   metric: Metric,
@@ -53,9 +66,7 @@ function buildHostSeries(
   const sums: number[] = new Array(times.length).fill(0);
   const counts: number[] = new Array(times.length).fill(0);
   for (const s of seriesPerGpu.values()) {
-    const arr = (metric === 'temperature' ? s.temperature
-      : metric === 'utilization' ? s.utilization
-      : s.power).slice(-WINDOW_POINTS);
+    const arr = pickMetricArray(s, metric).slice(-WINDOW_POINTS);
     const offset = times.length - arr.length;
     for (let i = 0; i < arr.length; i++) {
       const v = arr[i];
@@ -95,6 +106,7 @@ function aggregateForTotal(
 export default function FleetChart() {
   const { t } = useTranslation();
   const hosts = useHostsStore((s) => s.hosts);
+  const range = useUiStore((s) => s.range);
   // Default: temperature only. The user toggles more in.
   const [metrics, setMetrics] = useState<Set<Metric>>(() => new Set(['temperature']));
   const [mode, setMode] = useState<Mode>('per-host');
@@ -134,10 +146,11 @@ export default function FleetChart() {
     (m) => metrics.has(m as Metric),
   ) as Metric[];
 
-  const aggHint = (m: Metric) =>
-    m === 'power' ? 'sum'
-      : m === 'temperature' ? 'max'
-      : 'avg';
+  const aggHint = (m: Metric): 'sum' | 'max' | 'avg' => {
+    if (m === 'power') return 'sum';
+    if (m === 'temperature') return 'max';
+    return 'avg';
+  };
 
   return (
     <section className="card p-4 flex flex-col gap-3">
@@ -147,7 +160,7 @@ export default function FleetChart() {
         </h2>
         <div className="flex flex-wrap gap-2">
           {/* Multi-select metric chips — aria-pressed pattern, click to toggle. */}
-          <div className="seg" role="group" aria-label={t('fleet.metrics_label')}>
+          <div className="seg" role="toolbar" aria-label={t('fleet.metrics_label')}>
             {(['temperature', 'utilization', 'power'] as Metric[]).map((m) => (
               <button
                 key={m}
@@ -161,7 +174,7 @@ export default function FleetChart() {
               </button>
             ))}
           </div>
-          <div className="seg" role="group">
+          <div className="seg" role="toolbar" aria-label={t('fleet.mode_label')}>
             <button type="button" className="seg-btn text-xs" aria-pressed={mode === 'per-host'} onClick={() => setMode('per-host')}>
               {t('fleet.mode_per_host')}
             </button>
@@ -169,6 +182,7 @@ export default function FleetChart() {
               {t('fleet.mode_total')}
             </button>
           </div>
+          <RangeSelector />
         </div>
       </header>
 
@@ -181,6 +195,7 @@ export default function FleetChart() {
             key={m}
             metric={m}
             mode={mode}
+            range={range}
             hostsToPlot={hostsToPlot}
             hiddenHosts={hiddenHosts}
           />
@@ -235,41 +250,135 @@ export default function FleetChart() {
 interface MetricChartProps {
   metric: Metric;
   mode: Mode;
+  range: Range;
   hostsToPlot: HostRecord[];
   hiddenHosts: Set<string>;
 }
 
-function MetricChart({ metric, mode, hostsToPlot, hiddenHosts }: Readonly<MetricChartProps>) {
+function metricFromHistory(row: HistoryRow, metric: Metric): number | null {
+  if (metric === 'temperature') return row.temperature;
+  if (metric === 'utilization') return row.utilization;
+  return row.power;
+}
+
+async function fetchHostHistory(
+  hostId: string,
+  gpuIndices: number[],
+  metric: Metric,
+  range: string,
+): Promise<{ times: number[]; values: number[] }> {
+  if (gpuIndices.length === 0) return { times: [], values: [] };
+  const fetches = gpuIndices.map((gpu) =>
+    api<{ history: HistoryRow[] }>(`/gpu/history?host=${encodeURIComponent(hostId)}&gpu=${gpu}&range=${range}`)
+      .then((r) => r.history)
+      .catch(() => [] as HistoryRow[]),
+  );
+  const allHistories = await Promise.all(fetches);
+  const tSet = new Set<number>();
+  for (const rows of allHistories) for (const r of rows) tSet.add(r.timestamp_epoch);
+  const sortedT = Array.from(tSet).sort((a, b) => a - b);
+  const sums: number[] = new Array(sortedT.length).fill(0);
+  const counts: number[] = new Array(sortedT.length).fill(0);
+  for (const rows of allHistories) {
+    const map = new Map<number, HistoryRow>();
+    for (const r of rows) map.set(r.timestamp_epoch, r);
+    for (let i = 0; i < sortedT.length; i++) {
+      const r = map.get(sortedT[i]);
+      if (!r) continue;
+      const v = metricFromHistory(r, metric);
+      if (v === null || v === undefined) continue;
+      sums[i] += v;
+      counts[i] += 1;
+    }
+  }
+  return {
+    times: sortedT,
+    values: sums.map((s, i) => (counts[i] === 0 ? 0 : s / counts[i])),
+  };
+}
+
+function buildAlignedData(
+  perHost: { times: number[]; values: number[] }[],
+  visibleIdx: number[],
+  mode: Mode,
+  metric: Metric,
+  windowPoints?: number,
+): AlignedData {
+  if (mode === 'total') {
+    const agg = aggregateForTotal(perHost, metric);
+    return [agg.times, agg.values] as AlignedData;
+  }
+  const visiblePerHost = visibleIdx.map((i) => perHost[i]);
+  const tSet = new Set<number>();
+  for (const p of visiblePerHost) for (const t of p.times) tSet.add(t);
+  let sortedT = Array.from(tSet).sort((a, b) => a - b);
+  if (windowPoints !== undefined) sortedT = sortedT.slice(-windowPoints);
+  const ySeries: (number | null)[][] = visiblePerHost.map((p) => {
+    const map = new Map<number, number>();
+    for (let i = 0; i < p.times.length; i++) map.set(p.times[i], p.values[i]);
+    return sortedT.map((t) => map.get(t) ?? null);
+  });
+  return [sortedT, ...ySeries] as AlignedData;
+}
+
+function MetricChart({ metric, mode, range, hostsToPlot, hiddenHosts }: Readonly<MetricChartProps>) {
   const { t } = useTranslation();
   const seriesVersion = useGpuStore((s) => s.latestByHost);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);
+  // History per host for non-live ranges. Keyed implicitly by the
+  // (metric, range, hostsToPlot) dependency tuple — refetch triggers
+  // wipe & repopulate it.
+  const [historyPerHost, setHistoryPerHost] = useState<{ times: number[]; values: number[] }[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch /gpu/history per (host, gpu) when the user picks a non-live range.
+  // The /api/gpu endpoint already supports `host=` and `range=` params used
+  // by the Dashboard's LiveChart, so we reuse it here.
+  useEffect(() => {
+    if (range === 'live') {
+      setHistoryPerHost(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    const store = useGpuStore.getState();
+    const fetches = hostsToPlot.map((h) => {
+      const samples = store.latestByHost.get(h.id);
+      const gpuIndices = samples ? Array.from(samples.keys()) : [0];
+      return fetchHostHistory(h.id, gpuIndices, metric, range);
+    });
+    Promise.all(fetches)
+      .then((all) => { if (!cancelled) setHistoryPerHost(all); })
+      .catch(() => { if (!cancelled) setHistoryPerHost(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, metric, hostsToPlot.map((h) => h.id).join(',')]);
 
   const { data, plottedHosts } = useMemo<{ data: AlignedData; plottedHosts: HostRecord[] }>(() => {
-    const store = useGpuStore.getState();
-    const allPerHost = hostsToPlot.map((h) => buildHostSeries(h.id, metric, store));
-
-    if (mode === 'total') {
-      const agg = aggregateForTotal(allPerHost, metric);
-      return { data: [agg.times, agg.values] as AlignedData, plottedHosts: [] };
+    let allPerHost: { times: number[]; values: number[] }[];
+    if (range === 'live' || historyPerHost === null) {
+      const store = useGpuStore.getState();
+      allPerHost = hostsToPlot.map((h) => buildHostSeries(h.id, metric, store));
+    } else {
+      allPerHost = historyPerHost;
     }
-
-    const visible = hostsToPlot.filter((h) => !hiddenHosts.has(h.id));
-    const visiblePerHost = visible.map((h) => {
-      const i = hostsToPlot.findIndex((x) => x.id === h.id);
-      return allPerHost[i];
-    });
-    const tSet = new Set<number>();
-    for (const p of visiblePerHost) for (const t of p.times) tSet.add(t);
-    const sortedT = Array.from(tSet).sort((a, b) => a - b).slice(-WINDOW_POINTS);
-    const ySeries: (number | null)[][] = visiblePerHost.map((p) => {
-      const map = new Map<number, number>();
-      for (let i = 0; i < p.times.length; i++) map.set(p.times[i], p.values[i]);
-      return sortedT.map((t) => (map.has(t) ? (map.get(t) as number) : null));
-    });
-    return { data: [sortedT, ...ySeries] as AlignedData, plottedHosts: visible };
+    const visible = mode === 'total' ? [] : hostsToPlot.filter((h) => !hiddenHosts.has(h.id));
+    const visibleIdx = mode === 'total'
+      ? []
+      : visible.map((h) => hostsToPlot.findIndex((x) => x.id === h.id));
+    const aligned = buildAlignedData(
+      allPerHost,
+      visibleIdx,
+      mode,
+      metric,
+      range === 'live' ? WINDOW_POINTS : undefined,
+    );
+    return { data: aligned, plottedHosts: visible };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hostsToPlot, metric, mode, hiddenHosts, seriesVersion]);
+  }, [hostsToPlot, metric, mode, hiddenHosts, seriesVersion, range, historyPerHost]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -319,9 +428,9 @@ function MetricChart({ metric, mode, hostsToPlot, hiddenHosts }: Readonly<Metric
         plotRef.current.setSize({ width: containerRef.current.clientWidth, height: 180 });
       }
     };
-    window.addEventListener('resize', onResize);
+    globalThis.addEventListener('resize', onResize);
     return () => {
-      window.removeEventListener('resize', onResize);
+      globalThis.removeEventListener('resize', onResize);
       plotRef.current?.destroy();
       plotRef.current = null;
     };
@@ -336,7 +445,10 @@ function MetricChart({ metric, mode, hostsToPlot, hiddenHosts }: Readonly<Metric
     <div className="flex flex-col gap-1">
       <div className="text-[11px] uppercase tracking-wider flex items-center justify-between" style={{ color: 'var(--gv-text-dim)' }}>
         <span>{t(`dashboard.metrics.${metric}`)}</span>
-        <span className="font-mono">{METRIC_UNIT[metric]}</span>
+        <span className="font-mono inline-flex items-center gap-2">
+          {loading && <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>{t('common.loading')}</span>}
+          {METRIC_UNIT[metric]}
+        </span>
       </div>
       <div ref={containerRef} className="w-full" style={{ minHeight: 180 }} />
     </div>

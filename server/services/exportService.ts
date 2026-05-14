@@ -282,7 +282,7 @@ class ExportService {
   // sample frame can't wipe the local host's samples (and vice-versa).
   // All exporters iterate this map; helpers below flatten or scope to
   // a single host as needed.
-  private latestSamplesByHost: Map<string, GpuSample[]> = new Map();
+  private readonly latestSamplesByHost: Map<string, GpuSample[]> = new Map();
   private mqttClient: MqttClient | null = null;
   private mqttDiscoveryPublished = false;
   private timers: Partial<Record<ExporterKind, NodeJS.Timeout>> = {};
@@ -718,27 +718,23 @@ class ExportService {
   // notification carries context beyond the GPUs themselves.
   private metricsSummary(sys?: ReturnType<typeof getSystemStats>, lang: AlertLang = 'en'): string {
     if (this.latestSamplesByHost.size === 0) return 'No GPU samples available.';
+    const multi = this.latestSamplesByHost.size > 1;
+    const gpuLines = this.buildGpuLines(multi);
+    if (!sys) return gpuLines;
+    return `${gpuLines}\n${formatHostStatsLine(sys, lang)}`;
+  }
+
+  private buildGpuLines(multi: boolean): string {
     // For multi-host installs prefix each GPU line with its host id so
     // a Discord message "GPU #0 hot" tells you WHICH host is hot.
     const lines: string[] = [];
-    const multi = this.latestSamplesByHost.size > 1;
     for (const [host_id, samples] of this.latestSamplesByHost) {
+      const hostPrefix = multi ? `[${formatHostTag(host_id)}] ` : '';
       for (const s of samples) {
-        const memTotal = s.memory_total ?? 0;
-        const memPct = memTotal > 0 ? Math.round((s.memory_used / memTotal) * 100) : null;
-        const memSeg = memPct !== null ? ` · MEM ${memPct}%` : '';
-        const hostPrefix = multi ? `[${host_id === 'local' ? 'local' : host_id.slice(0, 8)}] ` : '';
-        lines.push(`${hostPrefix}GPU #${s.gpu_index} ${s.name} · ${s.utilization ?? '-'}% · ${s.temperature}°C · ${Math.round(s.power)}W${memSeg}`);
+        lines.push(`${hostPrefix}${formatGpuLine(s)}`);
       }
     }
-    const gpuLines = lines.join('\n');
-    if (!sys) return gpuLines;
-    const hostLabel = lang === 'fr' ? 'Hôte' : 'Host';
-    const loadLabel = lang === 'fr' ? 'Charge' : 'Load';
-    const memLabel = lang === 'fr' ? 'Mém' : 'MEM';
-    const load = `${sys.load['1m'].toFixed(2)} / ${sys.load['5m'].toFixed(2)} / ${sys.load['15m'].toFixed(2)}`;
-    const hostLine = `${hostLabel}: CPU ${Math.round(sys.cpu.usagePct)}% · ${loadLabel} ${load} · ${memLabel} ${Math.round(sys.memory.usedPct)}%`;
-    return `${gpuLines}\n${hostLine}`;
+    return lines.join('\n');
   }
 
   private async dispatchWebhookAlert(cfg: WebhookConfig, event: unknown, rule: unknown): Promise<void> {
@@ -1053,6 +1049,28 @@ class ExportService {
 
 function escapeTag(v: string): string {
   return v.replace(/[ ,=]/g, '_');
+}
+
+function formatHostTag(host_id: string): string {
+  if (host_id === 'local') return 'local';
+  return host_id.slice(0, 8);
+}
+
+function formatGpuLine(s: GpuSample): string {
+  const memTotal = s.memory_total ?? 0;
+  const memPct = memTotal > 0 ? Math.round((s.memory_used / memTotal) * 100) : null;
+  const memSeg = memPct === null ? '' : ` · MEM ${memPct}%`;
+  const util = s.utilization ?? '-';
+  return `GPU #${s.gpu_index} ${s.name} · ${util}% · ${s.temperature}°C · ${Math.round(s.power)}W${memSeg}`;
+}
+
+function formatHostStatsLine(sys: ReturnType<typeof getSystemStats>, lang: AlertLang): string {
+  const fr = lang === 'fr';
+  const hostLabel = fr ? 'Hôte' : 'Host';
+  const loadLabel = fr ? 'Charge' : 'Load';
+  const memLabel = fr ? 'Mém' : 'MEM';
+  const load = `${sys.load['1m'].toFixed(2)} / ${sys.load['5m'].toFixed(2)} / ${sys.load['15m'].toFixed(2)}`;
+  return `${hostLabel}: CPU ${Math.round(sys.cpu.usagePct)}% · ${loadLabel} ${load} · ${memLabel} ${Math.round(sys.memory.usedPct)}%`;
 }
 
 // Keep only the fields the user opted into. An empty selection means

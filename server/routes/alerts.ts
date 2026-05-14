@@ -68,7 +68,7 @@ const RULE_FIELD_COERCERS: Array<{ key: keyof RulePatch; coerce: (v: unknown) =>
   { key: 'threshold',      coerce: Number },
   { key: 'duration_s',     coerce: (v) => int(v, 0) },
   { key: 'gpu_index',      coerce: (v) => (v === null ? null : Number(v)) },
-  { key: 'host_id',        coerce: (v) => (v === null || v === '' ? null : String(v)) },
+  { key: 'host_id',        coerce: (v) => (typeof v === 'string' && v !== '' ? v : null) },
   { key: 'enabled',        coerce: toBit },
   { key: 'notify_browser', coerce: toBit },
   { key: 'notify_sound',   coerce: toBit },

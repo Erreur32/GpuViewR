@@ -20,8 +20,8 @@ export default function StatusPill({ status, lastSeenEpoch, compact = false }: P
   const { t } = useTranslation();
   const color = COLOR[status];
   const now = Math.floor(Date.now() / 1000);
-  const ageSeconds = lastSeenEpoch !== null ? Math.max(0, now - lastSeenEpoch) : null;
-  const ageLabel = ageSeconds !== null ? formatRelative(ageSeconds) : '—';
+  const ageSeconds = lastSeenEpoch === null ? null : Math.max(0, now - lastSeenEpoch);
+  const ageLabel = ageSeconds === null ? '—' : formatRelative(ageSeconds);
   const label = t(`fleet.status.${status}`);
   return (
     <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color }}>

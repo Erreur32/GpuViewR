@@ -31,14 +31,14 @@ class MetricsBus {
   on(event: 'sample', listener: SampleListener): this;
   on(event: 'host_status', listener: HostStatusListener): this;
   on(event: 'sample' | 'host_status', listener: SampleListener | HostStatusListener): this {
-    this.emitter.on(event, listener as (e: unknown) => void);
+    this.emitter.on(event, listener);
     return this;
   }
 
   off(event: 'sample', listener: SampleListener): this;
   off(event: 'host_status', listener: HostStatusListener): this;
   off(event: 'sample' | 'host_status', listener: SampleListener | HostStatusListener): this {
-    this.emitter.off(event, listener as (e: unknown) => void);
+    this.emitter.off(event, listener);
     return this;
   }
 

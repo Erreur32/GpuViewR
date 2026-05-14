@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Copy, AlertTriangle, Container, Terminal } from 'lucide-react';
 import { useHostsStore } from '../../store/hostsStore';
@@ -34,9 +34,9 @@ export default function EnrollHostModal({ onClose }: Props) {
     setSubmitting(true);
     try {
       const r = await enroll(label.trim());
-      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const hubHttp = `${window.location.protocol}//${window.location.host}`;
-      const hubWs = `${proto}://${window.location.host}/agent`;
+      const proto = globalThis.location.protocol === 'https:' ? 'wss' : 'ws';
+      const hubHttp = `${globalThis.location.protocol}//${globalThis.location.host}`;
+      const hubWs = `${proto}://${globalThis.location.host}/agent`;
       setResult({ hostId: r.host.id, token: r.token, hubHttp, hubWs });
       setStage('token');
     } catch (err) {
@@ -56,6 +56,12 @@ export default function EnrollHostModal({ onClose }: Props) {
     }
   };
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const dockerCmd = result
     ? `docker run -d --name gpuviewr-agent \\\n  --gpus all \\\n  --restart unless-stopped \\\n  -e HUB_URL=${result.hubWs} \\\n  -e HOST_ID=${result.hostId} \\\n  -e AGENT_TOKEN=${result.token} \\\n  ghcr.io/erreur32/gpuviewr-agent:latest`
     : '';
@@ -68,15 +74,15 @@ export default function EnrollHostModal({ onClose }: Props) {
     : '';
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.7)' }}
-      onClick={onClose}
-    >
-      <div
-        className="card w-full max-w-xl p-6 flex flex-col gap-5"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label={t('common.close')}
+        className="absolute inset-0 cursor-default"
+        style={{ background: 'rgba(0,0,0,0.7)' }}
+        onClick={onClose}
+      />
+      <div className="card w-full max-w-xl p-6 flex flex-col gap-5 relative">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold">
@@ -164,7 +170,7 @@ export default function EnrollHostModal({ onClose }: Props) {
             <div className="flex flex-col gap-2">
               {/* Mode picker — curl is highlighted as recommended for new
                   installs since it's a single line, no Docker dependency. */}
-              <div className="seg" role="group">
+              <div className="seg" role="toolbar" aria-label={t('hosts.install_mode_label')}>
                 <button
                   type="button"
                   className="seg-btn inline-flex items-center gap-1.5"

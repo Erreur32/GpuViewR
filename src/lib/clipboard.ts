@@ -19,6 +19,10 @@ export async function copyText(text: string): Promise<boolean> {
     }
   }
   // 2. Legacy fallback — works in HTTP / LAN IP / insecure contexts.
+  // execCommand('copy') is deprecated but remains the only synchronous
+  // way to copy text from JS in an insecure context (e.g. LAN HTTP).
+  // The Clipboard API above is preferred; this path only runs when it
+  // is unavailable or rejects.
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -30,8 +34,9 @@ export async function copyText(text: string): Promise<boolean> {
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional fallback for insecure contexts
     const ok = document.execCommand('copy');
-    document.body.removeChild(ta);
+    ta.remove();
     return ok;
   } catch {
     return false;

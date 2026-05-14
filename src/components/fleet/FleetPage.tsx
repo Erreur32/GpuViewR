@@ -2,11 +2,71 @@ import { useEffect, useMemo } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Cpu, Zap, CheckCircle2, LayoutGrid, Rows3, Activity, MemoryStick, Cable } from 'lucide-react';
-import { useHostsStore, effectiveStatus, LOCAL_HOST_ID } from '../../store/hostsStore';
-import { useGpuStore } from '../../store/gpuStore';
+import { useHostsStore, effectiveStatus, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
+import { useGpuStore, type GpuSample } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
 import HostCard from './HostCard';
 import FleetChart from './FleetChart';
+
+interface FleetAggregate {
+  online: number;
+  lagging: number;
+  offline: number;
+  pending: number;
+  total: number;
+  totalGpus: number;
+  totalPower: number;
+  totalVramUsed: number;
+  totalVramTotal: number;
+  avgUtil: number | null;
+  totalPcieKbps: number;
+}
+
+function accumulateHostSamples(
+  acc: FleetAggregate & { utilSum: number; utilCount: number },
+  samples: Iterable<GpuSample>,
+): void {
+  for (const v of samples) {
+    acc.totalPower += v.power;
+    acc.totalVramUsed += v.memory_used;
+    acc.totalVramTotal += v.memory_total ?? 0;
+    if (v.utilization !== null) {
+      acc.utilSum += v.utilization;
+      acc.utilCount++;
+    }
+    acc.totalPcieKbps += (v.pcie_rx_kbps ?? 0) + (v.pcie_tx_kbps ?? 0);
+  }
+}
+
+function computeFleetAggregate(
+  hosts: HostRecord[],
+  samplesByHost: Map<string, Map<number, GpuSample>>,
+): FleetAggregate {
+  const acc = {
+    online: 0, lagging: 0, offline: 0, pending: 0,
+    total: hosts.length,
+    totalGpus: 0, totalPower: 0,
+    totalVramUsed: 0, totalVramTotal: 0,
+    avgUtil: null as number | null,
+    totalPcieKbps: 0,
+    utilSum: 0, utilCount: 0,
+  };
+  for (const h of hosts) {
+    const status = effectiveStatus(h);
+    if (status === 'online') acc.online++;
+    else if (status === 'lagging') acc.lagging++;
+    else if (status === 'offline') acc.offline++;
+    else if (status === 'pending') acc.pending++;
+    const samples = samplesByHost.get(h.id);
+    const hasLiveSamples = samples && status !== 'offline' && status !== 'disabled';
+    if (hasLiveSamples) {
+      acc.totalGpus += samples.size;
+      accumulateHostSamples(acc, samples.values());
+    }
+  }
+  acc.avgUtil = acc.utilCount > 0 ? acc.utilSum / acc.utilCount : null;
+  return acc;
+}
 
 export default function FleetPage() {
   const { t } = useTranslation();
@@ -21,49 +81,14 @@ export default function FleetPage() {
   // Hydrate at mount — covers a deep-link refresh before any other
   // page has triggered a list fetch.
   const refresh = useHostsStore((s) => s.refresh);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { refresh().catch(() => undefined); }, [refresh]);
 
   // Aggregates depend on hosts AND the live samples (power, gpus
   // count). Recompute when either changes.
-  const agg = useMemo(() => {
-    let online = 0;
-    let lagging = 0;
-    let offline = 0;
-    let pending = 0;
-    let totalGpus = 0;
-    let totalPower = 0;
-    let totalVramUsed = 0;
-    let totalVramTotal = 0;
-    let utilSum = 0;
-    let utilCount = 0;
-    let totalPcieKbps = 0;
-    for (const h of hosts) {
-      const s = effectiveStatus(h);
-      if (s === 'online') online++;
-      else if (s === 'lagging') lagging++;
-      else if (s === 'offline') offline++;
-      else if (s === 'pending') pending++;
-      const samples = samplesByHost.get(h.id);
-      if (samples && s !== 'offline' && s !== 'disabled') {
-        totalGpus += samples.size;
-        for (const v of samples.values()) {
-          totalPower += v.power;
-          totalVramUsed += v.memory_used;
-          totalVramTotal += v.memory_total ?? 0;
-          if (v.utilization !== null) { utilSum += v.utilization; utilCount++; }
-          totalPcieKbps += (v.pcie_rx_kbps ?? 0) + (v.pcie_tx_kbps ?? 0);
-        }
-      }
-    }
-    return {
-      online, lagging, offline, pending,
-      total: hosts.length,
-      totalGpus, totalPower,
-      totalVramUsed, totalVramTotal,
-      avgUtil: utilCount > 0 ? utilSum / utilCount : null,
-      totalPcieKbps,
-    };
-  }, [hosts, samplesByHost]);
+  const agg = useMemo<FleetAggregate>(
+    () => computeFleetAggregate(hosts, samplesByHost),
+    [hosts, samplesByHost],
+  );
 
   // Mono-host install: /fleet is meaningless. Redirect to the regular
   // Dashboard so a bookmark or accidental click never lands on an
@@ -92,7 +117,7 @@ export default function FleetPage() {
           <h1 className="text-2xl font-bold tracking-tight">{t('fleet.title')}</h1>
           <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('fleet.subtitle')}</p>
         </div>
-        <div className="seg" role="group" aria-label={t('fleet.view_label')}>
+        <div className="seg" role="toolbar" aria-label={t('fleet.view_label')}>
           <button
             type="button"
             className="seg-btn inline-flex items-center gap-1.5"

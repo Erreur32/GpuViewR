@@ -17,7 +17,7 @@ export default function HostsSettingsTab() {
   const [rotateFor, setRotateFor] = useState<HostRecord | null>(null);
   const [deleteFor, setDeleteFor] = useState<HostRecord | null>(null);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { refresh().catch(() => undefined); }, [refresh]);
 
   if (!isAdmin) {
     return (
@@ -92,9 +92,9 @@ function HostRow({
   const isLocal = host.id === LOCAL_HOST_ID;
   const status = effectiveStatus(host);
   const now = Math.floor(Date.now() / 1000);
-  const lastSeenLabel = host.last_seen !== null
-    ? `${formatRelative(now - host.last_seen)} ${t('common.ago')}`
-    : '—';
+  const lastSeenLabel = host.last_seen === null
+    ? '—'
+    : `${formatRelative(now - host.last_seen)} ${t('common.ago')}`;
 
   return (
     <tr className="border-t" style={{ borderColor: 'var(--gv-border)' }}>
@@ -183,15 +183,15 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.7)' }}
-      onClick={onClose}
-    >
-      <div
-        className="card w-full max-w-lg p-6 flex flex-col gap-4"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label={t('common.close')}
+        className="absolute inset-0 cursor-default"
+        style={{ background: 'rgba(0,0,0,0.7)' }}
+        onClick={onClose}
+      />
+      <div className="card w-full max-w-lg p-6 flex flex-col gap-4 relative">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold">{t('hosts.rotate_title', { label: host.label })}</h2>
@@ -279,7 +279,7 @@ function DeleteHostModal({ host, onClose }: Readonly<{ host: HostRecord; onClose
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const hubHttp = `${window.location.protocol}//${window.location.host}`;
+  const hubHttp = `${globalThis.location.protocol}//${globalThis.location.host}`;
   const curlCmd = `curl -fsSL ${hubHttp}/install.sh | sudo bash -s -- --uninstall`;
   const dockerCmd = `docker rm -f gpuviewr-agent`;
   const activeCmd = mode === 'curl' ? curlCmd : dockerCmd;
@@ -307,15 +307,15 @@ function DeleteHostModal({ host, onClose }: Readonly<{ host: HostRecord; onClose
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.7)' }}
-      onClick={onClose}
-    >
-      <div
-        className="card w-full max-w-xl p-6 flex flex-col gap-4"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label={t('common.close')}
+        className="absolute inset-0 cursor-default"
+        style={{ background: 'rgba(0,0,0,0.7)' }}
+        onClick={onClose}
+      />
+      <div className="card w-full max-w-xl p-6 flex flex-col gap-4 relative">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold">{t('hosts.delete_title', { label: host.label })}</h2>
@@ -350,7 +350,7 @@ function DeleteHostModal({ host, onClose }: Readonly<{ host: HostRecord; onClose
           {t('hosts.delete_uninstall_hint')}
         </p>
 
-        <div className="seg" role="group">
+        <div className="seg" role="toolbar" aria-label={t('hosts.install_mode_label')}>
           <button
             type="button"
             className="seg-btn inline-flex items-center gap-1.5"
