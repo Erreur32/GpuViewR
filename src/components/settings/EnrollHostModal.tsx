@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { X, Copy, AlertTriangle, Container, Terminal } from 'lucide-react';
 import { useHostsStore } from '../../store/hostsStore';
 import { notify } from '../../store/toastStore';
+import { copyText } from '../../lib/clipboard';
 
 type Props = Readonly<{ onClose: () => void }>;
 type Stage = 'form' | 'token';
@@ -45,10 +46,14 @@ export default function EnrollHostModal({ onClose }: Props) {
     }
   };
 
-  const copy = (text: string, kind: 'id' | 'token' | 'cmd') => {
-    void navigator.clipboard.writeText(text);
-    setCopied(kind);
-    setTimeout(() => setCopied(null), 1500);
+  const copy = async (text: string, kind: 'id' | 'token' | 'cmd') => {
+    const ok = await copyText(text);
+    if (ok) {
+      setCopied(kind);
+      setTimeout(() => setCopied(null), 1500);
+    } else {
+      notify('error', t('hosts.copy_failed'), t('hosts.copy_failed_hint'));
+    }
   };
 
   const dockerCmd = result

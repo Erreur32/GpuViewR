@@ -456,6 +456,8 @@
     "install_mode_docker": "Docker",
     "install_curl_hint": "Single line, installs Node 22 if missing, creates a systemd service. Linux + nvidia-smi required on the target.",
     "install_docker_hint": "Pull-style install on hosts that already run Docker + NVIDIA Container Toolkit. Logs via `docker logs`.",
+    "copy_failed": "Couldn't copy",
+    "copy_failed_hint": "Your browser blocks clipboard access on this URL. Select the text and use Ctrl+C manually.",
     "rotate_token": "Rotate token",
     "rotate_title": "Rotate token for {{label}}",
     "rotate_intro": "Generates a new agent token. The existing agent will be disconnected and must be reconfigured with the new value.",

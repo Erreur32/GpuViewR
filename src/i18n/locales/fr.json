@@ -456,6 +456,8 @@
     "install_mode_docker": "Docker",
     "install_curl_hint": "Une seule ligne, installe Node 22 si absent, crée un service systemd. Linux + nvidia-smi requis sur la machine cible.",
     "install_docker_hint": "Installation pull-style sur les hôtes qui ont déjà Docker + NVIDIA Container Toolkit. Logs via `docker logs`.",
+    "copy_failed": "Copie impossible",
+    "copy_failed_hint": "Ton navigateur bloque l'accès au presse-papiers sur cette URL. Sélectionne le texte et fais Ctrl+C manuellement.",
     "rotate_token": "Régénérer le jeton",
     "rotate_title": "Régénérer le jeton de {{label}}",
     "rotate_intro": "Génère un nouveau jeton d'agent. L'agent existant sera déconnecté et devra être reconfiguré avec la nouvelle valeur.",

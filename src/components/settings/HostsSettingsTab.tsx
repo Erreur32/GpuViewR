@@ -4,6 +4,7 @@ import { Plus, KeyRound, Trash2, Copy, AlertTriangle, X } from 'lucide-react';
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
+import { copyText } from '../../lib/clipboard';
 import StatusPill from '../fleet/StatusPill';
 import EnrollHostModal from './EnrollHostModal';
 
@@ -170,11 +171,15 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
     }
   };
 
-  const copy = () => {
+  const copy = async () => {
     if (!newToken) return;
-    void navigator.clipboard.writeText(newToken);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    const ok = await copyText(newToken);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } else {
+      notify('error', t('hosts.copy_failed'), t('hosts.copy_failed_hint'));
+    }
   };
 
   return (
