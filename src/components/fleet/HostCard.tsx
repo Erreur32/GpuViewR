@@ -41,6 +41,20 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
     null,
   );
   const totalPower = hostSamples.reduce((sum, g) => sum + g.power, 0);
+  // Per-host cumulative stats (simple view): show what's happening
+  // across the host's GPUs without unfolding the detailed tiles.
+  const utilValues = hostSamples.map((g) => g.utilization).filter((u): u is number => u !== null);
+  const avgUtil = utilValues.length > 0
+    ? Math.round(utilValues.reduce((a, b) => a + b, 0) / utilValues.length)
+    : null;
+  const vramUsedMiB = hostSamples.reduce((sum, g) => sum + g.memory_used, 0);
+  const vramTotalMiB = hostSamples.reduce((sum, g) => sum + (g.memory_total ?? 0), 0);
+  // PCIe throughput is in KiB/s in the sample (when reported); roll up
+  // to MiB/s for fleet view since 4-8 GPUs can easily exceed 1 GiB/s.
+  const pcieKbps = hostSamples.reduce(
+    (sum, g) => sum + (g.pcie_rx_kbps ?? 0) + (g.pcie_tx_kbps ?? 0),
+    0,
+  );
 
   const color = hottest ? tempColor(hottest.temperature) : 'var(--gv-text-dim)';
 
@@ -64,16 +78,48 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
         <StatusPill status={status} lastSeenEpoch={host.last_seen} />
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--gv-text-muted)' }}>
-          <Cpu size={14} />
-          <span>{t('fleet.gpus_count', { count: hostSamples.length })}</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--gv-text-muted)' }}>
-          <Zap size={14} />
-          <span className="font-mono">{isOffline ? '—' : `${Math.round(totalPower)} W`}</span>
-        </div>
+      {/* 4-cell stats grid: GPUs / Power / Util / VRAM. Each cell
+          shows the cumulative value across the host's GPUs with a
+          unit suffix so the user doesn't have to mentally convert. */}
+      <div
+        className="grid grid-cols-4 gap-2 text-center rounded-lg p-2"
+        style={{ background: 'var(--gv-surface-alt)' }}
+      >
+        <StatCell
+          label={t('fleet.stat_gpus')}
+          value={String(hostSamples.length)}
+          unit=""
+        />
+        <StatCell
+          label={t('fleet.stat_power')}
+          value={isOffline ? '—' : String(Math.round(totalPower))}
+          unit="W"
+        />
+        <StatCell
+          label={t('fleet.stat_util')}
+          value={isOffline || avgUtil === null ? '—' : String(avgUtil)}
+          unit="%"
+        />
+        <StatCell
+          label={t('fleet.stat_vram')}
+          value={isOffline || vramTotalMiB === 0
+            ? '—'
+            : `${(vramUsedMiB / 1024).toFixed(1)}/${(vramTotalMiB / 1024).toFixed(0)}`}
+          unit="GiB"
+        />
       </div>
+
+      {!isOffline && pcieKbps > 0 && (
+        <div
+          className="flex items-center justify-between text-[11px]"
+          style={{ color: 'var(--gv-text-muted)' }}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <Zap size={11} /> {t('fleet.stat_pcie')}
+          </span>
+          <span className="font-mono">{formatPcie(pcieKbps)}</span>
+        </div>
+      )}
 
       {!detailed && (
         <div
@@ -124,4 +170,27 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
       </div>
     </button>
   );
+}
+
+function StatCell({ label, value, unit }: Readonly<{ label: string; value: string; unit: string }>) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>
+        {label}
+      </span>
+      <span className="font-mono text-sm font-semibold tabular-nums" style={{ color: 'var(--gv-text)' }}>
+        {value}
+        {unit && <span className="text-[10px] font-normal ml-0.5" style={{ color: 'var(--gv-text-muted)' }}>{unit}</span>}
+      </span>
+    </div>
+  );
+}
+
+/** Format a PCIe rate in KiB/s as a human-readable string with auto unit:
+ *  < 1 MiB/s shows kB/s, otherwise MiB/s, beyond 1 GiB/s shows GiB/s. */
+function formatPcie(kbps: number): string {
+  if (kbps < 1024) return `${Math.round(kbps)} KiB/s`;
+  const mibps = kbps / 1024;
+  if (mibps < 1024) return `${mibps.toFixed(1)} MiB/s`;
+  return `${(mibps / 1024).toFixed(2)} GiB/s`;
 }

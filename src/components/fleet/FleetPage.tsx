@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Cpu, Zap, CheckCircle2, LayoutGrid, Rows3 } from 'lucide-react';
+import { Cpu, Zap, CheckCircle2, LayoutGrid, Rows3, Activity, MemoryStick, Cable } from 'lucide-react';
 import { useHostsStore, effectiveStatus, LOCAL_HOST_ID } from '../../store/hostsStore';
 import { useGpuStore } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
@@ -32,21 +32,37 @@ export default function FleetPage() {
     let pending = 0;
     let totalGpus = 0;
     let totalPower = 0;
+    let totalVramUsed = 0;
+    let totalVramTotal = 0;
+    let utilSum = 0;
+    let utilCount = 0;
+    let totalPcieKbps = 0;
     for (const h of hosts) {
       const s = effectiveStatus(h);
       if (s === 'online') online++;
       else if (s === 'lagging') lagging++;
       else if (s === 'offline') offline++;
       else if (s === 'pending') pending++;
-      // 'disabled' silently absorbed — admin disabled it on purpose,
-      // so it shouldn't drag the green dot down.
       const samples = samplesByHost.get(h.id);
       if (samples && s !== 'offline' && s !== 'disabled') {
         totalGpus += samples.size;
-        for (const v of samples.values()) totalPower += v.power;
+        for (const v of samples.values()) {
+          totalPower += v.power;
+          totalVramUsed += v.memory_used;
+          totalVramTotal += v.memory_total ?? 0;
+          if (v.utilization !== null) { utilSum += v.utilization; utilCount++; }
+          totalPcieKbps += (v.pcie_rx_kbps ?? 0) + (v.pcie_tx_kbps ?? 0);
+        }
       }
     }
-    return { online, lagging, offline, pending, total: hosts.length, totalGpus, totalPower };
+    return {
+      online, lagging, offline, pending,
+      total: hosts.length,
+      totalGpus, totalPower,
+      totalVramUsed, totalVramTotal,
+      avgUtil: utilCount > 0 ? utilSum / utilCount : null,
+      totalPcieKbps,
+    };
   }, [hosts, samplesByHost]);
 
   // Mono-host install: /fleet is meaningless. Redirect to the regular
@@ -98,7 +114,7 @@ export default function FleetPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <AggregateCard
           icon={<CheckCircle2 size={18} />}
           label={t('fleet.aggregate_online')}
@@ -116,9 +132,38 @@ export default function FleetPage() {
         <AggregateCard
           icon={<Zap size={18} />}
           label={t('fleet.aggregate_power')}
-          value={`${(agg.totalPower / 1000).toFixed(2)} kW`}
+          value={agg.totalPower >= 1000
+            ? `${(agg.totalPower / 1000).toFixed(2)} kW`
+            : `${Math.round(agg.totalPower)} W`}
           accent="var(--gv-accent)"
           hint={t('fleet.aggregate_power_hint', { watts: Math.round(agg.totalPower) })}
+        />
+        <AggregateCard
+          icon={<Activity size={18} />}
+          label={t('fleet.aggregate_util')}
+          value={agg.avgUtil === null ? '—' : `${Math.round(agg.avgUtil)} %`}
+          accent={utilAccent(agg.avgUtil)}
+          hint={t('fleet.aggregate_util_hint', { count: agg.totalGpus })}
+        />
+        <AggregateCard
+          icon={<MemoryStick size={18} />}
+          label={t('fleet.aggregate_vram')}
+          value={agg.totalVramTotal === 0
+            ? '—'
+            : `${(agg.totalVramUsed / 1024).toFixed(1)} / ${(agg.totalVramTotal / 1024).toFixed(0)} GiB`}
+          accent="var(--gv-info)"
+          hint={agg.totalVramTotal === 0
+            ? t('fleet.no_data')
+            : t('fleet.aggregate_vram_hint', {
+                pct: Math.round((agg.totalVramUsed / agg.totalVramTotal) * 100),
+              })}
+        />
+        <AggregateCard
+          icon={<Cable size={18} />}
+          label={t('fleet.aggregate_pcie')}
+          value={agg.totalPcieKbps === 0 ? '—' : formatPcieAggregate(agg.totalPcieKbps)}
+          accent="var(--gv-orange)"
+          hint={t('fleet.aggregate_pcie_hint')}
         />
       </div>
 
@@ -151,18 +196,35 @@ function AggregateCard({
   icon, label, value, accent, hint,
 }: Readonly<{ icon: React.ReactNode; label: string; value: string; accent: string; hint: string }>) {
   return (
-    <div className="card p-5 flex items-center gap-4">
+    <div className="card p-3 flex items-center gap-3 min-w-0">
       <div
-        className="w-11 h-11 rounded-xl flex items-center justify-center"
+        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
         style={{ background: `color-mix(in srgb, ${accent} 18%, transparent)`, color: accent }}
       >
         {icon}
       </div>
-      <div className="flex flex-col">
-        <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>{label}</div>
-        <div className="font-mono font-bold text-2xl tabular-nums leading-tight">{value}</div>
-        <div className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>{hint}</div>
+      <div className="flex flex-col min-w-0">
+        <div className="text-[10px] uppercase tracking-wider truncate" style={{ color: 'var(--gv-text-dim)' }}>{label}</div>
+        <div className="font-mono font-bold text-lg tabular-nums leading-tight truncate">{value}</div>
+        <div className="text-[10px] truncate" style={{ color: 'var(--gv-text-muted)' }}>{hint}</div>
       </div>
     </div>
   );
+}
+
+// Util-level colour: matches the per-GPU thresholds the dashboard uses
+// (low ~ info blue, high ~ warn yellow, hot ~ orange/red).
+function utilAccent(u: number | null): string {
+  if (u === null) return 'var(--gv-text-dim)';
+  if (u >= 95) return 'var(--gv-danger)';
+  if (u >= 80) return 'var(--gv-orange)';
+  if (u >= 50) return 'var(--gv-warn)';
+  return 'var(--gv-info)';
+}
+
+function formatPcieAggregate(kbps: number): string {
+  if (kbps < 1024) return `${Math.round(kbps)} KiB/s`;
+  const mibps = kbps / 1024;
+  if (mibps < 1024) return `${mibps.toFixed(1)} MiB/s`;
+  return `${(mibps / 1024).toFixed(2)} GiB/s`;
 }
