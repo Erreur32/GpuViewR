@@ -464,3 +464,181 @@ Aucune. L'agent ne touche **pas** au Docker socket. Il invoque `nvidia-smi` comm
 - Pas de mTLS / cert pinning (déléguer TLS au reverse-proxy).
 - Pas de sharding ou de réplication SQLite.
 - Pas d'agrégation de séries cross-host dans `/api/gpu/history` (un graphe = un host à la fois en v1).
+
+---
+
+## 11. Affichage (UI multi-host) — design proposé
+
+Cible : v0.3.1, après le backbone multi-host (jalons 1-5). Pattern : **hybride** (vue flotte + drill-down host), comme Tailscale / Portainer / Coolify.
+
+### 11.1 Trois nouvelles routes / vues
+
+1. **`/fleet` — Vue Fleet (nouvelle)** — première chose qu'un admin voit après login si plus d'un host existe.
+   - Bandeau du haut : 3 chiffres agrégés — `Online: 4/5`, `GPUs: 12`, `Power: 1.2 kW`.
+   - Grid responsive de cards (1 col mobile / 2 tablet / 3-4 desktop).
+   - 1 card = 1 host : label, dot status (vert/jaune/rouge), hostname dim, nb GPUs, GPU la plus chaude (sparkline 60s), power total, last_seen relatif.
+   - Clic carte → `/host/:id` (drill-down).
+   - Cards offline grisées, badge "offline 6m" sur la dot.
+
+2. **`/host/:id` — Vue Host (Dashboard actuel rebranché)** — c'est `src/components/dashboard/Dashboard.tsx` tel quel, mais bound à un `host_id` via router param.
+   - Le `useGpuStream()` filtre sur `host_id` à la souscription WS.
+   - Breadcrumb `Fleet > rtx-rig` pour remonter.
+   - Sélecteur GPU existant gagne un sélecteur Host à sa gauche (un combo "host · gpu" cohérent).
+   - Si `host.status === 'offline'`, overlay non-bloquant "Host offline — last seen 6m ago" mais on continue d'afficher les dernières données connues + bouton "View history".
+
+3. **`/settings/hosts` — Settings → Hosts (admin only)**
+   - Table : Label / Status pill / GPUs / Agent version / Last seen / Actions (rename, rotate token, disable, delete).
+   - Bouton `+ Add host` ouvre la modal d'enrollment :
+     - Champ unique `label` à remplir.
+     - Submit → `POST /api/hosts` → la modal mute en "Token (copy now, shown once)" + snippet `docker run …` cliquable copy-to-clipboard.
+     - Warning fort en rouge avant la fermeture.
+   - Modal "Rotate token" : confirmation + nouveau token affiché une fois.
+
+### 11.2 Header global — indicateur permanent
+
+`src/components/layout/Header.tsx` (déjà existant) gagne un mini-widget cliquable à droite du logo :
+
+```
+[●] Fleet 4/5
+```
+
+- Dot agrégé : vert si all online, jaune si ≥1 lagging, rouge si ≥1 offline.
+- Clic → `/fleet`.
+- Caché si un seul host (`local`) existe — l'utilisateur mono-host ne voit aucune nouveauté visuelle.
+
+### 11.3 Composants à créer
+
+| Composant | Rôle | Notes |
+|---|---|---|
+| `src/components/fleet/FleetView.tsx` | Page `/fleet` | Layout + agrégats + grid |
+| `src/components/fleet/HostCard.tsx` | 1 card host | Inclut sparkline temp, status pill |
+| `src/components/fleet/StatusPill.tsx` | Dot + label "Online 3s / Lagging 47s / Offline 6m" | Réutilisé partout |
+| `src/components/fleet/FleetIndicator.tsx` | Mini widget header | Réagit aux events `host_status` WS |
+| `src/components/settings/HostsTable.tsx` | Table dans Settings | Pagination si > 50 hosts |
+| `src/components/settings/EnrollHostModal.tsx` | Modal d'enrollment + token display | Copy-to-clipboard avec masque |
+| `src/components/settings/RotateTokenModal.tsx` | Confirmation + nouveau token | Pareil que enroll mais sans nouvelle row |
+
+### 11.4 Store / data flow
+
+- Nouveau store Zustand `useHostsStore` (cf. pattern existant dans `src/store/`) : `hosts: Host[]`, `status: Map<host_id, HostStatus>`, `selectedHostId: string | null`.
+- Hydratation initiale via `GET /api/hosts` au boot de l'app.
+- Souscription WS `/ws/gpu` reçoit désormais des messages `{type:'host_status', host_id, status, last_seen}` qui mutent le store.
+- `Dashboard.tsx` lit `selectedHostId` du store ou du router param.
+
+### 11.5 Comportement zero-config mono-host (préservé)
+
+Si `GET /api/hosts` renvoie un seul host avec `kind='local'` :
+- Header `FleetIndicator` masqué.
+- `/fleet` toujours accessible mais redirige vers `/host/local` (i.e. `/`).
+- Aucun "Add host" visible tant que l'utilisateur n'est pas admin (déjà la sémantique actuelle pour Settings).
+
+### 11.6 Mobile
+
+- Cards `/fleet` : grid 1 col, scroll vertical.
+- Header `FleetIndicator` : juste la dot + chiffre, pas de mot "Fleet".
+- Modal d'enrollment plein écran.
+- Drill-down host inchangé (le Dashboard est déjà responsive).
+
+### 11.7 Hors scope UI (v0.3.1)
+
+- Pas de mode "Compare hosts" (overlay multi-séries cross-host) — réservé v0.4.
+- Pas de notification toast "host went offline" — c'est un changement de dot, suffisant pour v0.3.
+- Pas de groupes / tags de hosts — flat list.
+- Pas de carte géo / réseau visualization.
+
+---
+
+## 12. Options de l'agent — env vars supportées
+
+Surface minimale et stable. Tout est documenté dans `agent/README.md`.
+
+### 12.1 Variables requises (handshake)
+
+| Variable | Rôle | Notes |
+|---|---|---|
+| `HUB_URL` | URL du hub, ex. `wss://hub.example.com/agent` | `ws://` autorisé seulement vers loopback / RFC1918 (cf. §3). Erreur fatale au boot sinon. |
+| `HOST_ID` | UUID donné par le hub à l'enrollment | Stable, jamais re-généré. Doit matcher la ligne `hosts` côté hub. |
+| `AGENT_TOKEN` | Secret opaque donné par le hub à l'enrollment | Une seule chance de le copier. Comparé via `bcrypt.compare` côté hub. |
+
+### 12.2 Variables optionnelles (comportement)
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `TICK_MS` | `1000` | Cadence du collecteur GPU. Le hub peut le surcharger via trame `config`. |
+| `FEATURES` | `gpu,system,temps,processes` | Liste CSV des collecteurs actifs. Désactiver `processes` sur les machines sans `/proc` partagé. |
+| `AGENT_BUFFER_PERSIST` | `0` | Cf. D5. Si `1` : miroir append-only dans `$DATA_DIR/agent-buffer.jsonl`, rotation 10 MiB. |
+| `AGENT_LABEL` | (none) | Label initial proposé au hub via `hello`. Si le hub a déjà un label défini par admin, le sien gagne. |
+| `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`. Aligné sur le logger du hub. |
+| `NVIDIA_SMI_PATH` | `nvidia-smi` | Override si binaire dans un path exotique. Utile WSL2, bare-metal sans `/usr/bin` standard. |
+| `HOST_PROC` | `/host/proc` | Résolution noms process sans `pid: host`. Idem hub aujourd'hui. |
+| `RECONNECT_MAX_MS` | `30000` | Cap du backoff exponentiel. Min implicite = 1 s, jitter ±20%. |
+| `TLS_INSECURE` | `0` | Skip cert verify (dev uniquement). Log `warn` permanent si actif. |
+| `HTTPS_PROXY` / `HTTP_PROXY` | (none) | Proxy d'entreprise. Standard Node `undici`, gratis. |
+
+### 12.3 Choix volontaires d'absence
+
+- Pas de `JWT_SECRET` côté agent (D7 : auth opaque, espace disjoint).
+- Pas de `RETENTION_DAYS` / `DATA_DIR` côté agent sauf si `AGENT_BUFFER_PERSIST=1` — c'est le hub qui stocke.
+- Pas d'auto-update : l'utilisateur fait `docker pull` puis `restart`.
+- Pas de switch "dev mode" — soit l'agent tourne, soit il tourne pas.
+
+### 12.4 Comportements implicites au démarrage (non configurables, documentés)
+
+- Si `nvidia-smi` absent → fatal, exit 1 (pas de mode silencieux qui fait croire que tout va bien).
+- Si la trame `hello` est rejetée (token invalide, host_id collision) → exit 1, **pas** de retry boucle infinie.
+- Si le hub renvoie `protocol_ver` supérieur au `MAX_KNOWN` agent → exit 1, message "upgrade agent".
+- Tous les signaux SIGTERM / SIGINT → flush buffer en RAM, ferme proprement WS avec code 1000, exit 0.
+
+---
+
+## 13. Pré-implémentation — vérifications restantes
+
+Triage des "open questions" qui méritent un check avant d'attaquer le jalon 1.
+
+### 13.1 Bloquants (à confirmer avant d'écrire la première ligne)
+
+1. **Performance bcrypt à l'accueil de N agents** — si 20 agents redémarrent simultanément après une panne hub, on enchaîne 20 `bcrypt.compare` synchrones. À ~80 ms chacun = 1.6 s de blocage event loop.
+   - Action : bench rapide + cache LRU `token_hash → host_id` après première compare réussie (TTL 1 h, invalidé sur `rotate-token`).
+   - Fichier : à ajouter dans `server/services/agentIngestWS.ts` (jalon 3).
+
+2. **`EXPLAIN QUERY PLAN` sur l'index `(host_id, gpu_index, timestamp_epoch)`** — vérifier que les requêtes legacy `WHERE gpu_index=? AND timestamp_epoch>?` (sans `host_id` explicite) gardent un coût acceptable post-migration.
+   - Action : passer le suite de tests existante avec `EXPLAIN QUERY PLAN` activé, comparer pré/post-migration sur une DB de prod.
+   - Sinon : garder un index secondaire `(gpu_index, timestamp_epoch)` OU injecter `host_id='local'` côté code legacy (mono-host) systématiquement.
+
+3. **Migration idempotente sous crash** — la migration `gpu_metrics → gpu_metrics_new` peut crasher entre les étapes.
+   - Action : au boot, DROP `gpu_metrics_new` orphelin avant de retenter. Tester avec `kill -9` simulé en plein milieu.
+   - Fichier : `server/database/connection.ts` (jalon 2).
+
+### 13.2 À benchmarker (pas bloquant mais à mesurer avant release)
+
+4. **20 hosts × 4 GPUs × 1 Hz inserts SQLite** — la logique de batch existante (`flushIntervalMs=60s`) doit tenir.
+   - Action : mock-agent qui simule 20 hosts. Sinon : `INSERT OR IGNORE` + WAL checkpoint plus agressif.
+
+5. **Bande passante WS** — théorique = ~4 KB/s/host. Confirmer que la sérialisation JSON ne fait pas exploser ça (les floats peuvent prendre 8-10 chars vs 4 octets binaires).
+   - Optionnel post-v0.3 : passer en CBOR / MessagePack si > 10 KB/s/host observé.
+
+6. **Footprint mémoire de l'agent** — objectif < 100 MiB RSS. Si > 150 MiB → `--max-old-space-size=80`.
+
+### 13.3 À décider à mi-parcours (pas avant jalon 3)
+
+7. **Capabilities négociées dynamiquement** — un agent peut-il changer `capabilities` en cours de session ?
+   - Décision proposée : NON. Figé au `hello`, l'agent reconnecte si ça change. Plus simple.
+
+8. **Comportement quand un host est supprimé côté hub mais que son agent est encore connecté** — fermer net ou laisser tourner ?
+   - Décision proposée : fermer net, code `1008 Policy Violation`, l'agent log et exit.
+
+9. **Composition GPU qui change sur un host** (ajout / retrait carte) — `gpu_devices` upsert ou DELETE ?
+   - Décision proposée : marquer `removed_at` plutôt que DELETE. Conservation historique. À documenter au jalon 2.
+
+### 13.4 À documenter avant release
+
+10. **Pré-requis hôte distant** — NVIDIA Container Toolkit + `nvidia-smi` + port sortant atteignable. Section README.
+11. **Single binary via Node SEA** — vérifier sur Node 22.19+ que `--experimental-sea-config` produit un binaire utilisable sur Debian 12 / Ubuntu 22+. Si ça casse, retomber sur image Docker seule.
+12. **Compat reverse-proxy** — nginx/Caddy/Traefik passent les WS upgrades par défaut, mais certains setups custom non. Snippet de config dans la doc.
+13. **CI** — ajouter `agent/Dockerfile` à la matrix Snyk Container. Ajouter le typecheck/build de `/agent` à `CI / build`.
+
+### 13.5 Risques résiduels non bloquants (CHANGELOG)
+
+14. Breaking Prom : nouveau label `host=` → dashboards Grafana mono-host à migrer (snippet PromQL dans `Docs/MIGRATION.md`).
+15. Breaking MQTT : préfixe `gpuviewr/<host>/...` → templates HA Discovery à recréer.
+16. Webhooks Discord/Telegram : titre d'alerte doit injecter le label host. Sinon un user reçoit "GPU #0 temperature firing" sans savoir laquelle de ses 5 machines râle.
