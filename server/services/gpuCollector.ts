@@ -5,77 +5,27 @@ import { spawnNvidiaSmi, spawnSyncNvidiaSmi } from '../utils/nvidiaSmi.js';
 import { GpuDeviceRepository, GpuMetricRepository, type GpuMetric } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
 import { buildFakeSamples } from './mockGpu.js';
+import {
+  QUERY_FIELDS,
+  num,
+  numOrNull,
+  nowTimestamp,
+  normalizeBusId,
+  parsePciThroughput,
+  type GpuSample,
+  type PcieThroughput,
+} from './_nvidiaParsers.js';
+import { metricsBus } from './_metricsBus.js';
 
-const QUERY_FIELDS = [
-  'index',
-  'name',
-  'uuid',
-  'driver_version',
-  'temperature.gpu',
-  'utilization.gpu',
-  'memory.used',
-  'memory.total',
-  'power.draw',
-  'fan.speed',
-  'clocks.gr',
-  'clocks.mem',
-  'pci.bus_id',
-  'pcie.link.gen.current',
-  'pcie.link.gen.max',
-  'pcie.link.width.current',
-  'pcie.link.width.max',
-];
+// Re-export so existing `import { type GpuSample } from './gpuCollector.js'`
+// in alertService / exportService / mockGpu / gpuStreamWS still resolves.
+// The canonical home is now _nvidiaParsers.ts (shared with the agent).
+export type { GpuSample };
 
-export interface GpuSample {
-  gpu_index: number;
-  name: string;
-  uuid: string | null;
-  driver_version: string | null;
-  temperature: number;
-  utilization: number | null;
-  memory_used: number;
-  memory_total: number | null;
-  power: number;
-  fan_speed: number | null;
-  clock_graphics: number | null;
-  clock_memory: number | null;
-  pci_bus_id: string | null;
-  pcie_gen_current: number | null;
-  pcie_gen_max: number | null;
-  pcie_width_current: number | null;
-  pcie_width_max: number | null;
-  // Real-time PCIe traffic, in KiB/s. Sourced from `nvidia-smi -q -d PCI`
-  // (NVML PCIe throughput counter), separately from the CSV --query-gpu
-  // call which doesn't expose throughput. null when the driver returns
-  // N/A — common on GeForce cards without admin / on older drivers.
-  pcie_rx_kbps: number | null;
-  pcie_tx_kbps: number | null;
-  timestamp: string;
-  timestamp_epoch: number;
-}
-
-function num(v: string): number {
-  const n = Number.parseFloat(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function numOrNull(v: string): number | null {
-  if (!v || v.trim() === '' || v.includes('N/A') || v.includes('Not Supported')) return null;
-  const n = Number.parseFloat(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function nowTimestamp(): { iso: string; epoch: number } {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  return { iso, epoch: Math.floor(d.getTime() / 1000) };
-}
-
-interface PcieThroughput {
-  rxKbps: number | null;
-  txKbps: number | null;
-}
+// Internal tag for the local nvidia-smi producer. Anchors the legacy
+// single-host install on a stable host_id so the existing DB row keys
+// and per-host last-sample map keep a fixed identifier post-migration.
+const LOCAL_HOST_ID = 'local';
 
 class GpuCollector extends EventEmitter {
   private timer: NodeJS.Timeout | null = null;
@@ -137,7 +87,7 @@ class GpuCollector extends EventEmitter {
         clock_memory: s.clock_memory,
       });
     }
-    this.emit('sample', samples);
+    metricsBus.emit('sample', { host_id: LOCAL_HOST_ID, samples });
     if (Date.now() - this.lastFlush >= this.flushIntervalMs) this.flushBuffer();
   }
 
@@ -298,7 +248,7 @@ class GpuCollector extends EventEmitter {
     }
     if (samples.length === 0) return;
     this.lastSamples = samples;
-    this.emit('sample', samples);
+    metricsBus.emit('sample', { host_id: LOCAL_HOST_ID, samples });
 
     if (Date.now() - this.lastFlush >= this.flushIntervalMs) this.flushBuffer();
   }
@@ -314,55 +264,6 @@ class GpuCollector extends EventEmitter {
     this.buffer = [];
     this.lastFlush = Date.now();
   }
-}
-
-/**
- * Parse `nvidia-smi -q -d PCI` plain-text output into a map keyed by
- * normalized PCI bus id ("00000000:01:00.0", lower-case). Each entry
- * holds Tx/Rx throughput in KiB/s, or null when the driver reported
- * "N/A" / "Not Supported" for that field.
- *
- * The output groups blocks by `^GPU <bus-id>` headers; the per-GPU
- * section then has lines like:
- *
- *     Tx Throughput                     : 50 KB/s
- *     Rx Throughput                     : 0 KB/s
- *
- * Some fields can be "Not Active" / "N/A" depending on driver version
- * and card class (GeForce often returns N/A without admin).
- */
-function parsePciThroughput(out: string): Map<string, PcieThroughput> {
-  const result = new Map<string, PcieThroughput>();
-  // Split on the per-GPU header. The first chunk is the file preamble.
-  const blocks = out.split(/^GPU\s+/m).slice(1);
-  blocks.forEach((block, blockIdx) => {
-    // Header is the first line of the chunk (e.g. "00000000:01:00.0").
-    const header = block.split('\n', 1)[0]?.trim();
-    if (!header) return;
-    const tx = matchKbps(block, /Tx\s+Throughput\s*:\s*([^\n]+)/i);
-    const rx = matchKbps(block, /Rx\s+Throughput\s*:\s*([^\n]+)/i);
-    const value = { txKbps: tx, rxKbps: rx };
-    result.set(normalizeBusId(header), value);
-    // Index-based fallback key. Lets the lookup match by GPU order when
-    // the CSV pci.bus_id and this block's header disagree on format
-    // (e.g. domain padding differences seen in some driver versions).
-    result.set(`idx:${blockIdx}`, value);
-  });
-  return result;
-}
-
-function matchKbps(block: string, re: RegExp): number | null {
-  const m = re.exec(block);
-  if (!m) return null;
-  const raw = m[1].trim();
-  if (!raw || /N\/?A|Not Supported|Not Active/i.test(raw)) return null;
-  // Driver formats vary slightly: "50 KB/s", "50KB/s", "50 KiB/s".
-  const num = Number.parseFloat(raw);
-  return Number.isFinite(num) ? num : null;
-}
-
-function normalizeBusId(id: string): string {
-  return id.trim().toLowerCase();
 }
 
 export const gpuCollector = new GpuCollector();

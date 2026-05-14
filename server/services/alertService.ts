@@ -8,7 +8,8 @@ import {
   type AlertRule,
   type AlertMetric,
 } from '../database/models/Alert.js';
-import { gpuCollector, type GpuSample } from './gpuCollector.js';
+import { type GpuSample } from './gpuCollector.js';
+import { metricsBus, type SampleEvent } from './_metricsBus.js';
 import { getSystemStats } from './systemStats.js';
 import { logger } from '../utils/logger.js';
 
@@ -34,7 +35,7 @@ class AlertService extends EventEmitter {
 
   init(): void {
     ensureAlertSchema();
-    gpuCollector.on('sample', (samples: GpuSample[]) => this.evaluate(samples));
+    metricsBus.on('sample', (e: SampleEvent) => this.evaluate(e.samples));
     logger.success('alert', 'Alert evaluator hooked');
     // Retention: prune events older than 30 days every hour
     setInterval(() => {

@@ -1,6 +1,7 @@
 import { connect as mqttConnect, MqttClient } from 'mqtt';
 import { randomBytes } from 'node:crypto';
-import { gpuCollector, type GpuSample } from './gpuCollector.js';
+import { type GpuSample } from './gpuCollector.js';
+import { metricsBus, type SampleEvent } from './_metricsBus.js';
 import { AppConfigRepo, ensureAppConfigSchema } from '../database/models/AppConfig.js';
 import { logger } from '../utils/logger.js';
 import { formatAlert, type AlertEventLite, type AlertLang } from './alertFormatter.js';
@@ -287,8 +288,8 @@ class ExportService {
     if (!AppConfigRepo.getJson<ExportConfigs>(CONFIG_KEY)) {
       AppConfigRepo.setJson<ExportConfigs>(CONFIG_KEY, DEFAULTS);
     }
-    gpuCollector.on('sample', (samples: GpuSample[]) => {
-      this.latestSamples = samples;
+    metricsBus.on('sample', (e: SampleEvent) => {
+      this.latestSamples = e.samples;
     });
     // Forward alert events to webhooks configured in "alerts" mode.
     // Lazy import to keep the dependency one-way (alertService -> samples
