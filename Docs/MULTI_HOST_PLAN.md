@@ -726,6 +726,25 @@ Option alternative (à réévaluer en v0.3.1) : garder comme outil d'itération 
 
 Mode d'emploi cible pour `agent/README.md` et la section "Add a remote host" du README principal.
 
+### 15.0 OS supportés
+
+**Pré-requis communs** : NVIDIA drivers installés + `nvidia-smi` accessible (chemin configurable via `NVIDIA_SMI_PATH`), sortant TCP vers le hub.
+
+| OS | Arch | Mode | Statut |
+|---|---|---|---|
+| Linux glibc (Debian 11+/Ubuntu 22+/RHEL 9+/Rocky/Alma/Fedora 38+/openSUSE) | x86_64 | Docker **ou** systemd binaire SEA | Tier 1 |
+| Linux glibc Jetson / Grace | arm64 | Docker **ou** systemd binaire SEA | Tier 1 |
+| Windows + WSL2 (driver NVIDIA WSL ≥ 470) | x86_64 | Agent dans WSL2, **pas natif Windows** | Tier 1 |
+| Linux musl (Alpine bare-metal) | x86_64 | Docker uniquement (conteneur glibc OK sur hôte musl) | Tier 2 |
+
+**Pas supporté en v0.3** : Windows natif (pas de NVIDIA Container Toolkit, `/proc` absent → processCollector cassé, Service Manager ≠ systemd). macOS (Apple Silicon n'a pas de NVIDIA, support Mac post-Mojave abandonné par NVIDIA).
+
+**Détails techniques** :
+- Image Docker multi-arch `linux/amd64` + `linux/arm64`, base distroless ou `node:22-alpine`, taille ~50-60 MiB compressé.
+- Binaire SEA prébuilt pour `linux-x64` et `linux-arm64-gnu`, lié glibc 2.31+ (Debian 11 / Ubuntu 22 / RHEL 9).
+- L'agent **ne dépend pas** de `better-sqlite3` (pas de SQLite côté agent) — pas de compilation native obligatoire, le binaire SEA est portable entre distros glibc sans rebuild.
+- `--gpus all` est obligatoire côté Docker, sinon `nvidia-smi: command not found` dans le conteneur (erreur #1 attendue).
+
 ### 15.1 Côté admin (hub) — 3 clics
 
 1. **Settings → Hosts** dans l'UI GpuViewR.
