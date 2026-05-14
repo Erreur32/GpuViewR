@@ -642,3 +642,202 @@ Triage des "open questions" qui méritent un check avant d'attaquer le jalon 1.
 14. Breaking Prom : nouveau label `host=` → dashboards Grafana mono-host à migrer (snippet PromQL dans `Docs/MIGRATION.md`).
 15. Breaking MQTT : préfixe `gpuviewr/<host>/...` → templates HA Discovery à recréer.
 16. Webhooks Discord/Telegram : titre d'alerte doit injecter le label host. Sinon un user reçoit "GPU #0 temperature firing" sans savoir laquelle de ses 5 machines râle.
+
+---
+
+## 14. Intégration du preview multi-host dans l'app réelle
+
+Cible : v0.3.1, **après** les jalons 1-5 du backbone. Le preview (`src/preview-multi/`, `index.preview.html`, `vite.preview.config.ts`) est un sandbox déconnecté. Pour le brancher pour de vrai, 7 étapes ordonnées par dépendance.
+
+### 14.1 Backbone d'abord
+
+Le preview suppose l'existence de : table `hosts`, `GET /api/hosts`, messages WS `{ type:'host_status', host_id, status }`. Tout ça arrive aux jalons 2-3. **Aucune intégration UI tant que ces APIs ne sont pas là.**
+
+### 14.2 Migration 1-pour-1 des composants
+
+| Preview (sandbox) | Production (vraie app) |
+|---|---|
+| `src/preview-multi/components/StatusPill.tsx` | `src/components/fleet/StatusPill.tsx` |
+| `src/preview-multi/components/HostCard.tsx` | `src/components/fleet/HostCard.tsx` |
+| `src/preview-multi/components/FleetIndicator.tsx` | `src/components/layout/FleetIndicator.tsx` (injecté dans `Header.tsx`) |
+| `src/preview-multi/components/Sparkline.tsx` | **supprimer** — réutiliser `src/components/dashboard/Sparkline.tsx` qui existe déjà |
+| `src/preview-multi/components/EnrollHostModal.tsx` | `src/components/settings/EnrollHostModal.tsx` |
+| `src/preview-multi/pages/FleetView.tsx` | `src/components/fleet/FleetPage.tsx` |
+| `src/preview-multi/pages/HostsSettings.tsx` | `src/components/settings/HostsSettingsTab.tsx` |
+
+Le code est ~90% transposable tel quel — il respecte déjà les tokens CSS existants (`--gv-*`, `.card`, `.btn-primary`).
+
+### 14.3 Nouveau store Zustand `useHostsStore`
+
+Fichier : `src/store/hostsStore.ts` (~80 lignes). Pattern aligné sur les stores existants.
+
+État :
+- `hosts: Host[]` — hydraté au boot via `fetch('/api/hosts')`
+- `liveSamples: Map<host_id, GpuSample[]>` — alimenté par le hook WS existant
+- `selectedHostId: string | null` — pour le drill-down
+- `status: Map<host_id, HostStatus>`
+
+Actions : `refresh()`, `enroll(label)`, `rotate(id)`, `rename(id, label)`, `remove(id, purgeMetrics)`.
+
+### 14.4 Routes React Router
+
+`src/App.tsx` gagne :
+
+```
+<Route path="/fleet"          element={<FleetPage/>} />
+<Route path="/host/:id"       element={<Dashboard/>} />
+<Route path="/settings/hosts" element={<Settings tab="hosts"/>} />
+```
+
+`Dashboard.tsx` lit `useParams().id` (ou `useHostsStore(s => s.selectedHostId)`) et passe ce `host_id` aux APIs GPU.
+
+### 14.5 Comportement mono-host (zero-touch)
+
+```
+const hostCount = useHostsStore(s => s.hosts.length);
+if (hostCount <= 1) return null;            // header indicator caché
+// router : /fleet redirige vers /host/local si un seul host
+```
+
+L'utilisateur mono-host **ne voit aucune nouveauté** : pas d'indicateur, pas d'onglet Fleet visible. Accessible uniquement si URL tapée à la main.
+
+### 14.6 i18n
+
+L'app utilise `react-i18next`. Toutes les chaînes du preview (~30 strings) doivent passer par `t()` et atterrir dans `src/i18n/locales/{en,fr,...}.json`. Travail mécanique mais à ne pas oublier.
+
+### 14.7 Permissions
+
+`EnrollHostModal`, rotate, delete : visibles seulement si `user.role === 'admin'`. Wrapper standard :
+
+```
+const isAdmin = useAuthStore(s => s.user?.role === 'admin');
+if (!isAdmin) return <Redirect to="/" />;
+```
+
+### 14.8 Sort du sandbox après v0.3.1
+
+**Décision proposée : supprimer** `src/preview-multi/` + `index.preview.html` + `vite.preview.config.ts` + scripts `dev:preview`/`build:preview` une fois la v0.3.1 sortie. Moins de surface à maintenir, le sandbox aura servi.
+
+Option alternative (à réévaluer en v0.3.1) : garder comme outil d'itération design pour évolutions futures sans backend up.
+
+---
+
+## 15. Installation des agents (côté utilisateur final)
+
+Mode d'emploi cible pour `agent/README.md` et la section "Add a remote host" du README principal.
+
+### 15.1 Côté admin (hub) — 3 clics
+
+1. **Settings → Hosts** dans l'UI GpuViewR.
+2. **+ Add host**, taper un label (ex. `rtx-rig`), valider.
+3. Le hub affiche **une seule fois** : Host ID (UUID), Agent token (secret), snippet `docker run` prêt à coller.
+
+Modal fermée = token définitivement perdu côté hub (seul son hash bcrypt subsiste). Si perdu : bouton `Rotate token` génère un nouveau secret, l'agent doit être reconfiguré.
+
+### 15.2 Côté nœud distant — 3 modes d'install
+
+**Mode 1 : Docker (recommandé, 95% des cas)**
+
+```bash
+docker run -d --name gpuviewr-agent \
+  --gpus all \
+  --restart unless-stopped \
+  -e HUB_URL=wss://gpu.example.com/agent \
+  -e HOST_ID=550e8400-e29b-41d4-a716-446655440042 \
+  -e AGENT_TOKEN=gpvr_<long-token> \
+  ghcr.io/erreur32/gpuviewr-agent:latest
+```
+
+Pré-requis hôte :
+- NVIDIA Container Toolkit installé (`nvidia-ctk --version`)
+- Sortant TCP 443 (ou port custom) vers le hub
+- `nvidia-smi` fonctionnel dans un conteneur de test (`docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi`)
+
+**Mode 2 : Docker Compose**
+
+Fichier `docker-compose.agent.yml` distribué avec le projet :
+
+```yaml
+services:
+  agent:
+    image: ghcr.io/erreur32/gpuviewr-agent:latest
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    environment:
+      HUB_URL: ${HUB_URL}
+      HOST_ID: ${HOST_ID}
+      AGENT_TOKEN: ${AGENT_TOKEN}
+      TICK_MS: 1000
+      FEATURES: gpu,system,temps,processes
+```
+
+Workflow : `.env` + `docker compose -f docker-compose.agent.yml up -d`. Config en clair, redémarrage facile.
+
+**Mode 3 : systemd bare-metal (Node SEA binaire)**
+
+Pour les nœuds sans Docker (HPC universitaire, vieilles box bare-metal) :
+
+```bash
+# 1. Télécharger le binaire (~50 MiB)
+curl -L -o /usr/local/bin/gpuviewr-agent \
+  https://github.com/Erreur32/GpuViewR/releases/download/v0.3.0/gpuviewr-agent-linux-x64
+chmod +x /usr/local/bin/gpuviewr-agent
+
+# 2. Env file (mode 600)
+cat > /etc/gpuviewr-agent.env <<EOF
+HUB_URL=wss://gpu.example.com/agent
+HOST_ID=550e8400-...
+AGENT_TOKEN=gpvr_...
+EOF
+chmod 600 /etc/gpuviewr-agent.env
+
+# 3. Service systemd
+cat > /etc/systemd/system/gpuviewr-agent.service <<EOF
+[Unit]
+Description=GpuViewR Agent
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/gpuviewr-agent.env
+ExecStart=/usr/local/bin/gpuviewr-agent
+Restart=on-failure
+RestartSec=5
+User=nobody
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now gpuviewr-agent
+```
+
+À fournir au release : binaire Node SEA prébuilt pour `linux/amd64`, `linux/arm64`. Pas mac/windows (usage rare pour GPUs distants).
+
+### 15.3 Vérification de connexion
+
+Côté admin : la card du nouveau host passe en vert "Online" dans 1-3 s. Si reste rouge "Offline" :
+
+- Logs agent : `docker logs gpuviewr-agent` ou `journalctl -u gpuviewr-agent -f`
+- Erreurs typiques :
+  - `ECONNREFUSED` → URL hub fausse ou hub down
+  - `1008 Policy Violation` → token invalide ou host_id mismatch → rotate côté admin + reconfigurer
+  - `nvidia-smi not found` → NVIDIA Container Toolkit pas installé sur l'hôte
+  - `1006 abnormal closure` répété → TLS / proxy bloque les WS upgrades → config reverse-proxy à revoir
+
+### 15.4 Mise à jour
+
+- Docker : `docker pull ghcr.io/erreur32/gpuviewr-agent:latest && docker restart gpuviewr-agent`
+- systemd : télécharger le nouveau binaire, `systemctl restart gpuviewr-agent`
+
+Pas d'auto-update intégré (cf. §12.3).
+
+### 15.5 Suppression
+
+1. Côté nœud : `docker rm -f gpuviewr-agent` (ou `systemctl disable --now gpuviewr-agent`).
+2. Côté admin UI : Settings → Hosts → ligne → `🗑 Delete` (avec checkbox "purger l'historique").
