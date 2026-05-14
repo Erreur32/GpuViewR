@@ -81,6 +81,11 @@ class AlertService extends EventEmitter {
   // same global rule (host_id NULL) fires independently per host A vs B
   // — exactly the behaviour D4 in Docs/MULTI_HOST_PLAN.md mandates.
   private evaluateOne(host_id: string, rule: AlertRule, sample: EvalSample, now: number): void {
+    // D4 of the multi-host plan: rule.host_id NULL means "match every
+    // host" (global rule); a concrete value scopes the rule to that
+    // host only. Skip cleanly here so the cooldown state map never
+    // gets keyed for an irrelevant (rule, host) pair.
+    if (rule.host_id !== null && rule.host_id !== host_id) return;
     if (rule.gpu_index !== null && rule.gpu_index !== sample.gpu_index) return;
     const observed = readMetric(sample, rule.metric);
     if (observed === null) return;

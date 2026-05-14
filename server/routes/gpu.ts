@@ -3,17 +3,37 @@ import { requireAuth } from '../middleware/auth.js';
 import { gpuCollector } from '../services/gpuCollector.js';
 import { GpuDeviceRepository, GpuMetricRepository } from '../database/models/GpuMetric.js';
 import { LOCAL_HOST_ID } from '../database/models/Host.js';
+import { metricsBus } from '../services/_metricsBus.js';
+
+/** Resolve `?host=` query param to a host_id; defaults to 'local' for
+ *  mono-host clients and backward compatibility. */
+function resolveHost(raw: unknown): string {
+  if (typeof raw === 'string' && raw.trim() !== '') return raw.trim();
+  return LOCAL_HOST_ID;
+}
 
 const router = Router();
 
 router.use(requireAuth);
 
-router.get('/devices', (_req, res) => {
+router.get('/devices', (req, res) => {
+  // ?host= filters to one host's devices. Without the param, returns
+  // every device across every host (multi-host fleet view).
+  const raw = req.query.host;
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    res.json({ devices: GpuDeviceRepository.listByHost(raw.trim()) });
+    return;
+  }
   res.json({ devices: GpuDeviceRepository.list() });
 });
 
-router.get('/current', (_req, res) => {
-  res.json({ samples: gpuCollector.getLatest() });
+router.get('/current', (req, res) => {
+  const host = resolveHost(req.query.host);
+  if (host === LOCAL_HOST_ID) {
+    res.json({ samples: gpuCollector.getLatest() });
+    return;
+  }
+  res.json({ samples: metricsBus.getLatestByHost(host) });
 });
 
 // Cap chart payloads to ~this many points regardless of range. The chart is
@@ -23,15 +43,16 @@ router.get('/current', (_req, res) => {
 const HISTORY_TARGET_POINTS = 1800;
 
 router.get('/history', (req, res) => {
+  const host = resolveHost(req.query.host);
   const gpuIndex = Number.parseInt(String(req.query.gpu || '0'), 10);
   const range = String(req.query.range || '1h');
   const seconds = parseRange(range);
   const since = Math.floor(Date.now() / 1000) - seconds;
   const bucketSec = Math.max(1, Math.ceil(seconds / HISTORY_TARGET_POINTS));
   const rows = bucketSec > 1
-    ? GpuMetricRepository.historyDownsampled(LOCAL_HOST_ID, gpuIndex, since, bucketSec)
-    : GpuMetricRepository.history(LOCAL_HOST_ID, gpuIndex, since);
-  res.json({ gpuIndex, range, count: rows.length, bucketSec, history: rows });
+    ? GpuMetricRepository.historyDownsampled(host, gpuIndex, since, bucketSec)
+    : GpuMetricRepository.history(host, gpuIndex, since);
+  res.json({ host, gpuIndex, range, count: rows.length, bucketSec, history: rows });
 });
 
 // Streaming CSV export. `gpu=all` exports every GPU; otherwise a single GPU
@@ -43,6 +64,7 @@ const CSV_COLUMNS = [
 ] as const;
 
 router.get('/history.csv', (req, res) => {
+  const host = resolveHost(req.query.host);
   const gpuParam = String(req.query.gpu ?? '0');
   const range = String(req.query.range ?? '24h');
   const seconds = parseRange(range);
@@ -53,7 +75,8 @@ router.get('/history.csv', (req, res) => {
   }
 
   const slug = gpuParam === 'all' ? 'all' : `gpu${gpuIndex}`;
-  const filename = `gpuviewr-${slug}-${range}-${Math.floor(Date.now() / 1000)}.csv`;
+  const hostSlug = host === LOCAL_HOST_ID ? '' : `-${host.slice(0, 8)}`;
+  const filename = `gpuviewr${hostSlug}-${slug}-${range}-${Math.floor(Date.now() / 1000)}.csv`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Cache-Control', 'no-store');
@@ -61,7 +84,7 @@ router.get('/history.csv', (req, res) => {
   res.write('﻿');
   res.write(CSV_COLUMNS.join(',') + '\n');
 
-  const iter = GpuMetricRepository.historyIterate(LOCAL_HOST_ID, gpuIndex, since);
+  const iter = GpuMetricRepository.historyIterate(host, gpuIndex, since);
   for (const row of iter) {
     const r = row as unknown as Record<string, unknown>;
     res.write(CSV_COLUMNS.map((c) => csvField(r[c])).join(',') + '\n');
@@ -78,11 +101,12 @@ function csvField(v: unknown): string {
 }
 
 router.get('/stats', (req, res) => {
+  const host = resolveHost(req.query.host);
   const gpuIndex = Number.parseInt(String(req.query.gpu || '0'), 10);
   const range = String(req.query.range || '24h');
   const seconds = parseRange(range);
   const since = Math.floor(Date.now() / 1000) - seconds;
-  res.json({ gpuIndex, range, stats: GpuMetricRepository.stats(LOCAL_HOST_ID, gpuIndex, since) });
+  res.json({ host, gpuIndex, range, stats: GpuMetricRepository.stats(host, gpuIndex, since) });
 });
 
 function parseRange(input: string): number {

@@ -11,8 +11,8 @@ router.get('/', (_req, res) => {
     res.status(404).type('text/plain').send('# Prometheus exporter disabled\n');
     return;
   }
-  const samples = exportService.getLatestSamples();
-  res.type('text/plain; version=0.0.4').send(renderPrometheus(samples, cfg.includeSystemStats));
+  const samplesByHost = exportService.getLatestSamplesByHost();
+  res.type('text/plain; version=0.0.4').send(renderPrometheus(samplesByHost, cfg.includeSystemStats));
 });
 
 export default router;

@@ -18,6 +18,9 @@ export interface AlertRule {
   /** Sustain duration in seconds: value must stay above/below threshold for this long */
   duration_s: number;
   gpu_index: number | null; // null = all GPUs
+  /** Host scope: NULL = global (matches every host), otherwise only fires
+   *  for samples coming from that exact host_id. D4 of the multi-host plan. */
+  host_id: string | null;
   enabled: 0 | 1;
   notify_browser: 0 | 1;
   notify_sound: 0 | 1;
@@ -49,6 +52,7 @@ CREATE TABLE IF NOT EXISTS alert_rules (
   threshold REAL NOT NULL,
   duration_s INTEGER NOT NULL DEFAULT 0,
   gpu_index INTEGER,
+  host_id TEXT,
   enabled INTEGER NOT NULL DEFAULT 1,
   notify_browser INTEGER NOT NULL DEFAULT 1,
   notify_sound INTEGER NOT NULL DEFAULT 0,
@@ -105,12 +109,12 @@ export const AlertRuleRepo = {
   create(input: Omit<AlertRule, 'id' | 'created_at'>): AlertRule {
     const stmt = getDatabase().prepare(
       `INSERT INTO alert_rules
-       (name, metric, condition, threshold, duration_s, gpu_index, enabled, notify_browser, notify_sound, notify_webhook, cooldown_s, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (name, metric, condition, threshold, duration_s, gpu_index, host_id, enabled, notify_browser, notify_sound, notify_webhook, cooldown_s, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const r = stmt.run(
       input.name, input.metric, input.condition, input.threshold,
-      input.duration_s, input.gpu_index, input.enabled,
+      input.duration_s, input.gpu_index, input.host_id ?? null, input.enabled,
       input.notify_browser, input.notify_sound, input.notify_webhook,
       input.cooldown_s,
       Math.floor(Date.now() / 1000)
@@ -123,10 +127,10 @@ export const AlertRuleRepo = {
     const merged = { ...cur, ...patch };
     getDatabase().prepare(
       `UPDATE alert_rules SET name=?, metric=?, condition=?, threshold=?, duration_s=?,
-       gpu_index=?, enabled=?, notify_browser=?, notify_sound=?, notify_webhook=?, cooldown_s=? WHERE id=?`
+       gpu_index=?, host_id=?, enabled=?, notify_browser=?, notify_sound=?, notify_webhook=?, cooldown_s=? WHERE id=?`
     ).run(
       merged.name, merged.metric, merged.condition, merged.threshold, merged.duration_s,
-      merged.gpu_index, merged.enabled ? 1 : 0,
+      merged.gpu_index, merged.host_id ?? null, merged.enabled ? 1 : 0,
       merged.notify_browser ? 1 : 0, merged.notify_sound ? 1 : 0,
       merged.notify_webhook ? 1 : 0, merged.cooldown_s, id
     );

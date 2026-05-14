@@ -5,6 +5,55 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 0.3.0 multi-host
+
+### Added
+- **Multi-host architecture (jalons 1-5 of the [multi-host plan](Docs/MULTI_HOST_PLAN.md)).**
+  The hub can now aggregate metrics from remote GpuViewR agents on top of
+  its own `nvidia-smi`. Each metric row, device row and alert event is
+  tagged with a stable `host_id`; the legacy local install is the
+  reserved id `local` and remains zero-touch.
+- **`/api/hosts` REST surface.** CRUD + enrollment (admin only) that
+  returns a one-shot bcrypt-hashed token; rotate-token endpoint; status
+  endpoint exposing `last_seen` / `lag_seconds`.
+- **`/agent` WebSocket ingest.** Agents authenticate via the
+  enrollment token (bcrypt-compare server-side). The session-bound
+  host id is authoritative — any host id in incoming frames is
+  ignored, so a compromised agent can't impersonate another host.
+  Rate-limited at 100 msg/s/session.
+- **Hosts watchdog.** A 5 s tick flips agents that haven't been seen
+  in 30 s to `status='offline'`. Status changes are forwarded to
+  the UI via `/ws/gpu`.
+- **`/agent` standalone package** (`/agent` directory). TypeScript
+  Node 22, bundled to a single ~17 KB `.mjs` via esbuild, packaged
+  as a distroless Docker image. Reuses the hub's `_nvidiaParsers.ts`
+  so any driver-format quirk fix lands in one place.
+- **`docker-compose.agent.yml`** drop-in for remote hosts.
+- **Alert rules** gained an optional `host_id` scope (NULL = global,
+  symmetric with the existing `gpu_index NULL = all GPUs`).
+- **`/api/health`** now reports `hostsTotal` / `hostsOnline` /
+  `hostsLagging` / `hostsOffline`.
+- **`?host=` query param** on `/api/gpu/{current,history,history.csv,stats}`
+  and `/api/processes/`. Defaults to `local` for backward compat.
+
+### Changed (breaking for export consumers)
+- **Prometheus**: every series now carries a `host="<id>"` label
+  (`local` for mono-host installs). A `gpuviewr_host_info{host=<id>} 1`
+  side-metric per host lets Grafana join human labels via
+  `* on(host) group_left(label) gpuviewr_host_info`. Hub-system
+  metrics renamed their `host=<hostname>` dimension to
+  `os_hostname=<hostname>` to free the `host` label for host_id.
+- **InfluxDB**: new `host=<id>` tag on every GPU line. The host
+  measurement renamed `host=<hostname>` → `os_host=<hostname>`.
+- **MQTT**: topic shape moved from `gpuviewr/gpu<N>/state` to
+  `gpuviewr/<host_id>/gpu<N>/state`. HA Discovery unique_ids and
+  device identifiers similarly prefixed by host id.
+- **Webhook**: payload gained `samples_by_host`. The flat `samples`
+  array is kept for forward compatibility with v0.2.x receivers.
+
+See [Docs/MIGRATION.md](Docs/MIGRATION.md) for upgrade notes and
+Grafana / HA / Influx migration snippets.
+
 ## [0.2.5] - 2026-05-14
 
 ### Added

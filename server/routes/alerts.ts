@@ -27,6 +27,9 @@ router.post('/rules', requireAdmin, (req, res) => {
     threshold: Number(body.threshold),
     duration_s: int(body.duration_s, 0),
     gpu_index: body.gpu_index === null || body.gpu_index === undefined ? null : Number(body.gpu_index),
+    // host_id null = global (matches every host). A concrete string
+    // scopes the rule to that host only. Plan D4.
+    host_id: body.host_id === null || body.host_id === undefined || body.host_id === '' ? null : String(body.host_id),
     enabled: body.enabled === false ? 0 : 1,
     notify_browser: body.notify_browser === false ? 0 : 1,
     notify_sound: body.notify_sound ? 1 : 0,
@@ -44,6 +47,7 @@ type RulePatch = Partial<{
   threshold: number;
   duration_s: number;
   gpu_index: number | null;
+  host_id: string | null;
   enabled: 0 | 1;
   notify_browser: 0 | 1;
   notify_sound: 0 | 1;
@@ -64,6 +68,7 @@ const RULE_FIELD_COERCERS: Array<{ key: keyof RulePatch; coerce: (v: unknown) =>
   { key: 'threshold',      coerce: Number },
   { key: 'duration_s',     coerce: (v) => int(v, 0) },
   { key: 'gpu_index',      coerce: (v) => (v === null ? null : Number(v)) },
+  { key: 'host_id',        coerce: (v) => (v === null || v === '' ? null : String(v)) },
   { key: 'enabled',        coerce: toBit },
   { key: 'notify_browser', coerce: toBit },
   { key: 'notify_sound',   coerce: toBit },
@@ -151,6 +156,7 @@ router.post('/presets/install', requireAdmin, (req, res) => {
       threshold: p.threshold,
       duration_s: p.duration_s,
       gpu_index: null,
+      host_id: null, // presets are global by default — user can scope later
       enabled: 0, // installed disabled — user reviews then enables
       notify_browser: 1,
       notify_sound: p.notify_sound as 0 | 1,

@@ -278,7 +278,11 @@ const DEFAULTS: ExportConfigs = {
 // ──────────────────────────────────────────────────────────────────────────────
 
 class ExportService {
-  private latestSamples: GpuSample[] = [];
+  // Per-host latest snapshot. Replaces the old flat array so an agent's
+  // sample frame can't wipe the local host's samples (and vice-versa).
+  // All exporters iterate this map; helpers below flatten or scope to
+  // a single host as needed.
+  private latestSamplesByHost: Map<string, GpuSample[]> = new Map();
   private mqttClient: MqttClient | null = null;
   private mqttDiscoveryPublished = false;
   private timers: Partial<Record<ExporterKind, NodeJS.Timeout>> = {};
@@ -289,7 +293,7 @@ class ExportService {
       AppConfigRepo.setJson<ExportConfigs>(CONFIG_KEY, DEFAULTS);
     }
     metricsBus.on('sample', (e: SampleEvent) => {
-      this.latestSamples = e.samples;
+      this.latestSamplesByHost.set(e.host_id, e.samples);
     });
     // Forward alert events to webhooks configured in "alerts" mode.
     // Lazy import to keep the dependency one-way (alertService -> samples
@@ -361,9 +365,25 @@ class ExportService {
     return merged;
   }
 
-  // ── Latest samples accessor used by the Prometheus pull endpoint ─────────
+  // ── Latest samples accessors ────────────────────────────────────────────
+
+  /** Flattened list of every host's samples in insertion order
+   *  (typically 'local' first, then agents). Used by the webhook
+   *  payload and any single-host-flavored consumer that doesn't need
+   *  per-host segregation. */
   getLatestSamples(): GpuSample[] {
-    return this.latestSamples;
+    const all: GpuSample[] = [];
+    for (const samples of this.latestSamplesByHost.values()) {
+      all.push(...samples);
+    }
+    return all;
+  }
+
+  /** Read-only snapshot map host_id → samples. Used by the Prometheus
+   *  renderer to emit per-host labels and the MQTT/Influx publishers
+   *  to namespace topics/tags by host. */
+  getLatestSamplesByHost(): ReadonlyMap<string, GpuSample[]> {
+    return this.latestSamplesByHost;
   }
 
   /**
@@ -375,12 +395,15 @@ class ExportService {
    */
   getDispatchInfo(origin: string): DispatchInfo {
     const c = this.getConfigs();
-    const sampleIndices = this.latestSamples.map((s) => s.gpu_index);
-
-    const stateTopicPattern = `${c.mqtt.topicPrefix}/gpu<N>/state`;
-    const resolvedStateTopics = sampleIndices.map(
-      (i) => `${c.mqtt.topicPrefix}/gpu${i}/state`,
-    );
+    // Reflect the new per-host topic shape: <prefix>/<host_id>/gpu<N>/state.
+    // For the Settings UI, list every resolved topic across every host.
+    const stateTopicPattern = `${c.mqtt.topicPrefix}/<host_id>/gpu<N>/state`;
+    const resolvedStateTopics: string[] = [];
+    for (const [host_id, samples] of this.latestSamplesByHost) {
+      for (const s of samples) {
+        resolvedStateTopics.push(`${c.mqtt.topicPrefix}/${host_id}/gpu${s.gpu_index}/state`);
+      }
+    }
 
     const writeUrl = c.influxdb.url
       ? `${c.influxdb.url.replace(/\/$/, '')}/api/v2/write?org=${encodeURIComponent(c.influxdb.org)}&bucket=${encodeURIComponent(c.influxdb.bucket)}&precision=s`
@@ -504,23 +527,29 @@ class ExportService {
 
   private publishMqtt(cfg: MqttConfig): void {
     if (!this.mqttClient?.connected) return;
-    for (const s of this.latestSamples) {
-      const base = `${cfg.topicPrefix}/gpu${s.gpu_index}`;
-      // Keys must stay in sync with MQTT_PAYLOAD_KEYS (drives the Settings
-      // "what's being sent" panel).
-      const payload = {
-        name: s.name,
-        temperature: s.temperature,
-        utilization: s.utilization,
-        memory_used: s.memory_used,
-        memory_total: s.memory_total,
-        power: s.power,
-        fan_speed: s.fan_speed,
-        clock_graphics: s.clock_graphics,
-        clock_memory: s.clock_memory,
-        timestamp: s.timestamp,
-      };
-      this.mqttClient.publish(`${base}/state`, JSON.stringify(payload), { retain: true });
+    // New per-host topic shape: <prefix>/<host_id>/gpu<N>/state. A
+    // mono-host install still gets `<prefix>/local/gpu<N>/state`,
+    // which is *almost* compatible with the old `<prefix>/gpu<N>/state`
+    // — users with existing HA Discovery wired in must redo it after
+    // upgrade. Documented in Docs/MIGRATION.md.
+    for (const [host_id, samples] of this.latestSamplesByHost) {
+      for (const s of samples) {
+        const base = `${cfg.topicPrefix}/${host_id}/gpu${s.gpu_index}`;
+        const payload = {
+          host_id,
+          name: s.name,
+          temperature: s.temperature,
+          utilization: s.utilization,
+          memory_used: s.memory_used,
+          memory_total: s.memory_total,
+          power: s.power,
+          fan_speed: s.fan_speed,
+          clock_graphics: s.clock_graphics,
+          clock_memory: s.clock_memory,
+          timestamp: s.timestamp,
+        };
+        this.mqttClient.publish(`${base}/state`, JSON.stringify(payload), { retain: true });
+      }
     }
     if (cfg.includeSystemStats) {
       const sys = getSystemStats();
@@ -545,8 +574,8 @@ class ExportService {
 
   private publishHaDiscovery(cfg: MqttConfig): void {
     if (!this.mqttClient || this.mqttDiscoveryPublished) return;
-    // Wait until we have at least one sample to know how many GPUs to advertise.
-    if (this.latestSamples.length === 0) {
+    const allSamples = this.getLatestSamples();
+    if (allSamples.length === 0) {
       setTimeout(() => this.publishHaDiscovery(cfg), 2000);
       return;
     }
@@ -559,32 +588,40 @@ class ExportService {
       { key: 'clock_graphics', name: 'GPU clock', unit: 'MHz' },
       { key: 'clock_memory', name: 'Memory clock', unit: 'MHz' },
     ];
-    for (const s of this.latestSamples) {
-      const stateTopic = `${cfg.topicPrefix}/gpu${s.gpu_index}/state`;
-      const device = {
-        identifiers: [`gpuviewr_gpu${s.gpu_index}`],
-        name: `GpuViewR GPU ${s.gpu_index} - ${s.name}`,
-        manufacturer: 'NVIDIA',
-        model: s.name,
-      };
-      for (const sensor of sensors) {
-        const cfgTopic = `homeassistant/sensor/gpuviewr_gpu${s.gpu_index}_${sensor.key}/config`;
-        const cfgPayload = {
-          name: `GPU${s.gpu_index} ${sensor.name}`,
-          unique_id: `gpuviewr_gpu${s.gpu_index}_${sensor.key}`,
-          state_topic: stateTopic,
-          value_template: `{{ value_json.${sensor.key} }}`,
-          unit_of_measurement: sensor.unit,
-          device_class: sensor.cls,
-          state_class: 'measurement',
-          device,
+    // Per-host × per-GPU HA Discovery. unique_id includes the host_id
+    // prefix so HA doesn't collapse two hosts' "GPU 0" into the same
+    // entity. Same shape as the state topic written in publishMqtt.
+    let count = 0;
+    for (const [host_id, samples] of this.latestSamplesByHost) {
+      for (const s of samples) {
+        count++;
+        const stateTopic = `${cfg.topicPrefix}/${host_id}/gpu${s.gpu_index}/state`;
+        const hostLabel = host_id === 'local' ? 'local' : host_id.slice(0, 8);
+        const device = {
+          identifiers: [`gpuviewr_${host_id}_gpu${s.gpu_index}`],
+          name: `GpuViewR ${hostLabel} GPU ${s.gpu_index} - ${s.name}`,
+          manufacturer: 'NVIDIA',
+          model: s.name,
         };
-        this.mqttClient!.publish(cfgTopic, JSON.stringify(cfgPayload), { retain: true });
+        for (const sensor of sensors) {
+          const cfgTopic = `homeassistant/sensor/gpuviewr_${host_id}_gpu${s.gpu_index}_${sensor.key}/config`;
+          const cfgPayload = {
+            name: `${hostLabel} GPU${s.gpu_index} ${sensor.name}`,
+            unique_id: `gpuviewr_${host_id}_gpu${s.gpu_index}_${sensor.key}`,
+            state_topic: stateTopic,
+            value_template: `{{ value_json.${sensor.key} }}`,
+            unit_of_measurement: sensor.unit,
+            device_class: sensor.cls,
+            state_class: 'measurement',
+            device,
+          };
+          this.mqttClient!.publish(cfgTopic, JSON.stringify(cfgPayload), { retain: true });
+        }
       }
     }
     if (cfg.includeSystemStats) this.publishHaDiscoveryHost(cfg);
     this.mqttDiscoveryPublished = true;
-    logger.info('export', `MQTT HA discovery published for ${this.latestSamples.length} GPU(s)`);
+    logger.info('export', `MQTT HA discovery published for ${count} GPU(s) across ${this.latestSamplesByHost.size} host(s)`);
   }
 
   private publishHaDiscoveryHost(cfg: MqttConfig): void {
@@ -616,8 +653,16 @@ class ExportService {
   // ────────────────────────────────────────────────────────────────────────
 
   private async pushInflux(cfg: InfluxConfig): Promise<void> {
-    if (this.latestSamples.length === 0) return;
-    const lines = this.latestSamples.map((s) => buildInfluxLine(cfg.measurement, s));
+    if (this.latestSamplesByHost.size === 0) return;
+    const lines: string[] = [];
+    // Multi-host: add host=<id> tag to every line so dashboards can
+    // filter / group by host. The hub-level system stats line stays
+    // tagged by os_hostname (was the old `host=` tag).
+    for (const [host_id, samples] of this.latestSamplesByHost) {
+      for (const s of samples) {
+        lines.push(buildInfluxLine(cfg.measurement, host_id, s));
+      }
+    }
     if (cfg.includeSystemStats) {
       lines.push(buildInfluxHostLine(cfg.measurement, getSystemStats()));
     }
@@ -646,12 +691,22 @@ class ExportService {
   // ────────────────────────────────────────────────────────────────────────
 
   private async pushWebhook(cfg: WebhookConfig): Promise<void> {
-    if (this.latestSamples.length === 0) return;
+    const all = this.getLatestSamples();
+    if (all.length === 0) return;
     const sys = cfg.includeSystemStats ? getSystemStats() : undefined;
+    // Per-host segregation in the payload so receivers can route on
+    // host_id without parsing the flat array. Multi-host installs see
+    // an extra `samples_by_host` key; the legacy flat `samples` array
+    // is kept for forward-compat with v0.2.x integrations.
+    const samplesByHost: Record<string, Array<Partial<GpuSample>>> = {};
+    for (const [host_id, samples] of this.latestSamplesByHost) {
+      samplesByHost[host_id] = samples.map((s) => filterSampleFields(s, cfg.payloadFields));
+    }
     const body: Record<string, unknown> = {
       source: 'gpuviewr',
       timestamp: new Date().toISOString(),
-      samples: this.latestSamples.map((s) => filterSampleFields(s, cfg.payloadFields)),
+      samples: all.map((s) => filterSampleFields(s, cfg.payloadFields)),
+      samples_by_host: samplesByHost,
     };
     if (sys) body.system = sys;
     await this.sendWebhook(cfg, body, this.metricsSummary(sys, cfg.language === 'fr' ? 'fr' : 'en'));
@@ -662,15 +717,21 @@ class ExportService {
   // Optionally appends a host-stats line (CPU / load / memory) so the
   // notification carries context beyond the GPUs themselves.
   private metricsSummary(sys?: ReturnType<typeof getSystemStats>, lang: AlertLang = 'en'): string {
-    if (this.latestSamples.length === 0) return 'No GPU samples available.';
-    const gpuLines = this.latestSamples
-      .map((s) => {
+    if (this.latestSamplesByHost.size === 0) return 'No GPU samples available.';
+    // For multi-host installs prefix each GPU line with its host id so
+    // a Discord message "GPU #0 hot" tells you WHICH host is hot.
+    const lines: string[] = [];
+    const multi = this.latestSamplesByHost.size > 1;
+    for (const [host_id, samples] of this.latestSamplesByHost) {
+      for (const s of samples) {
         const memTotal = s.memory_total ?? 0;
         const memPct = memTotal > 0 ? Math.round((s.memory_used / memTotal) * 100) : null;
         const memSeg = memPct !== null ? ` · MEM ${memPct}%` : '';
-        return `GPU #${s.gpu_index} ${s.name} · ${s.utilization ?? '-'}% · ${s.temperature}°C · ${Math.round(s.power)}W${memSeg}`;
-      })
-      .join('\n');
+        const hostPrefix = multi ? `[${host_id === 'local' ? 'local' : host_id.slice(0, 8)}] ` : '';
+        lines.push(`${hostPrefix}GPU #${s.gpu_index} ${s.name} · ${s.utilization ?? '-'}% · ${s.temperature}°C · ${Math.round(s.power)}W${memSeg}`);
+      }
+    }
+    const gpuLines = lines.join('\n');
     if (!sys) return gpuLines;
     const hostLabel = lang === 'fr' ? 'Hôte' : 'Host';
     const loadLabel = lang === 'fr' ? 'Charge' : 'Load';
@@ -1006,7 +1067,9 @@ function filterSampleFields(sample: GpuSample, fields: WebhookPayloadField[] | u
 }
 
 function buildInfluxHostLine(measurement: string, sys: ReturnType<typeof getSystemStats>): string {
-  const tags = [`host=${escapeTag(sys.hostname || 'unknown')}`];
+  // Renamed from `host` to `os_host` so the multi-host `host=<id>` tag
+  // on the GPU lines doesn't collide / confuse Grafana templating.
+  const tags = [`os_host=${escapeTag(sys.hostname || 'unknown')}`];
   const fields: string[] = [
     `cpu_usage_pct=${sys.cpu.usagePct.toFixed(2)}`,
     `cpu_cores=${sys.cpu.cores}i`,
@@ -1020,8 +1083,9 @@ function buildInfluxHostLine(measurement: string, sys: ReturnType<typeof getSyst
   return `${measurement}_host,${tags.join(',')} ${fields.join(',')} ${Math.floor(Date.now() / 1000)}`;
 }
 
-function buildInfluxLine(measurement: string, s: GpuSample): string {
+function buildInfluxLine(measurement: string, host_id: string, s: GpuSample): string {
   const tags = [
+    `host=${escapeTag(host_id)}`,
     `gpu_index=${s.gpu_index}`,
     `name=${escapeTag(s.name)}`,
   ];
@@ -1055,9 +1119,12 @@ function promHelpTypeLines(metrics: readonly PrometheusMetricSpec[]): string[] {
   ]);
 }
 
-function promGpuLines(s: GpuSample): string[] {
+function promGpuLines(host_id: string, s: GpuSample): string[] {
+  // D3 of the multi-host plan: host="<id>" is the stable UUID. Human
+  // labels live on the gpuviewr_host_info side-metric so Grafana can
+  // join host="..." * on(host) group_left(label) gpuviewr_host_info.
   const uuidPart = s.uuid ? `,uuid="${escapePromLabel(s.uuid)}"` : '';
-  const l = `{gpu="${s.gpu_index}",name="${escapePromLabel(s.name)}"${uuidPart}}`;
+  const l = `{host="${escapePromLabel(host_id)}",gpu="${s.gpu_index}",name="${escapePromLabel(s.name)}"${uuidPart}}`;
   const out: string[] = [`gpuviewr_gpu_temperature_celsius${l} ${s.temperature}`];
   if (s.utilization !== null) out.push(`gpuviewr_gpu_utilization_ratio${l} ${(s.utilization / 100).toFixed(4)}`);
   out.push(`gpuviewr_gpu_memory_used_bytes${l} ${s.memory_used * 1024 * 1024}`);
@@ -1071,7 +1138,10 @@ function promGpuLines(s: GpuSample): string[] {
 
 function promHostLines(): string[] {
   const sys = getSystemStats();
-  const hostLabel = `{host="${escapePromLabel(sys.hostname)}"}`;
+  // Local-hub stats only — kept under the stable host_id 'local' so it
+  // matches the host="local" GPU lines for Grafana joins. Agents push
+  // their own system stats in a later jalon.
+  const hostLabel = `{host="local",os_hostname="${escapePromLabel(sys.hostname)}"}`;
   return [
     `gpuviewr_host_cpu_usage_ratio${hostLabel} ${(sys.cpu.usagePct / 100).toFixed(4)}`,
     `gpuviewr_host_load_1m${hostLabel} ${sys.load['1m'].toFixed(2)}`,
@@ -1083,13 +1153,39 @@ function promHostLines(): string[] {
   ];
 }
 
-/** Build the Prometheus exposition (text/plain; version=0.0.4). */
-export function renderPrometheus(samples: GpuSample[], includeHost = false): string {
+/** node_exporter-style info series: one line per host with constant
+ *  value=1 and the human label/hostname attached as labels. Lets
+ *  dashboards join `gpuviewr_gpu_*{host=...} * on(host) group_left(label)
+ *  gpuviewr_host_info`. */
+function promHostInfoLines(hostsByPlatform: ReadonlyMap<string, GpuSample[]>): string[] {
+  // We don't have HostsRepo data wired in here without a circular
+  // dep risk, so we emit the bare minimum (host=<id>) and let agents
+  // self-describe via the hello frame. v0.3.1 can enrich this with
+  // label/hostname/agent_version pulled from HostsRepo.list().
+  const out: string[] = [
+    '# HELP gpuviewr_host_info Constant 1 per enrolled host, with metadata labels',
+    '# TYPE gpuviewr_host_info gauge',
+  ];
+  for (const host_id of hostsByPlatform.keys()) {
+    out.push(`gpuviewr_host_info{host="${escapePromLabel(host_id)}"} 1`);
+  }
+  return out;
+}
+
+/** Build the Prometheus exposition (text/plain; version=0.0.4). The
+ *  multi-host variant emits one series per (host_id, gpu_index) pair
+ *  plus a `gpuviewr_host_info{host=...} 1` side-metric per D3. */
+export function renderPrometheus(samplesByHost: ReadonlyMap<string, GpuSample[]>, includeHost = false): string {
+  const gpuLines: string[] = [];
+  for (const [host_id, samples] of samplesByHost) {
+    for (const s of samples) gpuLines.push(...promGpuLines(host_id, s));
+  }
   const lines: string[] = [
     ...promHelpTypeLines(PROMETHEUS_METRICS),
     ...(includeHost ? promHelpTypeLines(PROMETHEUS_HOST_METRICS) : []),
-    ...samples.flatMap(promGpuLines),
+    ...gpuLines,
     ...(includeHost ? promHostLines() : []),
+    ...promHostInfoLines(samplesByHost),
   ];
   return lines.join('\n') + '\n';
 }
