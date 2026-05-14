@@ -7,6 +7,7 @@ pnpm-debug.log*
 # Build outputs
 dist
 dist-demo
+dist-preview
 dist-ssr
 *.local
 
