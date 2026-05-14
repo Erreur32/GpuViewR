@@ -412,6 +412,11 @@
     "gpus_count_one": "{{count}} GPU",
     "gpus_count_other": "{{count}} GPUs",
     "hottest_gpu": "Hottest GPU",
+    "view_label": "Fleet view",
+    "view_simple": "Simple",
+    "view_detailed": "Detailed",
+    "host_offline": "Host is offline — last known samples shown elsewhere",
+    "no_samples_yet": "Waiting for the first frame…",
     "aggregate_online": "Online",
     "aggregate_online_hint_ok": "all good",
     "aggregate_online_hint_warn": "{{offline}} offline · {{lagging}} lagging",
@@ -469,7 +474,14 @@
     "delete": "Delete",
     "deleted": "Host deleted",
     "delete_failed": "Delete failed",
-    "confirm_delete": "Permanently remove host \"{{label}}\"? The agent will be disconnected and the row is unrecoverable; historical metrics are preserved."
+    "confirm_delete": "Permanently remove host \"{{label}}\"? The agent will be disconnected and the row is unrecoverable; historical metrics are preserved.",
+    "delete_title": "Delete \"{{label}}\"?",
+    "delete_intro": "Remove this host from the hub registry.",
+    "delete_warning_orphan": "The agent on the remote machine will retry the (rejected) connection in a systemd restart loop until you uninstall it. Run the command below FIRST to clean it up cleanly.",
+    "delete_uninstall_hint": "On the remote machine, before deleting:",
+    "uninstall_cmd": "Uninstall command",
+    "delete_confirm": "Delete from hub",
+    "delete_history_kept": "Historical metrics (gpu_metrics, alert_events) are kept under this host id for audit. Re-enrolling later creates a fresh UUID — old data won't be linked."
   },
   "common": {
     "copy": "Copy",

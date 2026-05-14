@@ -412,6 +412,11 @@
     "gpus_count_one": "{{count}} GPU",
     "gpus_count_other": "{{count}} GPUs",
     "hottest_gpu": "GPU la plus chaude",
+    "view_label": "Vue flotte",
+    "view_simple": "Simple",
+    "view_detailed": "Détaillée",
+    "host_offline": "Hôte hors-ligne — dernières mesures visibles ailleurs",
+    "no_samples_yet": "En attente de la première mesure…",
     "aggregate_online": "En ligne",
     "aggregate_online_hint_ok": "tout va bien",
     "aggregate_online_hint_warn": "{{offline}} hors-ligne · {{lagging}} en retard",
@@ -469,7 +474,14 @@
     "delete": "Supprimer",
     "deleted": "Hôte supprimé",
     "delete_failed": "Échec de la suppression",
-    "confirm_delete": "Supprimer définitivement l'hôte \"{{label}}\" ? L'agent sera déconnecté et la ligne est irrécupérable ; les métriques historiques sont préservées."
+    "confirm_delete": "Supprimer définitivement l'hôte \"{{label}}\" ? L'agent sera déconnecté et la ligne est irrécupérable ; les métriques historiques sont préservées.",
+    "delete_title": "Supprimer \"{{label}}\" ?",
+    "delete_intro": "Retire cet hôte du registre du hub.",
+    "delete_warning_orphan": "L'agent sur la machine distante va retenter la connexion (rejetée) en boucle systemd jusqu'à ce que tu le désinstalles. Lance la commande ci-dessous AVANT pour le nettoyer proprement.",
+    "delete_uninstall_hint": "Sur la machine distante, avant de supprimer :",
+    "uninstall_cmd": "Commande de désinstallation",
+    "delete_confirm": "Supprimer du hub",
+    "delete_history_kept": "Les métriques historiques (gpu_metrics, alert_events) sont conservées sous cet host id pour audit. Un nouvel enregistrement plus tard crée un UUID frais — les anciennes données ne seront pas liées."
   },
   "common": {
     "copy": "Copier",

@@ -27,6 +27,8 @@ const ROYAL_DEFAULT_COLORS: Required<ChartColors> = {
   fan: '#14b8a6',
 };
 
+export type FleetView = 'simple' | 'detailed';
+
 interface UiState {
   themeId: string;
   gaugeView: GaugeView;
@@ -39,6 +41,9 @@ interface UiState {
   chartThresholds: ChartThresholds;
   chartThresholdsEnabled: boolean;
   chartPaletteInitialized: boolean;
+  /** Fleet page density: 'simple' = single hottest-GPU card, 'detailed' =
+   *  per-GPU mini-tile row with util / temp / power + sparkline. */
+  fleetView: FleetView;
 
   setThemeId: (id: string) => void;
   setGaugeView: (v: GaugeView) => void;
@@ -52,6 +57,7 @@ interface UiState {
   setChartThreshold: (key: ChartSeriesKey, value: number | null) => void;
   setChartThresholdsEnabled: (v: boolean) => void;
   resetChartThresholds: () => void;
+  setFleetView: (v: FleetView) => void;
 
   hydrate: () => void;
 }
@@ -68,6 +74,7 @@ const KEYS = {
   chartThresholds: 'gpuviewr.chart_thresholds',
   chartThresholdsEnabled: 'gpuviewr.chart_thresholds_enabled',
   chartPaletteInitialized: 'gpuviewr.chart_palette_initialized',
+  fleetView: 'gpuviewr.fleet_view',
 };
 
 function readLS(key: string, fallback: string): string {
@@ -118,6 +125,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   chartThresholds: { ...DEFAULT_THRESHOLDS },
   chartThresholdsEnabled: true,
   chartPaletteInitialized: false,
+  fleetView: 'simple',
 
   setThemeId: (id) => {
     const t = getTheme(id);
@@ -176,6 +184,10 @@ export const useUiStore = create<UiState>((set, get) => ({
     localStorage.setItem(KEYS.chartThresholds, JSON.stringify(next));
     set({ chartThresholds: next });
   },
+  setFleetView: (v) => {
+    localStorage.setItem(KEYS.fleetView, v);
+    set({ fleetView: v });
+  },
 
   hydrate: () => {
     const themeId = readLS(KEYS.theme, 'midnight');
@@ -209,9 +221,11 @@ export const useUiStore = create<UiState>((set, get) => ({
       initialized = true;
     }
     applyTheme(themeId);
+    const fleetView: FleetView = readLS(KEYS.fleetView, 'simple') === 'detailed' ? 'detailed' : 'simple';
     set({
       themeId, gaugeView, dashboardView, range, selectedGpu, soundEnabled: sound, chartColors: effectiveColors, timeFormat,
       chartThresholds, chartThresholdsEnabled, chartPaletteInitialized: initialized,
+      fleetView,
     });
   },
 }));

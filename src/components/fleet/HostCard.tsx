@@ -3,8 +3,17 @@ import { useTranslation } from 'react-i18next';
 import { useGpuStore, type GpuSample } from '../../store/gpuStore';
 import { useHostsStore, effectiveStatus, type HostRecord } from '../../store/hostsStore';
 import StatusPill from './StatusPill';
+import GpuMiniTile from './GpuMiniTile';
 
-type Props = Readonly<{ host: HostRecord; onOpen?: () => void }>;
+type Props = Readonly<{
+  host: HostRecord;
+  onOpen?: () => void;
+  /** Toggle from FleetPage's view selector. Detailed mode unfolds a
+   *  per-GPU mini-tile (util/temp/power/mem + sparkline) below the
+   *  hostname header. Default 'simple' keeps the existing compact
+   *  "hottest GPU" tile. */
+  detailed?: boolean;
+}>;
 
 function tempColor(t: number): string {
   if (t === 0) return 'var(--gv-text-dim)';
@@ -14,7 +23,7 @@ function tempColor(t: number): string {
   return 'var(--gv-ok)';
 }
 
-export default function HostCard({ host, onOpen }: Props) {
+export default function HostCard({ host, onOpen, detailed = false }: Props) {
   const { t } = useTranslation();
   // Live samples for this host come from the gpuStore's internal
   // per-host map. We DON'T use the public `latest` projection here
@@ -66,24 +75,46 @@ export default function HostCard({ host, onOpen }: Props) {
         </div>
       </div>
 
-      <div
-        className="rounded-xl p-3 flex items-center justify-between gap-3"
-        style={{ background: 'var(--gv-surface-alt)' }}
-      >
-        <div className="flex flex-col min-w-0">
-          <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>
-            {t('fleet.hottest_gpu')}
+      {!detailed && (
+        <div
+          className="rounded-xl p-3 flex items-center justify-between gap-3"
+          style={{ background: 'var(--gv-surface-alt)' }}
+        >
+          <div className="flex flex-col min-w-0">
+            <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>
+              {t('fleet.hottest_gpu')}
+            </div>
+            <div className="text-xs font-mono truncate max-w-[14ch]" style={{ color: 'var(--gv-text-muted)' }}>
+              {hottest?.name.replace('NVIDIA ', '') ?? '—'}
+            </div>
           </div>
-          <div className="text-xs font-mono truncate max-w-[14ch]" style={{ color: 'var(--gv-text-muted)' }}>
-            {hottest?.name.replace('NVIDIA ', '') ?? '—'}
+          <div className="flex flex-col items-end">
+            <div className="font-mono font-bold text-xl tabular-nums" style={{ color }}>
+              {hottest && !isOffline ? `${hottest.temperature}°C` : '—'}
+            </div>
           </div>
         </div>
-        <div className="flex flex-col items-end">
-          <div className="font-mono font-bold text-xl tabular-nums" style={{ color }}>
-            {hottest && !isOffline ? `${hottest.temperature}°C` : '—'}
-          </div>
+      )}
+
+      {detailed && !isOffline && hostSamples.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {hostSamples.map((s) => (
+            <GpuMiniTile key={s.gpu_index} hostId={host.id} sample={s} />
+          ))}
         </div>
-      </div>
+      )}
+
+      {detailed && (isOffline || hostSamples.length === 0) && (
+        <div
+          className="rounded-xl p-3 text-center text-xs"
+          style={{
+            background: 'var(--gv-surface-alt)',
+            color: 'var(--gv-text-dim)',
+          }}
+        >
+          {isOffline ? t('fleet.host_offline') : t('fleet.no_samples_yet')}
+        </div>
+      )}
 
       <div className="flex items-center justify-between text-[11px]" style={{ color: 'var(--gv-text-dim)' }}>
         <span className="font-mono">

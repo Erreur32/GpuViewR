@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Cpu, Zap, CheckCircle2 } from 'lucide-react';
+import { Cpu, Zap, CheckCircle2, LayoutGrid, Rows3 } from 'lucide-react';
 import { useHostsStore, effectiveStatus, LOCAL_HOST_ID } from '../../store/hostsStore';
 import { useGpuStore } from '../../store/gpuStore';
+import { useUiStore } from '../../store/uiStore';
 import HostCard from './HostCard';
 
 export default function FleetPage() {
@@ -12,6 +13,8 @@ export default function FleetPage() {
   const hosts = useHostsStore((s) => s.hosts);
   const setSelected = useHostsStore((s) => s.setSelectedHost);
   const samplesByHost = useGpuStore((s) => s.latestByHost);
+  const fleetView = useUiStore((s) => s.fleetView);
+  const setFleetView = useUiStore((s) => s.setFleetView);
 
   // Hydrate at mount — covers a deep-link refresh before any other
   // page has triggered a list fetch.
@@ -56,9 +59,31 @@ export default function FleetPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight">{t('fleet.title')}</h1>
-        <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('fleet.subtitle')}</p>
+      <header className="flex items-end justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{t('fleet.title')}</h1>
+          <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('fleet.subtitle')}</p>
+        </div>
+        <div className="seg" role="group" aria-label={t('fleet.view_label')}>
+          <button
+            type="button"
+            className="seg-btn inline-flex items-center gap-1.5"
+            aria-pressed={fleetView === 'simple'}
+            onClick={() => setFleetView('simple')}
+            title={t('fleet.view_simple')}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" /> {t('fleet.view_simple')}
+          </button>
+          <button
+            type="button"
+            className="seg-btn inline-flex items-center gap-1.5"
+            aria-pressed={fleetView === 'detailed'}
+            onClick={() => setFleetView('detailed')}
+            title={t('fleet.view_detailed')}
+          >
+            <Rows3 className="w-3.5 h-3.5" /> {t('fleet.view_detailed')}
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -85,11 +110,18 @@ export default function FleetPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Detailed view shows per-GPU mini-tiles, so cards are wider —
+          drop to 1-2 columns. Simple view keeps the 1/2/3 column grid. */}
+      <div className={
+        fleetView === 'detailed'
+          ? 'grid grid-cols-1 lg:grid-cols-2 gap-4'
+          : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
+      }>
         {hosts.map((h) => (
           <HostCard
             key={h.id}
             host={h}
+            detailed={fleetView === 'detailed'}
             onOpen={() => {
               setSelected(h.id);
               navigate(h.id === LOCAL_HOST_ID ? '/' : `/host/${h.id}`);

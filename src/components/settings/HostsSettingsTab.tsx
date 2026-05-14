@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, KeyRound, Trash2, Copy, AlertTriangle, X } from 'lucide-react';
+import { Plus, KeyRound, Trash2, Copy, AlertTriangle, X, Terminal, Container } from 'lucide-react';
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
@@ -15,6 +15,7 @@ export default function HostsSettingsTab() {
   const refresh = useHostsStore((s) => s.refresh);
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [rotateFor, setRotateFor] = useState<HostRecord | null>(null);
+  const [deleteFor, setDeleteFor] = useState<HostRecord | null>(null);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -54,7 +55,12 @@ export default function HostsSettingsTab() {
             </thead>
             <tbody>
               {hosts.map((h) => (
-                <HostRow key={h.id} host={h} onRotate={() => setRotateFor(h)} />
+                <HostRow
+                  key={h.id}
+                  host={h}
+                  onRotate={() => setRotateFor(h)}
+                  onDelete={() => setDeleteFor(h)}
+                />
               ))}
               {hosts.length === 0 && (
                 <tr>
@@ -72,29 +78,23 @@ export default function HostsSettingsTab() {
       {rotateFor && (
         <RotateTokenModal host={rotateFor} onClose={() => setRotateFor(null)} />
       )}
+      {deleteFor && (
+        <DeleteHostModal host={deleteFor} onClose={() => setDeleteFor(null)} />
+      )}
     </div>
   );
 }
 
-function HostRow({ host, onRotate }: Readonly<{ host: HostRecord; onRotate: () => void }>) {
+function HostRow({
+  host, onRotate, onDelete,
+}: Readonly<{ host: HostRecord; onRotate: () => void; onDelete: () => void }>) {
   const { t } = useTranslation();
-  const remove = useHostsStore((s) => s.remove);
   const isLocal = host.id === LOCAL_HOST_ID;
   const status = effectiveStatus(host);
   const now = Math.floor(Date.now() / 1000);
   const lastSeenLabel = host.last_seen !== null
     ? `${formatRelative(now - host.last_seen)} ${t('common.ago')}`
     : '—';
-
-  const onDelete = async () => {
-    if (!globalThis.confirm(t('hosts.confirm_delete', { label: host.label }))) return;
-    try {
-      await remove(host.id);
-      notify('success', t('hosts.deleted'), host.label);
-    } catch (err) {
-      notify('error', t('hosts.delete_failed'), (err as Error).message);
-    }
-  };
 
   return (
     <tr className="border-t" style={{ borderColor: 'var(--gv-border)' }}>
@@ -263,6 +263,148 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Confirmation modal for deleting a host. Shows the uninstall command
+// up-front so the admin can clean the agent on the remote machine
+// BEFORE the hub forgets it — otherwise systemd retries the (rejected)
+// connection in a loop until manual intervention.
+function DeleteHostModal({ host, onClose }: Readonly<{ host: HostRecord; onClose: () => void }>) {
+  const { t } = useTranslation();
+  const remove = useHostsStore((s) => s.remove);
+  const [mode, setMode] = useState<'curl' | 'docker'>('curl');
+  const [copied, setCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const hubHttp = `${window.location.protocol}//${window.location.host}`;
+  const curlCmd = `curl -fsSL ${hubHttp}/install.sh | sudo bash -s -- --uninstall`;
+  const dockerCmd = `docker rm -f gpuviewr-agent`;
+  const activeCmd = mode === 'curl' ? curlCmd : dockerCmd;
+
+  const copy = async () => {
+    const ok = await copyText(activeCmd);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } else {
+      notify('error', t('hosts.copy_failed'), t('hosts.copy_failed_hint'));
+    }
+  };
+
+  const doDelete = async () => {
+    setDeleting(true);
+    try {
+      await remove(host.id);
+      notify('success', t('hosts.deleted'), host.label);
+      onClose();
+    } catch (err) {
+      notify('error', t('hosts.delete_failed'), (err as Error).message);
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.7)' }}
+      onClick={onClose}
+    >
+      <div
+        className="card w-full max-w-xl p-6 flex flex-col gap-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold">{t('hosts.delete_title', { label: host.label })}</h2>
+            <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>
+              {t('hosts.delete_intro')}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg inline-flex items-center justify-center"
+            style={{ color: 'var(--gv-text-muted)', background: 'var(--gv-surface-alt)' }}
+            aria-label={t('common.close')}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div
+          className="rounded-xl p-3 flex items-start gap-2 text-sm"
+          style={{
+            background: 'color-mix(in srgb, var(--gv-warn) 12%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--gv-warn) 35%, transparent)',
+            color: 'var(--gv-warn)',
+          }}
+        >
+          <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+          <span>{t('hosts.delete_warning_orphan')}</span>
+        </div>
+
+        <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>
+          {t('hosts.delete_uninstall_hint')}
+        </p>
+
+        <div className="seg" role="group">
+          <button
+            type="button"
+            className="seg-btn inline-flex items-center gap-1.5"
+            aria-pressed={mode === 'curl'}
+            onClick={() => setMode('curl')}
+          >
+            <Terminal size={14} /> {t('hosts.install_mode_curl')}
+          </button>
+          <button
+            type="button"
+            className="seg-btn inline-flex items-center gap-1.5"
+            aria-pressed={mode === 'docker'}
+            onClick={() => setMode('docker')}
+          >
+            <Container size={14} /> {t('hosts.install_mode_docker')}
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>
+              {t('hosts.uninstall_cmd')}
+            </span>
+            <button
+              type="button"
+              onClick={copy}
+              className="text-xs inline-flex items-center gap-1.5"
+              style={{ color: copied ? 'var(--gv-ok)' : 'var(--gv-text-muted)' }}
+            >
+              <Copy size={12} /> {copied ? t('common.copied') : t('common.copy')}
+            </button>
+          </div>
+          <pre
+            className="rounded-xl p-3 text-xs font-mono overflow-x-auto"
+            style={{
+              background: 'var(--gv-surface-alt)',
+              border: '1px solid var(--gv-border)',
+              color: 'var(--gv-text)',
+            }}
+          >{activeCmd}</pre>
+        </div>
+
+        <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+          {t('hosts.delete_history_kept')}
+        </p>
+
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={deleting} className="btn-ghost">
+            {t('common.cancel')}
+          </button>
+          <button type="button" onClick={doDelete} disabled={deleting} className="btn-danger">
+            <Trash2 size={14} /> {t('hosts.delete_confirm')}
+          </button>
+        </div>
       </div>
     </div>
   );
