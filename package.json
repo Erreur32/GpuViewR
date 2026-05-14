@@ -16,6 +16,7 @@
   "scripts": {
     "predev": "lsof -ti:3015 2>/dev/null | xargs -r kill -9; lsof -ti:5181 2>/dev/null | xargs -r kill -9; true",
     "dev": "concurrently --kill-others -n server,client -c blue,magenta \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:mock": "cross-env MOCK_GPU=1 npm run dev",
     "dev:client": "vite",
     "dev:server": "cross-env NODE_ENV=development tsx watch --include=.env --include=server/**/*.ts server/index.ts",
     "build": "vite build",
