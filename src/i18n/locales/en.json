@@ -527,6 +527,7 @@
     "close": "Close",
     "cancel": "Cancel",
     "done": "Done",
-    "ago": "ago"
+    "ago": "ago",
+    "ago_relative": "{{time}} ago"
   }
 }

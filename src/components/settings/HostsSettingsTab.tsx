@@ -98,7 +98,7 @@ function HostRow({
   const now = Math.floor(Date.now() / 1000);
   const lastSeenLabel = host.last_seen === null
     ? '—'
-    : `${formatRelative(now - host.last_seen)} ${t('common.ago')}`;
+    : t('common.ago_relative', { time: formatRelative(now - host.last_seen) });
 
   // Show the system hostname (when the schema has it) as the secondary
   // line. Falls back to the truncated id so a freshly-enrolled host
@@ -117,7 +117,11 @@ function HostRow({
         </div>
       </td>
       <td className="px-4 py-3">
-        <StatusPill status={status} lastSeenEpoch={host.last_seen} />
+        {/* lastSeenEpoch={null} → render only the status dot + label.
+            The dedicated "Last seen" column on this row already shows
+            the age, so duplicating it inside the pill would read as
+            "22s · En ligne · 22s il y a" — redundant. */}
+        <StatusPill status={status} lastSeenEpoch={null} />
       </td>
       <td className="px-4 py-3 font-mono text-xs">
         {isLocal ? (

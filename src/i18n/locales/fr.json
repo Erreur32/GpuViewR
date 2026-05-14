@@ -527,6 +527,7 @@
     "close": "Fermer",
     "cancel": "Annuler",
     "done": "Terminé",
-    "ago": "il y a"
+    "ago": "il y a",
+    "ago_relative": "il y a {{time}}"
   }
 }
