@@ -6,7 +6,7 @@
 #   docker build -f agent/Dockerfile -t gpuviewr-agent .
 
 # ---------- Stage 1: bundle ----------
-FROM node:22-bookworm-slim@sha256:9f6d597feaca7d3a5dde341efe65e6f9e62a08bfa1c4d6f5fcefe5a98dabaaa9 AS builder
+FROM node:22-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e AS builder
 
 WORKDIR /build
 
@@ -19,11 +19,15 @@ COPY agent/package.json agent/package-lock.json ./agent/
 WORKDIR /build/agent
 RUN npm ci --no-audit --no-fund --loglevel=error
 
-# Bring in agent sources + the single shared parser file from the hub.
+# Bring in agent sources + the shared parser files from the hub. The
+# agent collectors import both _nvidiaParsers.ts (CSV from nvidia-smi)
+# and _rocmParsers.ts (JSON from rocm-smi); esbuild bundles whichever
+# the active collector pulls in at runtime.
 WORKDIR /build
 COPY agent/tsconfig.json agent/
 COPY agent/src ./agent/src
 COPY server/services/_nvidiaParsers.ts ./server/services/_nvidiaParsers.ts
+COPY server/services/_rocmParsers.ts ./server/services/_rocmParsers.ts
 
 WORKDIR /build/agent
 RUN npm run build
@@ -33,9 +37,10 @@ RUN npm prune --production && npm cache clean --force
 
 
 # ---------- Stage 2: runtime ----------
-# distroless does NOT ship nvidia-smi — that comes from the host via
-# the NVIDIA Container Toolkit at `docker run --gpus all` time.
-FROM gcr.io/distroless/nodejs22-debian12@sha256:3c4d2e34b59a3a14b9bbfcfe9c20e25f0a13e87bb4569cdc3a6ae8c5ec1e3a98
+# distroless ships no smi binary — nvidia-smi comes from the host via
+# the NVIDIA Container Toolkit (`docker run --gpus all`), and rocm-smi
+# via a bind-mount (see docker-compose.agent.amd.yml).
+FROM gcr.io/distroless/nodejs22-debian12@sha256:8a3e96fe3345b5d83ecec2066e7c498139a02a6d1214e4f6c39f9ce359f3f5bc
 
 WORKDIR /app
 
