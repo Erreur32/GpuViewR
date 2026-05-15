@@ -1,81 +1,61 @@
-release: v0.3.0 — multi-host + remote agent GPU processes
+release: v0.3.1 — AMD/ROCm agent + hub persistence for remote samples
 
-Major: agents can now publish the list of GPU processes running on
-their box. The hub stores per-host snapshots (30 s TTL, no DB roundtrip
-because the data has no historical value), `/api/processes?host=<id>`
-serves them, and the Dashboard's processes table forwards the
-selectedHostId so switching hosts updates the table in place.
+The remote agent now monitors AMD GPUs via rocm-smi (RDNA3, Strix
+Halo APUs, discrete Radeon). The same image serves NVIDIA and AMD;
+GPU_VENDOR=auto probes both binaries at boot, with explicit nvidia
+or amd available for pinning. Smoke-tested end-to-end on a Strix
+Halo / Radeon 8060S Mini-PC pushing samples to a remote hub over WS.
+
+Parity with the NVIDIA agent for: temperature, utilization, power,
+graphics clock, VRAM, and GPU processes (pid / name / VRAM / CPU%).
+Fields ROCm doesn't expose (memory clock on APUs, fan, PCIe gen /
+width / RX-TX, per-process GPU%) come back null — the schema
+already permits that.
 
 Agent side
-- `agent/src/collectors/processes.ts` runs `nvidia-smi
-  --query-compute-apps` and `nvidia-smi pmon -c 1 -s u` in parallel,
-  enriches each row with `/proc/<pid>/cmdline` and delta-based CPU%.
-  Self-contained — does NOT import the hub's processCollector — and
-  honours HOST_PROC for containerised agents.
-- Transport gains a `processes` frame type buffered the same way as
-  `sample`, so reconnects replay the most recent snapshot.
-- Wired in `agent/src/index.ts` when `features.processes` is on and
-  nvidia-smi is available; skipped under MOCK_GPU=1.
+- New _rocmParsers.ts parses `rocm-smi --json` info dumps and the
+  --showpids CSV-in-JSON quirk, with a device-ID lookup table and a
+  gfx<n> fallback for unknown cards. gpu_uuid is synthesized from
+  the PCI bus since ROCm doesn't expose a unique ID like NVIDIA's.
+- gpuRocm + processesRocm collectors mirror the nvidia versions'
+  contracts. Shared /proc helpers extracted to _procTicks.ts so the
+  two paths can't drift on cpu_pct math or cmdline reading.
+- docker-compose.agent.amd.yml: /dev/kfd + /dev/dri devices,
+  group_add for video/render, /opt/rocm bind-mount, plus
+  LD_LIBRARY_PATH so the rocm-smi ctypes loader finds
+  librocm_smi64.so.1 inside the container.
+- Runtime base bumped to node:22-trixie-slim (glibc 2.41). Modern
+  ROCm builds need GLIBC_2.38 / GLIBCXX_3.4.32; bookworm's 2.36
+  caused the bind-mounted lib to silently fail to load. Agent now
+  ships python3 (full stdlib, not python3-minimal — rocm-smi
+  imports json/argparse), tzdata, and libdrm-amdgpu1.
 
 Hub side
-- New `server/services/agentProcessStore.ts` keeps the per-host
-  snapshot in memory with a 30 s staleness check.
-- `agentIngestWS.ts` `case 'processes':` is no longer the
-  reserved stub — it validates and writes into the store.
-- `server/routes/processes.ts` serves agent-supplied data for
-  `?host=<non-local>`, maps `gpu_uuid → gpu_index` via metricsBus's
-  per-host samples, returns a `reason` field when a snapshot is
-  missing or stale so the UI degrades gracefully.
+- New agentMetricsPersistor service. The agent ingest path was
+  emitting samples only to the in-memory bus, so a freshly enrolled
+  host appeared online but its /api/gpu/devices returned empty and
+  the UI showed "Aucun GPU détecté". Subscriber upserts the device
+  row inline, buffers metric rows for a 60 s flush, skips
+  LOCAL_HOST_ID (gpuCollector already covers it).
+- Main docker-compose.yml: runtime: nvidia + deploy.resources are
+  now OPT-IN. The hub starts on any host (AMD, no-GPU, dev laptop)
+  in control-plane mode out of the box; uncomment for local NVIDIA
+  passthrough.
 
-Frontend
-- `GpuProcessesTable` accepts `hostId`, fetches with
-  `&host=<id>`, and renders a hint when the response includes
-  `reason` (agent capability off or snapshot stale).
-- Dashboard passes the selected host through.
+CI
+- docker-publish.yml now builds both gpuviewr (hub) and
+  gpuviewr-agent in a matrix with independent cache scopes. The
+  agent image reference in docker-compose.agent*.yml finally
+  resolves to a real ghcr.io tag — previously it pointed at a
+  non-existent image and the only documented install path was the
+  bare-metal install.sh.
+- agent/Dockerfile stale digest pins refreshed.
 
-Dev mock
-- New `mockAgentSeeder` registers a synthetic `mock-agent-1` host
-  under MOCK_GPU=1, emits fake samples + fake processes every tick
-  so the multi-host UI works end-to-end in `dev:mock`.
-
-Fleet UX: GPU cards as gauges
-- `GpuMiniTile` renders four System-style arc speedometers (util /
-  temp / power / memory) sharing the new `UsageArc` component with
-  the System page. 4 cols from sm: upward, 2×2 below.
-- View toggle relabelled Détaillé/Compacte → Jauges/Compact and
-  reordered (Jauges first) to match Dashboard + System.
-- Sparkline below the gauges removed; host-card header sparkline
-  stays.
-
-Dashboard + System polish
-- View toggle "Bars/Barres" → "Compact" (en + fr) on both pages,
-  order already consistent (Jauges first).
-- Alerts events table now shows the absolute HH:MM:SS (with date
-  prefix on different days) under the relative-time pill; full
-  datetime in the hover tooltip.
-- System Temperatures hero card no longer applies the dynamic
-  radial-gradient background or glow shadow on the outer frame —
-  it's a calm surface-alt panel. CPU/GPU sub-frames inside still
-  carry the temperature-driven accent.
-- System Temperatures heatmap label renamed to "Carte mère" /
-  "Motherboard" (was "Carte thermique" / "Thermal map").
-- System PCIe Connectivity panel collapsed from a 3-row stack to a
-  single wrap row (title + bandwidth + slot + link inline).
-  Removes ~40 px of vertical space per GPU card.
-
-Code quality (SonarCloud sweep)
-- Extracted `UsageArc` to `src/components/ui/UsageArc.tsx` — System
-  + Fleet now share one source of truth for the speedometer.
-- Extracted mock primitives (`rand01`, `sweep`, `wave`,
-  `distributeVram`) to `server/services/_mockHelpers.ts`. Both
-  `mockGpu` and `mockAgentSeeder` reuse them.
-- Extracted `ModalShell`, `WarningBanner`, `CopyValueBlock` to
-  `src/components/settings/_modalParts.tsx`. Enroll/Rotate/Delete
-  modals now share their backdrop, header and value-block chrome.
-- `themes.ts` rewritten as a one-line-per-theme tuple registry —
-  the duplicated key column is gone, type safety preserved via
-  `TokenTuple` named-tuple positions.
-- Nested ternary at `HostsSettingsTab.tsx:134` flattened into a
-  `VersionCell` helper with guarded early returns (Sonar S3358).
-
-Tests: 17/17 pass. Typecheck clean across hub + agent + frontend.
+Quality
+- _rocmParsers.ts clears five SonarCloud findings: the regex flagged
+  for super-linear backtracking (S5852) becomes a char-by-char
+  walker, optional chains replace the `if (!x || !x.trim())` guards,
+  parseRocmPids splits into a top-level loop + helper so cognitive
+  complexity drops from 21 to under 15.
+- 21 parser tests built from real Strix Halo rocm-smi dumps, 5
+  persistor tests with an in-memory SQLite. All green.

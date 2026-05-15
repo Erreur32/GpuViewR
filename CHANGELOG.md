@@ -5,6 +5,88 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-05-16
+
+### Added
+- **AMD / ROCm support in the remote agent (experimental).** Agents
+  now run on AMD hosts (RDNA3, Strix Halo APUs, discrete Radeon)
+  via `rocm-smi`. The same image serves both vendors: `GPU_VENDOR`
+  (`auto` / `nvidia` / `amd`) selects the right collector at boot,
+  with `auto` probing both `nvidia-smi` and `rocm-smi`. Parity with
+  the NVIDIA agent for temperature, utilization, power, graphics
+  clock, VRAM, and GPU processes (pid / name / VRAM / CPU%). The
+  fields ROCm doesn't expose (memory clock on APUs, fan, PCIe
+  gen/width/RX-TX, per-process GPU%) come back `null` — the schema
+  already permits that.
+  - `_rocmParsers.ts`: parses `rocm-smi --json` info dumps + the
+    `--showpids` CSV-in-JSON quirk; device-ID lookup with `gfx<n>`
+    fallback; synthesizes a stable `gpu_uuid` from the PCI bus
+    since ROCm doesn't expose a unique ID like NVIDIA's.
+  - `gpuRocm` / `processesRocm` collectors mirror the nvidia
+    versions' contracts; shared `/proc` helpers extracted to
+    `_procTicks.ts` so the two paths don't drift.
+  - `docker-compose.agent.amd.yml` quickstart with `/dev/kfd` +
+    `/dev/dri`, group_add for `video` / `render`, `/opt/rocm`
+    bind-mount, and `LD_LIBRARY_PATH` so the rocm-smi ctypes loader
+    finds `librocm_smi64.so.1` inside the container. README has a
+    dedicated **AMD / ROCm support (experimental)** section.
+- **Hub now persists remote-agent samples to SQLite.** The agent
+  ingest path emitted samples only to the in-memory metrics bus,
+  so a freshly enrolled host appeared online but its
+  `/api/gpu/devices` returned empty and the UI showed "Aucun GPU
+  détecté". New `agentMetricsPersistor` service subscribes to the
+  bus, skips `LOCAL_HOST_ID` (already covered by `gpuCollector`),
+  upserts device rows inline and buffers metric rows for a 60 s
+  flush — mirrors the local collector pattern.
+- **Agent `TZ` / `TLS_INSECURE` ergonomics.** Both env vars are now
+  threaded through `docker-compose.agent*.yml` with `${VAR:-default}`
+  substitution, and the agent image ships `tzdata` so `TZ=Europe/
+  Paris` actually moves clock-on-log to local time. `TLS_INSECURE=1`
+  is documented as acceptable for self-signed certs on a private
+  LAN but never over the open Internet.
+- **`gpuviewr-agent` Docker image now publishes to GHCR.** The
+  Docker workflow grew a matrix job that builds both `gpuviewr`
+  (hub) and `gpuviewr-agent` in parallel with independent cache
+  scopes. The agent image reference in `docker-compose.agent*.yml`
+  finally resolves to a real `ghcr.io/erreur32/gpuviewr-agent:
+  latest`; previously it pointed at a non-existent tag and users
+  had to fall back to `install.sh` bare-metal.
+
+### Changed
+- **Agent runtime base bumped from `node:22-bookworm-slim` to
+  `node:22-trixie-slim` (glibc 2.41).** Required for the AMD path:
+  modern ROCm builds need `GLIBC_2.38` / `GLIBCXX_3.4.32`, and
+  bookworm's 2.36 caused the bind-mounted `librocm_smi64.so.1` to
+  fail to load (silently — the script printed an error on stderr
+  but exited 0). The hub image stays on bookworm; only the agent
+  needs to match host-side AMD libraries.
+- **Agent image now includes `python3`, `tzdata`, and
+  `libdrm-amdgpu1`.** `python3` is required because `rocm-smi` is a
+  Python script that imports `json`/`argparse`/`subprocess` from
+  the stdlib. `tzdata` honors the `TZ` env var. `libdrm-amdgpu1`
+  silences the cosmetic "Fail to open libdrm_amdgpu.so" warning
+  rocm-smi prints on every tick.
+- **Main `docker-compose.yml`: NVIDIA runtime is now opt-in.** The
+  `runtime: nvidia` + `deploy.resources.reservations.devices`
+  block is commented out by default so the hub starts on any host
+  (AMD, no-GPU, dev laptop) in "control plane" mode. Uncomment for
+  local NVIDIA passthrough — the hub still picks up GPUs from
+  enrolled agents either way.
+
+### Fixed
+- **Agent `Dockerfile` digest pins were stale.** Both the
+  `node:22-bookworm-slim` builder and the previous distroless
+  runtime referenced digests that no longer existed upstream, so
+  the Docker workflow's agent matrix job (added this release)
+  failed every build. Pins refreshed as part of the trixie bump.
+- **`_rocmParsers.ts` SonarCloud cleanup.** Replaced a regex flagged
+  for super-linear backtracking risk (S5852) with a char-by-char
+  walker, threaded optional chains through the `if (!x ||
+  !x.trim())` guards, and split `parseRocmPids` into a top-level
+  loop + helper so cognitive complexity drops from 21 to under 15.
+  No behaviour change; the 21 parser tests still pass on the same
+  Strix Halo fixtures.
+
 ## [0.3.0] - 2026-05-15
 
 ### Added
