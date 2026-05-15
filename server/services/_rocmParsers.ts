@@ -59,7 +59,7 @@ export function rocmDeviceName(deviceId: string | undefined, gfxVersion: string 
     const hit = DEVICE_NAMES[deviceId.toLowerCase()];
     if (hit) return hit;
   }
-  if (gfxVersion && gfxVersion.startsWith('gfx')) return `AMD GPU (${gfxVersion})`;
+  if (gfxVersion?.startsWith('gfx')) return `AMD GPU (${gfxVersion})`;
   return 'AMD GPU';
 }
 
@@ -76,7 +76,7 @@ export function rocmUuidFromBus(pciBus: string | undefined): string {
  * decides whether that's a "no data this tick" or a hard error.
  */
 export function parseRocmInfo(jsonText: string): RocmInfo {
-  if (!jsonText || !jsonText.trim()) return { cards: [], driverVersion: null };
+  if (!jsonText?.trim()) return { cards: [], driverVersion: null };
   let parsed: Record<string, Record<string, string>>;
   try {
     parsed = JSON.parse(jsonText);
@@ -102,12 +102,29 @@ export function parseRocmInfo(jsonText: string): RocmInfo {
  * Strip "(605Mhz)" → 605, returning null on N/A or unparsable input.
  * rocm-smi wraps clock readings in parens with a trailing "Mhz" suffix
  * for some reason; both fields appear like `"sclk clock speed:": "(605Mhz)"`.
+ *
+ * Implemented as a single-pass char walker rather than a regex. Earlier
+ * `/\(?\s*([\d.]+)\s*MHz\s*\)?/i` tripped Sonar S5852 (char-class
+ * quantifier sandwiched between two `\s*`). The runtime is linear in
+ * either form, but the walker makes that obvious to static analysis.
  */
 export function parseRocmClock(raw: string | undefined): number | null {
   if (!raw) return null;
-  const m = /\(?\s*([\d.]+)\s*MHz\s*\)?/i.exec(raw);
-  if (!m) return null;
-  const n = Number.parseFloat(m[1]);
+  let buf = '';
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i);
+    const isDigit = c >= 48 && c <= 57; // '0'..'9'
+    const isDot = c === 46;             // '.'
+    if (isDigit || isDot) {
+      buf += raw[i];
+    } else if (buf) {
+      // Stop at the first non-numeric char after we've started
+      // collecting — avoids picking up the trailing "MHz" or ")".
+      break;
+    }
+  }
+  if (!buf) return null;
+  const n = Number.parseFloat(buf);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -188,7 +205,7 @@ export function mapRocmInfoToSamples(info: RocmInfo): GpuSample[] {
  * as null when the driver reports "unknown"/"UNKNOWN".
  */
 export function parseRocmPids(jsonText: string): RocmProcess[] {
-  if (!jsonText || !jsonText.trim()) return [];
+  if (!jsonText?.trim()) return [];
   let parsed: { system?: Record<string, string> };
   try {
     parsed = JSON.parse(jsonText);
@@ -199,25 +216,43 @@ export function parseRocmPids(jsonText: string): RocmProcess[] {
   if (!system || typeof system !== 'object') return [];
   const result: RocmProcess[] = [];
   for (const [key, raw] of Object.entries(system)) {
-    const m = /^PID(\d+)$/.exec(key);
-    if (!m || typeof raw !== 'string') continue;
-    const fields = raw.split(',').map((s) => s.trim());
-    if (fields.length < 5) continue;
-    const pid = Number.parseInt(m[1], 10);
-    if (!Number.isFinite(pid)) continue;
-    const gpuCount = Number.parseInt(fields[1], 10);
-    const vram = Number.parseInt(fields[2], 10);
-    const sdma = Number.parseInt(fields[3], 10);
-    const cuRaw = fields[4];
-    const cu = /^unknown$/i.test(cuRaw) ? null : Number.parseInt(cuRaw, 10);
-    result.push({
-      pid,
-      process_name: fields[0],
-      gpu_count: Number.isFinite(gpuCount) ? gpuCount : 0,
-      vram_used_bytes: Number.isFinite(vram) ? vram : 0,
-      sdma_used_bytes: Number.isFinite(sdma) ? sdma : 0,
-      cu_occupancy: cu !== null && Number.isFinite(cu) ? cu : null,
-    });
+    const proc = parseRocmPidEntry(key, raw);
+    if (proc) result.push(proc);
   }
   return result;
+}
+
+function intOrZero(raw: string): number {
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseCuOccupancy(raw: string): number | null {
+  if (/^unknown$/i.test(raw)) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Parse a single "PID<n>": "<csv>" entry from --showpids. Returns null
+ * if the key doesn't match PID<n>, the value isn't a string, the CSV
+ * lacks the 5 fields rocm-smi documents, or the pid itself doesn't
+ * parse. Extracted from parseRocmPids to keep that function's
+ * cognitive complexity below Sonar's threshold.
+ */
+function parseRocmPidEntry(key: string, raw: unknown): RocmProcess | null {
+  const m = /^PID(\d+)$/.exec(key);
+  if (!m || typeof raw !== 'string') return null;
+  const fields = raw.split(',').map((s) => s.trim());
+  if (fields.length < 5) return null;
+  const pid = Number.parseInt(m[1], 10);
+  if (!Number.isFinite(pid)) return null;
+  return {
+    pid,
+    process_name: fields[0],
+    gpu_count: intOrZero(fields[1]),
+    vram_used_bytes: intOrZero(fields[2]),
+    sdma_used_bytes: intOrZero(fields[3]),
+    cu_occupancy: parseCuOccupancy(fields[4]),
+  };
 }
