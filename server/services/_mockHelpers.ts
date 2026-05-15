@@ -32,3 +32,23 @@ export function wave(amp: number, base: number, periodSec: number, phase: number
   const n = (rand01() - 0.5) * 2 * jitter;
   return base + amp * s + n;
 }
+
+/** Distribute a host's used-VRAM total across its mock processes with
+ *  a bit of per-tick churn. Used by both `mockGpu` (local mock host)
+ *  and `mockAgentSeeder` (synthetic agent host) — extracted here so
+ *  Sonar's duplicate-block detector doesn't flag the shared loop. */
+export function distributeVram<P extends { used_memory: number }>(
+  procsByGpu: Map<number, P[]>,
+  memByGpu: Map<number, number>,
+): P[] {
+  const out: P[] = [];
+  for (const [gpu, procs] of procsByGpu) {
+    const total = memByGpu.get(gpu) ?? 0;
+    const weights = procs.map(() => 0.5 + rand01());
+    const sum = weights.reduce((a, b) => a + b, 0);
+    procs.forEach((p, i) => {
+      out.push({ ...p, used_memory: Math.round((weights[i] / sum) * total) });
+    });
+  }
+  return out;
+}

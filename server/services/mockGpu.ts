@@ -3,7 +3,7 @@
 // fixed UUIDs so processCollector can reuse the UUID→index mapping.
 import type { GpuSample } from './gpuCollector.js';
 import type { GpuProcess } from './processCollector.js';
-import { rand01, sweep, wave } from './_mockHelpers.js';
+import { rand01, sweep, wave, distributeVram } from './_mockHelpers.js';
 
 interface FakeDevice {
   index: number;
@@ -125,8 +125,6 @@ export function buildFakeProcesses(samples: GpuSample[]): GpuProcess[] {
   for (const s of samples) memByGpu.set(s.gpu_index, s.memory_used);
   const uuidByIndex = new Map<number, string>();
   for (const d of DEVICES) uuidByIndex.set(d.index, d.uuid);
-  // Distribute the GPU's used memory among its fake processes, with a bit
-  // of churn so the table updates between renders.
   const procsByGpu = new Map<number, GpuProcess[]>();
   for (const fp of FAKE_PROCESSES) {
     const list = procsByGpu.get(fp.gpu) ?? [];
@@ -142,14 +140,5 @@ export function buildFakeProcesses(samples: GpuSample[]): GpuProcess[] {
     });
     procsByGpu.set(fp.gpu, list);
   }
-  const out: GpuProcess[] = [];
-  for (const [gpu, procs] of procsByGpu) {
-    const total = memByGpu.get(gpu) ?? 0;
-    const weights = procs.map(() => 0.5 + rand01());
-    const sum = weights.reduce((a, b) => a + b, 0);
-    procs.forEach((p, i) => {
-      out.push({ ...p, used_memory: Math.round((weights[i] / sum) * total) });
-    });
-  }
-  return out;
+  return distributeVram(procsByGpu, memByGpu);
 }

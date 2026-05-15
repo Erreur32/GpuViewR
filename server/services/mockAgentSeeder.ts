@@ -21,7 +21,7 @@ import { nowTimestamp, type GpuSample } from './_nvidiaParsers.js';
 import type { GpuProcess } from './processCollector.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import { rand01, sweep } from './_mockHelpers.js';
+import { rand01, sweep, distributeVram } from './_mockHelpers.js';
 
 export const MOCK_AGENT_HOST_ID = 'mock-agent-1';
 
@@ -93,7 +93,6 @@ function buildProcesses(samples: GpuSample[]): GpuProcess[] {
   for (const d of DEVICES) uuidByIndex.set(d.index, d.uuid);
   const memByGpu = new Map<number, number>();
   for (const s of samples) memByGpu.set(s.gpu_index, s.memory_used);
-  // One slice of GPU VRAM per process, jittered each tick.
   const procsByGpu = new Map<number, GpuProcess[]>();
   for (const fp of FAKE_PROCESSES) {
     const list = procsByGpu.get(fp.gpu) ?? [];
@@ -109,16 +108,7 @@ function buildProcesses(samples: GpuSample[]): GpuProcess[] {
     });
     procsByGpu.set(fp.gpu, list);
   }
-  const out: GpuProcess[] = [];
-  for (const [gpu, procs] of procsByGpu) {
-    const total = memByGpu.get(gpu) ?? 0;
-    const weights = procs.map(() => 0.5 + rand01());
-    const sum = weights.reduce((a, b) => a + b, 0);
-    procs.forEach((p, i) => {
-      out.push({ ...p, used_memory: Math.round((weights[i] / sum) * total) });
-    });
-  }
-  return out;
+  return distributeVram(procsByGpu, memByGpu);
 }
 
 class MockAgentSeeder {
