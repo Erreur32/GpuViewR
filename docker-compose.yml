@@ -2,12 +2,20 @@
 # GpuViewR: Docker Compose
 # ===========================================
 #
-# Prerequisites:
-#   1. NVIDIA Container Toolkit installed on the host
-#      https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
-#   2. Create .env:  echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
-#   3. Start:        docker compose up -d
-#   4. Open:         http://localhost:7510   (first user becomes admin)
+# Quickstart:
+#   1. Create .env:  echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
+#   2. Start:        docker compose up -d
+#   3. Open:         http://localhost:7510   (first user becomes admin)
+#
+# Local GPU passthrough is OPT-IN — out of the box this compose runs in
+# "control plane" mode: the hub starts on any host (AMD, no-GPU, dev
+# laptop) and your GPUs are reported by remote agents enrolled from
+# Settings → Hosts. To monitor the local NVIDIA GPU, uncomment the
+# `deploy.resources` + `runtime: nvidia` block at the bottom of this
+# service (requires the NVIDIA Container Toolkit:
+# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html ).
+# For AMD/ROCm local monitoring, run the agent compose instead — see
+# docker-compose.agent.amd.yml.
 #
 # Update:
 #   docker compose pull && docker compose up -d
@@ -71,14 +79,20 @@ services:
     security_opt:
       - no-new-privileges:true
 
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, utility]
-    runtime: nvidia
+    # --- NVIDIA local passthrough (OPT-IN) -------------------------
+    # Uncomment both blocks below if the NVIDIA Container Toolkit is
+    # installed on this host and you want the hub to scrape its own
+    # GPUs. Leave commented to keep the hub vendor-neutral (collector
+    # logs a friendly "nvidia-smi not available" and exposes data
+    # from remote agents only).
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu, utility]
+    # runtime: nvidia
 
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]

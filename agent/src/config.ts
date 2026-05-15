@@ -9,6 +9,8 @@ export interface AgentFeatures {
   processes: boolean;
 }
 
+export type GpuVendor = 'auto' | 'nvidia' | 'amd';
+
 export interface AgentConfig {
   hubUrl: string;
   hostId: string;
@@ -17,11 +19,19 @@ export interface AgentConfig {
   features: AgentFeatures;
   bufferPersist: boolean;
   agentLabel: string | null;
+  gpuVendor: GpuVendor;
   nvidiaSmiPath: string;
+  rocmSmiPath: string;
   hostProc: string;
   reconnectMaxMs: number;
   tlsInsecure: boolean;
   mockGpu: boolean;
+}
+
+export function parseGpuVendor(raw: string | undefined): GpuVendor {
+  const v = (raw || '').trim().toLowerCase();
+  if (v === 'nvidia' || v === 'amd' || v === 'auto') return v;
+  return 'auto';
 }
 
 function requiredEnv(name: string): string {
@@ -92,7 +102,9 @@ export function loadConfig(): AgentConfig {
     features: parseFeatures(process.env.FEATURES || 'gpu,system,temps,processes'),
     bufferPersist: parseBool('AGENT_BUFFER_PERSIST', false),
     agentLabel: process.env.AGENT_LABEL?.trim() || null,
+    gpuVendor: parseGpuVendor(process.env.GPU_VENDOR),
     nvidiaSmiPath: process.env.NVIDIA_SMI_PATH || 'nvidia-smi',
+    rocmSmiPath: process.env.ROCM_SMI_PATH || 'rocm-smi',
     hostProc: process.env.HOST_PROC || '/host/proc',
     reconnectMaxMs: parseInt10('RECONNECT_MAX_MS', 30_000),
     tlsInsecure: parseBool('TLS_INSECURE', false),

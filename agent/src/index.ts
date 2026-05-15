@@ -1,26 +1,33 @@
-// Agent bootstrap. Six lines of "real" lifecycle code; the rest is
-// scaffolding for graceful shutdown and the MOCK_GPU dev path.
+// Agent bootstrap. The lifecycle is short; the rest is graceful
+// shutdown plumbing and the MOCK_GPU dev path. Vendor selection
+// happens once at boot (cf. resolveVendor): GPU_VENDOR=auto probes
+// both binaries and prefers whichever responds first.
 
-import { loadConfig } from './config.js';
+import { spawnSync } from 'node:child_process';
+import { loadConfig, type AgentConfig, type GpuVendor } from './config.js';
 import { logger } from './logger.js';
 import { createTransport } from './transport.js';
-import { createGpuCollector } from './collectors/gpu.js';
-import { createProcessCollector } from './collectors/processes.js';
+import { createGpuCollector, type GpuCollectorHandle } from './collectors/gpu.js';
+import { createRocmGpuCollector } from './collectors/gpuRocm.js';
+import { createProcessCollector, type ProcessCollectorHandle } from './collectors/processes.js';
+import { createRocmProcessCollector } from './collectors/processesRocm.js';
 import { buildMockSamples } from './mock.js';
 
 const config = loadConfig();
+const vendor = resolveVendor(config);
 
 logger.info('boot', `gpuviewr-agent starting (host_id=${config.hostId}, label=${config.agentLabel ?? '(none)'})`);
 logger.info('boot', `Hub URL: ${config.hubUrl}`);
 logger.info('boot', `Features: ${JSON.stringify(config.features)}`);
-if (config.mockGpu) logger.warn('boot', 'MOCK_GPU=1 — synthetic GPU samples, no nvidia-smi spawn');
+logger.info('boot', `GPU vendor: ${vendor} (configured: ${config.gpuVendor})`);
+if (config.mockGpu) logger.warn('boot', 'MOCK_GPU=1 — synthetic GPU samples, no smi spawn');
 
 const transport = createTransport(config);
 transport.start();
 
 let mockTimer: NodeJS.Timeout | null = null;
-let gpuHandle: ReturnType<typeof createGpuCollector> | null = null;
-let processHandle: ReturnType<typeof createProcessCollector> | null = null;
+let gpuHandle: GpuCollectorHandle | null = null;
+let processHandle: ProcessCollectorHandle | null = null;
 
 if (config.features.gpu) {
   if (config.mockGpu) {
@@ -28,34 +35,25 @@ if (config.features.gpu) {
     emit();
     mockTimer = setInterval(emit, config.tickMs);
   } else {
-    gpuHandle = createGpuCollector({
-      nvidiaSmiPath: config.nvidiaSmiPath,
-      tickMs: config.tickMs,
-      onSample: (samples) => transport.enqueueSample(samples),
-    });
+    gpuHandle = buildGpuCollector(vendor, config);
     if (!gpuHandle.available()) {
-      logger.error('boot', `nvidia-smi not found at ${config.nvidiaSmiPath} — exiting (set MOCK_GPU=1 for dev)`);
+      const bin = vendor === 'amd' ? config.rocmSmiPath : config.nvidiaSmiPath;
+      logger.error('boot', `${vendor} smi not found at ${bin} — exiting (set MOCK_GPU=1 for dev)`);
       process.exit(1);
     }
     gpuHandle.start();
   }
 }
 
-// Process collector: runs alongside the GPU collector when nvidia-smi
-// is available. Skipped under MOCK_GPU=1 because the synthetic samples
-// don't have real PIDs to enrich. The hub will keep showing whatever
-// remote-host processes already exist in its store.
+// Process collector runs alongside the GPU collector when the smi
+// binary is available. Skipped under MOCK_GPU=1 because synthetic
+// samples don't have real PIDs to enrich.
 if (config.features.processes && !config.mockGpu) {
-  processHandle = createProcessCollector({
-    nvidiaSmiPath: config.nvidiaSmiPath,
-    tickMs: config.tickMs,
-    hostProc: config.hostProc,
-    onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
-  });
+  processHandle = buildProcessCollector(vendor, config);
   if (processHandle.available()) {
     processHandle.start();
   } else {
-    logger.warn('boot', 'process collector disabled (nvidia-smi unavailable)');
+    logger.warn('boot', `process collector disabled (${vendor} smi unavailable)`);
     processHandle = null;
   }
 }
@@ -77,3 +75,61 @@ function shutdown(signal: string): void {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// --- vendor resolution -----------------------------------------------
+
+function smiResponds(bin: string): boolean {
+  try {
+    return spawnSync(bin, ['--version'], { timeout: 3_000 }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+function resolveVendor(cfg: AgentConfig): 'nvidia' | 'amd' {
+  if (cfg.gpuVendor === 'nvidia') return 'nvidia';
+  if (cfg.gpuVendor === 'amd') return 'amd';
+  // auto: probe both. Prefer nvidia when both exist (historical default,
+  // and nvidia-smi exposes strictly more telemetry — PCIe RX/TX, pmon).
+  if (cfg.mockGpu) return 'nvidia';
+  const nvidia = smiResponds(cfg.nvidiaSmiPath);
+  if (nvidia) return 'nvidia';
+  const amd = smiResponds(cfg.rocmSmiPath);
+  if (amd) return 'amd';
+  // Neither found — leave it as nvidia so the existing error path
+  // (`nvidia-smi not found … exiting`) fires with its familiar
+  // message rather than a confusing "no vendor".
+  return 'nvidia';
+}
+
+function buildGpuCollector(v: GpuVendor, cfg: AgentConfig): GpuCollectorHandle {
+  if (v === 'amd') {
+    return createRocmGpuCollector({
+      rocmSmiPath: cfg.rocmSmiPath,
+      tickMs: cfg.tickMs,
+      onSample: (samples) => transport.enqueueSample(samples),
+    });
+  }
+  return createGpuCollector({
+    nvidiaSmiPath: cfg.nvidiaSmiPath,
+    tickMs: cfg.tickMs,
+    onSample: (samples) => transport.enqueueSample(samples),
+  });
+}
+
+function buildProcessCollector(v: GpuVendor, cfg: AgentConfig): ProcessCollectorHandle {
+  if (v === 'amd') {
+    return createRocmProcessCollector({
+      rocmSmiPath: cfg.rocmSmiPath,
+      tickMs: cfg.tickMs,
+      hostProc: cfg.hostProc,
+      onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
+    });
+  }
+  return createProcessCollector({
+    nvidiaSmiPath: cfg.nvidiaSmiPath,
+    tickMs: cfg.tickMs,
+    hostProc: cfg.hostProc,
+    onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
+  });
+}

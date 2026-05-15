@@ -338,6 +338,51 @@ provided at the repo root for users who prefer compose, and a bare-metal
 systemd path (Node SEA binary) is documented in
 [`agent/README.md`](agent/README.md) for hosts without Docker.
 
+### AMD / ROCm support (experimental)
+
+The agent also runs on AMD GPUs via `rocm-smi` — handy for boxes built
+around RDNA3 / Strix Halo APUs (Radeon 8060S, RX 7900, etc.). The hub
+itself stays vendor-neutral: AMD and NVIDIA agents can sit side by side
+in the same fleet.
+
+What works (parity with the NVIDIA agent):
+
+- Temperature, utilization, power, graphics clock, VRAM used/total
+- GPU process list (pid, name, VRAM used, full command, CPU %)
+- Per-host Fleet card + history + alerts + exports
+
+What's `null` on ROCm (driver doesn't expose it):
+
+- Memory clock on APUs (system RAM = VRAM, no separate clock)
+- Fan speed (most RDNA3 desktop cards report it via lm-sensors instead;
+  picked up by the [system temperatures panel](#features) regardless)
+- PCIe gen/width and RX/TX throughput
+- Per-process GPU % (no `nvidia-smi pmon` equivalent in `rocm-smi`)
+
+Quickstart on the AMD host (e.g. your Strix Halo Mini-PC):
+
+```bash
+# 1. Pre-flight check — JSON should come out clean.
+rocm-smi --showid --json
+
+# 2. Drop docker-compose.agent.amd.yml + .env (HUB_URL/HOST_ID/AGENT_TOKEN)
+#    next to each other, then:
+docker compose -f docker-compose.agent.amd.yml up -d
+```
+
+The compose file bind-mounts `rocm-smi` from the host (no separate
+ROCm-flavored image to publish) and uses `/dev/kfd` + `/dev/dri`
+instead of the NVIDIA Container Toolkit. If you see
+`Fail to open libdrm_amdgpu.so` on startup, install `libdrm-amdgpu1`
+to silence it — the warning is cosmetic, JSON output is valid either
+way.
+
+Multi-GPU AMD boxes currently attribute all processes to `card0`
+(single-card limitation, lifted in a follow-up). NVIDIA agents are
+unaffected. Set `GPU_VENDOR=auto` (default) to let the agent probe
+both binaries and pick whichever responds; `GPU_VENDOR=amd` or
+`nvidia` pins it explicitly.
+
 ### OS support
 
 The agent runs on:

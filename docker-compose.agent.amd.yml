@@ -1,0 +1,79 @@
+# ===========================================
+# GpuViewR Agent — AMD/ROCm variant
+# ===========================================
+#
+# Live on the REMOTE machine you want to monitor (the AMD box), NOT
+# on the hub. Pair this file with the same HOST_ID/AGENT_TOKEN handed
+# to you by the hub UI (Settings → Hosts → Add host).
+#
+# Differences from docker-compose.agent.yml:
+#   - No `runtime: nvidia` and no NVIDIA device reservation.
+#   - /dev/kfd + /dev/dri are device-mapped so the agent can talk to
+#     amdgpu through libdrm.
+#   - group_add: ["video", "render"] gives the container user access
+#     to the DRI devices without needing privileged mode.
+#   - rocm-smi is BIND-MOUNTED from the host. This keeps the image
+#     identical to the NVIDIA variant (no separate ROCm image to
+#     publish) and uses whatever ROCm version is installed on the box.
+#
+# Prerequisites on the remote host:
+#   1. AMD GPU + amdgpu kernel driver.
+#   2. rocm-smi installed (`apt install rocm-smi` on Debian/Ubuntu,
+#      or whatever package ships /opt/rocm/bin/rocm-smi).
+#   3. `rocm-smi --version` works as the user running docker.
+#   4. (Optional but recommended) `apt install libdrm-amdgpu1` to
+#      silence the "Fail to open libdrm_amdgpu.so" startup warning.
+#      Stdout JSON is valid either way; the warning is cosmetic.
+#
+# Sanity check before enrolling:
+#   docker run --rm \
+#     --device=/dev/kfd --device=/dev/dri \
+#     --group-add video --group-add render \
+#     -v $(which rocm-smi):/usr/local/bin/rocm-smi:ro \
+#     -v /opt/rocm:/opt/rocm:ro \
+#     ghcr.io/erreur32/gpuviewr-agent:latest rocm-smi --showid --json
+# ===========================================
+
+services:
+  agent:
+    image: ghcr.io/erreur32/gpuviewr-agent:latest
+    container_name: gpuviewr-agent
+    restart: unless-stopped
+
+    devices:
+      - /dev/kfd
+      - /dev/dri
+
+    group_add:
+      - video
+      - render
+
+    # rocm-smi + the /opt/rocm tree are mounted from the host so the
+    # agent image stays vendor-neutral. Adjust paths if your distro
+    # installs ROCm elsewhere.
+    volumes:
+      - /usr/bin/rocm-smi:/usr/local/bin/rocm-smi:ro
+      - /opt/rocm:/opt/rocm:ro
+      - /proc:/host/proc:ro
+
+    environment:
+      # Required — get these from the hub UI at enrollment time.
+      HUB_URL: ${HUB_URL}              # e.g. wss://gpu.example.com/agent
+      HOST_ID: ${HOST_ID}              # UUID printed once by the hub
+      AGENT_TOKEN: ${AGENT_TOKEN}      # opaque secret, also one-shot
+
+      # Vendor pinning: 'amd' forces the rocm-smi collector path even
+      # if nvidia-smi happened to be present. Set to 'auto' to let the
+      # agent probe both; 'auto' prefers nvidia when both are found.
+      GPU_VENDOR: amd
+      ROCM_SMI_PATH: /usr/local/bin/rocm-smi
+      HOST_PROC: /host/proc
+
+      # Optional — sensible defaults.
+      TICK_MS: ${TICK_MS:-1000}
+      FEATURES: ${FEATURES:-gpu,system,temps,processes}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RECONNECT_MAX_MS: ${RECONNECT_MAX_MS:-30000}
+      # AGENT_BUFFER_PERSIST: 0       # ring-only by default
+      # TLS_INSECURE: 0               # 1 only in dev against self-signed
+      # AGENT_LABEL: jarvis-amd       # suggested label sent in the hello frame

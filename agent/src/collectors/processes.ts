@@ -10,9 +10,8 @@
 // nvtop-style enrichment (type, command, cpu_pct, gpu_pct).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { basename } from 'node:path';
 import { logger } from '../logger.js';
+import { createCpuSampler, readCmdline, resolveProcessName } from './_procTicks.js';
 
 export type GpuProcessType = 'C' | 'G' | 'G+C' | null;
 
@@ -50,9 +49,6 @@ export interface ProcessCollectorHandle {
 // the table anyway.
 const MIN_TICK_MS = 1_000;
 
-// Linux jiffies/sec, see hub processCollector for rationale.
-const CLK_TCK = 100;
-
 const QUERY = ['pid', 'process_name', 'gpu_uuid', 'used_memory'].join(',');
 
 export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCollectorHandle {
@@ -60,7 +56,7 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
   let timer: NodeJS.Timeout | null = null;
   let nvidiaSmiAvailable: boolean | null = null;
   let inflight = false;
-  const cpuPrev = new Map<number, { ticks: number; ts: number }>();
+  const cpuSampler = createCpuSampler(opts.hostProc);
 
   function checkNvidiaSmi(): boolean {
     if (nvidiaSmiAvailable !== null) return nvidiaSmiAvailable;
@@ -108,20 +104,6 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
     });
   }
 
-  function sampleCpu(pid: number): number | null {
-    const ticks = readProcTicks(pid, opts.hostProc);
-    if (ticks === null) return null;
-    const now = Date.now();
-    const prev = cpuPrev.get(pid);
-    cpuPrev.set(pid, { ticks, ts: now });
-    if (!prev) return null;
-    const dt = (now - prev.ts) / 1000;
-    if (dt <= 0) return null;
-    const dTicks = ticks - prev.ticks;
-    if (dTicks < 0) return null;
-    return Math.round((dTicks / (dt * CLK_TCK)) * 100 * 10) / 10;
-  }
-
   async function tick(): Promise<void> {
     if (inflight) return;
     inflight = true;
@@ -134,15 +116,11 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
           ...p,
           type: pmon?.type ?? (command ? 'C' : null),
           command,
-          cpu_pct: sampleCpu(p.pid),
+          cpu_pct: cpuSampler.sample(p.pid),
           gpu_pct: pmon?.gpuPct ?? null,
         };
       });
-      // Forget pids we no longer see so cpuPrev doesn't grow unbounded.
-      const seen = new Set(procs.map((p) => p.pid));
-      for (const pid of cpuPrev.keys()) {
-        if (!seen.has(pid)) cpuPrev.delete(pid);
-      }
+      cpuSampler.retain(new Set(procs.map((p) => p.pid)));
       opts.onSnapshot({ tsEpoch: Math.floor(Date.now() / 1000), processes: enriched });
     } finally {
       inflight = false;
@@ -170,48 +148,6 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
   };
 }
 
-function resolveName(pid: number, procRoot: string): string | null {
-  try {
-    const cmdline = readFileSync(`${procRoot}/${pid}/cmdline`, 'utf8');
-    const argv0 = cmdline.split('\0')[0];
-    if (argv0) return basename(argv0);
-  } catch { /* fall through */ }
-  try {
-    const comm = readFileSync(`${procRoot}/${pid}/comm`, 'utf8').trim();
-    if (comm) return comm;
-  } catch { /* ignore */ }
-  return null;
-}
-
-function readCmdline(pid: number, procRoot: string): string | null {
-  try {
-    const raw = readFileSync(`${procRoot}/${pid}/cmdline`, 'utf8');
-    if (!raw) return null;
-    return raw.replaceAll('\0', ' ').trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-// /proc/<pid>/stat: comm (field 2) is wrapped in parens and may itself
-// contain spaces, so slice from the last `)` to avoid a tokenisation
-// trap. utime + stime are fields 14/15 (1-based) → indices 11/12 after
-// the slice.
-function readProcTicks(pid: number, procRoot: string): number | null {
-  try {
-    const stat = readFileSync(`${procRoot}/${pid}/stat`, 'utf8');
-    const after = stat.lastIndexOf(')');
-    if (after < 0) return null;
-    const fields = stat.slice(after + 2).split(' ');
-    const utime = Number.parseInt(fields[11], 10);
-    const stime = Number.parseInt(fields[12], 10);
-    if (!Number.isFinite(utime) || !Number.isFinite(stime)) return null;
-    return utime + stime;
-  } catch {
-    return null;
-  }
-}
-
 function parseComputeApps(out: string, procRoot: string): AgentGpuProcess[] {
   const procs: AgentGpuProcess[] = [];
   for (const raw of out.split('\n')) {
@@ -224,7 +160,7 @@ function parseComputeApps(out: string, procRoot: string): AgentGpuProcess[] {
     const used = Number.parseInt(parts[3], 10);
     let name = parts[1] || '';
     if (!name || name === '[Not Found]' || name === '-' || name.toLowerCase() === 'n/a') {
-      name = resolveName(pid, procRoot) || 'unknown';
+      name = resolveProcessName(pid, procRoot) || 'unknown';
     }
     procs.push({
       pid,
