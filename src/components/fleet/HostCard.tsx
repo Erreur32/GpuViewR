@@ -76,7 +76,7 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
       {detailed && !isOffline && hostSamples.length > 0 && (
         <div className="flex flex-col gap-2">
           {hostSamples.map((s) => (
-            <GpuMiniTile key={s.gpu_index} hostId={host.id} sample={s} />
+            <GpuMiniTile key={s.gpu_index} sample={s} />
           ))}
         </div>
       )}

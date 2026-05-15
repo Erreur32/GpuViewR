@@ -5,6 +5,7 @@ import { loadConfig } from './config.js';
 import { logger } from './logger.js';
 import { createTransport } from './transport.js';
 import { createGpuCollector } from './collectors/gpu.js';
+import { createProcessCollector } from './collectors/processes.js';
 import { buildMockSamples } from './mock.js';
 
 const config = loadConfig();
@@ -19,6 +20,7 @@ transport.start();
 
 let mockTimer: NodeJS.Timeout | null = null;
 let gpuHandle: ReturnType<typeof createGpuCollector> | null = null;
+let processHandle: ReturnType<typeof createProcessCollector> | null = null;
 
 if (config.features.gpu) {
   if (config.mockGpu) {
@@ -39,8 +41,27 @@ if (config.features.gpu) {
   }
 }
 
-// system/temps/processes collectors are reserved for jalon 5+;
-// today the agent only ships GPU samples (the headline feature).
+// Process collector: runs alongside the GPU collector when nvidia-smi
+// is available. Skipped under MOCK_GPU=1 because the synthetic samples
+// don't have real PIDs to enrich. The hub will keep showing whatever
+// remote-host processes already exist in its store.
+if (config.features.processes && !config.mockGpu) {
+  processHandle = createProcessCollector({
+    nvidiaSmiPath: config.nvidiaSmiPath,
+    tickMs: config.tickMs,
+    hostProc: config.hostProc,
+    onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
+  });
+  if (processHandle.available()) {
+    processHandle.start();
+  } else {
+    logger.warn('boot', 'process collector disabled (nvidia-smi unavailable)');
+    processHandle = null;
+  }
+}
+
+// system/temps collectors are reserved for jalon 5+;
+// today the agent ships GPU samples + (optionally) GPU processes.
 // Other capabilities are negotiated in the hello frame so the hub
 // knows what to expect.
 
@@ -48,6 +69,7 @@ function shutdown(signal: string): void {
   logger.info('boot', `Received ${signal}, shutting down...`);
   if (mockTimer) clearInterval(mockTimer);
   gpuHandle?.stop();
+  processHandle?.stop();
   transport.stop();
   // Give the WS close() a moment to flush.
   setTimeout(() => process.exit(0), 200).unref();

@@ -57,6 +57,15 @@ function relativeTime(epoch: number, t: (key: string) => string): string {
   return `${days}j`;
 }
 
+function exactTime(epoch: number): string {
+  const d = new Date(epoch * 1000);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (sameDay) return time;
+  const date = d.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+  return `${date} ${time}`;
+}
+
 interface Rule {
   id: number;
   name: string;
@@ -443,9 +452,18 @@ export default function AlertsPage() {
                   </div>
                   <div className="text-xs mt-0.5" style={{ color: 'var(--gv-text-muted)' }}>{e.message}</div>
                 </div>
-                <div className="flex-shrink-0 flex items-center gap-1 text-xs" style={{ color: 'var(--gv-text-dim)' }}>
-                  <Clock className="w-3 h-3" />
-                  <span className="tabular-nums whitespace-nowrap">{relativeTime(e.triggered_at, t)}</span>
+                <div
+                  className="flex-shrink-0 flex flex-col items-end gap-0.5 text-xs"
+                  style={{ color: 'var(--gv-text-dim)' }}
+                  title={new Date(e.triggered_at * 1000).toLocaleString()}
+                >
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    <span className="tabular-nums whitespace-nowrap">{relativeTime(e.triggered_at, t)}</span>
+                  </div>
+                  <span className="font-mono tabular-nums whitespace-nowrap text-[10px] opacity-80">
+                    {exactTime(e.triggered_at)}
+                  </span>
                 </div>
                 <button
                   type="button"

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Cpu, Zap, CheckCircle2, LayoutGrid, Rows3, Activity, MemoryStick, Cable } from 'lucide-react';
+import { Cpu, Zap, CheckCircle2, LayoutGrid, BarChart3, Activity, MemoryStick, Cable } from 'lucide-react';
 import { useHostsStore, effectiveStatus, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, type GpuSample } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
@@ -117,16 +117,9 @@ export default function FleetPage() {
           <h1 className="text-2xl font-bold tracking-tight">{t('fleet.title')}</h1>
           <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('fleet.subtitle')}</p>
         </div>
+        {/* Order mirrors Dashboard + System: Jauges (detailed) first,
+            Compact (simple) second — same icons, same muscle memory. */}
         <div className="seg" role="toolbar" aria-label={t('fleet.view_label')}>
-          <button
-            type="button"
-            className="seg-btn inline-flex items-center gap-1.5"
-            aria-pressed={fleetView === 'simple'}
-            onClick={() => setFleetView('simple')}
-            title={t('fleet.view_simple')}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" /> {t('fleet.view_simple')}
-          </button>
           <button
             type="button"
             className="seg-btn inline-flex items-center gap-1.5"
@@ -134,7 +127,16 @@ export default function FleetPage() {
             onClick={() => setFleetView('detailed')}
             title={t('fleet.view_detailed')}
           >
-            <Rows3 className="w-3.5 h-3.5" /> {t('fleet.view_detailed')}
+            <LayoutGrid className="w-3.5 h-3.5" /> {t('fleet.view_detailed')}
+          </button>
+          <button
+            type="button"
+            className="seg-btn inline-flex items-center gap-1.5"
+            aria-pressed={fleetView === 'simple'}
+            onClick={() => setFleetView('simple')}
+            title={t('fleet.view_simple')}
+          >
+            <BarChart3 className="w-3.5 h-3.5" /> {t('fleet.view_simple')}
           </button>
         </div>
       </header>

@@ -19,6 +19,8 @@ import { HostsRepo, LOCAL_HOST_ID, type HostRecord } from '../database/models/Ho
 import { metricsBus } from './_metricsBus.js';
 import { logger } from '../utils/logger.js';
 import type { GpuSample } from './_nvidiaParsers.js';
+import { agentProcessStore } from './agentProcessStore.js';
+import type { GpuProcess } from './processCollector.js';
 
 const RATE_LIMIT_PER_SEC = 100;
 const LAST_SEEN_THROTTLE_MS = 1000;
@@ -44,7 +46,13 @@ interface PingFrame {
   ts_epoch?: number;
 }
 
-type IncomingFrame = HelloFrame | SampleFrame | PingFrame | { type: string; [k: string]: unknown };
+interface ProcessFrame {
+  type: 'processes';
+  ts_epoch?: number;
+  processes: GpuProcess[];
+}
+
+type IncomingFrame = HelloFrame | SampleFrame | PingFrame | ProcessFrame | { type: string; [k: string]: unknown };
 
 /**
  * Look up the host that owns this token + claimed id. Bcrypt comparison
@@ -162,15 +170,27 @@ function dispatchFrame(ws: WebSocket, host: HostRecord, frame: IncomingFrame): v
     case 'ping':
       safeSend(ws, { type: 'pong', ts_epoch: Math.floor(Date.now() / 1000) });
       return;
+    case 'processes':
+      handleProcesses(host, frame as ProcessFrame);
+      return;
     case 'system':
     case 'temps':
-    case 'processes':
       // Reserved for jalon 5+. Accept as heartbeat (already drove
       // the throttled markSeen above) but don't dispatch on the bus yet.
       return;
     default:
       logger.warn('agent', `Unknown frame type from ${host.id}: ${frame.type}`);
   }
+}
+
+function handleProcesses(host: HostRecord, frame: ProcessFrame): void {
+  if (!Array.isArray(frame.processes)) return;
+  // Empty list is a legitimate signal ("no GPU processes right now") —
+  // we keep it so a stale snapshot clears as soon as the host idles.
+  agentProcessStore.set(host.id, {
+    ts: frame.ts_epoch ?? Math.floor(Date.now() / 1000),
+    processes: frame.processes,
+  });
 }
 
 function handleHello(host: HostRecord, frame: HelloFrame): void {

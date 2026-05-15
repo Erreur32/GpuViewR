@@ -144,7 +144,6 @@ export default function SystemTemperaturesPanel({ temperatures, gpus }: Readonly
 
   const hottest = groups[0].hottest;
   const heroColor = tempColor(hottest.valueC);
-  const isHot = hottest.valueC >= 75;
 
   return (
     <section
@@ -194,19 +193,14 @@ export default function SystemTemperaturesPanel({ temperatures, gpus }: Readonly
       {open && <>
 
       {/* Hero — split into two sub-frames (CPU / GPU) so each silicon
-          domain gets its own hottest reading + heat bar. The
-          surrounding glow follows the overall hottest sensor so the
-          card still flashes when *something* is in trouble. */}
+          domain gets its own hottest reading + heat bar. Outer frame
+          uses a static surface to keep the panel calm; the CPU/GPU
+          sub-frames inside still carry the temperature-driven accent. */}
       <div
         className="relative rounded-2xl p-3 overflow-hidden space-y-4"
         style={{
-          background:
-            `radial-gradient(circle at 20% 0%, color-mix(in srgb, ${heroColor} 18%, transparent), transparent 60%),`
-            + ' var(--gv-surface-alt)',
-          border: `1px solid color-mix(in srgb, ${heroColor} 30%, var(--gv-border))`,
-          boxShadow: isHot
-            ? `0 0 30px -10px color-mix(in srgb, ${heroColor} 55%, transparent)`
-            : 'none',
+          background: 'var(--gv-surface-alt)',
+          border: '1px solid var(--gv-border)',
         }}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

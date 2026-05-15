@@ -17,6 +17,7 @@
 import { WebSocket } from 'ws';
 import { logger } from './logger.js';
 import type { GpuSample } from '../../server/services/_nvidiaParsers.js';
+import type { AgentGpuProcess } from './collectors/processes.js';
 import type { AgentConfig } from './config.js';
 
 const BUFFER_MAX = 3600;
@@ -31,7 +32,15 @@ interface SampleFrame {
   samples: GpuSample[];
 }
 
-type OutboundFrame = SampleFrame | { type: 'hello' | 'ping'; [k: string]: unknown };
+interface ProcessFrame {
+  type: 'processes';
+  ts_epoch: number;
+  processes: AgentGpuProcess[];
+}
+
+type BufferableFrame = SampleFrame | ProcessFrame;
+
+type OutboundFrame = BufferableFrame | { type: 'hello' | 'ping'; [k: string]: unknown };
 
 interface IncomingFrame {
   type: string;
@@ -42,6 +51,7 @@ export interface Transport {
   start(): void;
   stop(): void;
   enqueueSample(samples: GpuSample[]): void;
+  enqueueProcesses(processes: AgentGpuProcess[]): void;
 }
 
 export function createTransport(config: AgentConfig): Transport {
@@ -50,9 +60,9 @@ export function createTransport(config: AgentConfig): Transport {
   let reconnectTimer: NodeJS.Timeout | null = null;
   let pingTimer: NodeJS.Timeout | null = null;
   let stopped = false;
-  const buffer: SampleFrame[] = [];
+  const buffer: BufferableFrame[] = [];
 
-  function pushToBuffer(frame: SampleFrame): void {
+  function pushToBuffer(frame: BufferableFrame): void {
     buffer.push(frame);
     while (buffer.length > BUFFER_MAX) buffer.shift();
   }
@@ -214,6 +224,20 @@ export function createTransport(config: AgentConfig): Transport {
         type: 'sample',
         ts_epoch: Math.floor(Date.now() / 1000),
         samples,
+      };
+      if (ws?.readyState === WebSocket.OPEN) {
+        sendRaw(frame);
+      } else {
+        pushToBuffer(frame);
+      }
+    },
+    enqueueProcesses(processes: AgentGpuProcess[]): void {
+      // Empty snapshots are still meaningful — they tell the hub "no
+      // processes right now" so a stale list clears. Don't drop them.
+      const frame: ProcessFrame = {
+        type: 'processes',
+        ts_epoch: Math.floor(Date.now() / 1000),
+        processes,
       };
       if (ws?.readyState === WebSocket.OPEN) {
         sendRaw(frame);

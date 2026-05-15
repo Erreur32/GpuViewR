@@ -388,17 +388,65 @@ function PcieSection({ gpu, t }: Readonly<{
 
   return (
     <div
-      className="mt-3 rounded-xl px-3 py-2 space-y-1.5"
+      className="mt-3 rounded-xl px-3 py-1.5"
       style={{
         background: 'color-mix(in srgb, var(--gv-info) 6%, transparent)',
         border: '1px solid color-mix(in srgb, var(--gv-info) 25%, transparent)',
       }}
     >
-      <div className="flex items-center gap-2">
-        <Cable className="w-4 h-4 shrink-0" style={{ color: 'var(--gv-info)' }} />
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gv-info)' }}>
-          {t('system.pcie_title')}
+      {/* Compact single-row layout: title + all PCIe metadata inline,
+          wraps on narrow widths. Vertical footprint reduced versus the
+          previous header + headline + grid stack. */}
+      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs">
+        <span className="inline-flex items-center gap-1.5">
+          <Cable className="w-4 h-4 shrink-0" style={{ color: 'var(--gv-info)' }} />
+          <span className="font-semibold uppercase tracking-wider" style={{ color: 'var(--gv-info)' }}>
+            {t('system.pcie_title')}
+          </span>
         </span>
+
+        {gpu.pcie_bandwidth_GBps !== null && (
+          <span className="inline-flex items-baseline gap-1">
+            <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
+              {t('system.pcie_bandwidth')}
+            </span>
+            <span className="font-semibold tabular-nums" style={{ color: 'var(--gv-info)' }}>
+              {gpu.pcie_bandwidth_GBps.toFixed(2)} GB/s
+            </span>
+            {gpu.pcie_bandwidth_max_GBps !== null && gpu.pcie_bandwidth_max_GBps > gpu.pcie_bandwidth_GBps && (
+              <span className="text-[10px] tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>
+                / max {gpu.pcie_bandwidth_max_GBps.toFixed(2)} GB/s
+              </span>
+            )}
+            <InfoTooltip text={t('system.pcie_bandwidth_hint')} />
+          </span>
+        )}
+
+        {gpu.pci_bus_id && (
+          <span className="inline-flex items-baseline gap-1">
+            <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
+              {t('system.pcie_slot')}
+            </span>
+            <span className="font-mono tabular-nums" style={{ color: 'var(--gv-text)' }}>
+              {gpu.pci_bus_id}
+            </span>
+          </span>
+        )}
+
+        {linkText !== '-' && (
+          <span className="inline-flex items-baseline gap-1">
+            <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
+              {t('system.pcie_link')}
+            </span>
+            <span className="tabular-nums" style={{ color: 'var(--gv-text)' }}>
+              {linkText}
+              {linkMaxText && linkMaxText !== linkText && (
+                <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}> (max {linkMaxText})</span>
+              )}
+            </span>
+          </span>
+        )}
+
         {degraded && (
           <span
             className="ml-auto inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium"
@@ -414,34 +462,6 @@ function PcieSection({ gpu, t }: Readonly<{
           </span>
         )}
       </div>
-
-      {/* Bandwidth headline — label, value and info-icon all on one row
-          to save vertical space. The hint moved to the tooltip. */}
-      {gpu.pcie_bandwidth_GBps !== null && (
-        <div className="flex items-baseline gap-2 flex-wrap">
-          <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
-            {t('system.pcie_bandwidth')}
-          </span>
-          <span className="text-xl font-semibold tabular-nums leading-none" style={{ color: 'var(--gv-info)' }}>
-            {gpu.pcie_bandwidth_GBps.toFixed(2)}
-          </span>
-          <span className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>GB/s</span>
-          {gpu.pcie_bandwidth_max_GBps !== null && gpu.pcie_bandwidth_max_GBps > gpu.pcie_bandwidth_GBps && (
-            <span className="text-[10px] tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>
-              / max {gpu.pcie_bandwidth_max_GBps.toFixed(2)} GB/s
-            </span>
-          )}
-          <InfoTooltip text={t('system.pcie_bandwidth_hint')} />
-        </div>
-      )}
-
-      <Grid>
-        <InfoField label={t('system.pcie_slot')} value={gpu.pci_bus_id ?? '-'} mono />
-        <InfoField
-          label={t('system.pcie_link')}
-          value={linkMaxText && linkMaxText !== linkText ? `${linkText}  (max ${linkMaxText})` : linkText}
-        />
-      </Grid>
     </div>
   );
 }
@@ -524,10 +544,6 @@ function ZoneHeader({ color, icon, label, sub }: Readonly<{
   );
 }
 
-function Grid({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">{children}</div>;
-}
-
 /**
  * Concept B layout: title + icon on the left, dotted-list of metadata
  * chips on the right of the same row (or wraps below on narrow widths).
@@ -552,15 +568,6 @@ function CardHeader({ icon, title, meta }: Readonly<{
           {items.join(' · ')}
         </span>
       )}
-    </div>
-  );
-}
-
-function InfoField({ label, value, mono }: Readonly<{ label: string; value: string; mono?: boolean }>) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>{label}</div>
-      <div className={'tabular-nums ' + (mono ? 'font-mono text-xs' : '')} style={{ color: 'var(--gv-text)' }}>{value}</div>
     </div>
   );
 }

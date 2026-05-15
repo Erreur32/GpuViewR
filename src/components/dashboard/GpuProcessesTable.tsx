@@ -21,13 +21,16 @@ interface ApiResp {
   timestamp_epoch: number;
   count: number;
   processes: GpuProcess[];
+  /** Hub-provided hint when a remote host's snapshot is missing or stale. */
+  reason?: string;
 }
 
 const REFRESH_MS = 2500;
 
-export default function GpuProcessesTable({ gpuIndex }: Readonly<{ gpuIndex: number }>) {
+export default function GpuProcessesTable({ gpuIndex, hostId }: Readonly<{ gpuIndex: number; hostId: string }>) {
   const { t } = useTranslation();
   const [data, setData] = useState<GpuProcess[]>([]);
+  const [reason, setReason] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
@@ -38,9 +41,10 @@ export default function GpuProcessesTable({ gpuIndex }: Readonly<{ gpuIndex: num
     const tick = async () => {
       if (cancelled) return;
       try {
-        const r = await api<ApiResp>(`/processes?gpu=${gpuIndex}`);
+        const r = await api<ApiResp>(`/processes?gpu=${gpuIndex}&host=${encodeURIComponent(hostId)}`);
         if (cancelled) return;
         setData(r.processes);
+        setReason(r.reason ?? null);
         setError(false);
       } catch {
         if (!cancelled) setError(true);
@@ -57,7 +61,7 @@ export default function GpuProcessesTable({ gpuIndex }: Readonly<{ gpuIndex: num
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [gpuIndex]);
+  }, [gpuIndex, hostId]);
 
   const sorted = [...data].sort((a, b) => b.used_memory - a.used_memory);
 
@@ -80,7 +84,14 @@ export default function GpuProcessesTable({ gpuIndex }: Readonly<{ gpuIndex: num
       )}
 
       {!error && sorted.length === 0 && !loading && (
-        <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>{t('dashboard.processes_empty')}</p>
+        <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+          {reason ? t('dashboard.processes_unavailable') : t('dashboard.processes_empty')}
+          {reason && (
+            <span className="block mt-0.5 opacity-70" title={reason}>
+              {reason}
+            </span>
+          )}
+        </p>
       )}
 
       {sorted.length > 0 && (

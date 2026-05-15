@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 0.3.0 multi-host
 
 ### Added
+- **Remote-agent GPU processes.** Agents now ship a `processes`
+  frame on the `/agent` WebSocket alongside GPU samples. The agent
+  collector runs `nvidia-smi --query-compute-apps` + `nvidia-smi pmon`
+  in parallel and enriches each row with `/proc/<pid>/cmdline` and
+  delta-based CPU%. The hub keeps a per-host in-memory snapshot
+  (30 s TTL) so `/api/processes?host=<id>` serves real data for
+  agent hosts — the route's "reserved for a later release" stub is
+  gone. The Dashboard's GPU-processes table forwards
+  `selectedHostId` and shows a `reason` hint when an agent's
+  capability is off or its snapshot is stale.
+- **Mock agent seeder (dev only).** `MOCK_GPU=1` now also registers
+  a synthetic `mock-agent-1` host that emits fake samples + fake
+  processes every tick, so `dev:mock` exercises the multi-host
+  process path without a real agent connection.
+- **Fleet GPU cards in "Jauges" mode.** Each per-GPU mini tile now
+  renders four System-style arc speedometers (util / temp / power /
+  memory) with the same 5-band gradient, glow filter, and
+  `gauge-pulse` danger animation as the System page. Layout
+  collapses to 2×2 below 640 px and stretches to a single row from
+  `sm:` upward.
+- **Alerts events table — exact time.** Each event now shows the
+  absolute `HH:MM:SS` (with date prefix on different days) below the
+  existing relative-time pill; full datetime is in a hover tooltip.
 - **Multi-host architecture (jalons 1-5 of the [multi-host plan](Docs/MULTI_HOST_PLAN.md)).**
   The hub can now aggregate metrics from remote GpuViewR agents on top of
   its own `nvidia-smi`. Each metric row, device row and alert event is
@@ -35,6 +58,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `hostsLagging` / `hostsOffline`.
 - **`?host=` query param** on `/api/gpu/{current,history,history.csv,stats}`
   and `/api/processes/`. Defaults to `local` for backward compat.
+
+### Changed
+- **Dashboard / System view toggle relabelled.** The `Bars` /
+  `Barres` button is now `Compact` (en + fr) since the alternative
+  to gauges is a compact bar layout, not just "bars".
+- **Fleet view toggle relabelled + reordered.** The fleet's
+  density toggle is now `Jauges` / `Compact` (was `Détaillé` /
+  `Compacte`), with Jauges first to match the Dashboard and System
+  selectors. Same `LayoutGrid` / `BarChart3` icon pair across the
+  three pages for muscle-memory consistency.
+- **System Temperatures hero card is no longer tinted.** The outer
+  hero frame on the Températures panel now uses a static
+  `surface-alt` background with a plain border. CPU/GPU sub-frames
+  inside still carry the temperature-driven accent; removing the
+  outer wash keeps the panel calm at high temperatures.
+- **System Temperatures heatmap label renamed** from
+  `Carte thermique` / `Thermal map` to `Carte mère` / `Motherboard`,
+  since the heatmap strip is built from motherboard hwmon sensors.
+- **System PCIe Connectivity panel compacted.** Title, link
+  bandwidth (with / max), PCI slot id and PCIe gen × width are now
+  laid out on a single wrap row instead of a 3-section stack —
+  saves ~40 px of vertical space per GPU card.
 
 ### Changed (breaking for export consumers)
 - **Prometheus**: every series now carries a `host="<id>"` label
