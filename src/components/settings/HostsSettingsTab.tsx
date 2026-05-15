@@ -129,13 +129,7 @@ function HostRow({
         <StatusPill status={status} lastSeenEpoch={null} />
       </td>
       <td className="px-4 py-3 font-mono text-xs">
-        {isLocal ? (
-          <span title={t('hosts.hub_version_help')}>v{HUB_VERSION}</span>
-        ) : host.agent_version ? (
-          <span title={t('hosts.agent_version_help')}>v{host.agent_version}</span>
-        ) : (
-          <span style={{ color: 'var(--gv-text-dim)' }}>{host.kind}</span>
-        )}
+        <VersionCell isLocal={isLocal} agentVersion={host.agent_version} kind={host.kind} t={t} />
       </td>
       <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--gv-text-muted)' }}>
         {lastSeenLabel}
@@ -162,6 +156,22 @@ function HostRow({
 // the hub collects via local nvidia-smi). Helps the admin see at a
 // glance which row they can't enroll/rotate/delete, and matches the
 // "This host" wording used elsewhere.
+// Version cell content. Extracted so the row renderer doesn't carry a
+// nested ternary (SonarCloud S3358) — three mutually exclusive cases
+// (local hub / agent with reported version / agent without one) read
+// more clearly as guarded early returns.
+function VersionCell({
+  isLocal, agentVersion, kind, t,
+}: Readonly<{ isLocal: boolean; agentVersion: string | null; kind: string; t: (key: string) => string }>) {
+  if (isLocal) {
+    return <span title={t('hosts.hub_version_help')}>v{HUB_VERSION}</span>;
+  }
+  if (agentVersion) {
+    return <span title={t('hosts.agent_version_help')}>v{agentVersion}</span>;
+  }
+  return <span style={{ color: 'var(--gv-text-dim)' }}>{kind}</span>;
+}
+
 function HubBadge({ t }: Readonly<{ t: (key: string) => string }>) {
   return (
     <span

@@ -13,7 +13,6 @@
 //      into agentProcessStore.
 //   5. Heartbeats hosts.last_seen so the watchdog keeps the host online.
 
-import { randomInt } from 'node:crypto';
 import { HostsRepo } from '../database/models/Host.js';
 import { GpuDeviceRepository } from '../database/models/GpuMetric.js';
 import { metricsBus } from './_metricsBus.js';
@@ -22,6 +21,7 @@ import { nowTimestamp, type GpuSample } from './_nvidiaParsers.js';
 import type { GpuProcess } from './processCollector.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { rand01, sweep } from './_mockHelpers.js';
 
 export const MOCK_AGENT_HOST_ID = 'mock-agent-1';
 
@@ -60,16 +60,6 @@ const FAKE_PROCESSES: ReadonlyArray<{ pid: number; name: string; gpu: number }> 
   { pid: 9002, name: 'jupyter-kernel', gpu: 0 },
   { pid: 9003, name: 'ray-worker', gpu: 0 },
 ];
-
-function rand01(): number {
-  return randomInt(0, 1_000_000) / 1_000_000;
-}
-
-function sweep(min: number, max: number, periodSec: number, phase: number): number {
-  const t = Date.now() / 1000;
-  const s = Math.sin((t / periodSec) * 2 * Math.PI + phase);
-  return min + ((s + 1) / 2) * (max - min);
-}
 
 function buildSamples(): GpuSample[] {
   const { iso, epoch } = nowTimestamp();

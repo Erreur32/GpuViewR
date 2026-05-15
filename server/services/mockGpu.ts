@@ -1,17 +1,9 @@
 // Synthetic GPU + process data for dev hosts without an NVIDIA GPU.
 // Activated by MOCK_GPU=1 (see config.mockGpu). Two fake devices with
 // fixed UUIDs so processCollector can reuse the UUID→index mapping.
-import { randomInt } from 'node:crypto';
 import type { GpuSample } from './gpuCollector.js';
 import type { GpuProcess } from './processCollector.js';
-
-// CSPRNG-backed [0, 1) float — used purely for cosmetic mock jitter,
-// but routed through node:crypto so SonarCloud's S2245 hotspot stays
-// clean without per-call NOSONAR comments. randomInt is plenty fast at
-// our 1Hz tick (sub-microsecond per call).
-function rand01(): number {
-  return randomInt(0, 1_000_000) / 1_000_000;
-}
+import { rand01, sweep, wave } from './_mockHelpers.js';
 
 interface FakeDevice {
   index: number;
@@ -71,22 +63,6 @@ function nowTimestamp(): { iso: string; epoch: number } {
   const pad = (n: number): string => String(n).padStart(2, '0');
   const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   return { iso, epoch: Math.floor(d.getTime() / 1000) };
-}
-
-// Slow sinusoid + noise → smooth, plausible curves on the dashboard.
-function wave(amp: number, base: number, periodSec: number, phase: number, jitter: number): number {
-  const t = Date.now() / 1000;
-  const s = Math.sin((t / periodSec) * 2 * Math.PI + phase);
-  const n = (rand01() - 0.5) * 2 * jitter;
-  return base + amp * s + n;
-}
-
-// Sweep cleanly between [min, max] without overshoot — useful for dev
-// previews so every gauge / bar visits both extremes during a session.
-function sweep(min: number, max: number, periodSec: number, phase: number): number {
-  const t = Date.now() / 1000;
-  const s = Math.sin((t / periodSec) * 2 * Math.PI + phase);
-  return min + ((s + 1) / 2) * (max - min);
 }
 
 // PCI-SIG per-lane bandwidth (GB/s decimal) — must match the table on
