@@ -17,6 +17,7 @@ import { mockAgentSeeder } from './services/mockAgentSeeder.js';
 import { setupGpuWebSocket } from './services/gpuStreamWS.js';
 import { setupAgentIngestWS } from './services/agentIngestWS.js';
 import { startHostsWatchdog } from './services/hostsWatchdog.js';
+import { startAgentMetricsPersistor, stopAgentMetricsPersistor } from './services/agentMetricsPersistor.js';
 import { alertService } from './services/alertService.js';
 import { updateService } from './services/updateService.js';
 import { exportService } from './services/exportService.js';
@@ -146,6 +147,10 @@ async function bootstrap(): Promise<void> {
   mockAgentSeeder.start();
   startRetentionJob();
   startHostsWatchdog();
+  // Persists samples coming from remote agents (gpuCollector handles
+  // the local host inline). Without this, /api/gpu/devices returns
+  // an empty array for remote hosts even though the WS pipe is fine.
+  startAgentMetricsPersistor();
 
   server.listen(config.port, '0.0.0.0', () => {
     printBoot();
@@ -155,6 +160,7 @@ async function bootstrap(): Promise<void> {
     logger.info('boot', `Received ${signal}, shutting down...`);
     gpuCollector.stop();
     mockAgentSeeder.stop();
+    stopAgentMetricsPersistor();
     exportService.shutdown();
     server.close(() => {
       closeDatabase();
