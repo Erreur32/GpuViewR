@@ -16,7 +16,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/gpuviewr
 
 jobs:
   build-and-push:
@@ -24,6 +23,23 @@ jobs:
     permissions:
       contents: read
       packages: write
+
+    # Matrix builds the hub image and the agent image in parallel.
+    # Both share the project root as build context (the agent
+    # Dockerfile pulls in server/services/_*Parsers.ts from /server/
+    # to keep parser logic single-sourced). Independent cache scopes
+    # so a hub-only change doesn't invalidate the agent cache and
+    # vice versa.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: gpuviewr
+            dockerfile: ./Dockerfile
+            cache_scope: hub
+          - image: gpuviewr-agent
+            dockerfile: ./agent/Dockerfile
+            cache_scope: agent
 
     steps:
       - name: Checkout repository
@@ -65,7 +81,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
@@ -79,10 +95,10 @@ jobs:
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
-          file: ./Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}
           platforms: linux/amd64,linux/arm64
