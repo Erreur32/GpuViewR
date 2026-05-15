@@ -54,11 +54,15 @@ WORKDIR /app
 
 # apt-get upgrade picks up the latest OS security patches even when
 # the parent tag hasn't been republished — same pattern as the hub
-# Dockerfile. python3-minimal is the smallest CPython that can host
-# rocm-smi's script without dragging in pip/distutils/setuptools.
+# Dockerfile. We need full python3 (not python3-minimal) because
+# rocm-smi imports json/argparse/re/subprocess and friends from the
+# stdlib — python3-minimal ships a barebones interpreter for apt
+# bootstrap scripts and leaves the whole standard library out.
+# `apt show python3` pulls libpython3.11-stdlib transitively; ~30 MB
+# more than the minimal variant for ~the entire stdlib.
 RUN apt-get update \
   && apt-get upgrade -y \
-  && apt-get install -y --no-install-recommends python3-minimal \
+  && apt-get install -y --no-install-recommends python3 \
   && rm -rf /var/lib/apt/lists/* \
   && chown -R node:node /app
 
