@@ -370,12 +370,17 @@ rocm-smi --showid --json
 docker compose -f docker-compose.agent.amd.yml up -d
 ```
 
-The compose file bind-mounts `rocm-smi` from the host (no separate
-ROCm-flavored image to publish) and uses `/dev/kfd` + `/dev/dri`
-instead of the NVIDIA Container Toolkit. If you see
-`Fail to open libdrm_amdgpu.so` on startup, install `libdrm-amdgpu1`
-to silence it — the warning is cosmetic, JSON output is valid either
-way.
+The compose file bind-mounts the host's `/opt/rocm` tree (rocm-smi
+is a Python script, so we mount the parent dir to get the
+interpreter entry point AND its native libraries in one shot) and
+uses `/dev/kfd` + `/dev/dri` instead of the NVIDIA Container
+Toolkit. The agent image ships `python3-minimal` so the script can
+run inside the container. Check `getent group video render` on your
+host — if `render` isn't GID 109 (ROCm installers sometimes shift it
+to 992), set `VIDEO_GID` and `RENDER_GID` in `.env` accordingly. If
+you see `Fail to open libdrm_amdgpu.so` on startup, install
+`libdrm-amdgpu1` to silence it — the warning is cosmetic, JSON
+output is valid either way.
 
 Multi-GPU AMD boxes currently attribute all processes to `card0`
 (single-card limitation, lifted in a follow-up). NVIDIA agents are

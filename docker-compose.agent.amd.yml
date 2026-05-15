@@ -12,26 +12,26 @@
 #     amdgpu through libdrm.
 #   - group_add: ["video", "render"] gives the container user access
 #     to the DRI devices without needing privileged mode.
-#   - rocm-smi is BIND-MOUNTED from the host. This keeps the image
-#     identical to the NVIDIA variant (no separate ROCm image to
-#     publish) and uses whatever ROCm version is installed on the box.
+#   - The whole /opt/rocm tree is bind-mounted read-only from the
+#     host. rocm-smi is a Python script (a symlink to
+#     /opt/rocm/libexec/rocm_smi/rocm_smi.py) so we need both the
+#     entry point AND its libraries — mounting the parent dir
+#     covers everything in one shot.
+#   - The agent image now ships python3-minimal so the script can
+#     actually run; distroless was a no-go for the AMD path.
 #
 # Prerequisites on the remote host:
 #   1. AMD GPU + amdgpu kernel driver.
-#   2. rocm-smi installed (`apt install rocm-smi` on Debian/Ubuntu,
-#      or whatever package ships /opt/rocm/bin/rocm-smi).
+#   2. ROCm installed at /opt/rocm (the standard location for AMD's
+#      .deb packages on Debian/Ubuntu).
 #   3. `rocm-smi --version` works as the user running docker.
-#   4. (Optional but recommended) `apt install libdrm-amdgpu1` to
-#      silence the "Fail to open libdrm_amdgpu.so" startup warning.
-#      Stdout JSON is valid either way; the warning is cosmetic.
-#
-# Sanity check before enrolling:
-#   docker run --rm \
-#     --device=/dev/kfd --device=/dev/dri \
-#     --group-add video --group-add render \
-#     -v $(which rocm-smi):/usr/local/bin/rocm-smi:ro \
-#     -v /opt/rocm:/opt/rocm:ro \
-#     ghcr.io/erreur32/gpuviewr-agent:latest rocm-smi --showid --json
+#   4. Group IDs for `video` and `render` known on this host —
+#      check with `getent group video render`. Defaults below (44
+#      and 109) match Debian; ROCm-installed boxes often shift
+#      render to 992. Override via VIDEO_GID / RENDER_GID in .env.
+#   5. (Optional) `apt install libdrm-amdgpu1` silences the
+#      "Fail to open libdrm_amdgpu.so" startup warning. Cosmetic —
+#      JSON output is valid either way.
 # ===========================================
 
 services:
@@ -44,15 +44,19 @@ services:
       - /dev/kfd
       - /dev/dri
 
+    # Numeric GIDs because the agent runs from a Debian-slim image
+    # where `video`/`render` are not defined inside the container —
+    # group_add resolves names against the container's /etc/group,
+    # not the host's. Override in .env if `getent group video render`
+    # shows different numbers on your box.
     group_add:
-      - video
-      - render
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-109}"
 
-    # rocm-smi + the /opt/rocm tree are mounted from the host so the
-    # agent image stays vendor-neutral. Adjust paths if your distro
-    # installs ROCm elsewhere.
+    # /opt/rocm is mounted read-only so rocm-smi (Python script +
+    # native libraries) runs unchanged inside the container.
+    # Adjust the source path if your distro installs ROCm elsewhere.
     volumes:
-      - /usr/bin/rocm-smi:/usr/local/bin/rocm-smi:ro
       - /opt/rocm:/opt/rocm:ro
       - /proc:/host/proc:ro
 
@@ -66,7 +70,7 @@ services:
       # if nvidia-smi happened to be present. Set to 'auto' to let the
       # agent probe both; 'auto' prefers nvidia when both are found.
       GPU_VENDOR: amd
-      ROCM_SMI_PATH: /usr/local/bin/rocm-smi
+      ROCM_SMI_PATH: /opt/rocm/bin/rocm-smi
       HOST_PROC: /host/proc
 
       # Optional — sensible defaults.

@@ -37,16 +37,36 @@ RUN npm prune --production && npm cache clean --force
 
 
 # ---------- Stage 2: runtime ----------
-# distroless ships no smi binary — nvidia-smi comes from the host via
-# the NVIDIA Container Toolkit (`docker run --gpus all`), and rocm-smi
-# via a bind-mount (see docker-compose.agent.amd.yml).
-FROM gcr.io/distroless/nodejs22-debian12@sha256:8a3e96fe3345b5d83ecec2066e7c498139a02a6d1214e4f6c39f9ce359f3f5bc
+# Node 22 on Debian slim. We can't use distroless here because the
+# agent invokes rocm-smi when running on AMD hosts, and rocm-smi is
+# a Python script (#!/usr/bin/env python3 — symlink to rocm_smi.py
+# under /opt/rocm/libexec/). Distroless has no interpreter to host it.
+# python3-minimal is ~30 MB and gives us exactly what the script needs.
+# Both vendor variants stay served by the same image: NVIDIA agents
+# never reach the Python code path and pay nothing for it at runtime.
+#
+# nvidia-smi still comes from the host via the NVIDIA Container Toolkit
+# (`docker run --gpus all`); rocm-smi via a `/opt/rocm` bind-mount —
+# see docker-compose.agent.amd.yml.
+FROM node:22-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e
 
 WORKDIR /app
 
-COPY --from=builder /build/agent/dist/agent.mjs ./agent.mjs
-COPY --from=builder /build/agent/node_modules ./node_modules
+# apt-get upgrade picks up the latest OS security patches even when
+# the parent tag hasn't been republished — same pattern as the hub
+# Dockerfile. python3-minimal is the smallest CPython that can host
+# rocm-smi's script without dragging in pip/distutils/setuptools.
+RUN apt-get update \
+  && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends python3-minimal \
+  && rm -rf /var/lib/apt/lists/* \
+  && chown -R node:node /app
+
+COPY --chown=node:node --from=builder /build/agent/dist/agent.mjs ./agent.mjs
+COPY --chown=node:node --from=builder /build/agent/node_modules ./node_modules
 
 ENV NODE_ENV=production
 
-CMD ["agent.mjs"]
+USER node
+
+CMD ["node", "agent.mjs"]
