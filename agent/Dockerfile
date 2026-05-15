@@ -67,11 +67,12 @@ WORKDIR /app
 # rocm-smi imports json/argparse/re/subprocess and friends from the
 # stdlib — python3-minimal ships a barebones interpreter for apt
 # bootstrap scripts and leaves the whole standard library out.
-# `apt show python3` pulls libpython3.11-stdlib transitively; ~30 MB
-# more than the minimal variant for ~the entire stdlib.
+# libdrm-amdgpu1 silences the "Fail to open libdrm_amdgpu.so" warning
+# rocm-smi prints on every invocation — purely cosmetic since the
+# script falls through to sysfs, but it pollutes the agent logs.
 RUN apt-get update \
   && apt-get upgrade -y \
-  && apt-get install -y --no-install-recommends python3 tzdata \
+  && apt-get install -y --no-install-recommends python3 tzdata libdrm-amdgpu1 \
   && rm -rf /var/lib/apt/lists/* \
   && chown -R node:node /app
 
