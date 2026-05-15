@@ -6,7 +6,7 @@
 #   docker build -f agent/Dockerfile -t gpuviewr-agent .
 
 # ---------- Stage 1: bundle ----------
-FROM node:22-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e AS builder
+FROM node:22-trixie-slim@sha256:02684a61c3e87ae3e9ec7ef98e312a6ec35483644e204e80fc053648c3e87d75 AS builder
 
 WORKDIR /build
 
@@ -37,18 +37,27 @@ RUN npm prune --production && npm cache clean --force
 
 
 # ---------- Stage 2: runtime ----------
-# Node 22 on Debian slim. We can't use distroless here because the
-# agent invokes rocm-smi when running on AMD hosts, and rocm-smi is
-# a Python script (#!/usr/bin/env python3 — symlink to rocm_smi.py
-# under /opt/rocm/libexec/). Distroless has no interpreter to host it.
-# python3-minimal is ~30 MB and gives us exactly what the script needs.
+# Node 22 on Debian trixie (glibc 2.38). We can't use distroless here
+# because the agent invokes rocm-smi when running on AMD hosts, and
+# rocm-smi is a Python script (#!/usr/bin/env python3 — symlink to
+# rocm_smi.py under /opt/rocm/libexec/). Distroless has no interpreter
+# to host it. Full python3 (~+30 MB over python3-minimal) gives us the
+# stdlib it needs (json/argparse/subprocess/…).
+#
+# Why trixie and not bookworm: rocm-smi's native lib librocm_smi64.so.1
+# is compiled on the host against the host's glibc. Modern ROCm builds
+# require GLIBC_2.38 / GLIBCXX_3.4.32, which bookworm (glibc 2.36)
+# can't satisfy. The container loader rejects the bind-mounted lib
+# with "version 'GLIBC_2.38' not found" — rocm-smi then exits 0 with
+# empty stdout and the agent silently sends nothing. Trixie matches
+# Debian 13 hosts where ROCm currently ships.
+#
 # Both vendor variants stay served by the same image: NVIDIA agents
 # never reach the Python code path and pay nothing for it at runtime.
-#
 # nvidia-smi still comes from the host via the NVIDIA Container Toolkit
 # (`docker run --gpus all`); rocm-smi via a `/opt/rocm` bind-mount —
 # see docker-compose.agent.amd.yml.
-FROM node:22-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e
+FROM node:22-trixie-slim@sha256:02684a61c3e87ae3e9ec7ef98e312a6ec35483644e204e80fc053648c3e87d75
 
 WORKDIR /app
 
