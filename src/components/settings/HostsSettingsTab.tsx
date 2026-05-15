@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, KeyRound, Trash2, Copy, AlertTriangle, X, Terminal, Container, Server } from 'lucide-react';
-
-// Same constant the footer uses — Vite injects the package.json version
-// at build time, so this stays in sync with what the hub actually runs.
-const HUB_VERSION = __APP_VERSION__;
+import { Plus, KeyRound, Trash2, Terminal, Container, Server } from 'lucide-react';
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
 import { copyText } from '../../lib/clipboard';
 import StatusPill from '../fleet/StatusPill';
 import EnrollHostModal from './EnrollHostModal';
+import { ModalShell, WarningBanner, CopyValueBlock } from './_modalParts';
+
+// Same constant the footer uses — Vite injects the package.json version
+// at build time, so this stays in sync with what the hub actually runs.
+const HUB_VERSION = __APP_VERSION__;
 
 export default function HostsSettingsTab() {
   const { t } = useTranslation();
@@ -241,88 +242,39 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label={t('common.close')}
-        className="absolute inset-0 cursor-default"
-        style={{ background: 'rgba(0,0,0,0.7)' }}
-        onClick={onClose}
-      />
-      <div className="card w-full max-w-lg p-6 flex flex-col gap-4 relative">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold">{t('hosts.rotate_title', { label: host.label })}</h2>
-            <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>
-              {newToken ? t('hosts.rotate_done_hint') : t('hosts.rotate_intro')}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg inline-flex items-center justify-center"
-            style={{ color: 'var(--gv-text-muted)', background: 'var(--gv-surface-alt)' }}
-            aria-label={t('common.close')}
-          >
-            <X size={16} />
+    <ModalShell
+      title={t('hosts.rotate_title', { label: host.label })}
+      hint={newToken ? t('hosts.rotate_done_hint') : t('hosts.rotate_intro')}
+      onClose={onClose}
+      maxWidth="max-w-lg"
+    >
+      <WarningBanner>{t('hosts.rotate_warning')}</WarningBanner>
+
+      {!newToken && (
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn-ghost">{t('common.cancel')}</button>
+          <button type="button" onClick={doRotate} disabled={rotating} className="btn-danger">
+            {t('hosts.rotate_confirm')}
           </button>
         </div>
+      )}
 
-        <div
-          className="rounded-xl p-3 flex items-start gap-2 text-sm"
-          style={{
-            background: 'color-mix(in srgb, var(--gv-warn) 12%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--gv-warn) 35%, transparent)',
-            color: 'var(--gv-warn)',
-          }}
-        >
-          <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-          <span>{t('hosts.rotate_warning')}</span>
-        </div>
-
-        {!newToken && (
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="btn-ghost">{t('common.cancel')}</button>
-            <button type="button" onClick={doRotate} disabled={rotating} className="btn-danger">
-              {t('hosts.rotate_confirm')}
-            </button>
+      {newToken && (
+        <>
+          <CopyValueBlock
+            label={t('hosts.new_token')}
+            value={newToken}
+            onCopy={copy}
+            copied={copied}
+            kind="monoWrap"
+            sensitive
+          />
+          <div className="flex justify-end">
+            <button type="button" onClick={onClose} className="btn-primary">{t('common.done')}</button>
           </div>
-        )}
-
-        {newToken && (
-          <>
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>
-                  {t('hosts.new_token')}
-                </span>
-                <button
-                  type="button"
-                  onClick={copy}
-                  className="text-xs inline-flex items-center gap-1.5"
-                  style={{ color: copied ? 'var(--gv-ok)' : 'var(--gv-text-muted)' }}
-                >
-                  <Copy size={12} /> {copied ? t('common.copied') : t('common.copy')}
-                </button>
-              </div>
-              <div
-                className="rounded-xl px-3 py-2.5 text-xs font-mono break-all"
-                style={{
-                  background: 'var(--gv-surface-alt)',
-                  border: '1px solid var(--gv-border)',
-                  color: 'var(--gv-warn)',
-                }}
-              >
-                {newToken}
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <button type="button" onClick={onClose} className="btn-primary">{t('common.done')}</button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+        </>
+      )}
+    </ModalShell>
   );
 }
 
@@ -365,105 +317,56 @@ function DeleteHostModal({ host, onClose }: Readonly<{ host: HostRecord; onClose
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label={t('common.close')}
-        className="absolute inset-0 cursor-default"
-        style={{ background: 'rgba(0,0,0,0.7)' }}
-        onClick={onClose}
-      />
-      <div className="card w-full max-w-xl p-6 flex flex-col gap-4 relative">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold">{t('hosts.delete_title', { label: host.label })}</h2>
-            <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>
-              {t('hosts.delete_intro')}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg inline-flex items-center justify-center"
-            style={{ color: 'var(--gv-text-muted)', background: 'var(--gv-surface-alt)' }}
-            aria-label={t('common.close')}
-          >
-            <X size={16} />
-          </button>
-        </div>
+    <ModalShell
+      title={t('hosts.delete_title', { label: host.label })}
+      hint={t('hosts.delete_intro')}
+      onClose={onClose}
+    >
+      <WarningBanner>{t('hosts.delete_warning_orphan')}</WarningBanner>
 
-        <div
-          className="rounded-xl p-3 flex items-start gap-2 text-sm"
-          style={{
-            background: 'color-mix(in srgb, var(--gv-warn) 12%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--gv-warn) 35%, transparent)',
-            color: 'var(--gv-warn)',
-          }}
+      <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>
+        {t('hosts.delete_uninstall_hint')}
+      </p>
+
+      <div className="seg" role="toolbar" aria-label={t('hosts.install_mode_label')}>
+        <button
+          type="button"
+          className="seg-btn inline-flex items-center gap-1.5"
+          aria-pressed={mode === 'curl'}
+          onClick={() => setMode('curl')}
         >
-          <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-          <span>{t('hosts.delete_warning_orphan')}</span>
-        </div>
-
-        <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>
-          {t('hosts.delete_uninstall_hint')}
-        </p>
-
-        <div className="seg" role="toolbar" aria-label={t('hosts.install_mode_label')}>
-          <button
-            type="button"
-            className="seg-btn inline-flex items-center gap-1.5"
-            aria-pressed={mode === 'curl'}
-            onClick={() => setMode('curl')}
-          >
-            <Terminal size={14} /> {t('hosts.install_mode_curl')}
-          </button>
-          <button
-            type="button"
-            className="seg-btn inline-flex items-center gap-1.5"
-            aria-pressed={mode === 'docker'}
-            onClick={() => setMode('docker')}
-          >
-            <Container size={14} /> {t('hosts.install_mode_docker')}
-          </button>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>
-              {t('hosts.uninstall_cmd')}
-            </span>
-            <button
-              type="button"
-              onClick={copy}
-              className="text-xs inline-flex items-center gap-1.5"
-              style={{ color: copied ? 'var(--gv-ok)' : 'var(--gv-text-muted)' }}
-            >
-              <Copy size={12} /> {copied ? t('common.copied') : t('common.copy')}
-            </button>
-          </div>
-          <pre
-            className="rounded-xl p-3 text-xs font-mono overflow-x-auto"
-            style={{
-              background: 'var(--gv-surface-alt)',
-              border: '1px solid var(--gv-border)',
-              color: 'var(--gv-text)',
-            }}
-          >{activeCmd}</pre>
-        </div>
-
-        <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
-          {t('hosts.delete_history_kept')}
-        </p>
-
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={deleting} className="btn-ghost">
-            {t('common.cancel')}
-          </button>
-          <button type="button" onClick={doDelete} disabled={deleting} className="btn-danger">
-            <Trash2 size={14} /> {t('hosts.delete_confirm')}
-          </button>
-        </div>
+          <Terminal size={14} /> {t('hosts.install_mode_curl')}
+        </button>
+        <button
+          type="button"
+          className="seg-btn inline-flex items-center gap-1.5"
+          aria-pressed={mode === 'docker'}
+          onClick={() => setMode('docker')}
+        >
+          <Container size={14} /> {t('hosts.install_mode_docker')}
+        </button>
       </div>
-    </div>
+
+      <CopyValueBlock
+        label={t('hosts.uninstall_cmd')}
+        value={activeCmd}
+        onCopy={copy}
+        copied={copied}
+        kind="pre"
+      />
+
+      <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+        {t('hosts.delete_history_kept')}
+      </p>
+
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onClose} disabled={deleting} className="btn-ghost">
+          {t('common.cancel')}
+        </button>
+        <button type="button" onClick={doDelete} disabled={deleting} className="btn-danger">
+          <Trash2 size={14} /> {t('hosts.delete_confirm')}
+        </button>
+      </div>
+    </ModalShell>
   );
 }
