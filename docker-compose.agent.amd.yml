@@ -78,6 +78,16 @@ services:
       FEATURES: ${FEATURES:-gpu,system,temps,processes}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       RECONNECT_MAX_MS: ${RECONNECT_MAX_MS:-30000}
-      # AGENT_BUFFER_PERSIST: 0       # ring-only by default
-      # TLS_INSECURE: 0               # 1 only in dev against self-signed
-      # AGENT_LABEL: jarvis-amd       # suggested label sent in the hello frame
+
+      # Timezone for log timestamps. Defaults to UTC; override in
+      # .env (e.g. TZ=Europe/Paris) — requires tzdata in the image,
+      # which the agent Dockerfile installs since v0.3.1.
+      TZ: ${TZ:-UTC}
+
+      # 1 only in dev / against a hub with a self-signed certificate
+      # on a private LAN hostname. Never in production — defeats the
+      # point of wss://.
+      TLS_INSECURE: ${TLS_INSECURE:-0}
+
+      # AGENT_BUFFER_PERSIST: ${AGENT_BUFFER_PERSIST:-0}  # ring-only by default
+      # AGENT_LABEL: ${AGENT_LABEL:-}                     # label sent in the hello frame

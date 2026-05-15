@@ -62,7 +62,7 @@ WORKDIR /app
 # more than the minimal variant for ~the entire stdlib.
 RUN apt-get update \
   && apt-get upgrade -y \
-  && apt-get install -y --no-install-recommends python3 \
+  && apt-get install -y --no-install-recommends python3 tzdata \
   && rm -rf /var/lib/apt/lists/* \
   && chown -R node:node /app
 
