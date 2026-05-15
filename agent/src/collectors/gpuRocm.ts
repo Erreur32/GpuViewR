@@ -47,6 +47,7 @@ export function createRocmGpuCollector(opts: GpuCollectorOptions): GpuCollectorH
   let timer: NodeJS.Timeout | null = null;
   let rocmSmiAvailable: boolean | null = null;
   let firstStderrLogged = false;
+  let emptyOutputWarned = false;
 
   function checkRocmSmi(): boolean {
     if (rocmSmiAvailable !== null) return rocmSmiAvailable;
@@ -80,7 +81,21 @@ export function createRocmGpuCollector(opts: GpuCollectorOptions): GpuCollectorH
       }
       const info = parseRocmInfo(stdout);
       const samples = mapRocmInfoToSamples(info);
-      if (samples.length > 0) opts.onSample(samples);
+      if (samples.length > 0) {
+        opts.onSample(samples);
+        return;
+      }
+      // rocm-smi exits 0 even when it fails to load librocm_smi64.so —
+      // the script prints "Unable to load the rocm_smi library …" on
+      // stderr but the exit code stays 0 and stdout is empty. Without
+      // this log line the agent appears to be healthy ("ROCm collector
+      // started") while silently sending nothing to the hub. Worth one
+      // warn so the user can grep their logs and fix LD_LIBRARY_PATH.
+      if (!emptyOutputWarned) {
+        emptyOutputWarned = true;
+        const hint = stderr.trim().split('\n')[0] || '(no stderr)';
+        logger.warn('gpu', `rocm-smi returned 0 cards (stdout empty); stderr: ${hint}`);
+      }
     });
   }
 

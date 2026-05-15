@@ -374,8 +374,12 @@ The compose file bind-mounts the host's `/opt/rocm` tree (rocm-smi
 is a Python script, so we mount the parent dir to get the
 interpreter entry point AND its native libraries in one shot) and
 uses `/dev/kfd` + `/dev/dri` instead of the NVIDIA Container
-Toolkit. The agent image ships `python3-minimal` so the script can
-run inside the container. Check `getent group video render` on your
+Toolkit. The agent image ships `python3` so the script can run
+inside the container. `LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/lib64`
+is set in the compose env so the ctypes loader finds
+`librocm_smi64.so.1` — without it rocm-smi prints an error to
+stderr but **exits 0 with empty stdout**, and the agent silently
+ships no samples. The compose file does this for you. Check `getent group video render` on your
 host — if `render` isn't GID 109 (ROCm installers sometimes shift it
 to 992), set `VIDEO_GID` and `RENDER_GID` in `.env` accordingly. If
 you see `Fail to open libdrm_amdgpu.so` on startup, install

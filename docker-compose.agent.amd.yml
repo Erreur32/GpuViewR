@@ -73,6 +73,14 @@ services:
       ROCM_SMI_PATH: /opt/rocm/bin/rocm-smi
       HOST_PROC: /host/proc
 
+      # Critical for AMD: rocm-smi's Python script loads librocm_smi64.so.1
+      # via ctypes. On the host, ROCm packages drop /etc/ld.so.conf.d/rocm.conf
+      # so ldconfig finds it under /opt/rocm/lib — but that config doesn't
+      # exist inside the container. Without LD_LIBRARY_PATH the script prints
+      # "Unable to load the rocm_smi library" on stderr, exits 0 with empty
+      # stdout (yes, exit 0), and the agent silently sends no samples.
+      LD_LIBRARY_PATH: /opt/rocm/lib:/opt/rocm/lib64
+
       # Optional — sensible defaults.
       TICK_MS: ${TICK_MS:-1000}
       FEATURES: ${FEATURES:-gpu,system,temps,processes}
