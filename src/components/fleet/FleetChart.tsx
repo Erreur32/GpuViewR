@@ -213,27 +213,7 @@ export default function FleetChart() {
   const [historyByMetric, setHistoryByMetric] = useState<Record<Metric, { times: number[]; values: number[] }[]> | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Filter out hosts that have NO entry in seriesByHost — typically the
-  // local hub row when the sidecar agent isn't deployed. Without this,
-  // the empty host occupies index 0 (= solid dash pattern) and renders
-  // as an invisible line, while its chip still shows up in the legend
-  // — confusing because the user sees "2 hosts" but only 1 curve. Once
-  // filtered, the remaining hosts re-index from 0 so the first visible
-  // one gets the solid pattern, which is the cleanest single-host case.
-  //
-  // For non-live ranges (history fetch) we keep all hosts — a host may
-  // have no live samples right now but plenty of data in the requested
-  // window, and we don't want to drop it just because no WS frame has
-  // landed since the page mounted.
-  const seriesByHost = useGpuStore((s) => s.seriesByHost);
-  const hostsToPlot = useMemo<HostRecord[]>(() => {
-    const all = hosts.slice(0, 12);
-    if (range !== 'live') return all;
-    return all.filter((h) => {
-      const series = seriesByHost.get(h.id);
-      return series !== undefined && series.size > 0;
-    });
-  }, [hosts, seriesByHost, range]);
+  const hostsToPlot = useMemo<HostRecord[]>(() => hosts.slice(0, 12), [hosts]);
 
   useEffect(() => {
     if (range === 'live') {

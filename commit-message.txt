@@ -1,35 +1,44 @@
-release: v0.6.1 — agent version visibility + Hosts Type column
+release: v0.6.2 — manual "Update now" button for systemd agents
 
-Patch release that closes the "which agent version is actually
-running on this box" gap left by v0.6.0. The bundle now announces
-its real version in the hello frame and at boot, and the Hosts
-settings table grows a dedicated Type column so admins can spot
-Docker vs bare-metal agents at a glance.
-
-Fixed
-- AGENT_VERSION was a hardcoded '0.5.3' string in transport.ts, so
-  the v0.6.0 bundle still reported itself as 0.5.3 to the hub and in
-  any log line it printed. Esbuild now injects __AGENT_VERSION__
-  from agent/package.json at bundle time (same trick the frontend
-  uses with Vite + __APP_VERSION__). Dev/tsx runs fall back to
-  '0.0.0-dev' via a typeof guard.
-- agent/Dockerfile didn't COPY the new agent/scripts/ dir into the
-  builder stage; `npm run build` then failed with MODULE_NOT_FOUND
-  and the v0.6.0 GHCR push was rejected. One-line COPY fix.
+Patch release shipping the on-demand agent push. Auto-update only
+fires at WS reconnect, so a stably-connected agent could sit on an
+old version indefinitely. The new button lets admins force a push
+from the Hosts settings tab without SSHing into the target to
+`systemctl restart` first.
 
 Added
-- Boot banner first line shows version + install mode + node
-  version so it surfaces under `systemctl status` (last journal
-  lines) and `docker logs`:
-    "gpuviewr-agent v0.6.1 (docker) starting on node v22.x.x"
-- New "Type" column in Settings → Hosts: Docker / Binaire / Hub /
-  — (with icons + tooltips) based on the install_mode the agent
-  reports in its hello frame. Agents predating v0.5.3 render as a
-  muted "—" with a tooltip pointing at the upgrade. Local hub row
-  is tagged "Hub" since it has no remote agent.
+- POST /api/hosts/:id/force-update — bypasses the auto_update +
+  cooldown + version-compare gates and pushes the current hub
+  bundle over the live WS. Keeps the install_mode=systemd guard
+  (Docker bundles are baked into the image, can't be replaced from
+  inside) and a live-connection guard (409 if the agent isn't
+  currently connected).
+- agentIngestWS now keeps a Map<host_id, WebSocket> registry,
+  populated at connection time and cleared on close. Reconnects
+  evict the previous socket before storing the new one so a stale
+  WS can't accidentally receive a push.
+- hostsStore.forceUpdate(id) is the matching client action.
+- ForceUpdateButton in HostsSettingsTab (DownloadCloud icon, sits
+  before AutoUpdateToggle). Disabled with explanatory tooltip when
+  install_mode != systemd or the agent is offline.
+- i18n keys added to fr.json + en.json (force_update,
+  force_update_unsupported, force_update_offline, force_update_sent,
+  force_update_failed).
+
+Reverted
+- The FleetChart "filter hosts with no live samples" change is
+  rolled back. It hid legitimate hosts during the WS-warmup window
+  after page load. The original "index-0 host's solid line is
+  invisible when the local hub has no sidecar" UX issue stays open
+  and will be addressed in a follow-up patch.
+
+Why this matters
+- Without this button, the only way to push a new bundle was to
+  wait for an unplanned agent reconnect (network blip, hub restart,
+  systemd Restart=on-failure). On a stable mesh of agents that's
+  essentially never. The button gives admins immediate control
+  without losing the existing auto_update safety rails.
 
 Upgrade
-- Hub image: `docker compose pull && docker compose up -d` picks
-  up the new bundle.
-- Bare-metal agents: re-run the curl one-liner (or the auto-update
-  toggle if enabled) — the hub now serves the patched agent.mjs.
+- Hub: `docker compose pull && docker compose up -d`.
+- Agents: click the new DownloadCloud icon in Settings → Hosts.

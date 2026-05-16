@@ -5,6 +5,42 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-05-16
+
+### Added
+
+- **"Update now" button per host.** Settings → Hosts gains a
+  DownloadCloud icon button left of the auto-update toggle. Clicking
+  it asks the hub to push the current bundle over the live WS to
+  that agent immediately, bypassing the auto_update opt-in, the
+  5-minute cooldown, and the version-compare gate. Useful when an
+  agent has been stably connected for days and would otherwise
+  never see a new hub version (auto-update only fires at WS
+  reconnect, not on a periodic timer).
+- **Live agent WS registry** in `agentIngestWS`. Keyed by canonical
+  host_id, populated at connection time and cleared on close. Lets
+  the new `POST /api/hosts/:id/force-update` route push to a
+  specific agent without owning the connection's closure.
+- **`forceUpdate(id)` action** in the hosts client store, returning
+  the version + bundle size pushed.
+
+### Constraints
+
+- Force-update is **systemd-only**. Docker bundles are baked into a
+  read-only image layer and can't be replaced from inside the
+  container — the button is disabled with a tooltip pointing users
+  at `docker compose pull && up -d` instead.
+- The button is also disabled when the agent isn't currently
+  connected (no WS = nothing to push). Tooltip explains.
+
+### Reverted
+
+- The FleetChart "filter hosts with no live samples" change from
+  the pre-release branch is rolled back — it hid legitimate hosts
+  during the brief WS-warmup window after page load. The
+  pre-existing "index-0 host's solid line invisible when local hub
+  has no sidecar" UX issue is being tracked separately.
+
 ## [0.6.1] - 2026-05-16
 
 ### Fixed
