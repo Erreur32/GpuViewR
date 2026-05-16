@@ -50,10 +50,15 @@
 
 ### Prerequisites
 
-- A host with an **NVIDIA GPU** and the
-  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
-  installed (so containers can see `nvidia-smi`).
+- An **NVIDIA** host with the
+  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html),
+  **OR** an **AMD/ROCm** host (jump to [AMD / ROCm support](#amd--rocm-support)
+  for the AMD-specific compose recipe).
 - Docker Engine 23+ with the Compose plugin.
+
+The hub also runs vendor-neutral when no local GPU is present — it just
+serves the UI and waits for remote agents to enroll via Settings →
+Hosts.
 
 ### Step 1: create your `.env`
 
@@ -344,12 +349,13 @@ provided at the repo root for users who prefer compose, and a bare-metal
 systemd path (Node SEA binary) is documented in
 [`agent/README.md`](agent/README.md) for hosts without Docker.
 
-### AMD / ROCm support (experimental)
+### AMD / ROCm support
 
-The agent also runs on AMD GPUs via `rocm-smi` — handy for boxes built
-around RDNA3 / Strix Halo APUs (Radeon 8060S, RX 7900, etc.). The hub
-itself stays vendor-neutral: AMD and NVIDIA agents can sit side by side
-in the same fleet.
+GpuViewR speaks `rocm-smi` end-to-end since v0.4.0 — both the hub and
+the remote agent. RDNA3, Strix Halo APUs (Radeon 8060S), discrete
+Radeon (RX 7900, etc.) are first-class. AMD and NVIDIA hosts can sit
+side by side in the same fleet, and a single AMD box can run as a
+standalone hub without any agent dance.
 
 What works (parity with the NVIDIA agent):
 
@@ -369,17 +375,35 @@ Two AMD install paths:
 
 **(a) Single-host AMD — hub local, no agent** (since v0.4.0)
 
-The hub container can talk to `rocm-smi` directly on the host. Pick
-this when you have one AMD box and want the simplest possible setup:
+The hub container talks to `rocm-smi` directly on the host. Pick this
+when you have one AMD box and want the simplest possible setup. No
+`git clone` needed — pull the compose file from the tag and you're
+done:
 
 ```bash
-# 1. Pre-flight check — JSON should come out clean.
+# 1. Pre-flight on the host — JSON should come out clean.
 rocm-smi --showid --json
+getent group video render          # note the GIDs (Debian: 44 / 109)
 
-# 2. Drop docker-compose.amd.yml + .env, then:
-echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
+# 2. New folder, grab the compose, write the .env.
+mkdir gpuviewr && cd gpuviewr
+curl -fsSL -o docker-compose.amd.yml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.amd.yml
+cat > .env <<EOF
+JWT_SECRET=$(openssl rand -base64 32)
+DASHBOARD_PORT=7510
+TZ=Europe/Paris
+# Override if getent showed different GIDs:
+# VIDEO_GID=44
+# RENDER_GID=109
+EOF
+
+# 3. Up.
 docker compose -f docker-compose.amd.yml up -d
+docker compose -f docker-compose.amd.yml logs -f
 ```
+
+UI on `http://<your-box>:7510` — first user becomes admin.
 
 **(b) Remote AMD agent — hub elsewhere, agent on the AMD box**
 
@@ -390,8 +414,19 @@ etc.) and you want to enrol an AMD host into the existing fleet:
 # 1. Pre-flight check — JSON should come out clean.
 rocm-smi --showid --json
 
-# 2. Drop docker-compose.agent.amd.yml + .env (HUB_URL/HOST_ID/AGENT_TOKEN)
-#    next to each other, then:
+# 2. Pull the agent compose + a .env carrying HUB_URL / HOST_ID /
+#    AGENT_TOKEN (printed once by Settings → Hosts → + Add host on
+#    the hub).
+mkdir gpuviewr-agent && cd gpuviewr-agent
+curl -fsSL -o docker-compose.agent.amd.yml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.agent.amd.yml
+# Edit .env with the values copied from the hub UI:
+cat > .env <<EOF
+HUB_URL=wss://gpu.example.com/agent
+HOST_ID=<uuid-from-hub>
+AGENT_TOKEN=<token-from-hub>
+EOF
+
 docker compose -f docker-compose.agent.amd.yml up -d
 ```
 
