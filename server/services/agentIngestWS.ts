@@ -15,9 +15,11 @@
 import type { IncomingMessage } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcryptjs';
+import { config } from '../config.js';
 import { HostsRepo, LOCAL_HOST_ID, type HostRecord } from '../database/models/Host.js';
 import { metricsBus } from './_metricsBus.js';
 import { logger } from '../utils/logger.js';
+import { hostHostname } from '../utils/hostHostname.js';
 import type { GpuSample } from './parsers/nvidia.js';
 import { agentProcessStore } from './agentProcessStore.js';
 import type { GpuProcess } from './_processTypes.js';
@@ -55,14 +57,31 @@ interface ProcessFrame {
 type IncomingFrame = HelloFrame | SampleFrame | PingFrame | ProcessFrame | { type: string; [k: string]: unknown };
 
 /**
- * Look up the host that owns this token + claimed id. Bcrypt comparison
- * is intentionally per-handshake (typically once per agent restart);
- * if benchmarks show steady-state pain at scale we'll add an LRU here
- * per Docs/MULTI_HOST_PLAN.md §13.1.1.
+ * Look up the host that owns this token + claimed id.
+ *
+ * Two auth paths:
+ *  1. Bootstrap (v0.5+) — token equals config.localAgentBootstrap AND
+ *     claimedHostId === LOCAL_HOST_ID. Used by the sidecar agent in
+ *     the same docker compose stack. Auto-upserts the local host row
+ *     as kind='agent' if missing or migrates a legacy kind='local' row.
+ *     Constant-time compare to avoid leaking which envs are set.
+ *  2. Regular agent — bcrypt-verify against host.token_hash, enrolled
+ *     beforehand via Settings → Hosts. Bcrypt comparison is per-
+ *     handshake (typically once per agent restart); LRU cache lives
+ *     in MULTI_HOST_PLAN.md §13.1.1 if scale ever needs it.
  */
 export async function authenticateAgent(token: string, claimedHostId: string): Promise<HostRecord | null> {
   if (!token || !claimedHostId) return null;
-  if (claimedHostId === LOCAL_HOST_ID) return null;
+
+  // Bootstrap path: only valid for LOCAL_HOST_ID + when the hub has a
+  // LOCAL_AGENT_BOOTSTRAP configured (aggregator-only deployments
+  // leave it empty, which disables the sidecar enrollment entirely).
+  if (claimedHostId === LOCAL_HOST_ID) {
+    if (!config.localAgentBootstrap) return null;
+    if (!constantTimeEqual(token, config.localAgentBootstrap)) return null;
+    return upsertLocalSidecarHost();
+  }
+
   const host = HostsRepo.findById(claimedHostId);
   if (!host) return null;
   if (host.kind !== 'agent') return null;
@@ -70,6 +89,46 @@ export async function authenticateAgent(token: string, claimedHostId: string): P
   if (!host.token_hash) return null;
   const ok = await bcrypt.compare(token, host.token_hash);
   return ok ? host : null;
+}
+
+/** Ensures the local-host row exists as kind='agent' for the sidecar.
+ *  Handles three states:
+ *    - Row absent          → INSERT.
+ *    - kind='local' legacy → migrate kind to 'agent' (v0.4 → v0.5).
+ *    - kind='agent' already → no-op, return it.
+ *  Idempotent — called on every successful sidecar handshake. */
+function upsertLocalSidecarHost(): HostRecord {
+  const existing = HostsRepo.findById(LOCAL_HOST_ID);
+  const hostname = hostHostname();
+  if (!existing) {
+    HostsRepo.insert({
+      id: LOCAL_HOST_ID,
+      label: hostname,
+      hostname,
+      kind: 'agent',
+      token_hash: null,   // bootstrap token isn't bcrypt-hashed; auth happens via shared-secret compare
+      capabilities: JSON.stringify({ gpu: true, system: false, temps: false, processes: true }),
+      agent_version: null,
+      status: 'online',
+    });
+    logger.success('agent', `Auto-enrolled sidecar agent: ${LOCAL_HOST_ID} (label=${hostname})`);
+    return HostsRepo.findById(LOCAL_HOST_ID)!;
+  }
+  if (existing.kind !== 'agent') {
+    HostsRepo.update(LOCAL_HOST_ID, { ...existing, kind: 'agent' });
+    logger.info('agent', `Migrated legacy 'local' host (kind=${existing.kind}) to kind='agent' for v0.5 sidecar.`);
+    return HostsRepo.findById(LOCAL_HOST_ID)!;
+  }
+  return existing;
+}
+
+/** Constant-time string compare. Avoids leaking the bootstrap secret
+ *  through string-length / early-exit timing differences. */
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 function safeSend(ws: WebSocket, payload: unknown): void {

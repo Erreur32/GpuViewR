@@ -157,52 +157,41 @@ export const HostsRepo = {
   },
 
   /**
-   * Idempotent: insert the 'local' row if missing and (re)refresh
-   * its system hostname on every boot so the Hosts table never
-   * shows a stale value when the admin renames the box. Called
-   * from `runMigrations()` after the table is created.
+   * v0.5 boot maintenance for the local host row.
    *
-   * Label policy: defaults to the OS hostname (e.g. "debian-server")
-   * — pre-v0.4.0 installs that still carry the legacy 'local' label
-   * get a one-shot backfill so the UI stops showing the placeholder.
-   * A user-customised label (anything other than 'local') is kept
-   * intact so renaming via the Hosts UI sticks across restarts.
+   * - Refreshes hostname + auto-set labels (Docker container id, legacy
+   *   'local', or label equal to old hostname) on every boot.
+   * - Migrates a legacy kind='local' row (v0.4.x) to kind='agent'. The
+   *   sidecar agent in v0.5+ is just another agent on the wire, so the
+   *   kind column needs to reflect that for the watchdog + UI to treat
+   *   it consistently. Token_hash stays NULL — sidecar auth goes
+   *   through the bootstrap shared-secret path, not bcrypt.
+   * - No INSERT here anymore: the row is auto-created on the sidecar's
+   *   first handshake via upsertLocalSidecarHost in agentIngestWS.ts.
+   *   In aggregator-only mode (no sidecar), no row exists for 'local'
+   *   and that's correct.
+   *
+   * Called from runMigrations() after the table is created.
    */
   seedLocalIfMissing(db = getDatabase()): void {
     const sysHostname = hostHostname();
-    const defaultLabel = sysHostname ?? 'local';
-    const existing = db.prepare('SELECT id, label, hostname FROM hosts WHERE id = ?').get(LOCAL_HOST_ID) as
-      | { id: string; label: string; hostname: string | null }
+    const existing = db.prepare('SELECT id, label, hostname, kind FROM hosts WHERE id = ?').get(LOCAL_HOST_ID) as
+      | { id: string; label: string; hostname: string | null; kind: string }
       | undefined;
-    if (existing) {
-      // Refresh hostname unconditionally. Backfill label when it still
-      // looks auto-generated, never when it looks user-customised:
-      //   - 'local'                  : the legacy literal default.
-      //   - == previous hostname     : a previous boot auto-set the label
-      //                                from os.hostname() (which inside
-      //                                Docker returned the container id
-      //                                like '48f38404d5f8'). Now that we
-      //                                can read the real host hostname,
-      //                                propagate it to the label too.
-      //   - looks like a 12-hex docker container id : same case, but for
-      //                                installs where label and hostname
-      //                                got desynced somehow.
-      const looksLikeContainerId = /^[0-9a-f]{12}$/.test(existing.label);
-      const wasAutoSet = existing.label === 'local'
-        || existing.label === existing.hostname
-        || looksLikeContainerId;
-      db.prepare('UPDATE hosts SET hostname = ? WHERE id = ?').run(sysHostname, LOCAL_HOST_ID);
-      if (wasAutoSet && sysHostname && sysHostname !== existing.label) {
-        db.prepare('UPDATE hosts SET label = ? WHERE id = ?').run(sysHostname, LOCAL_HOST_ID);
-      }
-      return;
+    if (!existing) return;
+    // 1. Hostname refresh + label backfill (mirrors v0.4 behaviour)
+    const looksLikeContainerId = /^[0-9a-f]{12}$/.test(existing.label);
+    const wasAutoSet = existing.label === 'local'
+      || existing.label === existing.hostname
+      || looksLikeContainerId;
+    db.prepare('UPDATE hosts SET hostname = ? WHERE id = ?').run(sysHostname, LOCAL_HOST_ID);
+    if (wasAutoSet && sysHostname && sysHostname !== existing.label) {
+      db.prepare('UPDATE hosts SET label = ? WHERE id = ?').run(sysHostname, LOCAL_HOST_ID);
     }
-    const now = Math.floor(Date.now() / 1000);
-    db.prepare(
-      `INSERT INTO hosts
-       (id, label, hostname, kind, endpoint, token_hash, capabilities,
-        agent_version, protocol_ver, enrolled_at, last_seen, status)
-       VALUES (?, ?, ?, 'local', NULL, NULL, NULL, NULL, 1, ?, NULL, 'online')`,
-    ).run(LOCAL_HOST_ID, defaultLabel, sysHostname, now);
+    // 2. v0.4 → v0.5 kind migration. Token_hash stays as-is (NULL on
+    // legacy rows; shared-secret auth doesn't need it).
+    if (existing.kind !== 'agent') {
+      db.prepare("UPDATE hosts SET kind = 'agent' WHERE id = ?").run(LOCAL_HOST_ID);
+    }
   },
 };
