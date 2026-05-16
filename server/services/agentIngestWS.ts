@@ -20,7 +20,7 @@ import { metricsBus } from './_metricsBus.js';
 import { logger } from '../utils/logger.js';
 import type { GpuSample } from './parsers/nvidia.js';
 import { agentProcessStore } from './agentProcessStore.js';
-import type { GpuProcess } from './processCollector.js';
+import type { GpuProcess } from './_processTypes.js';
 
 const RATE_LIMIT_PER_SEC = 100;
 const LAST_SEEN_THROTTLE_MS = 1000;

@@ -3,7 +3,8 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { getActiveCollector } from '../services/activeGpuCollector.js';
+import { metricsBus } from '../services/_metricsBus.js';
+import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import { getDatabase } from '../database/connection.js';
 import { GpuMetricRepository } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
@@ -91,7 +92,9 @@ router.get('/', (_req, res) => {
   const free = os.freemem();
   const used = total - free;
   const cpus = os.cpus();
-  const samples = getActiveCollector().getLatest();
+  // The system page's GPU strip mirrors the local sidecar's view. With
+  // v0.5+ the local row in metricsBus is fed by the sidecar agent.
+  const samples = metricsBus.getLatestByHost(LOCAL_HOST_ID);
 
   res.json({
     host: {

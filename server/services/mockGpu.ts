@@ -1,8 +1,8 @@
 // Synthetic GPU + process data for dev hosts without an NVIDIA GPU.
 // Activated by MOCK_GPU=1 (see config.mockGpu). Two fake devices with
 // fixed UUIDs so processCollector can reuse the UUID→index mapping.
-import type { GpuSample } from './gpuCollector.js';
-import type { GpuProcess } from './processCollector.js';
+import type { GpuSample } from './parsers/nvidia.js';
+import type { GpuProcess } from './_processTypes.js';
 import { rand01, sweep, wave, distributeVram } from './_mockHelpers.js';
 
 interface FakeDevice {

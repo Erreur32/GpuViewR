@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { type GpuProcess } from '../services/processCollector.js';
-import { getActiveCollector, getActiveProcessCollector } from '../services/activeGpuCollector.js';
+import { type GpuProcess } from '../services/_processTypes.js';
 import { agentProcessStore } from '../services/agentProcessStore.js';
 import { metricsBus } from '../services/_metricsBus.js';
 import { LOCAL_HOST_ID } from '../database/models/Host.js';
@@ -13,31 +12,26 @@ router.get('/', async (req, res) => {
   const host = typeof hostRaw === 'string' && hostRaw.trim() !== '' ? hostRaw.trim() : LOCAL_HOST_ID;
   const filterRaw = req.query.gpu;
 
-  // Snapshot resolution depends on host:
-  //   - LOCAL_HOST_ID → hub's own processCollector (real-time, cached)
-  //   - any other id  → agent-supplied snapshot from agentProcessStore;
-  //                     null means agent never reported or snapshot is
-  //                     older than the store's TTL.
+  // Snapshot resolution: every host (local sidecar or remote) feeds
+  // its process snapshot through the same agentProcessStore. v0.5
+  // removed the special LOCAL_HOST_ID branch — the local sidecar is
+  // just another agent now.
   let processes: GpuProcess[] = [];
   let tsEpoch = Math.floor(Date.now() / 1000);
   let samples: GpuSample[] = [];
   let reason: string | undefined;
 
-  if (host === LOCAL_HOST_ID) {
-    const snap = await getActiveProcessCollector().getSnapshot();
+  const snap = agentProcessStore.get(host);
+  if (snap) {
     processes = snap.processes;
-    tsEpoch = Math.floor(snap.ts / 1000);
-    samples = getActiveCollector().getLatest();
+    tsEpoch = snap.ts;
+    samples = metricsBus.getLatestByHost(host);
   } else {
-    const remote = agentProcessStore.get(host);
-    if (remote) {
-      processes = remote.processes;
-      tsEpoch = remote.ts;
-      samples = metricsBus.getLatestByHost(host);
-    } else {
-      reason = 'no recent process snapshot from this agent (capability disabled or agent offline)';
-    }
+    reason = host === LOCAL_HOST_ID
+      ? 'no local sidecar agent connected yet (check docker compose status)'
+      : 'no recent process snapshot from this agent (capability disabled or agent offline)';
   }
+  await Promise.resolve(); // keep route async for upstream typings
 
   // Map gpu_uuid → gpu_index using whichever per-host samples we have.
   // Processes are reported by uuid but the WebSocket samples key by

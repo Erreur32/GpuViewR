@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { authService } from './authService.js';
-import { getActiveCollector } from './activeGpuCollector.js';
 import { metricsBus, type SampleEvent, type HostStatusEvent } from './_metricsBus.js';
+import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import { alertService } from './alertService.js';
 import { logger } from '../utils/logger.js';
 import type { AlertEvent, AlertRule } from '../database/models/Alert.js';
@@ -28,7 +28,10 @@ export function setupGpuWebSocket(): WebSocketServer {
 
     logger.debug('ws', `client connected (user=${payload.username})`);
 
-    const snapshot = getActiveCollector().getLatest();
+    // Initial snapshot for the client = the local sidecar's latest
+    // samples (if any). Remote agents' samples will arrive via the
+    // metricsBus 'sample' subscription below as they tick.
+    const snapshot = metricsBus.getLatestByHost(LOCAL_HOST_ID);
     if (snapshot.length) safeSend(ws, { type: 'snapshot', samples: snapshot });
 
     // Unwrap the bus envelope: legacy clients on /ws/gpu still expect

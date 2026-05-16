@@ -7,7 +7,7 @@
 // Hub-local processes live in processCollector.ts and bypass this
 // store entirely (the route reads them directly).
 
-import type { GpuProcess } from './processCollector.js';
+import type { GpuProcess } from './_processTypes.js';
 
 export interface RemoteProcessSnapshot {
   /** Wall-clock epoch (seconds) the snapshot landed at the hub. */

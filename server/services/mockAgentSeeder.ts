@@ -18,7 +18,7 @@ import { GpuDeviceRepository } from '../database/models/GpuMetric.js';
 import { metricsBus } from './_metricsBus.js';
 import { agentProcessStore } from './agentProcessStore.js';
 import { nowTimestamp, type GpuSample } from './parsers/nvidia.js';
-import type { GpuProcess } from './processCollector.js';
+import type { GpuProcess } from './_processTypes.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { rand01, sweep, distributeVram } from './_mockHelpers.js';

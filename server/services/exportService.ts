@@ -1,6 +1,6 @@
 import { connect as mqttConnect, MqttClient } from 'mqtt';
 import { randomBytes } from 'node:crypto';
-import { type GpuSample } from './gpuCollector.js';
+import { type GpuSample } from './parsers/nvidia.js';
 import { metricsBus, type SampleEvent } from './_metricsBus.js';
 import { AppConfigRepo, ensureAppConfigSchema } from '../database/models/AppConfig.js';
 import { logger } from '../utils/logger.js';

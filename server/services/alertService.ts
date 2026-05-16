@@ -8,7 +8,7 @@ import {
   type AlertRule,
   type AlertMetric,
 } from '../database/models/Alert.js';
-import { type GpuSample } from './gpuCollector.js';
+import { type GpuSample } from './parsers/nvidia.js';
 import { metricsBus, type SampleEvent } from './_metricsBus.js';
 import { getSystemStats } from './systemStats.js';
 import { logger } from '../utils/logger.js';

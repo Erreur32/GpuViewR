@@ -1,17 +1,24 @@
 import { Router } from 'express';
-import { getActiveCollector } from '../services/activeGpuCollector.js';
+import { metricsBus } from '../services/_metricsBus.js';
+import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import { HostsRepo } from '../database/models/Host.js';
 import { config } from '../config.js';
 
 const router = Router();
 
 router.get('/', (_req, res) => {
-  const samples = getActiveCollector().getLatest();
   const hosts = HostsRepo.list();
+  // Sum the latest samples across every host the in-memory metricsBus
+  // knows about — replaces the hub-local collector's getLatest() count.
+  let gpuCount = 0;
+  for (const h of hosts) {
+    gpuCount += metricsBus.getLatestByHost(h.id).length;
+  }
   const now = Math.floor(Date.now() / 1000);
   let online = 0;
   let lagging = 0;
   let offline = 0;
+  void LOCAL_HOST_ID;   // kept for backward-compat callers; no special branch
   // Keep in sync with src/store/hostsStore.ts LAGGING_THRESHOLD_S. Both
   // surfaces compute lagging client-side from last_seen rather than from
   // a stored column, so the two thresholds must agree.
@@ -30,7 +37,7 @@ router.get('/', (_req, res) => {
   res.json({
     status: 'ok',
     uptime: process.uptime(),
-    gpuCount: samples.length,
+    gpuCount,
     hostsTotal: hosts.length,
     hostsOnline: online,
     hostsLagging: lagging,

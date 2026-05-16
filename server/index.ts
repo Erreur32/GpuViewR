@@ -12,8 +12,7 @@ import { initializeDatabase, closeDatabase } from './database/connection.js';
 import { logger } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { apiLimiter, authLimiter, metricsLimiter } from './middleware/rateLimit.js';
-import { startRetentionJob } from './services/gpuCollector.js';
-import { resolveActiveCollector } from './services/activeGpuCollector.js';
+import { startRetentionJob } from './services/retentionJob.js';
 import { mockAgentSeeder } from './services/mockAgentSeeder.js';
 import { setupGpuWebSocket } from './services/gpuStreamWS.js';
 import { setupAgentIngestWS } from './services/agentIngestWS.js';
@@ -144,14 +143,12 @@ async function bootstrap(): Promise<void> {
     }
   });
 
-  const { collector: activeGpuCollector } = resolveActiveCollector();
-  activeGpuCollector.start();
   mockAgentSeeder.start();
   startRetentionJob();
   startHostsWatchdog();
-  // Persists samples coming from remote agents (gpuCollector handles
-  // the local host inline). Without this, /api/gpu/devices returns
-  // an empty array for remote hosts even though the WS pipe is fine.
+  // Persists samples from agents (local sidecar + remote) to SQLite.
+  // The hub no longer runs its own collector in v0.5+; all GPU samples
+  // come through the agent WS ingest path.
   startAgentMetricsPersistor();
 
   server.listen(config.port, '0.0.0.0', () => {
@@ -160,7 +157,6 @@ async function bootstrap(): Promise<void> {
 
   const shutdown = (signal: string) => {
     logger.info('boot', `Received ${signal}, shutting down...`);
-    activeGpuCollector.stop();
     mockAgentSeeder.stop();
     stopAgentMetricsPersistor();
     exportService.shutdown();
