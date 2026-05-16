@@ -58,10 +58,23 @@ export default function UpdateBanner() {
       </div>
 
       {showDetails && (
-        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowDetails(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="card p-5 w-full max-w-2xl space-y-4 max-h-[80vh] overflow-auto">
+        <div
+          className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowDetails(false)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowDetails(false); }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="update-modal-title"
+          tabIndex={-1}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="card p-5 w-full max-w-2xl space-y-4 max-h-[80vh] overflow-auto"
+            role="document"
+          >
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
+              <h2 id="update-modal-title" className="text-lg font-semibold flex items-center gap-2">
                 <ArrowUpCircle className="w-5 h-5" style={{ color: 'var(--gv-accent)' }} />
                 {t('updates.modal_title', { version: result.latestVersion })}
               </h2>

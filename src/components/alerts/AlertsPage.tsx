@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus, Trash2, Bell, Volume2, VolumeX, Edit3, Sparkles, Webhook,
@@ -118,13 +118,16 @@ export default function AlertsPage() {
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
 
-  async function load() {
+  // useCallback so the function identity is stable across renders —
+  // lets us put `load` in the useEffect deps (SonarCloud
+  // react-hooks/exhaustive-deps) without re-fetching on every render.
+  const load = useCallback(async () => {
     const r = await api<{ rules: Rule[] }>('/alerts/rules');
     const e = await api<{ events: AlertEvent[] }>('/alerts/events?limit=50');
     setRules(r.rules);
     setEvents(e.events);
-  }
-  useEffect(() => { void load(); }, []);
+  }, []);
+  useEffect(() => { void load(); }, [load]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
