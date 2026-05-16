@@ -11,10 +11,18 @@ export interface AgentFeatures {
 
 export type GpuVendor = 'auto' | 'nvidia' | 'amd';
 
-export interface AgentConfig {
-  hubUrl: string;
+/** A single hub target. Multi-hub mode (v0.5+) lets one agent push
+ *  to N hubs in parallel — each gets its own WS, its own host_id +
+ *  token (the agent can be enrolled under different ids on different
+ *  hubs), its own offline buffer. */
+export interface HubTarget {
+  url: string;
   hostId: string;
-  agentToken: string;
+  token: string;
+}
+
+export interface AgentConfig {
+  hubs: HubTarget[];
   tickMs: number;
   features: AgentFeatures;
   bufferPersist: boolean;
@@ -91,13 +99,53 @@ function validateHubUrl(url: string): void {
   }
 }
 
-export function loadConfig(): AgentConfig {
-  const hubUrl = requiredEnv('HUB_URL');
-  validateHubUrl(hubUrl);
-  return {
-    hubUrl,
+/** Parse hub targets from env. Two shapes:
+ *
+ *  - Multi-hub (v0.5+): HUB_URLS, HOST_IDS, AGENT_TOKENS as
+ *    comma-separated lists, parallel arrays, same length.
+ *  - Single-hub (backward-compat): HUB_URL + HOST_ID + AGENT_TOKEN.
+ *
+ *  At least one of the two MUST be configured or the agent exits.
+ *  Mixed config (both shapes present) is rejected to avoid ambiguity.
+ */
+export function parseHubTargets(env: NodeJS.ProcessEnv = process.env): HubTarget[] {
+  const hasMulti = !!(env.HUB_URLS && env.HUB_URLS.trim());
+  const hasSingle = !!(env.HUB_URL && env.HUB_URL.trim());
+
+  if (hasMulti && hasSingle) {
+    process.stderr.write('[FATAL] HUB_URLS and HUB_URL are both set. Pick one — multi-hub mode (HUB_URLS) or single-hub (HUB_URL).\n');
+    process.exit(1);
+  }
+
+  if (hasMulti) {
+    const urls = (env.HUB_URLS || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const ids = (env.HOST_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const tokens = (env.AGENT_TOKENS || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (urls.length === 0) {
+      process.stderr.write('[FATAL] HUB_URLS is empty.\n');
+      process.exit(1);
+    }
+    if (urls.length !== ids.length || urls.length !== tokens.length) {
+      process.stderr.write(`[FATAL] HUB_URLS / HOST_IDS / AGENT_TOKENS arrays must have the same length (got ${urls.length}/${ids.length}/${tokens.length}).\n`);
+      process.exit(1);
+    }
+    for (const url of urls) validateHubUrl(url);
+    return urls.map((url, i) => ({ url, hostId: ids[i], token: tokens[i] }));
+  }
+
+  // Single-hub fallback.
+  const url = requiredEnv('HUB_URL');
+  validateHubUrl(url);
+  return [{
+    url,
     hostId: requiredEnv('HOST_ID'),
-    agentToken: requiredEnv('AGENT_TOKEN'),
+    token: requiredEnv('AGENT_TOKEN'),
+  }];
+}
+
+export function loadConfig(): AgentConfig {
+  return {
+    hubs: parseHubTargets(),
     tickMs: parseInt10('TICK_MS', 1000),
     features: parseFeatures(process.env.FEATURES || 'gpu,system,temps,processes'),
     bufferPersist: parseBool('AGENT_BUFFER_PERSIST', false),

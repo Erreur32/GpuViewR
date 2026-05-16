@@ -16,8 +16,8 @@ import { buildMockSamples } from './mock.js';
 const config = loadConfig();
 const vendor = resolveVendor(config);
 
-logger.info('boot', `gpuviewr-agent starting (host_id=${config.hostId}, label=${config.agentLabel ?? '(none)'})`);
-logger.info('boot', `Hub URL: ${config.hubUrl}`);
+logger.info('boot', `gpuviewr-agent starting (${config.hubs.length} hub${config.hubs.length === 1 ? '' : 's'}, label=${config.agentLabel ?? '(none)'})`);
+for (const h of config.hubs) logger.info('boot', `  → ${h.url} (host_id=${h.hostId})`);
 logger.info('boot', `Features: ${JSON.stringify(config.features)}`);
 logger.info('boot', `GPU vendor: ${vendor} (configured: ${config.gpuVendor})`);
 if (config.mockGpu) logger.warn('boot', 'MOCK_GPU=1 — synthetic GPU samples, no smi spawn');

@@ -15,7 +15,7 @@
 | **D1** | Architecture hub | **Hub 100 % vendor-neutral.** Aucun collecteur GPU dans l'image hub. Tout passe par l'ingest agent WS. | §1, §3 |
 | **D2** | Local GPU sur le host master | **Sidecar pattern.** Le compose lance hub + agent local dans la même stack. ~+40 MB RAM, −80 MB image hub. | §1, §4 |
 | **D3** | Auto-enrollment du sidecar | **Bootstrap token partagé** via env compose (`LOCAL_AGENT_BOOTSTRAP=$(openssl rand)`). Hub auto-crée la row au 1er frame WS. Pas d'enrollment UI pour le sidecar. | §5 |
-| **D4** | Packaging | **Un seul `compose.yaml` au repo** avec deux profiles Docker Compose (`nvidia`, `amd`). install.sh détecte le vendor host et écrit `COMPOSE_PROFILES=<vendor>` dans `.env` — l'utilisateur ne voit qu'un fichier, `docker compose up -d` fait le bon truc. Les fichiers `compose.agent.{nvidia,amd}.yaml` séparés restent pour les agents purement distants. | §4, §6 |
+| **D4** | Packaging | **Un seul `docker-compose.yaml` au repo** avec deux profiles Docker Compose (`nvidia`, `amd`). install.sh détecte le vendor host et écrit `COMPOSE_PROFILES=<vendor>` dans `.env` — l'utilisateur ne voit qu'un fichier, `docker compose up -d` fait le bon truc. Les fichiers `compose.agent.{nvidia,amd}.yaml` séparés restent pour les agents purement distants. | §4, §6 |
 | **D5** | Agent multi-hub | **1 agent peut pousser ses samples vers N hubs en parallèle.** `HUB_URLS=wss://h1,wss://h2` + tokens parallèles. Buffer offline par-hub. Backward-compat avec `HUB_URL` singulier. | §7 |
 | **D6** | Migration v0.4.x → v0.5.0 | **Best-effort.** Si la migration est facile à coder, on la fait pour préserver l'historique des early-adopters. Sinon, repartir de zéro est acceptable — base d'utilisateurs encore restreinte. Pas un blocker de release. | §8 |
 | **D7** | Sécurité bootstrap token | **LAN-only suffisant pour v0.5.** Le secret partagé reste dans `.env` + docker network interne. Migration vers handshake filesystem (one-shot token file) prévue v0.6 si besoin. | §5 |
@@ -134,14 +134,14 @@ Image hub passe de ~250 MB → ~170 MB.
 
 ---
 
-## 4. Compose files (J3) — **un seul `compose.yaml` au repo via profiles**
+## 4. Compose files (J3) — **un seul `docker-compose.yaml` au repo via profiles**
 
 Layout final :
 
 ```
-compose.yaml                      ← hub + agent-nvidia + agent-amd (profiles)
-compose.agent.nvidia.yaml         ← agent NVIDIA SEUL pour box remote (curl recipe)
-compose.agent.amd.yaml            ← agent AMD SEUL pour box remote (curl recipe)
+docker-compose.yaml                      ← hub + agent-nvidia + agent-amd (profiles)
+docker-compose.agent.nvidia.yaml         ← agent NVIDIA SEUL pour box remote (curl recipe)
+docker-compose.agent.amd.yaml            ← agent AMD SEUL pour box remote (curl recipe)
 ```
 
 ### Mécanique : Docker Compose profiles
@@ -150,7 +150,7 @@ Un service avec `profiles: [<name>]` n'est démarré QUE si l'on passe `--profil
 
 L'utilisateur ne voit qu'un fichier. `install.sh` écrit `COMPOSE_PROFILES=nvidia` (ou `amd`) dans `.env` au moment de l'install → tous les `docker compose up -d` / `pull` / `logs` suivants utilisent le bon profile sans flag à se rappeler.
 
-### Structure de `compose.yaml`
+### Structure de `docker-compose.yaml`
 
 ```yaml
 services:
@@ -331,7 +331,7 @@ COMPOSE_PROFILES=amd     # ou: nvidia
 
 ## 6. install.sh single-entrypoint (J4)
 
-Script servi par le hub (`/install-master.sh`) ou downloadable du repo. Pull **un seul** compose.yaml et écrit le profile vendor dans `.env`.
+Script servi par le hub (`/install-master.sh`) ou downloadable du repo. Pull **un seul** docker-compose.yaml et écrit le profile vendor dans `.env`.
 
 ```bash
 #!/bin/bash
@@ -352,8 +352,8 @@ fi
 
 # 2. Pull the single compose file
 mkdir -p ~/gpuviewr && cd ~/gpuviewr
-curl -fsSL -o compose.yaml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/compose.yaml
+curl -fsSL -o docker-compose.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.yaml
 
 # 3. Generate .env (only if absent — never clobber existing secrets)
 if [ ! -f .env ]; then
@@ -574,7 +574,7 @@ Aujourd'hui : `mockGpu.ts` côté hub génère `buildFakeSamples()`, appelé par
 | # | Question | Impact | Proposition |
 |---|---|---|---|
 | Q1 | Doit-on supporter l'install.sh **côté Windows / macOS** ? | bash-only aujourd'hui | Non, v0.5 reste Linux. PowerShell port en v0.6 si demandé. |
-| Q2 | Si l'utilisateur n'a NI nvidia-smi NI rocm-smi sur le host master, install.sh fait quoi ? | Cas du hub-only (aggregator) | Affiche un msg "no GPU detected, falling back to aggregator-only mode" et installe `compose.yaml` sans sidecar. |
+| Q2 | Si l'utilisateur n'a NI nvidia-smi NI rocm-smi sur le host master, install.sh fait quoi ? | Cas du hub-only (aggregator) | Affiche un msg "no GPU detected, falling back to aggregator-only mode" et installe `docker-compose.yaml` sans sidecar. |
 | Q3 | Le sidecar local génère-t-il un `HOST_ID` UUID ou utilise le hostname ? | Tracking historique | Hostname (`local-sidecar-{hostname}`) — si tu renames ton host, tu casses l'historique. C'est OK, c'est rare et documenté. Alternative : générer un UUID stocké dans `/app/data/local-agent.id`. |
 | Q4 | Sécurité v0.6 du bootstrap | Toujours secret dans `.env` | Filesystem handshake : hub écrit `data/local-agent.token` (mode 600), agent lit + delete + échange contre un AGENT_TOKEN persistant. Pas en v0.5. |
 | Q5 | Agent multi-hub : un seul vendor déclaré, ou différent par hub ? | Niche | Un seul vendor par agent. Si tu veux 2 vendors sur le même host (Intel iGPU + NVIDIA dGPU), lance 2 agents avec des `HOST_ID` distincts. |

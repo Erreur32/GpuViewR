@@ -7,7 +7,7 @@
 #
 # What it does:
 #   1. Detects the local GPU vendor (nvidia-smi, then rocm-smi).
-#   2. Downloads compose.yaml from the repo into ~/gpuviewr/.
+#   2. Downloads docker-compose.yaml from the repo into ~/gpuviewr/.
 #   3. Generates ~/gpuviewr/.env with random JWT_SECRET + bootstrap
 #      token + LAN IP + COMPOSE_PROFILES=<vendor>.
 #   4. Runs `docker compose up -d` and prints the URL.
@@ -67,9 +67,9 @@ mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 echo -e "  ${G}✓${R} Install dir: ${C}${INSTALL_DIR}${R}"
 
-# ── Pull compose.yaml ────────────────────────────────────────────────────────
-echo -e "  ${B}→${R} Pulling compose.yaml from branch ${C}${BRANCH}${R}..."
-curl -fsSL -o compose.yaml "${RAW_URL}/compose.yaml"
+# ── Pull docker-compose.yaml ────────────────────────────────────────────────────────
+echo -e "  ${B}→${R} Pulling docker-compose.yaml from branch ${C}${BRANCH}${R}..."
+curl -fsSL -o docker-compose.yaml "${RAW_URL}/docker-compose.yaml"
 
 # ── .env (never clobber existing) ────────────────────────────────────────────
 if [ ! -f .env ]; then

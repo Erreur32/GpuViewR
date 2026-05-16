@@ -61,7 +61,7 @@ The card on the hub's `/fleet` view turns green within 1–3 seconds.
 
 ## Docker Compose
 
-A drop-in `compose.agent.nvidia.yaml` lives at the project root. Copy it to the remote host with a tiny `.env`:
+A drop-in `docker-compose.agent.nvidia.yaml` lives at the project root. Copy it to the remote host with a tiny `.env`:
 
 ```env
 HUB_URL=wss://gpu.example.com/agent
@@ -72,8 +72,8 @@ AGENT_TOKEN=gpvr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 Then:
 
 ```bash
-docker compose -f compose.agent.nvidia.yaml up -d
-docker compose -f compose.agent.nvidia.yaml logs -f
+docker compose -f docker-compose.agent.nvidia.yaml up -d
+docker compose -f docker-compose.agent.nvidia.yaml logs -f
 ```
 
 ## Bare-metal (Node 22)

@@ -12,7 +12,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
 #
 # Manual:
-#   1. wget -O compose.yaml https://raw.githubusercontent.com/.../compose.yaml
+#   1. wget -O docker-compose.yaml https://raw.githubusercontent.com/.../compose.yaml
 #   2. cat > .env <<EOF
 #      JWT_SECRET=$(openssl rand -base64 32)
 #      LOCAL_AGENT_BOOTSTRAP=$(openssl rand -base64 32)

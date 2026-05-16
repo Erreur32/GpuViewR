@@ -1,30 +1,44 @@
-// WebSocket client side of the agent. Connects to the hub's /agent
-// path, performs the hello/welcome handshake, then drains the
-// outbound buffer of pending samples on every reconnect.
+// WebSocket client side of the agent. Connects to one or more hubs
+// in parallel (multi-hub since v0.5+), performs the hello/welcome
+// handshake, drains an offline-replay buffer on every reconnect.
 //
-// Design notes (cf. Docs/MULTI_HOST_PLAN.md §4):
-//  - Reconnect uses exponential backoff (1s → 30s by default) with
-//    ±20% jitter to avoid the thundering-herd when many agents
-//    redial after a hub restart.
-//  - Outbound samples that arrive while disconnected go into a ring
-//    buffer capped at BUFFER_MAX entries (~1 h × 1 Hz × few GPUs).
-//    On reconnect the buffer is flushed in order, then live frames
-//    resume.
-//  - The disk-persistence path (AGENT_BUFFER_PERSIST=1) is a stub
-//    in jalon 4; the design lives in §4 of the plan but production
-//    code will land with the v0.3.1 cycle.
+// Each hub gets its own:
+//   - WS connection
+//   - reconnect timer + exponential backoff state
+//   - ping timer
+//   - replay queue (a slow hub doesn't block samples to a fast one)
+//
+// A single-hub config (legacy HUB_URL/HOST_ID/AGENT_TOKEN) is just
+// the array-of-1 case — no special path.
+//
+// Design notes (cf. Docs/V0_5_PLAN.md §7, MULTI_HOST_PLAN.md §4):
+//  - Reconnect uses exponential backoff (1s → 30s) with ±20% jitter
+//    so N agents redialing after a hub restart don't thunder-herd.
+//  - Outbound samples while disconnected go into a ring buffer
+//    capped at BUFFER_MAX entries (~1 h × 1 Hz × few GPUs).
+//  - On reconnect the buffer drains in chunks of REPLAY_CHUNK frames
+//    per REPLAY_DELAY_MS, well under the hub's RATE_LIMIT_PER_SEC.
+//  - 4001 (Unauthorized) / 1008 (Policy) on a single hub doesn't
+//    kill the agent — other hubs keep going. A repeated 4001 on the
+//    SAME hub still exits because the token is permanently bad.
 
 import { WebSocket } from 'ws';
 import { logger } from './logger.js';
 import type { GpuSample } from '../../server/services/parsers/nvidia.js';
 import type { AgentGpuProcess } from './collectors/processes.js';
-import type { AgentConfig } from './config.js';
+import type { AgentConfig, HubTarget } from './config.js';
 
 const BUFFER_MAX = 3600;
 const RECONNECT_MIN_MS = 1_000;
 const PING_INTERVAL_MS = 15_000;
-const AGENT_VERSION = '0.3.0';
+const REPLAY_CHUNK = 50;
+const REPLAY_DELAY_MS = 600;
+const AGENT_VERSION = '0.5.0';
 const PROTOCOL_VER = 1;
+// Number of consecutive auth failures before we give up on a hub
+// entirely. One 4001 might be a transient race during hub restart;
+// three in a row means the token is genuinely wrong.
+const AUTH_FAILURE_LIMIT = 3;
 
 interface SampleFrame {
   type: 'sample';
@@ -39,7 +53,6 @@ interface ProcessFrame {
 }
 
 type BufferableFrame = SampleFrame | ProcessFrame;
-
 type OutboundFrame = BufferableFrame | { type: 'hello' | 'ping'; [k: string]: unknown };
 
 interface IncomingFrame {
@@ -54,104 +67,104 @@ export interface Transport {
   enqueueProcesses(processes: AgentGpuProcess[]): void;
 }
 
+interface HubConnection {
+  target: HubTarget;
+  ws: WebSocket | null;
+  reconnectDelayMs: number;
+  reconnectTimer: NodeJS.Timeout | null;
+  pingTimer: NodeJS.Timeout | null;
+  replayTimer: NodeJS.Timeout | null;
+  buffer: BufferableFrame[];
+  authFailures: number;
+  /** Short tag for logging — `hub1`, `hub2` … so messages stay
+   *  unambiguous when N hubs share the same logger. */
+  tag: string;
+}
+
 export function createTransport(config: AgentConfig): Transport {
-  let ws: WebSocket | null = null;
-  let reconnectDelayMs = RECONNECT_MIN_MS;
-  let reconnectTimer: NodeJS.Timeout | null = null;
-  let pingTimer: NodeJS.Timeout | null = null;
   let stopped = false;
-  const buffer: BufferableFrame[] = [];
 
-  function pushToBuffer(frame: BufferableFrame): void {
-    buffer.push(frame);
-    while (buffer.length > BUFFER_MAX) buffer.shift();
+  const connections: HubConnection[] = config.hubs.map((target, i) => ({
+    target,
+    ws: null,
+    reconnectDelayMs: RECONNECT_MIN_MS,
+    reconnectTimer: null,
+    pingTimer: null,
+    replayTimer: null,
+    buffer: [],
+    authFailures: 0,
+    tag: config.hubs.length > 1 ? `hub${i + 1}` : 'ws',
+  }));
+
+  // ── Per-hub helpers (closure over `conn`) ─────────────────────────────────
+
+  function pushToBuffer(conn: HubConnection, frame: BufferableFrame): void {
+    conn.buffer.push(frame);
+    while (conn.buffer.length > BUFFER_MAX) conn.buffer.shift();
   }
 
-  // After a long outage the buffer can hold hundreds of frames; dumping
-  // them all in one event-loop tick exceeds the hub's RATE_LIMIT_PER_SEC
-  // (100/s) and gets the agent kicked. Drain in chunks well below that
-  // ceiling, with a setImmediate-yield between chunks so live tick
-  // frames don't get stuck behind a long replay either.
-  const REPLAY_CHUNK = 50;
-  const REPLAY_DELAY_MS = 600;
-  let replayTimer: NodeJS.Timeout | null = null;
-  let totalDrained = 0;
-
-  function flushBuffer(): void {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    if (replayTimer) return; // already draining
-    totalDrained = 0;
-    drainChunk();
-  }
-
-  function drainChunk(): void {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      replayTimer = null;
-      return;
-    }
-    let n = 0;
-    while (n < REPLAY_CHUNK && buffer.length > 0 && ws.readyState === WebSocket.OPEN) {
-      const frame = buffer.shift()!;
-      sendRaw(frame);
-      n++;
-      totalDrained++;
-    }
-    if (buffer.length === 0) {
-      if (totalDrained > 0) logger.info('ws', `Replayed ${totalDrained} buffered frame(s) after reconnect`);
-      replayTimer = null;
-      return;
-    }
-    replayTimer = setTimeout(drainChunk, REPLAY_DELAY_MS);
-  }
-
-  function sendRaw(frame: OutboundFrame): void {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  function sendRaw(conn: HubConnection, frame: OutboundFrame): void {
+    if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) return;
     try {
-      ws.send(JSON.stringify(frame));
+      conn.ws.send(JSON.stringify(frame));
     } catch (err) {
-      logger.warn('ws', 'send failed:', (err as Error).message);
+      logger.warn(conn.tag, 'send failed:', (err as Error).message);
     }
   }
 
-  function buildUrl(): string {
-    const u = new URL(config.hubUrl);
+  function buildUrl(target: HubTarget): string {
+    const u = new URL(target.url);
     if (!u.pathname || u.pathname === '/') u.pathname = '/agent';
-    u.searchParams.set('token', config.agentToken);
-    u.searchParams.set('host_id', config.hostId);
+    u.searchParams.set('token', target.token);
+    u.searchParams.set('host_id', target.hostId);
     return u.toString();
   }
 
-  function scheduleReconnect(): void {
-    if (stopped) return;
-    if (reconnectTimer) return;
-    const jitter = 1 + (Math.random() * 0.4 - 0.2); // ±20%
-    const delay = Math.min(reconnectDelayMs * jitter, config.reconnectMaxMs);
-    logger.info('ws', `Reconnecting in ${Math.round(delay)}ms (buffered=${buffer.length})`);
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      connect();
-    }, delay);
-    reconnectDelayMs = Math.min(reconnectDelayMs * 2, config.reconnectMaxMs);
+  function flushBuffer(conn: HubConnection): void {
+    if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) return;
+    if (conn.replayTimer) return;
+    drainChunk(conn, 0);
   }
 
-  function startPing(): void {
-    if (pingTimer) clearInterval(pingTimer);
-    pingTimer = setInterval(() => {
-      if (ws?.readyState === WebSocket.OPEN) {
-        sendRaw({ type: 'ping', ts_epoch: Math.floor(Date.now() / 1000) });
+  function drainChunk(conn: HubConnection, totalDrained: number): void {
+    if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) {
+      conn.replayTimer = null;
+      return;
+    }
+    let drained = totalDrained;
+    let n = 0;
+    while (n < REPLAY_CHUNK && conn.buffer.length > 0 && conn.ws.readyState === WebSocket.OPEN) {
+      const frame = conn.buffer.shift()!;
+      sendRaw(conn, frame);
+      n++;
+      drained++;
+    }
+    if (conn.buffer.length === 0) {
+      if (drained > 0) logger.info(conn.tag, `Replayed ${drained} buffered frame(s) after reconnect`);
+      conn.replayTimer = null;
+      return;
+    }
+    conn.replayTimer = setTimeout(() => drainChunk(conn, drained), REPLAY_DELAY_MS);
+  }
+
+  function startPing(conn: HubConnection): void {
+    if (conn.pingTimer) clearInterval(conn.pingTimer);
+    conn.pingTimer = setInterval(() => {
+      if (conn.ws?.readyState === WebSocket.OPEN) {
+        sendRaw(conn, { type: 'ping', ts_epoch: Math.floor(Date.now() / 1000) });
       }
     }, PING_INTERVAL_MS);
   }
 
-  function stopPing(): void {
-    if (pingTimer) clearInterval(pingTimer);
-    pingTimer = null;
+  function stopPing(conn: HubConnection): void {
+    if (conn.pingTimer) clearInterval(conn.pingTimer);
+    conn.pingTimer = null;
   }
 
-  function sendHello(): void {
-    sendRaw({
+  function sendHello(conn: HubConnection): void {
+    sendRaw(conn, {
       type: 'hello',
-      host_id: config.hostId,
+      host_id: conn.target.hostId,
       agent_version: AGENT_VERSION,
       protocol_ver: PROTOCOL_VER,
       hostname: process.env.HOSTNAME || null,
@@ -164,112 +177,140 @@ export function createTransport(config: AgentConfig): Transport {
     });
   }
 
-  function handleIncoming(raw: string): void {
+  function handleIncoming(conn: HubConnection, raw: string): void {
     let frame: IncomingFrame;
     try {
       frame = JSON.parse(raw);
     } catch {
-      logger.warn('ws', `Bad JSON from hub`);
+      logger.warn(conn.tag, 'Bad JSON from hub');
       return;
     }
     switch (frame.type) {
       case 'welcome': {
-        logger.success('ws', `Hub welcomed us (hub_version=${frame.hub_version}, protocol_ver=${frame.protocol_ver})`);
+        logger.success(conn.tag, `Hub welcomed us (hub_version=${frame.hub_version}, protocol_ver=${frame.protocol_ver})`);
         const hubProto = frame.protocol_ver as number | undefined;
         if (hubProto !== undefined && hubProto > PROTOCOL_VER) {
-          logger.error('ws', `Hub speaks protocol_ver=${hubProto} > agent's ${PROTOCOL_VER}. Upgrade agent.`);
-          // No cleanup needed: process.exit tears down the WS and the
-          // hub will see the close as just another disconnection.
+          logger.error(conn.tag, `Hub speaks protocol_ver=${hubProto} > agent's ${PROTOCOL_VER}. Upgrade agent.`);
           process.exit(1);
         }
-        sendHello();
-        flushBuffer();
+        conn.authFailures = 0;
+        sendHello(conn);
+        flushBuffer(conn);
         break;
       }
       case 'pong':
-        // No-op: presence of pong is the liveness signal.
         break;
       case 'config':
-        // Reserved for future hub-driven tick rate changes; ignore in v0.3.
+        // Reserved for future hub-driven tick rate changes.
         break;
       default:
-        logger.debug('ws', `Unknown frame type from hub: ${frame.type}`);
+        logger.debug(conn.tag, `Unknown frame type from hub: ${frame.type}`);
     }
   }
 
-  function connect(): void {
+  function scheduleReconnect(conn: HubConnection): void {
     if (stopped) return;
-    const url = buildUrl();
-    logger.info('ws', `Connecting to ${url.replace(/token=[^&]+/, 'token=***')}`);
+    if (conn.reconnectTimer) return;
+    const jitter = 1 + (Math.random() * 0.4 - 0.2); // ±20%
+    const delay = Math.min(conn.reconnectDelayMs * jitter, config.reconnectMaxMs);
+    logger.info(conn.tag, `Reconnecting in ${Math.round(delay)}ms (buffered=${conn.buffer.length})`);
+    conn.reconnectTimer = setTimeout(() => {
+      conn.reconnectTimer = null;
+      connect(conn);
+    }, delay);
+    conn.reconnectDelayMs = Math.min(conn.reconnectDelayMs * 2, config.reconnectMaxMs);
+  }
+
+  function connect(conn: HubConnection): void {
+    if (stopped) return;
+    const url = buildUrl(conn.target);
+    logger.info(conn.tag, `Connecting to ${url.replace(/token=[^&]+/, 'token=***')}`);
     const opts = config.tlsInsecure ? { rejectUnauthorized: false } : {};
-    ws = new WebSocket(url, opts);
+    const ws = new WebSocket(url, opts);
+    conn.ws = ws;
     ws.on('open', () => {
-      logger.success('ws', 'Connection open');
-      reconnectDelayMs = RECONNECT_MIN_MS;
-      startPing();
+      logger.success(conn.tag, 'Connection open');
+      conn.reconnectDelayMs = RECONNECT_MIN_MS;
+      startPing(conn);
     });
-    ws.on('message', (data) => handleIncoming(data.toString()));
+    ws.on('message', (data) => handleIncoming(conn, data.toString()));
     ws.on('close', (code, reason) => {
-      stopPing();
+      stopPing(conn);
       const r = reason?.toString() || '';
-      logger.warn('ws', `Connection closed (code=${code}${r ? `, reason=${r}` : ''})`);
-      // 4001/1008 are auth or policy violations — exit, no retry.
+      logger.warn(conn.tag, `Connection closed (code=${code}${r ? `, reason=${r}` : ''})`);
+      conn.ws = null;
+      // 4001/1008 = auth or policy violations. With multi-hub, one bad
+      // hub doesn't kill the agent — other hubs keep working. But three
+      // repeated failures on the SAME hub is a permanent token issue.
       if (code === 4001 || code === 1008) {
-        logger.error('ws', `Fatal close code ${code} — agent will exit. Check HOST_ID/AGENT_TOKEN.`);
-        process.exit(1);
+        conn.authFailures++;
+        if (conn.authFailures >= AUTH_FAILURE_LIMIT) {
+          logger.error(conn.tag, `${conn.authFailures} consecutive auth failures — giving up on this hub. Check its HOST_ID/AGENT_TOKEN.`);
+          // Don't schedule another reconnect for this hub. Other hubs
+          // (if any) continue. Single-hub config → agent effectively
+          // stops sending samples but keeps the process alive so
+          // a fix-and-restart of the .env recovers cleanly.
+          return;
+        }
       }
-      ws = null;
-      scheduleReconnect();
+      scheduleReconnect(conn);
     });
     ws.on('error', (err) => {
-      logger.warn('ws', `Socket error: ${err.message}`);
-      // Triggers 'close' which schedules reconnect.
+      logger.warn(conn.tag, `Socket error: ${err.message}`);
     });
+  }
+
+  // ── Public API: fan-out to every hub ──────────────────────────────────────
+
+  function broadcast(frame: BufferableFrame): void {
+    for (const conn of connections) {
+      if (conn.ws?.readyState === WebSocket.OPEN) {
+        sendRaw(conn, frame);
+      } else {
+        pushToBuffer(conn, frame);
+      }
+    }
   }
 
   return {
     start(): void {
       stopped = false;
-      connect();
+      for (const conn of connections) connect(conn);
     },
     stop(): void {
       stopped = true;
-      stopPing();
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-      if (ws) {
-        try { ws.close(1000); } catch { /* ignore */ }
-        ws = null;
+      for (const conn of connections) {
+        stopPing(conn);
+        if (conn.reconnectTimer) {
+          clearTimeout(conn.reconnectTimer);
+          conn.reconnectTimer = null;
+        }
+        if (conn.replayTimer) {
+          clearTimeout(conn.replayTimer);
+          conn.replayTimer = null;
+        }
+        if (conn.ws) {
+          try { conn.ws.close(1000); } catch { /* ignore */ }
+          conn.ws = null;
+        }
       }
     },
     enqueueSample(samples: GpuSample[]): void {
       if (samples.length === 0) return;
-      const frame: SampleFrame = {
+      broadcast({
         type: 'sample',
         ts_epoch: Math.floor(Date.now() / 1000),
         samples,
-      };
-      if (ws?.readyState === WebSocket.OPEN) {
-        sendRaw(frame);
-      } else {
-        pushToBuffer(frame);
-      }
+      });
     },
     enqueueProcesses(processes: AgentGpuProcess[]): void {
-      // Empty snapshots are still meaningful — they tell the hub "no
-      // processes right now" so a stale list clears. Don't drop them.
-      const frame: ProcessFrame = {
+      // Empty snapshots are meaningful — they signal "no procs right
+      // now" so a stale list clears. Don't drop them.
+      broadcast({
         type: 'processes',
         ts_epoch: Math.floor(Date.now() / 1000),
         processes,
-      };
-      if (ws?.readyState === WebSocket.OPEN) {
-        sendRaw(frame);
-      } else {
-        pushToBuffer(frame);
-      }
+      });
     },
   };
 }
