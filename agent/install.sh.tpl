@@ -106,12 +106,20 @@ case "${ID:-}" in
 esac
 
 # ──────────────────────────────────────────────────────────────────────
-# Pre-flight: nvidia-smi
+# Pre-flight: vendor smi binary (nvidia-smi or rocm-smi)
 # ──────────────────────────────────────────────────────────────────────
-if ! command -v nvidia-smi >/dev/null 2>&1; then
-  die "nvidia-smi not found in PATH. Install NVIDIA drivers + (if WSL2) the NVIDIA WSL driver, then re-run."
+VENDOR_BIN=""
+if command -v nvidia-smi >/dev/null 2>&1; then
+  VENDOR_BIN="nvidia-smi"
+  say "$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1) detected."
+elif command -v rocm-smi >/dev/null 2>&1 || [[ -x /opt/rocm/bin/rocm-smi ]]; then
+  VENDOR_BIN="rocm-smi"
+  ROCM_BIN="$(command -v rocm-smi || echo /opt/rocm/bin/rocm-smi)"
+  AMD_GPU="$("$ROCM_BIN" --showid --json 2>/dev/null | head -1 || true)"
+  say "AMD GPU detected via ${ROCM_BIN}."
+else
+  die "Neither nvidia-smi nor rocm-smi found in PATH. Install vendor drivers (NVIDIA driver, or ROCm under /opt/rocm) then re-run."
 fi
-say "$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1) detected."
 
 # ──────────────────────────────────────────────────────────────────────
 # Node 22+ (install via NodeSource if missing or too old)
