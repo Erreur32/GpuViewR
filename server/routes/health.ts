@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { gpuCollector } from '../services/gpuCollector.js';
+import { getActiveCollector } from '../services/activeGpuCollector.js';
 import { HostsRepo } from '../database/models/Host.js';
 import { config } from '../config.js';
 
 const router = Router();
 
 router.get('/', (_req, res) => {
-  const samples = gpuCollector.getLatest();
+  const samples = getActiveCollector().getLatest();
   const hosts = HostsRepo.list();
   const now = Math.floor(Date.now() / 1000);
   let online = 0;

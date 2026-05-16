@@ -12,7 +12,8 @@ import { initializeDatabase, closeDatabase } from './database/connection.js';
 import { logger } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { apiLimiter, authLimiter, metricsLimiter } from './middleware/rateLimit.js';
-import { gpuCollector, startRetentionJob } from './services/gpuCollector.js';
+import { startRetentionJob } from './services/gpuCollector.js';
+import { resolveActiveCollector } from './services/activeGpuCollector.js';
 import { mockAgentSeeder } from './services/mockAgentSeeder.js';
 import { setupGpuWebSocket } from './services/gpuStreamWS.js';
 import { setupAgentIngestWS } from './services/agentIngestWS.js';
@@ -143,7 +144,8 @@ async function bootstrap(): Promise<void> {
     }
   });
 
-  gpuCollector.start();
+  const { collector: activeGpuCollector } = resolveActiveCollector();
+  activeGpuCollector.start();
   mockAgentSeeder.start();
   startRetentionJob();
   startHostsWatchdog();
@@ -158,7 +160,7 @@ async function bootstrap(): Promise<void> {
 
   const shutdown = (signal: string) => {
     logger.info('boot', `Received ${signal}, shutting down...`);
-    gpuCollector.stop();
+    activeGpuCollector.stop();
     mockAgentSeeder.stop();
     stopAgentMetricsPersistor();
     exportService.shutdown();

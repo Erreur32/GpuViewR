@@ -3,7 +3,7 @@ import { basename } from 'node:path';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { spawnNvidiaSmi } from '../utils/nvidiaSmi.js';
-import { gpuCollector } from './gpuCollector.js';
+import { getActiveCollector } from './activeGpuCollector.js';
 import { buildFakeProcesses } from './mockGpu.js';
 
 export type GpuProcessType = 'C' | 'G' | 'G+C' | null;
@@ -53,7 +53,7 @@ class ProcessCollector {
 
   private refresh(): Promise<Snapshot> {
     if (config.mockGpu) {
-      const samples = gpuCollector.getLatest();
+      const samples = getActiveCollector().getLatest();
       this.last = { ts: Date.now(), processes: buildFakeProcesses(samples) };
       return Promise.resolve(this.last);
     }

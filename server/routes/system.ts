@@ -3,7 +3,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { gpuCollector } from '../services/gpuCollector.js';
+import { getActiveCollector } from '../services/activeGpuCollector.js';
 import { getDatabase } from '../database/connection.js';
 import { GpuMetricRepository } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
@@ -90,7 +90,7 @@ router.get('/', (_req, res) => {
   const free = os.freemem();
   const used = total - free;
   const cpus = os.cpus();
-  const samples = gpuCollector.getLatest();
+  const samples = getActiveCollector().getLatest();
 
   res.json({
     host: {

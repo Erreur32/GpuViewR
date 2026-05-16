@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { gpuCollector } from '../services/gpuCollector.js';
+import { getActiveCollector } from '../services/activeGpuCollector.js';
 import { GpuDeviceRepository, GpuMetricRepository } from '../database/models/GpuMetric.js';
 import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import { metricsBus } from '../services/_metricsBus.js';
@@ -30,7 +30,7 @@ router.get('/devices', (req, res) => {
 router.get('/current', (req, res) => {
   const host = resolveHost(req.query.host);
   if (host === LOCAL_HOST_ID) {
-    res.json({ samples: gpuCollector.getLatest() });
+    res.json({ samples: getActiveCollector().getLatest() });
     return;
   }
   res.json({ samples: metricsBus.getLatestByHost(host) });

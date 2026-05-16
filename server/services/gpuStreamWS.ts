@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { authService } from './authService.js';
-import { gpuCollector } from './gpuCollector.js';
+import { getActiveCollector } from './activeGpuCollector.js';
 import { metricsBus, type SampleEvent, type HostStatusEvent } from './_metricsBus.js';
 import { alertService } from './alertService.js';
 import { logger } from '../utils/logger.js';
@@ -28,7 +28,7 @@ export function setupGpuWebSocket(): WebSocketServer {
 
     logger.debug('ws', `client connected (user=${payload.username})`);
 
-    const snapshot = gpuCollector.getLatest();
+    const snapshot = getActiveCollector().getLatest();
     if (snapshot.length) safeSend(ws, { type: 'snapshot', samples: snapshot });
 
     // Unwrap the bus envelope: legacy clients on /ws/gpu still expect

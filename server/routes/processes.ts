@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { processCollector, type GpuProcess } from '../services/processCollector.js';
-import { gpuCollector } from '../services/gpuCollector.js';
+import { getActiveCollector } from '../services/activeGpuCollector.js';
 import { agentProcessStore } from '../services/agentProcessStore.js';
 import { metricsBus } from '../services/_metricsBus.js';
 import { LOCAL_HOST_ID } from '../database/models/Host.js';
@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
     const snap = await processCollector.getSnapshot();
     processes = snap.processes;
     tsEpoch = Math.floor(snap.ts / 1000);
-    samples = gpuCollector.getLatest();
+    samples = getActiveCollector().getLatest();
   } else {
     const remote = agentProcessStore.get(host);
     if (remote) {
