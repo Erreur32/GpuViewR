@@ -195,3 +195,17 @@ useHostsStore.subscribe((state, prev) => {
 export function currentHostId(): string {
   return useHostsStore.getState().selectedHostId || LOCAL_HOST_ID;
 }
+
+/** Most recent sample timestamp (epoch seconds) received over the WS
+ *  for a given host, or null when no samples have arrived yet. Used by
+ *  effectiveStatus() to override the stale-by-15s polled last_seen so
+ *  the host card doesn't flicker between online/lagging. */
+export function liveLastSeenFor(latestByHost: Map<string, Map<number, GpuSample>>, hostId: string): number | null {
+  const inner = latestByHost.get(hostId);
+  if (!inner || inner.size === 0) return null;
+  let max = 0;
+  for (const s of inner.values()) {
+    if (s.timestamp_epoch > max) max = s.timestamp_epoch;
+  }
+  return max > 0 ? max : null;
+}

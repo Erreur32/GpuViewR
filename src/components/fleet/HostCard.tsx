@@ -1,6 +1,6 @@
 import { Activity, MemoryStick, Thermometer, Zap, Cpu } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useGpuStore, type GpuSample } from '../../store/gpuStore';
+import { useGpuStore, liveLastSeenFor, type GpuSample } from '../../store/gpuStore';
 import { effectiveStatus, type HostRecord } from '../../store/hostsStore';
 import { statusFor, colorFor } from '../../lib/status';
 import StatusPill from './StatusPill';
@@ -30,7 +30,8 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
   const hostSamples: GpuSample[] = Array.from(samplesByHost.get(host.id)?.values() ?? [])
     .sort((a, b) => a.gpu_index - b.gpu_index);
 
-  const status = effectiveStatus(host);
+  const liveLastSeen = liveLastSeenFor(samplesByHost, host.id);
+  const status = effectiveStatus(host, undefined, liveLastSeen);
   const isOffline = status === 'offline' || status === 'disabled' || status === 'pending';
 
   const stats = aggregateHostStats(hostSamples);
@@ -58,15 +59,26 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <StatusPill status={status} lastSeenEpoch={host.last_seen} />
+          <StatusPill status={status} lastSeenEpoch={liveLastSeen ?? host.last_seen} />
           {!isOffline && sparklineValues.length > 1 && (
-            <Sparkline
-              values={sparklineValues}
-              max={100}
-              width={80}
-              height={22}
-              stroke={utilColor}
-            />
+            <div
+              className="flex items-center gap-1.5"
+              title={t('fleet.sparkline_util_title', { defaultValue: 'Average GPU utilization over the last 60s' })}
+            >
+              <span
+                className="text-[9px] uppercase tracking-wider font-mono leading-none"
+                style={{ color: 'var(--gv-text-dim)' }}
+              >
+                60s util
+              </span>
+              <Sparkline
+                values={sparklineValues}
+                max={100}
+                width={64}
+                height={22}
+                stroke={utilColor}
+              />
+            </div>
           )}
         </div>
       </header>

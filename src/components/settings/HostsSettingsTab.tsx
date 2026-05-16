@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, KeyRound, Trash2, Terminal, Container, Server } from 'lucide-react';
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
+import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
 import { copyText } from '../../lib/clipboard';
@@ -95,11 +96,14 @@ function HostRow({
 }: Readonly<{ host: HostRecord; onRotate: () => void; onDelete: () => void }>) {
   const { t } = useTranslation();
   const isLocal = host.id === LOCAL_HOST_ID;
-  const status = effectiveStatus(host);
+  const latestByHost = useGpuStore((s) => s.latestByHost);
+  const liveLastSeen = liveLastSeenFor(latestByHost, host.id);
+  const status = effectiveStatus(host, undefined, liveLastSeen);
   const now = Math.floor(Date.now() / 1000);
-  const lastSeenLabel = host.last_seen === null
+  const effectiveLastSeen = liveLastSeen ?? host.last_seen;
+  const lastSeenLabel = effectiveLastSeen === null
     ? '—'
-    : t('common.ago_relative', { time: formatRelative(now - host.last_seen) });
+    : t('common.ago_relative', { time: formatRelative(now - effectiveLastSeen) });
 
   // Show the system hostname (when the schema has it) as the secondary
   // line. Falls back to the truncated id so a freshly-enrolled host

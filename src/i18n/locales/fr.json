@@ -413,6 +413,7 @@
     "subtitle": "Tous les hôtes enregistrés. Cliquez sur une carte pour ouvrir le tableau de bord par GPU.",
     "indicator": "Hôtes {{online}}/{{total}}",
     "indicator_title": "Ouvrir la vue des hôtes",
+    "sparkline_util_title": "Utilisation GPU moyenne du host sur les 60 dernières secondes",
     "gpus_count_one": "{{count}} GPU",
     "gpus_count_other": "{{count}} GPUs",
     "hottest_gpu": "GPU la plus chaude",

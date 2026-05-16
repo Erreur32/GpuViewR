@@ -2,6 +2,7 @@ import { Activity } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useHostsStore, effectiveStatus } from '../../store/hostsStore';
+import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 
 /** Header widget — hidden entirely on mono-host installs so the user
  *  sees no new UI until they enroll at least one agent. Shows
@@ -10,13 +11,14 @@ import { useHostsStore, effectiveStatus } from '../../store/hostsStore';
 export default function FleetIndicator() {
   const { t } = useTranslation();
   const hosts = useHostsStore((s) => s.hosts);
+  const latestByHost = useGpuStore((s) => s.latestByHost);
   if (hosts.length <= 1) return null;
 
   let online = 0;
   let lagging = 0;
   let offline = 0;
   for (const h of hosts) {
-    const s = effectiveStatus(h);
+    const s = effectiveStatus(h, undefined, liveLastSeenFor(latestByHost, h.id));
     if (s === 'online') online++;
     else if (s === 'lagging') lagging++;
     else if (s === 'offline') offline++;

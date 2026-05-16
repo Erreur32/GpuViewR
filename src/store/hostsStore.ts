@@ -139,15 +139,36 @@ export function useIsMonoHost(): boolean {
 // backgrounded browser tab. Keep in sync with server/routes/health.ts.
 export const LAGGING_THRESHOLD_S = 25;
 
+/** Effective last-seen for lag computation. Combines two signals so
+ *  the displayed status doesn't flicker on the 15 s /api/hosts polling
+ *  cadence:
+ *    - h.last_seen: authoritative but stale up to 15 s between polls.
+ *    - liveLastSeen: latest sample timestamp received over the WS,
+ *      pulled from gpuStore.latestByHost. Always 1-2 s fresh for any
+ *      host actively streaming.
+ *  Returns whichever is more recent. */
+export function freshestLastSeen(h: HostRecord, liveLastSeen: number | null): number | null {
+  if (h.last_seen === null && liveLastSeen === null) return null;
+  return Math.max(h.last_seen ?? 0, liveLastSeen ?? 0);
+}
+
 /** Derive a displayed "effective" status that incorporates the lag
  *  window the watchdog uses internally: an agent whose last_seen is
  *  more than LAGGING_THRESHOLD_S old shows as 'lagging' even if status
- *  is still 'online' (the 30 s flip lives on the server side). */
-export function effectiveStatus(h: HostRecord, now = Math.floor(Date.now() / 1000)): HostStatus {
+ *  is still 'online' (the 30 s flip lives on the server side).
+ *  Pass `liveLastSeen` from gpuStore.latestByHost to avoid the
+ *  /api/hosts 15 s poll staleness — without it the status flickers
+ *  green→orange→green between polls on a healthy agent. */
+export function effectiveStatus(
+  h: HostRecord,
+  now = Math.floor(Date.now() / 1000),
+  liveLastSeen: number | null = null,
+): HostStatus {
   if (h.status !== 'online') return h.status;
   if (h.kind !== 'agent') return 'online';
-  if (h.last_seen === null) return 'online';
-  if (now - h.last_seen > LAGGING_THRESHOLD_S) return 'lagging';
+  const seen = freshestLastSeen(h, liveLastSeen);
+  if (seen === null) return 'online';
+  if (now - seen > LAGGING_THRESHOLD_S) return 'lagging';
   return 'online';
 }
 

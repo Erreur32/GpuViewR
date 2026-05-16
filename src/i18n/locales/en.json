@@ -413,6 +413,7 @@
     "subtitle": "All registered hosts. Click a card to drill into the per-GPU dashboard.",
     "indicator": "Hosts {{online}}/{{total}}",
     "indicator_title": "Open hosts overview",
+    "sparkline_util_title": "Average GPU utilization across the host over the last 60s",
     "gpus_count_one": "{{count}} GPU",
     "gpus_count_other": "{{count}} GPUs",
     "hottest_gpu": "Hottest GPU",

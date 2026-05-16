@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Cpu, Zap, CheckCircle2, LayoutGrid, BarChart3, Activity, MemoryStick, Cable, Info } from 'lucide-react';
 import { useHostsStore, effectiveStatus, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
-import { useGpuStore, type GpuSample } from '../../store/gpuStore';
+import { useGpuStore, liveLastSeenFor, type GpuSample } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
 import HostCard from './HostCard';
 import FleetChart from './FleetChart';
@@ -52,7 +52,7 @@ function computeFleetAggregate(
     utilSum: 0, utilCount: 0,
   };
   for (const h of hosts) {
-    const status = effectiveStatus(h);
+    const status = effectiveStatus(h, undefined, liveLastSeenFor(samplesByHost, h.id));
     if (status === 'online') acc.online++;
     else if (status === 'lagging') acc.lagging++;
     else if (status === 'offline') acc.offline++;
