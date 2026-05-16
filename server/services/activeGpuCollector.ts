@@ -14,7 +14,10 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { gpuCollector } from './gpuCollector.js';
 import { rocmGpuCollector } from './rocmGpuCollector.js';
+import { processCollector } from './processCollector.js';
+import { rocmProcessCollector } from './rocmProcessCollector.js';
 import type { GpuSample } from './parsers/nvidia.js';
+import type { GpuProcess } from './processCollector.js';
 
 export interface ActiveGpuCollector {
   start(): void;
@@ -23,9 +26,14 @@ export interface ActiveGpuCollector {
   on(event: 'sample', listener: (samples: GpuSample[]) => void): this;
 }
 
+export interface ActiveProcessCollector {
+  getSnapshot(): Promise<{ ts: number; processes: GpuProcess[] }>;
+}
+
 export type ResolvedVendor = 'nvidia' | 'amd';
 
 let active: ActiveGpuCollector = gpuCollector;
+let activeProcess: ActiveProcessCollector = processCollector;
 let resolvedVendor: ResolvedVendor = 'nvidia';
 
 function probesNvidia(): boolean {
@@ -52,21 +60,15 @@ export function resolveActiveCollector(): { collector: ActiveGpuCollector; vendo
   // returns NVIDIA-shaped names but the wire shape is identical), so
   // we keep the nvidia singleton — it owns the mockTick code path.
   if (config.mockGpu) {
-    active = gpuCollector;
-    resolvedVendor = 'nvidia';
-    logger.info('gpu', 'Vendor: nvidia (mock mode)');
+    setNvidia('mock mode');
     return { collector: active, vendor: resolvedVendor };
   }
   if (config.gpuVendor === 'nvidia') {
-    active = gpuCollector;
-    resolvedVendor = 'nvidia';
-    logger.info('gpu', 'Vendor: nvidia (forced by GPU_VENDOR)');
+    setNvidia('forced by GPU_VENDOR');
     return { collector: active, vendor: resolvedVendor };
   }
   if (config.gpuVendor === 'amd') {
-    active = rocmGpuCollector;
-    resolvedVendor = 'amd';
-    logger.info('gpu', `Vendor: amd (forced by GPU_VENDOR, bin=${config.rocmSmiPath})`);
+    setAmd('forced by GPU_VENDOR');
     return { collector: active, vendor: resolvedVendor };
   }
   // auto — probe nvidia-smi first (historical default, exposes strictly
@@ -74,25 +76,39 @@ export function resolveActiveCollector(): { collector: ActiveGpuCollector; vendo
   // sticks with nvidia so the existing "nvidia-smi not available" warn
   // path fires as users expect.
   if (probesNvidia()) {
-    active = gpuCollector;
-    resolvedVendor = 'nvidia';
-    logger.info('gpu', 'Vendor: nvidia (auto-detected)');
+    setNvidia('auto-detected');
     return { collector: active, vendor: resolvedVendor };
   }
   if (probesRocm()) {
-    active = rocmGpuCollector;
-    resolvedVendor = 'amd';
-    logger.info('gpu', `Vendor: amd (auto-detected, bin=${config.rocmSmiPath})`);
+    setAmd('auto-detected');
     return { collector: active, vendor: resolvedVendor };
   }
-  active = gpuCollector;
-  resolvedVendor = 'nvidia';
-  logger.warn('gpu', 'Vendor: no GPU binary detected (probed nvidia-smi and rocm-smi). Falling back to nvidia collector — it will log "not available" and stay disabled.');
+  setNvidia('no GPU binary detected — falling back', true);
   return { collector: active, vendor: resolvedVendor };
+}
+
+function setNvidia(reason: string, warn = false): void {
+  active = gpuCollector;
+  activeProcess = processCollector;
+  resolvedVendor = 'nvidia';
+  const msg = `Vendor: nvidia (${reason})`;
+  if (warn) logger.warn('gpu', msg);
+  else logger.info('gpu', msg);
+}
+
+function setAmd(reason: string): void {
+  active = rocmGpuCollector;
+  activeProcess = rocmProcessCollector;
+  resolvedVendor = 'amd';
+  logger.info('gpu', `Vendor: amd (${reason}, bin=${config.rocmSmiPath})`);
 }
 
 export function getActiveCollector(): ActiveGpuCollector {
   return active;
+}
+
+export function getActiveProcessCollector(): ActiveProcessCollector {
+  return activeProcess;
 }
 
 export function getResolvedVendor(): ResolvedVendor {
