@@ -1,37 +1,41 @@
-release: v0.5.1 — bare-metal agent fix + install-agent.sh + UX polish
+release: v0.5.2 — install.sh polish + auto-logout on stale JWT + TLS toggle
 
-Patch release on top of v0.5.0. Two real bugs in the bare-metal
-install path, plus the Docker remote-agent one-liner we'd promised
-in the v0.5 plan, plus a couple of UX wrinkles caught in dogfooding.
+Patch release on v0.5.1. Smoothing the rough edges users hit during
+the real-world install + reset cycle.
 
 Fixed
-- Bare-metal agent crashed at boot with ERR_MODULE_NOT_FOUND 'ws'.
-  Bundle was built with --external:ws, expecting install.sh to
-  npm install a node_modules alongside — but it doesn't. Bundle now
-  inlines ws (38 KB → 161 KB, acceptable). The optional native deps
-  bufferutil / utf-8-validate stay external; ws falls back without
-  them.
-- Bare-metal install.sh died on AMD hosts with "nvidia-smi not
-  found". Pre-flight now accepts either nvidia-smi or rocm-smi.
+- Stale JWT after a hub DB reset froze the UI silently. The new
+  JWT_SECRET made the browser-stored token invalid; API returned 401
+  but the frontend never reacted. api.ts now intercepts 401 on any
+  non-/auth/ path, clears localStorage, redirects to
+  /login?expired=1. LoginPage shows an amber banner.
+- install.sh leaked WARN[0000] env-var noise on re-installs. .env
+  is now generated BEFORE docker-compose.yaml is downloaded, and
+  `set -a; . ./.env; set +a` exports the vars into the script shell
+  so docker compose inherits them during reconcile. No more warning
+  spew before .env lands on disk.
+- Removed the --progress quiet workaround. Users now see native
+  Compose pull progress (image layers downloading in real time).
 
 Added
-- /install-agent.sh — Docker remote-agent installer, symmetric to
-  install.sh (bare-metal). Auto-detects vendor on the target, pulls
-  the matching docker-compose.agent.{nvidia,amd}.yaml from main,
-  generates .env from --hub + --token, runs docker compose up -d.
-  Hub serves it at /install-agent.sh.
-- EnrollHostModal Docker mode now shows the new curl one-liner
-  (works on both vendors) instead of the NVIDIA-only docker run
-  command.
-- install.sh respects $PWD when the user has cd'd into a non-default
-  dir. No more need for GPUVIEWR_INSTALL_DIR=/path. Same logic in
-  install-agent.sh.
+- TLS toggle in the Add Host modal. A "Hub uses TLS (wss://)"
+  checkbox lets users override the auto-detection. Default is
+  inferred from the hub URL host: IP literals / localhost → ws,
+  FQDN → wss. Catches the HSTS-auto-upgrade trap where a plain-HTTP
+  LAN hub gets bogus wss:// URLs generated.
+- "Re-run to update" hint under the install command in the Add Host
+  modal. Tells users that re-running the same install.sh /
+  install-agent.sh command upgrades the agent — idempotent path.
 
-Changed
-- install.sh silenced the WARN[0000] noise from Compose v2 by passing
-  --progress quiet to both `compose pull` and `compose up -d`.
+Validation
+- typecheck clean (5 pre-existing errors not touched)
+- hub + agent build green
+- 39 server tests + 8 agent tests pass
+- No new SonarCloud-flagged patterns introduced (nested templates,
+  index-as-key, double casts) — pre-flight grep clean for the
+  v0.5.1→v0.5.2 diff.
 
 Upgrade
 - docker compose pull && docker compose up -d on the master.
-- Bare-metal: re-run the curl install.sh — it pulls the new
-  agent.mjs (161 KB with ws inline) from the freshly-pulled hub.
+- Bare-metal / Docker agents: install.sh / install-agent.sh is
+  idempotent, re-run with the same args to pull the new bundle.

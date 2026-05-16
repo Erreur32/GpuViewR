@@ -5,6 +5,44 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-05-16
+
+### Fixed
+
+- **Stale JWT after a hub DB reset froze the UI silently.** When the
+  user ran `rm -rf data && docker compose up -d` the new
+  `JWT_SECRET` made the browser's stored token invalid. API calls
+  returned 401 but the frontend never reacted — the dashboard hung
+  on "no GPU detected" with no hint that re-login was needed.
+  `src/lib/api.ts` now intercepts 401 on any non-`/auth/*` path,
+  clears `localStorage`, and `location.assign("/login?expired=1")`.
+  LoginPage reads `?expired=1` and shows an amber "Your session has
+  expired" banner (i18n: `auth.session_expired`).
+- **`install.sh` leaked `WARN[0000] variable not set`** on
+  re-installs against an already-running stack. Generating `.env`
+  BEFORE downloading `docker-compose.yaml`, then `set -a; . ./.env;
+  set +a` exports the vars into the script's shell so subsequent
+  `docker compose` invocations inherit them — no more env-var
+  warnings during reconcile.
+- **Hidden `--progress quiet` removed** — users now see native
+  Compose pull progress (image layers downloading in real time)
+  during install. The previous quiet flag was a workaround for the
+  WARN noise the fix above kills properly.
+
+### Added
+
+- **TLS toggle in the "Add Host" modal.** A checkbox "Hub uses TLS
+  (wss://)" lets users override the auto-detection. Default is
+  inferred from the hub URL host: IP literals / `localhost` →
+  `ws://`, FQDN → `wss://`. Catches the case where a browser
+  auto-upgrades `http://` to `https://` on a plain-HTTP LAN hub
+  (HSTS), which previously generated bogus `wss://...:443/agent`
+  URLs and made the agent fail with `ECONNREFUSED`.
+- **"Re-run to update" hint** under the install command in the
+  Add Host modal. Tells users that running the exact same
+  `install.sh` / `install-agent.sh` command upgrades the agent —
+  no separate update script needed.
+
 ## [0.5.1] - 2026-05-16
 
 ### Fixed
