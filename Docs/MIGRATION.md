@@ -11,12 +11,13 @@ Simplest path. Stop the old container, start GpuViewR, register the first user.
 # stop old
 docker compose -f /path/to/old/gpu-monitor/docker-compose.yml down
 
-# start new
+# start new — see README Quick start for the curl recipe matching
+# your GPU vendor (NVIDIA / AMD / aggregator-only)
 cd ~/GpuViewR
 docker compose up -d
 ```
 
-Open `http://localhost:3010`: register the first account (becomes admin).
+Open `http://localhost:7510`: register the first account (becomes admin).
 You lose the old historical data, but you start clean on the new schema
 (extra columns: gpu_index, fan_speed, clocks).
 
@@ -122,8 +123,26 @@ to scope a rule.
 
 | Old (`gpu-monitor`) | New (`GpuViewR`) |
 |---|---|
-| Port `8081` | Port `3010` (configurable via `PORT`) |
+| Port `8081` | Port `7510` host → `3015` container (configurable via `DASHBOARD_PORT`) |
 | No auth | First user becomes admin (set `JWT_SECRET` in `.env`) |
 | `./history`, `./logs` volumes | `./data` (single volume) |
 | Bash + Python | Node 22 (TypeScript) |
 | Polling 5–30 s | WebSocket streaming 1 s |
+
+## v0.4.x → v0.5.x
+
+v0.5.0 drops the hub-local GPU collector — local GPU monitoring goes
+through a sidecar agent in the same docker compose stack. The
+auto-migration renames the DB row `id='local'` (kind='local') to
+`id='local-sidecar-{hostname}'` (kind='agent') on first boot and
+re-parents the `gpu_metrics` / `gpu_devices` / `alert_events` rows.
+
+If the migration fails or you don't care about historical metrics:
+
+```bash
+docker compose down -v   # ⚠️ drops the SQLite DB
+rm -rf ./data
+docker compose up -d
+```
+
+See [`V0_5_PLAN.md`](V0_5_PLAN.md) §8 for the migration details.

@@ -1,8 +1,14 @@
 # Plan d'architecture — GpuViewR Multi-Machine Viewer
 
-> Objet : passer GpuViewR (v0.2.5, mono-host) à un mode où **un dashboard central agrège les métriques GPU/système de N hôtes NVIDIA**, sans casser le déploiement zero-config existant. Cible : v0.3.x.
+> **STATUT : HISTORIQUE (v0.3.0 shipped).**
 >
-> **Statut : plan d'architecture. Aucun code écrit. Aucune décision UI.**
+> Ce document est le plan d'origine qui a accouché du multi-host en v0.3.0 puis du support AMD/ROCm en v0.4.0. Il reste utile comme référence de design (D1-D9, schéma DB, contrat WS) mais ne reflète plus l'architecture courante.
+>
+> **Pour l'architecture en cours et la cible v0.5.0** (hub vendor-neutral + sidecar agent + multi-hub) → voir [`V0_5_PLAN.md`](V0_5_PLAN.md).
+>
+> ---
+>
+> Objet (à l'époque) : passer GpuViewR (v0.2.5, mono-host) à un mode où **un dashboard central agrège les métriques GPU/système de N hôtes NVIDIA**, sans casser le déploiement zero-config existant. Cible : v0.3.x.
 >
 > Ce qui sort du scope (assumé) : tout rendu UI multi-host, dashboards visuels par host, RBAC multi-organisation, sharding de la base SQLite, alerting cross-host transactionnel. La présente note couvre la dorsale et le contrat d'API/transport.
 
