@@ -144,6 +144,19 @@ export default function SystemPage() {
               <CardHeader
                 icon={<Server className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
                 title={t('system.host')}
+                badge={
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wider"
+                    style={{
+                      color: 'var(--gv-info)',
+                      background: 'color-mix(in srgb, var(--gv-info) 14%, transparent)',
+                      border: '1px solid color-mix(in srgb, var(--gv-info) 35%, transparent)',
+                    }}
+                    title={t('hosts.hub_badge_help')}
+                  >
+                    {t('hosts.hub_badge')}
+                  </span>
+                }
                 meta={[
                   info.host.os.prettyName ?? info.host.os.name,
                   `${info.host.platform} ${info.host.release}`,
@@ -551,8 +564,14 @@ function ZoneHeader({ color, icon, label, sub }: Readonly<{
  * Replaces the previous {h2 + 3-col grid of label/value pairs} so the
  * card body keeps its real estate for the bars/gauges underneath.
  */
-function CardHeader({ icon, title, meta }: Readonly<{
-  icon: React.ReactNode; title: string; meta: Array<string | null | undefined>;
+function CardHeader({ icon, title, meta, badge }: Readonly<{
+  icon: React.ReactNode;
+  title: string;
+  meta: Array<string | null | undefined>;
+  /** Optional pill rendered between the title and the meta line — used
+   *  on the Host card to flag "this is the hub itself" (matches the
+   *  Hub badge on Settings → Hosts). */
+  badge?: React.ReactNode;
 }>) {
   const items = meta.filter((m): m is string => Boolean(m && m.trim().length > 0));
   return (
@@ -560,6 +579,7 @@ function CardHeader({ icon, title, meta }: Readonly<{
       <h2 className="font-semibold flex items-center gap-2 min-w-0">
         {icon}
         <span className="truncate">{title}</span>
+        {badge}
       </h2>
       {items.length > 0 && (
         <span

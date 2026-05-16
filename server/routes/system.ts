@@ -9,6 +9,7 @@ import { GpuMetricRepository } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { hostHostname } from '../utils/hostHostname.js';
 import { readHostTemperatures } from '../services/systemTemperatures.js';
 
 const RETENTION_KEY = 'retention_days';
@@ -94,7 +95,7 @@ router.get('/', (_req, res) => {
 
   res.json({
     host: {
-      hostname: os.hostname(),
+      hostname: hostHostname(),
       platform: os.platform(),
       arch: os.arch(),
       release: os.release(),

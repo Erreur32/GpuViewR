@@ -8,8 +8,8 @@
 // underlying hostname never breaks historical correlation in
 // gpu_metrics / alert_events.
 
-import os from 'node:os';
 import { getDatabase } from '../connection.js';
+import { hostHostname } from '../../utils/hostHostname.js';
 
 /** Hub-side identifier for the local nvidia-smi producer. */
 export const LOCAL_HOST_ID = 'local';
@@ -169,7 +169,7 @@ export const HostsRepo = {
    * intact so renaming via the Hosts UI sticks across restarts.
    */
   seedLocalIfMissing(db = getDatabase()): void {
-    const sysHostname = os.hostname() || null;
+    const sysHostname = hostHostname();
     const defaultLabel = sysHostname ?? 'local';
     const existing = db.prepare('SELECT id, label FROM hosts WHERE id = ?').get(LOCAL_HOST_ID) as
       | { id: string; label: string }
