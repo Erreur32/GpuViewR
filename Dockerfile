@@ -83,6 +83,8 @@ COPY --chown=node:node --from=builder /app/README.md ./
 # curl install path. Without it those endpoints 503 with a warn log.
 COPY --chown=node:node --from=builder /app/agent/dist/agent.mjs ./agent/dist/agent.mjs
 COPY --chown=node:node --from=builder /app/agent/install.sh.tpl ./agent/install.sh.tpl
+# Docker variant of the agent installer (served at /install-agent.sh).
+COPY --chown=node:node --from=builder /app/install-agent.sh ./install-agent.sh
 
 ENV NODE_ENV=production
 ENV PORT=3015

@@ -63,13 +63,17 @@ export default function EnrollHostModal({ onClose }: Props) {
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Docker one-liner that auto-detects vendor (NVIDIA / AMD), pulls
+  // the matching docker-compose.agent.<vendor>.yaml from GitHub,
+  // generates .env from --hub + --token, and runs `docker compose up
+  // -d`. Works on NVIDIA AND AMD hosts — same command on both.
   const dockerCmd = result
-    ? `docker run -d --name gpuviewr-agent \\\n  --gpus all \\\n  --restart unless-stopped \\\n  -e HUB_URL=${result.hubWs} \\\n  -e HOST_ID=${result.hostId} \\\n  -e AGENT_TOKEN=${result.token} \\\n  ghcr.io/erreur32/gpuviewr-agent:latest`
+    ? `curl -fsSL ${result.hubHttp}/install-agent.sh | bash -s -- \\\n  --hub ${result.hubHttp} \\\n  --token ${result.hostId}.${result.token}`
     : '';
 
   // Bare-metal one-liner: the install.sh script splits "host_id.secret"
   // back into HOST_ID + AGENT_TOKEN env vars, so we only need a single
-  // --token flag à la Beszel. Backend unchanged.
+  // --token flag à la Beszel.
   const curlCmd = result
     ? `curl -fsSL ${result.hubHttp}/install.sh | sudo bash -s -- \\\n  --url ${result.hubHttp} \\\n  --token ${result.hostId}.${result.token}`
     : '';

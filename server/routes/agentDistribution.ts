@@ -20,9 +20,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // server/routes -> server -> repo root. The agent dir is a sibling.
-const AGENT_DIR = path.resolve(__dirname, '..', '..', 'agent');
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const AGENT_DIR = path.join(REPO_ROOT, 'agent');
 const TPL_PATH = path.join(AGENT_DIR, 'install.sh.tpl');
 const BUNDLE_PATH = path.join(AGENT_DIR, 'dist', 'agent.mjs');
+const INSTALL_AGENT_PATH = path.join(REPO_ROOT, 'install-agent.sh');
 
 // One-shot boot warning when the bundle is missing — surfaces the
 // install.sh path being broken before any user tries to enroll.
@@ -56,6 +58,23 @@ router.get('/install.sh', installLimiter, (req, res) => {
     .type('text/x-shellscript; charset=utf-8')
     .set('Cache-Control', 'no-store')
     .send(body);
+});
+
+router.get('/install-agent.sh', installLimiter, (_req, res) => {
+  // Docker variant of /install.sh — auto-detects vendor, pulls the
+  // matching docker-compose.agent.<vendor>.yaml from GitHub, generates
+  // .env from --hub + --token args, and runs `docker compose up -d`.
+  // Served as-is from the repo (no template substitution needed —
+  // the script takes --hub and --token explicitly).
+  if (!fs.existsSync(INSTALL_AGENT_PATH)) {
+    logger.warn('agent-dist', `install-agent.sh missing at ${INSTALL_AGENT_PATH}`);
+    res.status(503).type('text/plain').send('# install-agent.sh missing on this hub build\n');
+    return;
+  }
+  res
+    .type('text/x-shellscript; charset=utf-8')
+    .set('Cache-Control', 'no-store')
+    .sendFile(INSTALL_AGENT_PATH);
 });
 
 router.get('/agent.mjs', installLimiter, (_req, res) => {
