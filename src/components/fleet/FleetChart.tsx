@@ -597,9 +597,8 @@ function ChartPlot({ entries, data }: Readonly<ChartPlotProps>) {
           <div className="flex flex-col gap-0.5">
             {entries.map((e, i) => {
               const dash = HOST_DASH[e.hostIdx % HOST_DASH.length];
-              const label = e.host
-                ? `${e.host.label} · ${t(`dashboard.metrics.${e.metric}`)}`
-                : t(`dashboard.metrics.${e.metric}`);
+              const metricLabel = t(`dashboard.metrics.${e.metric}`);
+              const label = e.host ? `${e.host.label} · ${metricLabel}` : metricLabel;
               return (
                 <div key={e.key} className="flex items-center justify-between gap-3">
                   <span
