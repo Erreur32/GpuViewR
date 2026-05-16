@@ -76,13 +76,13 @@ echo "HOST_IP=$(hostname -I | awk '{print $1}')" >> .env
 # echo "TZ=Europe/Paris"       >> .env
 ```
 
-### Step 2: grab the `docker-compose.yml`
+### Step 2: grab the `docker-compose.yaml`
 
 Either clone the repo, or download the file directly next to your `.env`:
 
 ```bash
-curl -fsSL -o docker-compose.yml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.yml
+curl -fsSL -o docker-compose.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.yaml
 ```
 
 It pulls the published image from GHCR, exposes the dashboard on
@@ -91,7 +91,7 @@ GPUs to the container, and bind-mounts the host `/proc` read-only so GPU
 process names resolve correctly without sharing the host PID namespace.
 
 <details>
-<summary>Show <code>docker-compose.yml</code></summary>
+<summary>Show <code>docker-compose.yaml</code></summary>
 
 ```yaml
 services:
@@ -347,7 +347,7 @@ You only need agents if you want to monitor _other_ machines.
    > on the hub side. Run `npm run build:agent` once after a fresh clone
    > to build it; the Docker hub image bundles it automatically.
 
-A drop-in [`docker-compose.agent.yml`](docker-compose.agent.yml) is
+A drop-in [`docker-compose.agent.yaml`](docker-compose.agent.yaml) is
 provided at the repo root for users who prefer compose, and a bare-metal
 systemd path (Node SEA binary) is documented in
 [`agent/README.md`](agent/README.md) for hosts without Docker.
@@ -390,8 +390,8 @@ getent group video render          # note the GIDs (Debian: 44 / 109)
 
 # 2. New folder, grab the compose, write the .env.
 mkdir gpuviewr && cd gpuviewr
-curl -fsSL -o docker-compose.amd.yml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.amd.yml
+curl -fsSL -o docker-compose.amd.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.amd.yaml
 cat > .env <<EOF
 JWT_SECRET=$(openssl rand -base64 32)
 DASHBOARD_PORT=7510
@@ -402,8 +402,8 @@ TZ=Europe/Paris
 EOF
 
 # 3. Up.
-docker compose -f docker-compose.amd.yml up -d
-docker compose -f docker-compose.amd.yml logs -f
+docker compose -f docker-compose.amd.yaml up -d
+docker compose -f docker-compose.amd.yaml logs -f
 ```
 
 UI on `http://<your-box>:7510` — first user becomes admin.
@@ -421,8 +421,8 @@ rocm-smi --showid --json
 #    AGENT_TOKEN (printed once by Settings → Hosts → + Add host on
 #    the hub).
 mkdir gpuviewr-agent && cd gpuviewr-agent
-curl -fsSL -o docker-compose.agent.amd.yml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.agent.amd.yml
+curl -fsSL -o docker-compose.agent.amd.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.agent.amd.yaml
 # Edit .env with the values copied from the hub UI:
 cat > .env <<EOF
 HUB_URL=wss://gpu.example.com/agent
@@ -430,7 +430,7 @@ HOST_ID=<uuid-from-hub>
 AGENT_TOKEN=<token-from-hub>
 EOF
 
-docker compose -f docker-compose.agent.amd.yml up -d
+docker compose -f docker-compose.agent.amd.yaml up -d
 ```
 
 Both compose files bind-mount the host's `/opt/rocm` tree (rocm-smi
@@ -469,10 +469,10 @@ either:
 ```bash
 # 1. (Recommended) Refresh your compose to the latest with the
 #    /etc/hostname bind-mount baked in:
-curl -fsSL -o docker-compose.amd.yml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.amd.yml
-docker compose -f docker-compose.amd.yml down
-docker compose -f docker-compose.amd.yml up -d
+curl -fsSL -o docker-compose.amd.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.amd.yaml
+docker compose -f docker-compose.amd.yaml down
+docker compose -f docker-compose.amd.yaml up -d
 
 # 2. (Workaround) Pin the hostname explicitly via .env — wins over
 #    any auto-detection, no compose change needed:

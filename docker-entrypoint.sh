@@ -32,7 +32,7 @@ elif [ "$GPU_VENDOR_VAR" = "amd" ]; then
     if [ ! -x "$ROCM_SMI_BIN" ]; then
         echo "WARNING: GPU_VENDOR=amd but rocm-smi not found at $ROCM_SMI_BIN."
         echo "  Bind-mount /opt/rocm:/opt/rocm:ro from the host (see"
-        echo "  docker-compose.amd.yml). Override ROCM_SMI_PATH if your"
+        echo "  docker-compose.amd.yaml). Override ROCM_SMI_PATH if your"
         echo "  ROCm install lives elsewhere."
         echo "  Container will start but the dashboard will show no GPU."
     fi

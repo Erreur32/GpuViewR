@@ -1,0 +1,101 @@
+# ===========================================
+# GpuViewR Agent — AMD/ROCm variant
+# ===========================================
+#
+# Live on the REMOTE machine you want to monitor (the AMD box), NOT
+# on the hub. Pair this file with the same HOST_ID/AGENT_TOKEN handed
+# to you by the hub UI (Settings → Hosts → Add host).
+#
+# Differences from docker-compose.agent.yaml:
+#   - No `runtime: nvidia` and no NVIDIA device reservation.
+#   - /dev/kfd + /dev/dri are device-mapped so the agent can talk to
+#     amdgpu through libdrm.
+#   - group_add: ["video", "render"] gives the container user access
+#     to the DRI devices without needing privileged mode.
+#   - The whole /opt/rocm tree is bind-mounted read-only from the
+#     host. rocm-smi is a Python script (a symlink to
+#     /opt/rocm/libexec/rocm_smi/rocm_smi.py) so we need both the
+#     entry point AND its libraries — mounting the parent dir
+#     covers everything in one shot.
+#   - The agent image now ships python3-minimal so the script can
+#     actually run; distroless was a no-go for the AMD path.
+#
+# Prerequisites on the remote host:
+#   1. AMD GPU + amdgpu kernel driver.
+#   2. ROCm installed at /opt/rocm (the standard location for AMD's
+#      .deb packages on Debian/Ubuntu).
+#   3. `rocm-smi --version` works as the user running docker.
+#   4. Group IDs for `video` and `render` known on this host —
+#      check with `getent group video render`. Defaults below (44
+#      and 109) match Debian; ROCm-installed boxes often shift
+#      render to 992. Override via VIDEO_GID / RENDER_GID in .env.
+#   5. (Optional) `apt install libdrm-amdgpu1` silences the
+#      "Fail to open libdrm_amdgpu.so" startup warning. Cosmetic —
+#      JSON output is valid either way.
+# ===========================================
+
+services:
+  agent:
+    image: ghcr.io/erreur32/gpuviewr-agent:latest
+    container_name: gpuviewr-agent
+    restart: unless-stopped
+
+    devices:
+      - /dev/kfd
+      - /dev/dri
+
+    # Numeric GIDs because the agent runs from a Debian-slim image
+    # where `video`/`render` are not defined inside the container —
+    # group_add resolves names against the container's /etc/group,
+    # not the host's. Override in .env if `getent group video render`
+    # shows different numbers on your box.
+    group_add:
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-109}"
+
+    # /opt/rocm is mounted read-only so rocm-smi (Python script +
+    # native libraries) runs unchanged inside the container.
+    # Adjust the source path if your distro installs ROCm elsewhere.
+    volumes:
+      - /opt/rocm:/opt/rocm:ro
+      - /proc:/host/proc:ro
+
+    environment:
+      # Required — get these from the hub UI at enrollment time.
+      HUB_URL: ${HUB_URL}              # e.g. wss://gpu.example.com/agent
+      HOST_ID: ${HOST_ID}              # UUID printed once by the hub
+      AGENT_TOKEN: ${AGENT_TOKEN}      # opaque secret, also one-shot
+
+      # Vendor pinning: 'amd' forces the rocm-smi collector path even
+      # if nvidia-smi happened to be present. Set to 'auto' to let the
+      # agent probe both; 'auto' prefers nvidia when both are found.
+      GPU_VENDOR: amd
+      ROCM_SMI_PATH: /opt/rocm/bin/rocm-smi
+      HOST_PROC: /host/proc
+
+      # Critical for AMD: rocm-smi's Python script loads librocm_smi64.so.1
+      # via ctypes. On the host, ROCm packages drop /etc/ld.so.conf.d/rocm.conf
+      # so ldconfig finds it under /opt/rocm/lib — but that config doesn't
+      # exist inside the container. Without LD_LIBRARY_PATH the script prints
+      # "Unable to load the rocm_smi library" on stderr, exits 0 with empty
+      # stdout (yes, exit 0), and the agent silently sends no samples.
+      LD_LIBRARY_PATH: /opt/rocm/lib:/opt/rocm/lib64
+
+      # Optional — sensible defaults.
+      TICK_MS: ${TICK_MS:-1000}
+      FEATURES: ${FEATURES:-gpu,system,temps,processes}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RECONNECT_MAX_MS: ${RECONNECT_MAX_MS:-30000}
+
+      # Timezone for log timestamps. Defaults to UTC; override in
+      # .env (e.g. TZ=Europe/Paris) — requires tzdata in the image,
+      # which the agent Dockerfile installs since v0.3.1.
+      TZ: ${TZ:-UTC}
+
+      # 1 only in dev / against a hub with a self-signed certificate
+      # on a private LAN hostname. Never in production — defeats the
+      # point of wss://.
+      TLS_INSECURE: ${TLS_INSECURE:-0}
+
+      # AGENT_BUFFER_PERSIST: ${AGENT_BUFFER_PERSIST:-0}  # ring-only by default
+      # AGENT_LABEL: ${AGENT_LABEL:-}                     # label sent in the hello frame
