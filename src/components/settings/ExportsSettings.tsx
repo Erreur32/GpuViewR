@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send, Activity, Database, Webhook, Save, PlayCircle, BellRing, Eye, EyeOff, Home, HelpCircle, Filter } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -301,50 +301,54 @@ function HostFilterDisclosure({ value, onChange, disabled }: Readonly<{
     ? t('settings.exports_filter_summary_all')
     : t('settings.exports_filter_summary_partial', { selected: selectedHosts, total: totalHosts });
 
-  const toggleHost = (hostId: string, on: boolean) => {
-    // Build the "everything on" snapshot we synthesise when the user
-    // first interacts with the filter — flipping one host off shouldn't
-    // silently include zero other hosts. Once at least one entry is
-    // explicit, we only mutate the entries the user touches.
-    const baseline: HostGpuFilter = filterEmpty
-      ? Object.fromEntries(hosts.map((h) => [h.id, null] as const))
-      : { ...value };
-    if (on) baseline[hostId] = null;
-    else delete baseline[hostId];
-    // If user re-checks every host with "all GPUs", collapse back to
-    // {} so the saved shape is canonical and the summary reads
-    // "tous les hôtes" instead of "4/4 hôtes".
+  // Build the "everything on" snapshot we synthesise on the first
+  // user interaction with the filter — flipping one host off shouldn't
+  // silently include zero other hosts. Once at least one entry is
+  // explicit (filterEmpty=false), we only mutate the entries the user
+  // touches.
+  const buildBaseline = (): HostGpuFilter => (filterEmpty
+    ? Object.fromEntries(hosts.map((h) => [h.id, null] as const))
+    : { ...value });
+
+  // Final canonicalisation step: when every host is back to "all GPUs",
+  // collapse to {} so the saved shape is unique and the summary reads
+  // "tous les hôtes" instead of "4/4 hôtes". Single source of truth so
+  // toggleHost / toggleGpu can't drift apart on this rule.
+  const commit = (next: HostGpuFilter) => {
     const allOn = hosts.length > 0
-      && hosts.every((h) => h.id in baseline && baseline[h.id] === null);
-    onChange(allOn ? {} : baseline);
+      && hosts.every((h) => h.id in next && next[h.id] === null);
+    onChange(allOn ? {} : next);
+  };
+
+  const toggleHost = (hostId: string, on: boolean) => {
+    const next = buildBaseline();
+    if (on) next[hostId] = null;
+    else delete next[hostId];
+    commit(next);
   };
 
   const toggleGpu = (hostId: string, gpuIdx: number, on: boolean) => {
-    const baseline: HostGpuFilter = filterEmpty
-      ? Object.fromEntries(hosts.map((h) => [h.id, null] as const))
-      : { ...value };
-    const cur = baseline[hostId];
+    const next = buildBaseline();
+    const cur = next[hostId];
     const all = gpusByHost.get(hostId) ?? [];
-    let next: number[];
+    let chosen: number[];
     if (cur === null || cur === undefined) {
-      next = on ? [...all] : all.filter((g) => g !== gpuIdx);
+      chosen = on ? [...all] : all.filter((g) => g !== gpuIdx);
     } else {
       const set = new Set(cur);
       if (on) set.add(gpuIdx); else set.delete(gpuIdx);
-      next = Array.from(set).sort((a, b) => a - b);
+      chosen = Array.from(set).sort((a, b) => a - b);
     }
-    if (next.length === 0) {
-      delete baseline[hostId];
-    } else if (all.length > 0 && next.length === all.length) {
+    if (chosen.length === 0) {
+      delete next[hostId];
+    } else if (all.length > 0 && chosen.length === all.length) {
       // user re-checked every GPU on this host → collapse to null
       // (= "all GPUs of this host") so the saved shape is canonical.
-      baseline[hostId] = null;
+      next[hostId] = null;
     } else {
-      baseline[hostId] = next;
+      next[hostId] = chosen;
     }
-    const allOn = hosts.length > 0
-      && hosts.every((h) => h.id in baseline && baseline[h.id] === null);
-    onChange(allOn ? {} : baseline);
+    commit(next);
   };
 
   return (
@@ -409,6 +413,21 @@ function HostFilterDisclosure({ value, onChange, disabled }: Readonly<{
       </div>
     </details>
   );
+}
+
+/** Bind a HostGpuFilter field to a single-state setter — saves the
+ *  three identical {value, onChange} props on MQTT / Influx / Webhook
+ *  blocks (PrometheusBlock uses its own per-field setters and doesn't
+ *  benefit from this helper). Setter shape mirrors useState's
+ *  Dispatch<SetStateAction<S>> so callers can pass setS straight in. */
+function bindHostFilter<S extends { hostFilter?: HostGpuFilter }>(
+  s: S,
+  setS: Dispatch<SetStateAction<S>>,
+): { value: HostGpuFilter; onChange: (next: HostGpuFilter) => void } {
+  return {
+    value: s.hostFilter ?? {},
+    onChange: (hostFilter) => setS({ ...s, hostFilter }),
+  };
 }
 
 function Toggle({ label, checked, onChange, disabled }: Readonly<{
@@ -549,11 +568,7 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
         onChange={(v) => setS({ ...s, includeSystemStats: v })}
         disabled={disabled}
       />
-      <HostFilterDisclosure
-        value={s.hostFilter ?? {}}
-        onChange={(hostFilter) => setS({ ...s, hostFilter })}
-        disabled={disabled}
-      />
+      <HostFilterDisclosure {...bindHostFilter(s, setS)} disabled={disabled} />
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
           <Save className="w-4 h-4" /> {t('common.save')}
@@ -658,11 +673,7 @@ function InfluxBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
         onChange={(v) => setS({ ...s, includeSystemStats: v })}
         disabled={disabled}
       />
-      <HostFilterDisclosure
-        value={s.hostFilter ?? {}}
-        onChange={(hostFilter) => setS({ ...s, hostFilter })}
-        disabled={disabled}
-      />
+      <HostFilterDisclosure {...bindHostFilter(s, setS)} disabled={disabled} />
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
           <Save className="w-4 h-4" /> {t('common.save')}
@@ -844,11 +855,7 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
         />
       )}
 
-      <HostFilterDisclosure
-        value={s.hostFilter ?? {}}
-        onChange={(hostFilter) => setS({ ...s, hostFilter })}
-        disabled={disabled}
-      />
+      <HostFilterDisclosure {...bindHostFilter(s, setS)} disabled={disabled} />
 
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
