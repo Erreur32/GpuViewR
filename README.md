@@ -214,7 +214,10 @@ All settings are read from `.env`.
 | `HOST_IP` | _auto_ | LAN IP shown in the boot banner. Auto-detected if unset; recommended in Docker. |
 | `PUBLIC_URL` | _none_ | Set when you serve GpuViewR behind a reverse proxy. |
 | `TZ` | `Europe/Paris` | Container timezone. |
-| `GPU_TICK_MS` | `1000` | How often `nvidia-smi` is sampled. |
+| `GPU_TICK_MS` | `1000` | How often the active vendor smi (nvidia-smi / rocm-smi) is sampled. |
+| `GPU_VENDOR` | `auto` | `auto` probes nvidia-smi then rocm-smi at boot; `nvidia` / `amd` pin the collector. |
+| `ROCM_SMI_PATH` | `/opt/rocm/bin/rocm-smi` | Where to find rocm-smi inside the container. Override when your ROCm install lives elsewhere. |
+| `HUB_HOSTNAME` | _auto_ | Hostname shown on the Hosts table / Dashboard / System page for the hub itself. Auto-resolved from `/host/etc/hostname` when the compose bind-mounts it; set explicitly to override (e.g. `HUB_HOSTNAME=jarvis`). |
 | `RETENTION_DAYS` | `7` | How long historical metrics are kept in SQLite. |
 
 Internal ports (rarely need to change):
@@ -432,8 +435,10 @@ docker compose -f docker-compose.agent.amd.yml up -d
 
 Both compose files bind-mount the host's `/opt/rocm` tree (rocm-smi
 is a Python script, so we mount the parent dir to get the interpreter
-entry point AND its native libraries in one shot) and use `/dev/kfd`
-+ `/dev/dri` instead of the NVIDIA Container Toolkit. The hub +
+entry point AND its native libraries in one shot), `/etc/hostname`
+read-only (so the UI shows the real machine name instead of the
+container id), and use `/dev/kfd` + `/dev/dri` instead of the NVIDIA
+Container Toolkit. The hub +
 agent images both ship `python3` so the script can run inside the
 container, and set `LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/lib64`
 so the ctypes loader finds `librocm_smi64.so.1` — without it
@@ -450,6 +455,30 @@ Multi-GPU AMD boxes currently attribute all processes to `card0`
 unaffected. Set `GPU_VENDOR=auto` (default) to let the agent probe
 both binaries and pick whichever responds; `GPU_VENDOR=amd` or
 `nvidia` pins it explicitly.
+
+#### Troubleshooting: the UI shows a container id instead of my hostname
+
+`/proc/sys/kernel/hostname` is a pseudo-virtual file whose value
+follows the reading process's UTS namespace, so even with
+`/proc:/host/proc:ro` mounted it can still return the container id
+(e.g. `9490fde69ed2`) instead of the real hostname. The compose
+files since v0.4.1 also bind-mount `/etc/hostname` as a static
+fallback. If yours predates that or sits behind a hardened mount,
+either:
+
+```bash
+# 1. (Recommended) Refresh your compose to the latest with the
+#    /etc/hostname bind-mount baked in:
+curl -fsSL -o docker-compose.amd.yml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.amd.yml
+docker compose -f docker-compose.amd.yml down
+docker compose -f docker-compose.amd.yml up -d
+
+# 2. (Workaround) Pin the hostname explicitly via .env — wins over
+#    any auto-detection, no compose change needed:
+echo "HUB_HOSTNAME=jarvis" >> .env
+docker compose up -d --force-recreate
+```
 
 ### OS support
 
