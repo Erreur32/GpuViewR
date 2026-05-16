@@ -20,6 +20,23 @@ interface EnrollResult {
   hubWs: string;
 }
 
+// IP literals + 'localhost' default to plain http/ws (no TLS expected
+// on LAN). Domain names default to https/wss (assumes a reverse-proxy
+// with a cert). User can flip the choice via the TLS checkbox in the
+// token modal.
+function defaultUseTls(host: string): boolean {
+  // Strip the port for the check (location.host includes :port for
+  // non-default ports).
+  const hostOnly = host.replace(/:\d+$/, '');
+  if (hostOnly === 'localhost') return false;
+  // IPv4
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostOnly)) return false;
+  // IPv6 literal (browser brackets like [::1])
+  if (/^\[.+\]$/.test(hostOnly)) return false;
+  // Anything else (hostnames, FQDN, etc.) → assume TLS
+  return true;
+}
+
 export default function EnrollHostModal({ onClose }: Props) {
   const { t } = useTranslation();
   const enroll = useHostsStore((s) => s.enroll);
@@ -29,15 +46,22 @@ export default function EnrollHostModal({ onClose }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState<'id' | 'token' | 'cmd' | null>(null);
   const [mode, setMode] = useState<InstallMode>('curl');
+  // TLS toggle for the generated URLs. Auto-set on first render based
+  // on whether the current page's host looks like an IP literal — the
+  // common case "I'm on http://192.168.x.x:7510 enrolling a LAN box"
+  // gets ws:// out of the box. Public FQDN deployments default to wss.
+  const [useTls, setUseTls] = useState(() => defaultUseTls(globalThis.location.host));
 
   const submit = async () => {
     if (!label.trim() || submitting) return;
     setSubmitting(true);
     try {
       const r = await enroll(label.trim());
-      const proto = globalThis.location.protocol === 'https:' ? 'wss' : 'ws';
-      const hubHttp = `${globalThis.location.protocol}//${globalThis.location.host}`;
-      const hubWs = `${proto}://${globalThis.location.host}/agent`;
+      const host = globalThis.location.host;
+      const httpProto = useTls ? 'https' : 'http';
+      const wsProto = useTls ? 'wss' : 'ws';
+      const hubHttp = `${httpProto}://${host}`;
+      const hubWs = `${wsProto}://${host}/agent`;
       setResult({ hostId: r.host.id, token: r.token, hubHttp, hubWs });
       setStage('token');
     } catch (err) {
@@ -46,6 +70,21 @@ export default function EnrollHostModal({ onClose }: Props) {
       setSubmitting(false);
     }
   };
+
+  // Recompute URLs when the user toggles TLS post-enrollment too —
+  // the token block stays the same, only the URLs in the recipes change.
+  useEffect(() => {
+    if (!result) return;
+    const host = globalThis.location.host;
+    const httpProto = useTls ? 'https' : 'http';
+    const wsProto = useTls ? 'wss' : 'ws';
+    setResult((prev) => prev && ({
+      ...prev,
+      hubHttp: `${httpProto}://${host}`,
+      hubWs: `${wsProto}://${host}/agent`,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useTls]);
 
   const copy = async (text: string, kind: 'id' | 'token' | 'cmd') => {
     const ok = await copyText(text);
@@ -143,23 +182,43 @@ export default function EnrollHostModal({ onClose }: Props) {
           <div className="flex flex-col gap-2">
             {/* Mode picker — curl is highlighted as recommended for new
                 installs since it's a single line, no Docker dependency. */}
-            <div className="seg" role="toolbar" aria-label={t('hosts.install_mode_label')}>
-              <button
-                type="button"
-                className="seg-btn inline-flex items-center gap-1.5"
-                aria-pressed={mode === 'curl'}
-                onClick={() => setMode('curl')}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="seg" role="toolbar" aria-label={t('hosts.install_mode_label')}>
+                <button
+                  type="button"
+                  className="seg-btn inline-flex items-center gap-1.5"
+                  aria-pressed={mode === 'curl'}
+                  onClick={() => setMode('curl')}
+                >
+                  <Terminal size={14} /> {t('hosts.install_mode_curl')}
+                </button>
+                <button
+                  type="button"
+                  className="seg-btn inline-flex items-center gap-1.5"
+                  aria-pressed={mode === 'docker'}
+                  onClick={() => setMode('docker')}
+                >
+                  <Container size={14} /> {t('hosts.install_mode_docker')}
+                </button>
+              </div>
+
+              {/* TLS toggle — auto-detected based on whether the hub
+                  URL host is an IP literal vs a domain name. Flip it
+                  for unusual setups (LAN domain behind nginx with TLS,
+                  or public IP without TLS). */}
+              <label
+                className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none"
+                style={{ color: 'var(--gv-text-muted)' }}
+                title={t('hosts.tls_help')}
               >
-                <Terminal size={14} /> {t('hosts.install_mode_curl')}
-              </button>
-              <button
-                type="button"
-                className="seg-btn inline-flex items-center gap-1.5"
-                aria-pressed={mode === 'docker'}
-                onClick={() => setMode('docker')}
-              >
-                <Container size={14} /> {t('hosts.install_mode_docker')}
-              </button>
+                <input
+                  type="checkbox"
+                  checked={useTls}
+                  onChange={(e) => setUseTls(e.target.checked)}
+                  className="accent-current"
+                />
+                {t('hosts.tls_label')}
+              </label>
             </div>
 
             <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
