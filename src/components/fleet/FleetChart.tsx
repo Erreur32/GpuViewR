@@ -215,6 +215,26 @@ export default function FleetChart() {
 
   const hostsToPlot = useMemo<HostRecord[]>(() => hosts.slice(0, 12), [hosts]);
 
+  // Hosts that have actually pushed samples since the page loaded.
+  // /api/hosts returns rows in enrolled_at ASC order, so the local hub
+  // (created at first boot) is almost always hostsToPlot[0] — and on
+  // hub-only deployments it never receives samples. Without this split
+  // the local row "burns" the solid-line slot, leaving its curve
+  // invisible while still appearing in the legend.
+  //
+  // We keep hostsToPlot for the legend (the user must see every
+  // enrolled host so they understand the missing data) but drive the
+  // chart off this filtered list so the dash patterns assign sensibly:
+  // first-with-data → solid, second → long-dash, etc.
+  const seriesByHost = useGpuStore((s) => s.seriesByHost);
+  const hostsWithData = useMemo<HostRecord[]>(() => {
+    if (range !== 'live') return hostsToPlot;
+    return hostsToPlot.filter((h) => {
+      const series = seriesByHost.get(h.id);
+      return series !== undefined && series.size > 0;
+    });
+  }, [hostsToPlot, seriesByHost, range]);
+
   useEffect(() => {
     if (range === 'live') {
       setHistoryByMetric(null);
@@ -250,15 +270,25 @@ export default function FleetChart() {
   );
 
   // Build the flat list of series to plot. Per-host mode produces
-  // metric × visibleHost entries; total mode produces one per metric.
+  // metric × visibleHostWithData entries; total mode produces one per
+  // metric aggregated across hostsWithData.
   const entries = useMemo<SeriesEntry[]>(() => {
     const store = useGpuStore.getState();
-    const visibleHosts = hostsToPlot.filter((h) => !hiddenHosts.has(h.id));
+    const visibleHostsWithData = hostsWithData.filter((h) => !hiddenHosts.has(h.id));
     const out: SeriesEntry[] = [];
     for (const m of activeMetrics) {
       const perHost = (range === 'live' || historyByMetric === null)
-        ? hostsToPlot.map((h) => buildHostSeries(h.id, m, store))
-        : historyByMetric[m] ?? [];
+        ? hostsWithData.map((h) => buildHostSeries(h.id, m, store))
+        : (() => {
+            // historyByMetric is indexed against hostsToPlot, not
+            // hostsWithData. Project it down by mapping each
+            // hostsWithData index → its hostsToPlot index.
+            const hb = historyByMetric[m] ?? [];
+            return hostsWithData.map((h) => {
+              const fullIdx = hostsToPlot.findIndex((x) => x.id === h.id);
+              return hb[fullIdx] ?? { times: [], values: [] };
+            });
+          })();
       if (mode === 'total') {
         out.push({
           key: `total-${m}`,
@@ -269,8 +299,8 @@ export default function FleetChart() {
         });
         continue;
       }
-      for (const h of visibleHosts) {
-        const idx = hostsToPlot.findIndex((x) => x.id === h.id);
+      for (const h of visibleHostsWithData) {
+        const idx = hostsWithData.findIndex((x) => x.id === h.id);
         out.push({
           key: `${h.id}-${m}`,
           metric: m,
@@ -282,7 +312,7 @@ export default function FleetChart() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hostsToPlot, mode, hiddenHosts, activeMetrics, seriesVersion, range, historyByMetric]);
+  }, [hostsToPlot, hostsWithData, mode, hiddenHosts, activeMetrics, seriesVersion, range, historyByMetric]);
 
   const data = useMemo<AlignedData>(() => {
     if (entries.length === 0) return [[]] as AlignedData;
@@ -373,28 +403,51 @@ export default function FleetChart() {
       <ChartPlot entries={entries} data={data} metricColor={METRIC_COLOR} />
 
       {/* Legend: host chips when per-host mode (toggle each host across
-          all visible metrics at once). Total mode just shows the metric
-          colour + aggregation hint per metric. */}
+          all visible metrics at once). We render EVERY enrolled host —
+          including those without live samples — so the admin sees at a
+          glance which row is "missing" data. The dash swatch only
+          matches the chart pattern for hosts that actually draw a
+          curve (i.e. are in hostsWithData); empty hosts get a muted
+          "no data" pill so the legend stays honest about what's drawn.
+          Total mode keeps the per-metric aggregation hint per metric. */}
       {mode === 'per-host' ? (
         <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
-          {hostsToPlot.map((h, i) => {
+          {hostsToPlot.map((h) => {
             const hidden = hiddenHosts.has(h.id);
-            const dash = HOST_DASH[i % HOST_DASH.length];
+            const dataIdx = hostsWithData.findIndex((x) => x.id === h.id);
+            const hasData = dataIdx >= 0;
+            const dash = hasData ? HOST_DASH[dataIdx % HOST_DASH.length] : [];
+            const titleKey = hasData
+              ? (hidden ? 'fleet.legend_show' : 'fleet.legend_hide')
+              : 'fleet.legend_no_data';
             return (
               <button
                 key={h.id}
                 type="button"
-                onClick={() => toggleHost(h.id)}
+                onClick={() => { if (hasData) toggleHost(h.id); }}
+                disabled={!hasData}
                 className="inline-flex items-center gap-1.5 transition-opacity"
                 style={{
                   color: 'var(--gv-text-muted)',
-                  opacity: hidden ? 0.4 : 1,
+                  opacity: !hasData ? 0.45 : (hidden ? 0.4 : 1),
                   textDecoration: hidden ? 'line-through' : 'none',
+                  cursor: hasData ? 'pointer' : 'not-allowed',
                 }}
-                title={hidden ? t('fleet.legend_show', { label: h.label }) : t('fleet.legend_hide', { label: h.label })}
+                title={t(titleKey, { label: h.label })}
               >
                 <HostDashSwatch dash={dash} />
                 {h.label}
+                {!hasData && (
+                  <span
+                    className="ml-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-mono"
+                    style={{
+                      background: 'var(--gv-surface-alt)',
+                      color: 'var(--gv-text-dim)',
+                    }}
+                  >
+                    {t('fleet.legend_no_data_badge')}
+                  </span>
+                )}
               </button>
             );
           })}

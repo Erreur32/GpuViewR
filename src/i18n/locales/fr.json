@@ -468,6 +468,8 @@
     "mode_total": "Tous hôtes",
     "legend_show": "Afficher {{label}}",
     "legend_hide": "Masquer {{label}}",
+    "legend_no_data": "{{label}} ne pousse aucun sample en direct. Vérifiez l'agent sur cette machine.",
+    "legend_no_data_badge": "no data",
     "legend_total": "Tous hôtes",
     "legend_total_hint": "Agrégation : {{mode}}",
     "status": {

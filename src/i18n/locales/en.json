@@ -468,6 +468,8 @@
     "mode_total": "All hosts total",
     "legend_show": "Show {{label}}",
     "legend_hide": "Hide {{label}}",
+    "legend_no_data": "{{label}} is pushing no live samples. Check the agent on that machine.",
+    "legend_no_data_badge": "no data",
     "legend_total": "All hosts total",
     "legend_total_hint": "Aggregation: {{mode}}",
     "status": {
