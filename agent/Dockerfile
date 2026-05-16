@@ -20,14 +20,13 @@ WORKDIR /build/agent
 RUN npm ci --no-audit --no-fund --loglevel=error
 
 # Bring in agent sources + the shared parser files from the hub. The
-# agent collectors import both _nvidiaParsers.ts (CSV from nvidia-smi)
-# and _rocmParsers.ts (JSON from rocm-smi); esbuild bundles whichever
+# agent collectors import both parsers/nvidia.ts (CSV from nvidia-smi)
+# and parsers/rocm.ts (JSON from rocm-smi); esbuild bundles whichever
 # the active collector pulls in at runtime.
 WORKDIR /build
 COPY agent/tsconfig.json agent/
 COPY agent/src ./agent/src
-COPY server/services/_nvidiaParsers.ts ./server/services/_nvidiaParsers.ts
-COPY server/services/_rocmParsers.ts ./server/services/_rocmParsers.ts
+COPY server/services/parsers ./server/services/parsers
 
 WORKDIR /build/agent
 RUN npm run build
