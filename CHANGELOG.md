@@ -5,6 +5,123 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-16
+
+### Architecture
+
+**The hub is now vendor-neutral**. All GPU sample collection — local
+or remote — goes through the agent WS ingest path. The previous
+hub-local `gpuCollector` / `rocmGpuCollector` / `processCollector` /
+`rocmProcessCollector` / `activeGpuCollector` modules are deleted
+(–965 LOC net). The hub image no longer bundles `python3` or
+`libdrm-amdgpu1` (~80 MB smaller); local GPU monitoring is provided
+by a sidecar agent in the same compose stack.
+
+See [`Docs/V0_5_PLAN.md`](Docs/V0_5_PLAN.md) for the design rationale
+(D1-D8) + every jalon's intent.
+
+### Added
+
+- **`install.sh`** at the repo root — one-liner `curl … | bash` that
+  auto-detects vendor (NVIDIA / AMD / none), pulls
+  `docker-compose.yaml`, generates `.env` with random secrets +
+  proper `COMPOSE_PROFILES`, runs `docker compose up -d`.
+  Idempotent. Customisable via `GPUVIEWR_INSTALL_DIR` and
+  `GPUVIEWR_BRANCH` envs.
+- **Single `docker-compose.yaml`** with Docker Compose profiles
+  (`nvidia`, `amd`). Hub is always started; only the right sidecar
+  service activates based on `COMPOSE_PROFILES` in `.env`. Switch
+  vendor by editing one line and re-running `docker compose up -d`.
+- **Bootstrap token auth** for the local sidecar. The hub config
+  carries `LOCAL_AGENT_BOOTSTRAP`; the sidecar agent presents the
+  same token + `HOST_ID=local` and gets auto-enrolled on first
+  handshake. No more clicking through Settings → Hosts for the
+  local box. Constant-time compare to avoid leaking the secret
+  through timing.
+- **Agent multi-hub mode** — one agent can push to N hubs in
+  parallel:
+  ```env
+  HUB_URLS=wss://hub1/agent,wss://hub2/agent
+  HOST_IDS=<id-on-hub1>,<id-on-hub2>
+  AGENT_TOKENS=<token-on-hub1>,<token-on-hub2>
+  ```
+  Each hub gets its own WS connection, reconnect backoff state,
+  ping timer, and offline-replay buffer — a slow hub never gates
+  samples to a fast one. Legacy singular `HUB_URL`/`HOST_ID`/
+  `AGENT_TOKEN` continues to work (array-of-1 internally). Three
+  consecutive auth failures on a single hub give up on that hub
+  only; other hubs keep going.
+- **`server/services/_processTypes.ts`** — shared `GpuProcess`
+  interface, lifted out of the deleted `processCollector`.
+- **`server/services/retentionJob.ts`** — extracted
+  `startRetentionJob`, independent of any collector lifecycle.
+
+### Changed (breaking)
+
+- **`server/services/gpuCollector.ts`, `rocmGpuCollector.ts`,
+  `activeGpuCollector.ts`, `processCollector.ts`,
+  `rocmProcessCollector.ts`, `_gpuCollectorBase.ts`,
+  `_procUtil.ts`, `nvidiaSmi.ts`, `rocmSmi.ts`** — all removed.
+  Anyone importing these from their own code needs to read from
+  `metricsBus.getLatestByHost()` instead.
+- **`config.gpuVendor` / `config.rocmSmiPath` / `parseVendor`** —
+  removed from the hub config. Those vars only live on the agent
+  side now.
+- **Route behaviour**: `GET /api/gpu/current?host=local` no longer
+  has a special branch — it reads `metricsBus.getLatestByHost('local')`
+  exactly like remote hosts. Same for `/api/processes`,
+  `/api/health.gpuCount`, `/api/system.gpus`.
+- **`Dockerfile`** dropped `python3` + `libdrm-amdgpu1`. Hub image
+  ~250 MB → ~170 MB.
+- **`docker-entrypoint.sh`** simplified: no more vendor probe
+  inside the hub container; the sidecar owns that.
+- **Compose files renamed** :
+  ```
+  compose.yaml                    → docker-compose.yaml
+  compose.agent.nvidia.yaml       → docker-compose.agent.nvidia.yaml
+  compose.agent.amd.yaml          → docker-compose.agent.amd.yaml
+  ```
+  Old `compose.*` paths no longer exist on `main`. Pinned tags
+  retain their `.yml` snapshot history.
+- **`README.md` rewrite** — 586 → 210 lines. Single install path
+  (curl install.sh), no more parallel NVIDIA / AMD / aggregator
+  sections. Manual fallback in collapsed `<details>`.
+
+### Migrated automatically
+
+- `hosts` row with `id='local'` and legacy `kind='local'` is bumped
+  to `kind='agent'` on first v0.5 boot via `seedLocalIfMissing()`.
+  The row stays under the same `id='local'` so every foreign key
+  in `gpu_metrics` / `gpu_devices` / `alert_events` keeps pointing
+  at the same record. History preserved.
+- First sidecar handshake calls `upsertLocalSidecarHost` (in
+  `agentIngestWS`) which is idempotent — re-runs on every reconnect.
+
+### Removed
+
+- `Docs/REMOVE_UPDATE_SH.md` — stale rationale doc.
+- The `.yml` compose symlinks that briefly existed in v0.4.2 — pure
+  cosmetic clutter.
+
+### Migration path
+
+```bash
+# On Jarvis / deb13 / any v0.4.x install:
+cd ~/gpuviewr
+docker compose pull
+docker compose up -d
+# Migration runs automatically. First user must re-login (JWT
+# secret may have rotated if you regenerated .env).
+```
+
+If anything goes wrong, the clean slate is one command:
+
+```bash
+docker compose down -v   # drops the DB
+rm -rf ./data
+docker compose up -d
+```
+
 ## [0.4.2] - 2026-05-16
 
 ### Added

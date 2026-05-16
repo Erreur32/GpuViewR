@@ -1,77 +1,78 @@
-release: v0.4.2 — hostname robustness, single-vendor composes, log hygiene
+release: v0.5.0 — vendor-neutral hub + sidecar agent + multi-hub
 
-Five things picked up during the deb13 / Jarvis cross-vendor test
-loop after v0.4.1 shipped. None are user-facing features — all are
-sharp-corner fixes you only notice once you actually try to install
-on two boxes side by side.
+Major architecture refactor. The hub is no longer GPU-aware: all
+samples (local and remote) come through the agent WebSocket ingest
+path. Local GPU monitoring is provided by a sidecar agent running in
+the same docker compose stack. One curl one-liner installs the
+whole thing.
 
-Hostname inside the container
-- The label backfill in seedLocalIfMissing only kicked in when the
-  existing row had label === 'local'. But on the first v0.4.0 boot
-  it had already been written as the (container-id) os.hostname()
-  value, so the v0.4.1 upgrade silently kept the container id even
-  after hostHostname() learned to read /host/proc. New condition
-  accepts three "auto-set" shapes: 'local', label === hostname, or
-  a 12-hex-char Docker container id. User-customised labels are
-  still preserved.
-- /proc/sys/kernel/hostname is a pseudo-virtual file whose value
-  follows the reading process's UTS namespace, not the procfs
-  mount-point — so on some kernels the /host/proc bind-mount still
-  returned the container id. New resolution chain in
-  server/utils/hostHostname.ts:
-    1. HUB_HOSTNAME env       explicit override, beats everything.
-    2. /host/etc/hostname     bind-mounted static file (added to all
-                              compose variants), kernel-independent.
-    3. /host/proc/sys/kernel/hostname   best-effort.
-    4. os.hostname()          last resort.
-- Dashboard header gained a HostChip showing the resolved hostname
-  + a "Hub" pill when the row is LOCAL_HOST_ID, so users on mono-
-  host installs (where the HostSelector dropdown self-hides) finally
-  see which box they're looking at.
+See Docs/V0_5_PLAN.md for the design rationale + every jalon.
 
-docker-compose files
-- New docker-compose.nvidia.yaml mirrors the AMD recipe: NVIDIA
-  Container Toolkit passthrough enabled out of the box. The vendor-
-  neutral docker-compose.yaml still ships with passthrough commented
-  out — it's the aggregator-only case. Quick start in the README
-  now offers all three (nvidia / amd / aggregator) as parallel curl
-  recipes, no uncommenting required.
-- Rename .yml → .yaml across all five compose files (YAML.org spec
-  preference; Docker Compose v2 auto-discovers .yaml first). Old
-  .yml symlinks lived for a few hours, then got dropped on user
-  request — purely aesthetic. Old wget URLs at /main/*.yml 404; tag
-  snapshots still resolve.
+Architecture (—128 LOC net hub side, ~80 MB smaller image)
+- Removed: gpuCollector.ts, rocmGpuCollector.ts, activeGpuCollector.ts,
+  processCollector.ts, rocmProcessCollector.ts, _gpuCollectorBase.ts,
+  _procUtil.ts, nvidiaSmi.ts, rocmSmi.ts. The hub image no longer
+  bundles python3 or libdrm-amdgpu1.
+- Added: server/services/_processTypes.ts (shared GpuProcess type)
+  and server/services/retentionJob.ts (lifted out of the deleted
+  gpuCollector).
+- Six route call sites switched from getActiveCollector().getLatest()
+  to metricsBus.getLatestByHost(host) — no more LOCAL_HOST_ID special
+  branch.
 
-Log hygiene & reconnect storm
-- Hub-side: the agent rate-limit warning logged once per offending
-  frame while the close round-tripped, producing 80+ identical lines
-  per disconnect. Now logged exactly once per session, with the
-  actual frame rate measured.
-- Agent-side: flushBuffer() drained the entire offline-replay queue
-  in a single tight loop on every reconnect — after a long outage
-  that exceeded the hub's 100-frames/s rate limit and triggered an
-  endless reconnect→kick storm. Chunked drain (50 frames per 600 ms)
-  stays under the ceiling and yields to live tick frames between
-  batches.
+Installation
+- install.sh at the repo root. One curl one-liner auto-detects vendor
+  (nvidia-smi → nvidia, rocm-smi → amd, neither → aggregator-only),
+  pulls docker-compose.yaml, generates .env with random secrets +
+  LAN IP + COMPOSE_PROFILES, runs `docker compose up -d`.
+- Single docker-compose.yaml. Hub always started; agent-nvidia and
+  agent-amd live in named profiles. Only one sidecar exists at
+  runtime (shared container_name).
+- Switch vendor by editing one line in .env and re-running up -d.
 
-UI polish
-- System page "GPU" subtitle no longer claims "Accélérateurs NVIDIA
-  remontés par nvidia-smi" on AMD hosts. Hub badge added to the
-  System page Host card title. hosts.section_help +
-  hosts.hub_badge_help mention both smi binaries. Boot banner says
-  "Real-time NVIDIA / AMD GPU Dashboard".
-- no_gpu UI placeholder mentions rocm-smi as a possibility and
-  points at GPU_VENDOR + the hub boot logs.
+Bootstrap auth for the sidecar
+- New config.localAgentBootstrap (LOCAL_AGENT_BOOTSTRAP env). When
+  set, an agent presenting that token + HOST_ID=LOCAL_HOST_ID is
+  auto-enrolled (row upserted as kind='agent') without going through
+  Settings → Hosts. Constant-time compare to avoid leaking the
+  secret through timing.
+- seedLocalIfMissing migrates legacy kind='local' rows to
+  kind='agent' on first v0.5 boot. The row keeps its id='local' so
+  every FK in gpu_metrics / gpu_devices / alert_events keeps
+  pointing at the same record. History preserved.
 
-Docker
-- Hub Dockerfile now bakes agent/dist/agent.mjs + install.sh.tpl
-  into the runtime image. /install.sh + /agent.mjs no longer 503
-  out of the box — the curl-install path for remote agents works
-  on first boot.
-- docker-entrypoint.sh probe is vendor-aware (GPU_VENDOR-driven)
-  instead of hardcoding nvidia-smi.
+Agent multi-hub
+- One agent can push to N hubs in parallel:
+    HUB_URLS=wss://h1/agent,wss://h2/agent
+    HOST_IDS=<id-on-h1>,<id-on-h2>
+    AGENT_TOKENS=<token-on-h1>,<token-on-h2>
+- Each hub gets its own WS, reconnect backoff state, ping timer,
+  and offline-replay buffer — a slow hub never gates samples to a
+  fast one.
+- AUTH_FAILURE_LIMIT=3: a single bad hub gives up after three
+  consecutive 4001/1008 closes, but the agent stays alive and
+  other hubs keep going.
+- Legacy singular HUB_URL/HOST_ID/AGENT_TOKEN continues to work
+  (array-of-1 internally). Mixed (both shapes present) → fatal exit,
+  no ambiguity.
 
-Typecheck + hub build + agent build + 39 server tests + 8 agent
-tests all green; behaviour validated end-to-end on Jarvis (AMD Strix
-Halo) and deb13 (NVIDIA) with the agent-on-deb13 hub-on-jarvis
-cross-pollination.
+Compose renames + README rewrite
+- compose.yaml → docker-compose.yaml (back to the conventional name
+  the wider Docker ecosystem expects).
+- compose.agent.{nvidia,amd}.yaml → docker-compose.agent.{nvidia,amd}.yaml.
+- README rewritten 586 → 210 lines. Single install path, no more
+  per-vendor sections, manual fallback in collapsed <details>.
+- Docs/REMOVE_UPDATE_SH.md deleted (pure history, not referenced).
+
+Validation
+- typecheck + hub build + agent build all green.
+- 39 server tests + 8 agent tests pass.
+- agent.mjs: 35.6 → 38.2 kb (+2 kb for multi-hub bookkeeping).
+- Hub image expected: ~250 MB → ~170 MB.
+
+Migration path for v0.4.x users
+- `docker compose pull && docker compose up -d` — auto-migration
+  runs at boot. JWT secret may have rotated if you regenerated .env,
+  in which case re-login.
+- If anything goes wrong: `docker compose down -v && rm -rf ./data
+  && docker compose up -d` — clean slate.
