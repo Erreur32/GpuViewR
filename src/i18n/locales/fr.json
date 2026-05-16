@@ -470,6 +470,8 @@
     "legend_hide": "Masquer {{label}}",
     "legend_no_data": "{{label}} ne pousse aucun sample en direct. Vérifiez l'agent sur cette machine.",
     "legend_no_data_badge": "no data",
+    "total_hosts_count": "{{n}}/{{m}} hôtes",
+    "total_hosts_count_help": "L'agrégation (avg / max / sum) porte sur les hôtes qui poussent des samples en direct. Les hôtes silencieux sont ignorés.",
     "legend_total": "Tous hôtes",
     "legend_total_hint": "Agrégation : {{mode}}",
     "status": {

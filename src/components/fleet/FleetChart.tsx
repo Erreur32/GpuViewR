@@ -358,6 +358,15 @@ export default function FleetChart() {
       <header className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="font-semibold text-sm inline-flex items-center gap-2">
           {mode === 'total' ? t('fleet.combined_chart_title_total_multi') : t('fleet.combined_chart_title')}
+          {mode === 'total' && hostsToPlot.length > 0 && (
+            <span
+              className="text-[10px] font-normal font-mono px-1.5 py-0.5 rounded-md"
+              style={{ background: 'var(--gv-surface-alt)', color: 'var(--gv-text-dim)' }}
+              title={t('fleet.total_hosts_count_help')}
+            >
+              {t('fleet.total_hosts_count', { n: hostsWithData.length, m: hostsToPlot.length })}
+            </span>
+          )}
           {loading && (
             <span className="text-[10px] font-normal" style={{ color: 'var(--gv-text-dim)' }}>
               {t('common.loading')}

@@ -470,6 +470,8 @@
     "legend_hide": "Hide {{label}}",
     "legend_no_data": "{{label}} is pushing no live samples. Check the agent on that machine.",
     "legend_no_data_badge": "no data",
+    "total_hosts_count": "{{n}}/{{m}} hosts",
+    "total_hosts_count_help": "Aggregation (avg / max / sum) runs over hosts that are pushing live samples. Silent hosts are skipped.",
     "legend_total": "All hosts total",
     "legend_total_hint": "Aggregation: {{mode}}",
     "status": {
