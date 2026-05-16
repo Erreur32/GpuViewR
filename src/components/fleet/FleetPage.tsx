@@ -116,15 +116,15 @@ export default function FleetPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight inline-flex items-center gap-2">
             {t('fleet.title')}
-            <span
-              tabIndex={0}
+            <button
+              type="button"
               aria-label={t('fleet.title_help')}
               title={t('fleet.title_help')}
-              className="inline-flex items-center cursor-help opacity-60 hover:opacity-100"
+              className="inline-flex items-center cursor-help opacity-60 hover:opacity-100 bg-transparent border-0 p-0"
               style={{ color: 'var(--gv-text-muted)' }}
             >
               <Info className="w-4 h-4" />
-            </span>
+            </button>
           </h1>
           <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('fleet.subtitle')}</p>
         </div>

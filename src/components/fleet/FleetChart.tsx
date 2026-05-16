@@ -23,7 +23,7 @@ import uPlot, { type AlignedData } from 'uplot';
 import { useTranslation } from 'react-i18next';
 import { useGpuStore, type HistoryRow } from '../../store/gpuStore';
 import { useHostsStore, type HostRecord } from '../../store/hostsStore';
-import { useUiStore, type Range } from '../../store/uiStore';
+import { useUiStore } from '../../store/uiStore';
 import { api } from '../../lib/api';
 import { fmtDateTime } from '../../lib/time';
 import RangeSelector from '../dashboard/RangeSelector';
@@ -482,9 +482,8 @@ function ChartPlot({ entries, data }: Readonly<ChartPlotProps>) {
     const seriesDefs: uPlot.Series[] = [{}];
     for (const e of entries) {
       const dash = HOST_DASH[e.hostIdx % HOST_DASH.length];
-      const label = e.host
-        ? `${e.host.label} · ${t(`dashboard.metrics.${e.metric}`)}`
-        : t(`dashboard.metrics.${e.metric}`);
+      const metricLabel = t(`dashboard.metrics.${e.metric}`);
+      const label = e.host ? `${e.host.label} · ${metricLabel}` : metricLabel;
       seriesDefs.push({
         label,
         stroke: METRIC_COLOR[e.metric],
@@ -543,7 +542,6 @@ function ChartPlot({ entries, data }: Readonly<ChartPlotProps>) {
             });
             setCursor({ t: ts, values });
             const w = u.over.clientWidth;
-            const h = u.over.clientHeight;
             setTip({
               left,
               top,

@@ -1,11 +1,8 @@
-import { EventEmitter } from 'node:events';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { spawnNvidiaSmi, spawnSyncNvidiaSmi } from '../utils/nvidiaSmi.js';
-import { GpuDeviceRepository, GpuMetricRepository, type GpuMetric } from '../database/models/GpuMetric.js';
+import { GpuMetricRepository } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
-import { HostsRepo, LOCAL_HOST_ID } from '../database/models/Host.js';
-import { buildFakeSamples } from './mockGpu.js';
 import {
   QUERY_FIELDS,
   num,
@@ -16,20 +13,15 @@ import {
   type GpuSample,
   type PcieThroughput,
 } from './parsers/nvidia.js';
-import { metricsBus } from './_metricsBus.js';
+import { GpuCollectorBase } from './_gpuCollectorBase.js';
 
 // Re-export so existing `import { type GpuSample } from './gpuCollector.js'`
 // in alertService / exportService / mockGpu / gpuStreamWS still resolves.
 // The canonical home is now parsers/nvidia.ts (shared with the agent).
 export type { GpuSample };
 
-class GpuCollector extends EventEmitter {
-  private timer: NodeJS.Timeout | null = null;
+class GpuCollector extends GpuCollectorBase {
   private nvidiaSmiAvailable: boolean | null = null;
-  private buffer: GpuMetric[] = [];
-  private lastFlush = Date.now();
-  private readonly flushIntervalMs = 60_000; // persist every minute
-  private lastSamples: GpuSample[] = [];
   // PCIe RX/TX from the most recent `-q -d PCI` call. Keyed two ways:
   //   - by normalized bus id ("00000000:01:00.0") for accurate matching
   //   - by GPU block order ("idx:0", "idx:1", …) as a fallback when the
@@ -38,100 +30,26 @@ class GpuCollector extends EventEmitter {
   //     parallel with the CSV query each tick; merged in handleOutput().
   private lastPcieThroughput: Map<string, PcieThroughput> = new Map();
   private pcieDiagLogged = false;
-  // Throttle DB writes for the local host's last_seen heartbeat. The
-  // WS ingest path uses the same 5s window — keeps the SQLite UPDATE
-  // rate sane while still surfacing a fresh value on the Hosts page.
-  private lastSeenWroteAt = 0;
-  private static readonly LAST_SEEN_THROTTLE_MS = 5_000;
 
-  /** Touch hosts.last_seen for the local row so the Hosts settings
-   *  table shows a fresh heartbeat (the WS ingest path does the same
-   *  for remote agents). No-op until the throttle window elapses. */
-  private touchLocalLastSeen(): void {
-    const now = Date.now();
-    if (now - this.lastSeenWroteAt < GpuCollector.LAST_SEEN_THROTTLE_MS) return;
-    this.lastSeenWroteAt = now;
+  protected checkAvailable(): boolean {
+    if (this.nvidiaSmiAvailable !== null) return this.nvidiaSmiAvailable;
     try {
-      HostsRepo.markSeen(LOCAL_HOST_ID);
-    } catch (err) {
-      // Don't let a SQLite hiccup take down the collect loop — the
-      // heartbeat is best-effort metadata, not the sample pipeline.
-      logger.debug('gpu', `markSeen(local) failed: ${(err as Error).message}`);
-    }
-  }
-
-  start(): void {
-    if (this.timer) return;
-    if (config.mockGpu) {
-      logger.warn('gpu', `Mock collector started (tick=${config.gpuTickMs}ms) — synthetic data, NOT REAL GPUS`);
-      this.mockTick();
-      this.timer = setInterval(() => this.mockTick(), config.gpuTickMs);
-      return;
-    }
-    this.checkNvidiaSmi();
-    if (!this.nvidiaSmiAvailable) {
-      logger.warn('gpu', 'nvidia-smi not available: collector disabled (UI will show no data)');
-      return;
-    }
-    logger.success('gpu', `Collector started (tick=${config.gpuTickMs}ms)`);
-    this.tick();
-    this.timer = setInterval(() => this.tick(), config.gpuTickMs);
-  }
-
-  private mockTick(): void {
-    const samples = buildFakeSamples();
-    if (samples.length === 0) return;
-    this.lastSamples = samples;
-    for (const s of samples) {
-      GpuDeviceRepository.upsert({
-        host_id: LOCAL_HOST_ID,
-        gpu_index: s.gpu_index,
-        name: s.name,
-        uuid: s.uuid,
-        memory_total: s.memory_total,
-        driver_version: s.driver_version,
-      });
-      this.buffer.push({
-        host_id: LOCAL_HOST_ID,
-        gpu_index: s.gpu_index,
-        timestamp: s.timestamp,
-        timestamp_epoch: s.timestamp_epoch,
-        temperature: s.temperature,
-        utilization: s.utilization,
-        memory_used: s.memory_used,
-        memory_total: s.memory_total,
-        power: s.power,
-        fan_speed: s.fan_speed,
-        clock_graphics: s.clock_graphics,
-        clock_memory: s.clock_memory,
-      });
-    }
-    metricsBus.emit('sample', { host_id: LOCAL_HOST_ID, samples });
-    this.touchLocalLastSeen();
-    if (Date.now() - this.lastFlush >= this.flushIntervalMs) this.flushBuffer();
-  }
-
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
-    if (this.buffer.length) this.flushBuffer();
-  }
-
-  getLatest(): GpuSample[] {
-    return this.lastSamples;
-  }
-
-  private checkNvidiaSmi(): void {
-    if (this.nvidiaSmiAvailable !== null) return;
-    try {
-      const r = spawnSyncNvidiaSmi(['--version'], 3000);
-      this.nvidiaSmiAvailable = r.status === 0;
+      this.nvidiaSmiAvailable = spawnSyncNvidiaSmi(['--version'], 3000).status === 0;
     } catch {
       this.nvidiaSmiAvailable = false;
     }
+    return this.nvidiaSmiAvailable;
   }
 
-  private tick(): void {
+  protected unavailableMessage(): string {
+    return 'nvidia-smi not available: collector disabled (UI will show no data)';
+  }
+
+  protected startedMessage(): string {
+    return `Collector started (tick=${config.gpuTickMs}ms)`;
+  }
+
+  protected tick(): void {
     // Kick off the PCIe-throughput query in parallel; it lands into
     // this.lastPcieThroughput by the time handleOutput() merges samples.
     // Stale-by-one-tick is fine: the value is already an instantaneous
@@ -243,49 +161,8 @@ class GpuCollector extends EventEmitter {
         timestamp_epoch: epoch,
       };
       samples.push(sample);
-
-      GpuDeviceRepository.upsert({
-        host_id: LOCAL_HOST_ID,
-        gpu_index: sample.gpu_index,
-        name: sample.name,
-        uuid: sample.uuid,
-        memory_total: sample.memory_total,
-        driver_version: sample.driver_version,
-      });
-
-      this.buffer.push({
-        host_id: LOCAL_HOST_ID,
-        gpu_index: sample.gpu_index,
-        timestamp: sample.timestamp,
-        timestamp_epoch: sample.timestamp_epoch,
-        temperature: sample.temperature,
-        utilization: sample.utilization,
-        memory_used: sample.memory_used,
-        memory_total: sample.memory_total,
-        power: sample.power,
-        fan_speed: sample.fan_speed,
-        clock_graphics: sample.clock_graphics,
-        clock_memory: sample.clock_memory,
-      });
     }
-    if (samples.length === 0) return;
-    this.lastSamples = samples;
-    metricsBus.emit('sample', { host_id: LOCAL_HOST_ID, samples });
-    this.touchLocalLastSeen();
-
-    if (Date.now() - this.lastFlush >= this.flushIntervalMs) this.flushBuffer();
-  }
-
-  private flushBuffer(): void {
-    if (this.buffer.length === 0) return;
-    try {
-      GpuMetricRepository.insertMany(this.buffer);
-      logger.debug('gpu', `Flushed ${this.buffer.length} samples to DB`);
-    } catch (err) {
-      logger.error('gpu', 'flushBuffer failed:', (err as Error).message);
-    }
-    this.buffer = [];
-    this.lastFlush = Date.now();
+    this.persistSamples(samples);
   }
 }
 
