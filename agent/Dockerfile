@@ -26,6 +26,7 @@ RUN npm ci --no-audit --no-fund --loglevel=error
 WORKDIR /build
 COPY agent/tsconfig.json agent/
 COPY agent/src ./agent/src
+COPY agent/scripts ./agent/scripts
 COPY server/services/parsers ./server/services/parsers
 
 WORKDIR /build/agent
