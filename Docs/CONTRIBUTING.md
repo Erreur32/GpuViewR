@@ -17,7 +17,7 @@ npm run dev
 
 - `server/`: Express + WebSocket backend (TypeScript, run via `tsx`)
 - `src/`: React 19 frontend
-- `Dockerfile` / `docker-entrypoint.sh` / `docker-compose.yml`
+- `Dockerfile` / `docker-entrypoint.sh` / `docker-compose*.yaml` (vendor-neutral, nvidia, amd, plus the two agent variants)
 - `scripts/`
   - `update-version.sh`: bump version across the repo (with optional tag-push)
   - `check-docker-build.js`: local sanity build of the Docker image

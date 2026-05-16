@@ -67,15 +67,41 @@ export function createTransport(config: AgentConfig): Transport {
     while (buffer.length > BUFFER_MAX) buffer.shift();
   }
 
+  // After a long outage the buffer can hold hundreds of frames; dumping
+  // them all in one event-loop tick exceeds the hub's RATE_LIMIT_PER_SEC
+  // (100/s) and gets the agent kicked. Drain in chunks well below that
+  // ceiling, with a setImmediate-yield between chunks so live tick
+  // frames don't get stuck behind a long replay either.
+  const REPLAY_CHUNK = 50;
+  const REPLAY_DELAY_MS = 600;
+  let replayTimer: NodeJS.Timeout | null = null;
+  let totalDrained = 0;
+
   function flushBuffer(): void {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    let drained = 0;
-    while (buffer.length > 0 && ws.readyState === WebSocket.OPEN) {
+    if (replayTimer) return; // already draining
+    totalDrained = 0;
+    drainChunk();
+  }
+
+  function drainChunk(): void {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      replayTimer = null;
+      return;
+    }
+    let n = 0;
+    while (n < REPLAY_CHUNK && buffer.length > 0 && ws.readyState === WebSocket.OPEN) {
       const frame = buffer.shift()!;
       sendRaw(frame);
-      drained++;
+      n++;
+      totalDrained++;
     }
-    if (drained > 0) logger.info('ws', `Replayed ${drained} buffered frame(s) after reconnect`);
+    if (buffer.length === 0) {
+      if (totalDrained > 0) logger.info('ws', `Replayed ${totalDrained} buffered frame(s) after reconnect`);
+      replayTimer = null;
+      return;
+    }
+    replayTimer = setTimeout(drainChunk, REPLAY_DELAY_MS);
   }
 
   function sendRaw(frame: OutboundFrame): void {

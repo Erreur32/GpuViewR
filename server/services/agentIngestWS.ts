@@ -123,6 +123,11 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion:
 
   let lastSeenWroteAt = Date.now();
   const messageWindow: number[] = [];
+  // Throttle the rate-limit warning: a single misbehaving agent can
+  // emit hundreds of frames in the same event-loop tick before the
+  // close round-trips, and every one triggered a warn line. Log once,
+  // close, move on.
+  let rateLimitWarned = false;
 
   ws.on('message', (data) => {
     const now = Date.now();
@@ -130,7 +135,10 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion:
     messageWindow.push(now);
     while (messageWindow.length > 0 && now - messageWindow[0] > 1000) messageWindow.shift();
     if (messageWindow.length > RATE_LIMIT_PER_SEC) {
-      logger.warn('agent', `Rate limit exceeded for ${host.id}, closing`);
+      if (!rateLimitWarned) {
+        rateLimitWarned = true;
+        logger.warn('agent', `Rate limit exceeded for ${host.id} (${messageWindow.length} frames/s > ${RATE_LIMIT_PER_SEC}), closing`);
+      }
       ws.close(1008, 'Rate limit exceeded');
       return;
     }

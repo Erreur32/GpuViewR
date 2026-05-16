@@ -78,85 +78,37 @@ echo "HOST_IP=$(hostname -I | awk '{print $1}')" >> .env
 
 ### Step 2: grab the `docker-compose.yaml`
 
-Either clone the repo, or download the file directly next to your `.env`:
+Pick the one that matches your vendor — they're equivalent except the
+NVIDIA one enables the NVIDIA Container Toolkit passthrough by default,
+the AMD one bind-mounts `/opt/rocm` and the device nodes, and the
+vendor-neutral one ships neither (use it when the hub is a pure
+aggregator for remote agents, no local GPU).
 
 ```bash
+# NVIDIA host — toolkit passthrough enabled out of the box
+curl -fsSL -o docker-compose.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.nvidia.yaml
+
+# AMD host — see the dedicated section below for the AMD-specific recipe
+curl -fsSL -o docker-compose.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.amd.yaml
+
+# No local GPU (hub as remote-agent aggregator)
 curl -fsSL -o docker-compose.yaml \
   https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.yaml
 ```
 
-It pulls the published image from GHCR, exposes the dashboard on
-`${DASHBOARD_PORT}`, persists SQLite under `./data`, reserves all NVIDIA
-GPUs to the container, and bind-mounts the host `/proc` read-only so GPU
-process names resolve correctly without sharing the host PID namespace.
+All three pull the same `ghcr.io/erreur32/gpuviewr:latest` image,
+expose the dashboard on `${DASHBOARD_PORT}`, persist SQLite under
+`./data`, and bind-mount the host `/proc` read-only so GPU process
+names resolve correctly without sharing the host PID namespace.
 
-<details>
-<summary>Show <code>docker-compose.yaml</code></summary>
+Browse the files directly on GitHub to see exactly what gets pulled —
+they're short and heavily commented:
 
-```yaml
-services:
-  gpuviewr:
-    image: ghcr.io/erreur32/gpuviewr:latest
-    container_name: gpuviewr
-    restart: unless-stopped
-
-    # Host port 7510 → container port 3015. Override via DASHBOARD_PORT in .env.
-    ports:
-      - "${DASHBOARD_PORT:-7510}:3015"
-
-    environment:
-      JWT_SECRET: ${JWT_SECRET}
-      PORT: 3015
-      DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
-      CONTAINER_NAME: gpuviewr
-      HOST_IP: ${HOST_IP:-}
-      TZ: ${TZ:-Europe/Paris}
-      GPU_TICK_MS: ${GPU_TICK_MS:-1000}
-      RETENTION_DAYS: ${RETENTION_DAYS:-7}
-      # PUBLIC_URL: https://gpu.example.com
-      # Resolve GPU process names without sharing the host PID namespace.
-      # Pair with the /proc:/host/proc:ro bind mount below.
-      HOST_PROC: /host/proc
-
-    volumes:
-      - ./data:/app/data
-      # Read-only view of host /proc so we can resolve PID → process name
-      # when nvidia-smi returns "[Not Found]" (multi-tenant / hardened setups).
-      - /proc:/host/proc:ro
-
-    # Hardening: keep only the caps the entrypoint needs. The image's
-    # docker-entrypoint.sh runs as root and uses `gosu` to drop privileges
-    # to the unprivileged `node` user — that requires CHOWN + SETUID +
-    # SETGID, plus DAC_OVERRIDE for the initial chown of /app/data when
-    # the bind-mount is owned by another UID. Everything else is dropped.
-    cap_drop: [ALL]
-    cap_add:
-      - CHOWN
-      - SETUID
-      - SETGID
-      - DAC_OVERRIDE
-      - FOWNER
-    security_opt:
-      - no-new-privileges:true
-
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, utility]
-    runtime: nvidia
-
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-```
-
-</details>
+- [`docker-compose.nvidia.yaml`](docker-compose.nvidia.yaml) (NVIDIA host)
+- [`docker-compose.amd.yaml`](docker-compose.amd.yaml) (AMD host)
+- [`docker-compose.yaml`](docker-compose.yaml) (vendor-neutral / aggregator)
 
 > **Process names — alternative.** If you prefer the simpler model, drop
 > the `/proc:/host/proc:ro` mount + `HOST_PROC` env and add `pid: host`
