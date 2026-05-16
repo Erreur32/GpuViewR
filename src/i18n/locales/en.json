@@ -455,6 +455,8 @@
     "metric_hide": "Hide {{metric}} chart",
     "mode_per_host": "Per host",
     "mode_total": "All hosts total",
+    "mode_unified": "Unified",
+    "combined_chart_title_unified": "All hosts · util + temp + power (aggregated) · last 60s",
     "legend_show": "Show {{label}}",
     "legend_hide": "Hide {{label}}",
     "legend_total": "All hosts total",

@@ -29,7 +29,11 @@ import { rangeToSeconds } from '../../lib/time';
 import RangeSelector from '../dashboard/RangeSelector';
 
 type Metric = 'temperature' | 'utilization' | 'power';
-type Mode = 'per-host' | 'total';
+type Mode = 'per-host' | 'total' | 'unified';
+
+// Metrics included in the unified view. Util + temp share a percent axis
+// (both 0-100); power gets its own axis on the right.
+const UNIFIED_METRICS: readonly Metric[] = ['utilization', 'temperature', 'power'] as const;
 
 const HOST_PALETTE = [
   '#22d3ee', '#f472b6', '#a3e635', '#fbbf24', '#a78bfa', '#34d399',
@@ -156,24 +160,27 @@ export default function FleetChart() {
     <section className="card p-4 flex flex-col gap-3">
       <header className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="font-semibold text-sm">
-          {mode === 'total' ? t('fleet.combined_chart_title_total_multi') : t('fleet.combined_chart_title')}
+          {chartTitle(mode, t)}
         </h2>
         <div className="flex flex-wrap gap-2">
-          {/* Multi-select metric chips — aria-pressed pattern, click to toggle. */}
-          <div className="seg" role="toolbar" aria-label={t('fleet.metrics_label')}>
-            {(['temperature', 'utilization', 'power'] as Metric[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                className="seg-btn text-xs"
-                aria-pressed={metrics.has(m)}
-                onClick={() => toggleMetric(m)}
-                title={metrics.has(m) ? t('fleet.metric_hide', { metric: t(`dashboard.metrics.${m}`) }) : t('fleet.metric_show', { metric: t(`dashboard.metrics.${m}`) })}
-              >
-                {t(`dashboard.metrics.${m}`)}
-              </button>
-            ))}
-          </div>
+          {/* Metric multi-select disabled in unified mode — that mode locks
+              to util+temp+power by definition. */}
+          {mode !== 'unified' && (
+            <div className="seg" role="toolbar" aria-label={t('fleet.metrics_label')}>
+              {(['temperature', 'utilization', 'power'] as Metric[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className="seg-btn text-xs"
+                  aria-pressed={metrics.has(m)}
+                  onClick={() => toggleMetric(m)}
+                  title={metrics.has(m) ? t('fleet.metric_hide', { metric: t(`dashboard.metrics.${m}`) }) : t('fleet.metric_show', { metric: t(`dashboard.metrics.${m}`) })}
+                >
+                  {t(`dashboard.metrics.${m}`)}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="seg" role="toolbar" aria-label={t('fleet.mode_label')}>
             <button type="button" className="seg-btn text-xs" aria-pressed={mode === 'per-host'} onClick={() => setMode('per-host')}>
               {t('fleet.mode_per_host')}
@@ -181,30 +188,40 @@ export default function FleetChart() {
             <button type="button" className="seg-btn text-xs" aria-pressed={mode === 'total'} onClick={() => setMode('total')}>
               {t('fleet.mode_total')}
             </button>
+            <button type="button" className="seg-btn text-xs" aria-pressed={mode === 'unified'} onClick={() => setMode('unified')}>
+              {t('fleet.mode_unified')}
+            </button>
           </div>
           <RangeSelector />
         </div>
       </header>
 
-      {/* One sub-chart per active metric. They share the host palette
-          + hidden-hosts set, so toggling a host in the legend hides
-          it on every chart at once. */}
-      <div className="flex flex-col gap-3">
-        {activeMetrics.map((m) => (
-          <MetricChart
-            key={m}
-            metric={m}
-            mode={mode}
-            range={range}
-            hostsToPlot={hostsToPlot}
-            hiddenHosts={hiddenHosts}
-          />
-        ))}
-      </div>
+      {/* Unified: one chart, util/temp/power overlaid on shared axes.
+          Other modes: one sub-chart per active metric, sharing the host
+          palette + hidden-hosts set. */}
+      {mode === 'unified' ? (
+        <UnifiedChart range={range} hostsToPlot={hostsToPlot} />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {activeMetrics.map((m) => (
+            <MetricChart
+              key={m}
+              metric={m}
+              mode={mode}
+              range={range}
+              hostsToPlot={hostsToPlot}
+              hiddenHosts={hiddenHosts}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Shared legend at the bottom. In total mode the chips become
-          a single aggregate descriptor. */}
-      {mode === 'per-host' ? (
+          a single aggregate descriptor; unified shows the 3 metric
+          channels with their respective colors. */}
+      {mode === 'unified' ? (
+        <UnifiedLegend t={t} />
+      ) : mode === 'per-host' ? (
         <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
           {hostsToPlot.map((h, i) => {
             const hidden = hiddenHosts.has(h.id);
@@ -451,6 +468,185 @@ function MetricChart({ metric, mode, range, hostsToPlot, hiddenHosts }: Readonly
         </span>
       </div>
       <div ref={containerRef} className="w-full" style={{ minHeight: 180 }} />
+    </div>
+  );
+}
+
+// ---------- Unified mode (util + temp + power overlaid) ------------------
+
+// Matches the Dashboard's LiveChart palette so users see the same colour
+// for "utilization" / "temperature" / "power" on both pages.
+const UNIFIED_COLORS = {
+  utilization: '#2f7bff', // --gv-accent
+  temperature: '#f59e0b', // --gv-warn
+  power: '#10b981',       // --gv-ok
+} as const;
+
+const METRIC_AGGREGATION: Record<Metric, 'sum' | 'max' | 'avg'> = {
+  power: 'sum',
+  temperature: 'max',
+  utilization: 'avg',
+};
+
+function chartTitle(mode: Mode, t: (k: string) => string): string {
+  if (mode === 'total') return t('fleet.combined_chart_title_total_multi');
+  if (mode === 'unified') return t('fleet.combined_chart_title_unified');
+  return t('fleet.combined_chart_title');
+}
+
+function UnifiedLegend({ t }: Readonly<{ t: (k: string, opts?: Record<string, unknown>) => string }>) {
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs" style={{ color: 'var(--gv-text-muted)' }}>
+      {UNIFIED_METRICS.map((m) => (
+        <span key={m} className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block w-3 h-1 rounded-full"
+            style={{ background: UNIFIED_COLORS[m] }}
+          />
+          {t(`dashboard.metrics.${m}`)}
+          <span className="font-mono" style={{ color: 'var(--gv-text-dim)' }}>
+            ({METRIC_AGGREGATION[m]})
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+interface UnifiedChartProps {
+  range: Range;
+  hostsToPlot: HostRecord[];
+}
+
+// One uPlot, three series sharing the X axis. Util + temp on the left %
+// axis (0-100), power on the right W axis (auto). All three series are
+// aggregated across the visible hosts using METRIC_AGGREGATION's hint.
+function UnifiedChart({ range, hostsToPlot }: Readonly<UnifiedChartProps>) {
+  const { t } = useTranslation();
+  const seriesVersion = useGpuStore((s) => s.latestByHost);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const plotRef = useRef<uPlot | null>(null);
+  const [historyByMetric, setHistoryByMetric] = useState<Record<Metric, { times: number[]; values: number[] }[]> | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (range === 'live') {
+      setHistoryByMetric(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    const store = useGpuStore.getState();
+    const fetchAll = async () => {
+      const out = {} as Record<Metric, { times: number[]; values: number[] }[]>;
+      for (const m of UNIFIED_METRICS) {
+        const fetches = hostsToPlot.map((h) => {
+          const samples = store.latestByHost.get(h.id);
+          const gpuIndices = samples ? Array.from(samples.keys()) : [0];
+          return fetchHostHistory(h.id, gpuIndices, m, range);
+        });
+        out[m] = await Promise.all(fetches);
+      }
+      return out;
+    };
+    fetchAll()
+      .then((all) => { if (!cancelled) setHistoryByMetric(all); })
+      .catch(() => { if (!cancelled) setHistoryByMetric(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, hostsToPlot.map((h) => h.id).join(',')]);
+
+  const data = useMemo<AlignedData>(() => {
+    const perMetricAggregated: Record<Metric, { times: number[]; values: number[] }> = {} as Record<Metric, { times: number[]; values: number[] }>;
+    for (const m of UNIFIED_METRICS) {
+      let perHost: { times: number[]; values: number[] }[];
+      if (range === 'live' || historyByMetric === null) {
+        const store = useGpuStore.getState();
+        perHost = hostsToPlot.map((h) => buildHostSeries(h.id, m, store));
+      } else {
+        perHost = historyByMetric[m] ?? [];
+      }
+      perMetricAggregated[m] = aggregateForTotal(perHost, m);
+    }
+    // Build a unified X axis from the union of all metric timestamps.
+    const tSet = new Set<number>();
+    for (const m of UNIFIED_METRICS) for (const t of perMetricAggregated[m].times) tSet.add(t);
+    let sortedT = Array.from(tSet).sort((a, b) => a - b);
+    if (range === 'live') sortedT = sortedT.slice(-WINDOW_POINTS);
+    const ySeries = UNIFIED_METRICS.map((m) => {
+      const map = new Map<number, number>();
+      const agg = perMetricAggregated[m];
+      for (let i = 0; i < agg.times.length; i++) map.set(agg.times[i], agg.values[i]);
+      return sortedT.map((t) => map.get(t) ?? null);
+    });
+    return [sortedT, ...ySeries] as AlignedData;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostsToPlot, seriesVersion, range, historyByMetric]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    plotRef.current?.destroy();
+    const opts: uPlot.Options = {
+      width: containerRef.current.clientWidth,
+      height: 240,
+      cursor: { drag: { x: false, y: false } },
+      legend: { show: false },
+      scales: {
+        x: { time: true },
+        '%': { auto: false, range: [0, 100] },
+        W: { auto: true },
+      },
+      axes: [
+        { stroke: 'rgba(148,163,184,0.6)', grid: { stroke: 'rgba(148,163,184,0.08)' } },
+        {
+          stroke: 'rgba(148,163,184,0.6)',
+          grid: { stroke: 'rgba(148,163,184,0.08)' },
+          scale: '%',
+          values: (_u, vals) => vals.map((v) => `${v}%`),
+        },
+        {
+          side: 1,
+          stroke: 'rgba(148,163,184,0.6)',
+          grid: { show: false },
+          scale: 'W',
+          values: (_u, vals) => vals.map((v) => `${Math.round(v)} W`),
+        },
+      ],
+      series: [
+        {},
+        { label: t('dashboard.metrics.utilization'), stroke: UNIFIED_COLORS.utilization, width: 2, scale: '%', points: { show: false } },
+        { label: t('dashboard.metrics.temperature'), stroke: UNIFIED_COLORS.temperature, width: 2, scale: '%', points: { show: false } },
+        { label: t('dashboard.metrics.power'), stroke: UNIFIED_COLORS.power, width: 2, scale: 'W', points: { show: false } },
+      ],
+    };
+    plotRef.current = new uPlot(opts, data, containerRef.current);
+    const onResize = () => {
+      if (containerRef.current && plotRef.current) {
+        plotRef.current.setSize({ width: containerRef.current.clientWidth, height: 240 });
+      }
+    };
+    globalThis.addEventListener('resize', onResize);
+    return () => {
+      globalThis.removeEventListener('resize', onResize);
+      plotRef.current?.destroy();
+      plotRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    plotRef.current?.setData(data);
+  }, [data]);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="text-[11px] uppercase tracking-wider flex items-center justify-end gap-2" style={{ color: 'var(--gv-text-dim)' }}>
+        {loading && <span className="text-[10px]">{t('common.loading')}</span>}
+        <span className="font-mono">% · W</span>
+      </div>
+      <div ref={containerRef} className="w-full" style={{ minHeight: 240 }} />
     </div>
   );
 }
