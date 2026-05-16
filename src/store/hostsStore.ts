@@ -66,6 +66,12 @@ interface HostsState {
   rotateToken: (id: string) => Promise<string>;
   remove: (id: string) => Promise<void>;
   setAutoUpdate: (id: string, enabled: boolean) => Promise<void>;
+  /** Force an immediate agent update push. Bypasses auto_update +
+   *  cooldown + version compare gates on the backend; only constraint
+   *  remaining is install_mode='systemd' and an actively connected agent.
+   *  Returns the version that was pushed. Throws on REST error so the
+   *  caller can surface the message in a toast. */
+  forceUpdate: (id: string) => Promise<{ version: string; size: number }>;
 }
 
 export const useHostsStore = create<HostsState>((set, get) => ({
@@ -130,6 +136,14 @@ export const useHostsStore = create<HostsState>((set, get) => ({
   rotateToken: async (id) => {
     const r = await api<{ token: string }>(`/hosts/${id}/rotate-token`, { method: 'POST' });
     return r.token;
+  },
+
+  forceUpdate: async (id) => {
+    const r = await api<{ ok: true; version: string; size: number }>(
+      `/hosts/${id}/force-update`,
+      { method: 'POST' },
+    );
+    return { version: r.version, size: r.size };
   },
 
   remove: async (id) => {

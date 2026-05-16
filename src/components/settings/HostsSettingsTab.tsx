@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle, RefreshCw, DownloadCloud } from 'lucide-react';
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
@@ -153,6 +153,7 @@ function HostRow({
         <div className="flex justify-end gap-1.5">
           {!isLocal && (
             <>
+              <ForceUpdateButton host={host} t={t} />
               <AutoUpdateToggle host={host} t={t} />
               <IconBtn title={t('hosts.rotate_token')} onClick={onRotate}>
                 <KeyRound size={14} />
@@ -410,6 +411,60 @@ function AutoUpdateToggle({
       }}
     >
       <RefreshCw size={14} />
+    </button>
+  );
+}
+
+/** Manual "Update now" button: bypasses the auto_update + cooldown +
+ *  version-compare gates and asks the hub to push the current bundle
+ *  to this agent right now. Only enabled for systemd hosts that are
+ *  currently online — Docker bundles are baked in the image (immutable)
+ *  and an offline agent has no WS to push down. */
+function ForceUpdateButton({
+  host, t,
+}: Readonly<{
+  host: HostRecord;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}>) {
+  const forceUpdate = useHostsStore((s) => s.forceUpdate);
+  const [busy, setBusy] = useState(false);
+  const supported = host.install_mode === 'systemd';
+  const online = host.status === 'online';
+  const canPush = supported && online && !busy;
+  const titleKey = (() => {
+    if (!supported) return 'hosts.force_update_unsupported';
+    if (!online) return 'hosts.force_update_offline';
+    return 'hosts.force_update';
+  })();
+  const onClick = async () => {
+    if (!canPush) return;
+    setBusy(true);
+    try {
+      const { version } = await forceUpdate(host.id);
+      notify('success', t('hosts.force_update_sent'), `v${version}`);
+    } catch (err) {
+      notify('error', t('hosts.force_update_failed'), (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      title={t(titleKey)}
+      onClick={onClick}
+      disabled={!canPush}
+      className="inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
+      style={{
+        background: 'transparent',
+        color: canPush ? 'var(--gv-text-muted)' : 'var(--gv-text-dim)',
+        cursor: canPush ? 'pointer' : 'not-allowed',
+        opacity: canPush ? 1 : 0.4,
+      }}
+      onMouseEnter={(e) => { if (canPush) e.currentTarget.style.background = 'var(--gv-surface-alt)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+    >
+      <DownloadCloud size={14} className={busy ? 'animate-pulse' : undefined} />
     </button>
   );
 }

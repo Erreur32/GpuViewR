@@ -181,6 +181,12 @@ let cachedBundle: CachedBundle | null = null;
  *  bundle, so re-pushing right away is correct behaviour. */
 const lastPushedAtMs = new Map<string, number>();
 
+/** Live WebSocket registry, keyed by canonical host_id (set after auth).
+ *  Lets the REST API push agent_update frames out-of-band — without it,
+ *  the only path to send is the closure inside handleConnection. Cleared
+ *  on close so a stale socket can't accidentally receive a push. */
+const liveAgentSockets = new Map<string, WebSocket>();
+
 function loadBundle(hubVersion: string): CachedBundle | null {
   if (cachedBundle) return cachedBundle;
   if (!fs.existsSync(BUNDLE_PATH)) {
@@ -218,6 +224,49 @@ function isOlder(agentVer: string | null, hubVer: string): boolean {
   if (a[0] !== h[0]) return a[0] < h[0];
   if (a[1] !== h[1]) return a[1] < h[1];
   return a[2] < h[2];
+}
+
+/** Force-push the current agent bundle to a connected host. Bypasses
+ *  the opt-in (auto_update) and version (isOlder) and cooldown gates —
+ *  this is the admin's "do it now" button — but keeps the install-mode
+ *  guard: Docker agents have a read-only bundle baked in the image,
+ *  pushing to them is pointless and would just confuse the agent.
+ *
+ *  Returns a discriminated union the route handler can map to HTTP
+ *  status codes — no thrown errors, so the REST surface stays predictable.
+ */
+export function forceAgentUpdate(
+  hostId: string,
+  hubVersion: string,
+): { ok: true; version: string; size: number } | { ok: false; reason: string; status: number } {
+  const host = HostsRepo.findById(hostId);
+  if (!host) return { ok: false, reason: 'host not found', status: 404 };
+  if (host.kind !== 'agent') return { ok: false, reason: 'not an agent host', status: 400 };
+  if (host.install_mode !== 'systemd') {
+    return { ok: false, reason: `force-update only supported on systemd hosts (install_mode=${host.install_mode ?? 'unknown'})`, status: 400 };
+  }
+  const ws = liveAgentSockets.get(hostId);
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return { ok: false, reason: 'agent not connected', status: 409 };
+  }
+  const bundle = loadBundle(hubVersion);
+  if (!bundle) return { ok: false, reason: 'bundle unavailable on this hub', status: 503 };
+
+  // Manual triggers still update the cooldown timestamp so the
+  // post-restart hello doesn't immediately re-push on top of itself.
+  lastPushedAtMs.set(hostId, Date.now());
+  logger.info(
+    'agent',
+    `Force-update push → ${host.id} (label=${host.label}, ${host.agent_version ?? '?'} → ${hubVersion}, ${bundle.size}B)`,
+  );
+  safeSend(ws, {
+    type: 'agent_update',
+    target_version: hubVersion,
+    sha256: bundle.sha256,
+    size: bundle.size,
+    bundle_b64: bundle.base64,
+  });
+  return { ok: true, version: hubVersion, size: bundle.size };
 }
 
 function maybePushAutoUpdate(ws: WebSocket, host: HostRecord, hubVersion: string): void {
@@ -283,6 +332,16 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion:
 
   logger.success('agent', `Agent connected: ${host.id} (label=${host.label})`);
 
+  // Replace any previous socket for this host_id. A reconnect from the
+  // same agent (e.g. after `systemctl restart`) hits this path before
+  // the old socket's 'close' has fired, so eviction by id is the safe
+  // ordering — last writer wins, matches what the agent expects.
+  const previous = liveAgentSockets.get(host.id);
+  if (previous && previous !== ws) {
+    try { previous.close(1000, 'replaced by new connection'); } catch { /* ignore */ }
+  }
+  liveAgentSockets.set(host.id, ws);
+
   safeSend(ws, { type: 'welcome', hub_version: hubVersion, protocol_ver: PROTOCOL_VER, tick_ms: 1000 });
 
   HostsRepo.markSeen(host.id);
@@ -332,6 +391,11 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion:
 
   ws.on('close', () => {
     logger.info('agent', `Agent disconnected: ${host.id} (label=${host.label})`);
+    // Only un-register if WE are still the registered socket — a
+    // reconnect that landed BEFORE this close fired has already
+    // overwritten the slot, and clearing it here would orphan the
+    // newly-connected session.
+    if (liveAgentSockets.get(host.id) === ws) liveAgentSockets.delete(host.id);
     // Don't flip offline here — the watchdog handles transient drops
     // so a 200ms blip during reconnect doesn't toggle the UI dot.
   });

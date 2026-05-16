@@ -5,9 +5,26 @@
 
 import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { HostsRepo, LOCAL_HOST_ID, type HostRecord, type HostStatus } from '../database/models/Host.js';
+import { forceAgentUpdate } from '../services/agentIngestWS.js';
+
+// Same lookup as server/index.ts readVersion(). Kept local so the
+// force-update handler stays self-contained and doesn't import from
+// index.ts (which would tangle the boot graph).
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+function readHubVersion(): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
+    return pkg.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
 
 const SALT_ROUNDS = 10;
 const TOKEN_PREFIX = 'gpvr_';
@@ -142,6 +159,31 @@ async function handleRotate(req: Request, res: Response): Promise<void> {
   HostsRepo.update(cur.id, { token_hash });
   res.json({ token });
 }
+
+/** Force-push the current hub bundle to a connected systemd agent.
+ *  Bypasses the auto_update opt-in, the version compare, AND the 5-min
+ *  cooldown — this is the admin's "do it now" override. Keeps the
+ *  install_mode=systemd guard because Docker bundles are baked into a
+ *  read-only image layer and can't be live-replaced.
+ *
+ *  Returns
+ *    200 { ok: true, version, size }   on success
+ *    400 not an agent / not systemd
+ *    404 host not found
+ *    409 agent not currently connected
+ *    503 bundle missing on this hub (build pipeline issue)
+ */
+router.post('/:id/force-update', (req, res) => {
+  const result = forceAgentUpdate(req.params.id, readHubVersion());
+  // Strict equality on the discriminant — `!result.ok` is correct in
+  // strict mode but TS narrowing under the express Response-returning
+  // pattern occasionally widens it back; the literal compare guarantees
+  // the narrow lands.
+  if (result.ok === false) {
+    return res.status(result.status).json({ error: result.reason });
+  }
+  res.json({ ok: true, version: result.version, size: result.size });
+});
 
 router.delete('/:id', (req, res) => {
   if (req.params.id === LOCAL_HOST_ID) {
