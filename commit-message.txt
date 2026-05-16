@@ -1,41 +1,38 @@
-release: v0.5.2 — install.sh polish + auto-logout on stale JWT + TLS toggle
+release: v0.5.3 — install_mode detection + opt-in WS auto-update
 
-Patch release on v0.5.1. Smoothing the rough edges users hit during
-the real-world install + reset cycle.
-
-Fixed
-- Stale JWT after a hub DB reset froze the UI silently. The new
-  JWT_SECRET made the browser-stored token invalid; API returned 401
-  but the frontend never reacted. api.ts now intercepts 401 on any
-  non-/auth/ path, clears localStorage, redirects to
-  /login?expired=1. LoginPage shows an amber banner.
-- install.sh leaked WARN[0000] env-var noise on re-installs. .env
-  is now generated BEFORE docker-compose.yaml is downloaded, and
-  `set -a; . ./.env; set +a` exports the vars into the script shell
-  so docker compose inherits them during reconcile. No more warning
-  spew before .env lands on disk.
-- Removed the --progress quiet workaround. Users now see native
-  Compose pull progress (image layers downloading in real time).
+Minor release that closes the "double agent" footgun and ships the
+mechanism to keep bare-metal agents in sync automatically.
 
 Added
-- TLS toggle in the Add Host modal. A "Hub uses TLS (wss://)"
-  checkbox lets users override the auto-detection. Default is
-  inferred from the hub URL host: IP literals / localhost → ws,
-  FQDN → wss. Catches the HSTS-auto-upgrade trap where a plain-HTTP
-  LAN hub gets bogus wss:// URLs generated.
-- "Re-run to update" hint under the install command in the Add Host
-  modal. Tells users that re-running the same install.sh /
-  install-agent.sh command upgrades the agent — idempotent path.
+- Agent declares its install_mode (docker / systemd / unknown) in
+  the hello frame. Hub stores it per host (new hosts.install_mode
+  column, idempotent ALTER TABLE migration). The Hosts tab "Update"
+  pill now shows ONLY the recipe matching the remote — running the
+  bare-metal curl on a Docker host used to spin up a second agent
+  in parallel. Pre-v0.5.3 agents that can't report their mode get
+  both recipes in the tooltip with an explicit warning.
+- Opt-in WebSocket auto-update for systemd hosts. New per-host
+  toggle (circular-arrows icon next to Rotate/Delete) flips
+  hosts.auto_update. When ON for a bare-metal host trailing the hub,
+  the hub pushes the new agent.mjs as base64 + SHA256 over the
+  existing WS at hello time. Agent verifies the checksum, writes
+  /opt/gpuviewr-agent/agent.mjs.new, fsyncs, renames atomically,
+  exits → systemd Restart= picks up the new binary. 5 min cooldown
+  per host prevents crash-loop amplification. Off by default —
+  flipping it grants the hub binary-execute authority on the remote.
+  Docker hosts excluded (read-only image layer).
 
 Validation
 - typecheck clean (5 pre-existing errors not touched)
-- hub + agent build green
-- 39 server tests + 8 agent tests pass
-- No new SonarCloud-flagged patterns introduced (nested templates,
-  index-as-key, double casts) — pre-flight grep clean for the
-  v0.5.1→v0.5.2 diff.
+- hub + agent build green (agent bundle 163.5 KB)
+- 19/22 server tests pass (3 pre-existing v0.4→v0.5 migration
+  failures, not touched)
+- No new SonarCloud-flagged patterns; commit 13a4d0c green on
+  Sonar / CodeQL / Snyk before tagging
 
 Upgrade
-- docker compose pull && docker compose up -d on the master.
-- Bare-metal / Docker agents: install.sh / install-agent.sh is
-  idempotent, re-run with the same args to pull the new bundle.
+- Hub: docker compose pull && docker compose up -d on the master.
+- Bare-metal agents: re-run install.sh from the hub (idempotent),
+  or enable auto-update once and let the next push happen.
+- Docker agents: docker compose pull && docker compose up -d in
+  the agent's compose dir.

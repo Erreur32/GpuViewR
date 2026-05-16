@@ -5,6 +5,54 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-05-16
+
+### Added
+
+- **Agent declares its install mode.** Each agent now detects at boot
+  whether it runs in Docker (`/.dockerenv`, `/proc/self/cgroup`) or
+  under systemd (`INVOCATION_ID` / `JOURNAL_STREAM`) and reports it
+  in the hello frame. The hub stores it per host (new
+  `hosts.install_mode` column, idempotent `ALTER TABLE` migration).
+  The Hosts tab's "Update" pill now shows ONLY the recipe that
+  matches the remote — bare-metal `curl + systemctl restart` or
+  `docker compose pull && up -d` — instead of both. Running the
+  wrong recipe on a Docker host used to create a second agent in
+  parallel; the per-host selection makes that impossible. Pre-v0.5.3
+  agents that don't report their mode get both recipes in the
+  tooltip with a warning, and the bare-metal one copied by default.
+- **Opt-in WebSocket auto-update for systemd agents.** A new
+  per-host toggle (circular-arrows icon next to Rotate/Delete) flips
+  `hosts.auto_update`. When ON for a bare-metal host whose agent
+  version trails the hub, the hub pushes the latest `agent.mjs` as
+  base64 + SHA256 over the existing WS at hello time. The agent
+  verifies the checksum, writes `/opt/gpuviewr-agent/agent.mjs.new`,
+  fsyncs, renames atomically, and exits — systemd's `Restart=`
+  picks up the new binary on the next launch. Cooldown 5 min per
+  host stops a crash-loop on the remote from saturating the WS.
+  Off by default because flipping it gives the hub binary-execute
+  authority on the remote machine; admins should consciously trust
+  this hub first. Docker hosts are excluded (read-only image
+  layer — can't self-replace the bundled binary) and keep the
+  manual `docker compose pull` recipe.
+
+### Validation
+
+- typecheck clean (5 pre-existing errors not touched)
+- hub + agent build green (agent bundle 163.5 KB)
+- 19/22 server tests pass (3 pre-existing failures on the v0.4 →
+  v0.5 migration suite, not touched by this release)
+- No new SonarCloud-flagged patterns
+
+### Upgrade
+
+- Hub: `docker compose pull && docker compose up -d` on the master.
+- Bare-metal agents: re-run `install.sh` from the hub (idempotent),
+  OR enable auto-update once and let the next push happen
+  automatically.
+- Docker agents: `docker compose pull && docker compose up -d`
+  in the agent's compose directory.
+
 ## [0.5.2] - 2026-05-16
 
 ### Fixed
