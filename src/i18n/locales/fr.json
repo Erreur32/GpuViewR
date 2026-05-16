@@ -472,7 +472,7 @@
   },
   "hosts": {
     "section_title": "Hôtes distants",
-    "section_help": "Chaque hôte fait tourner un agent GpuViewR qui pousse ses échantillons nvidia-smi vers ce hub. La ligne 'local' représente les GPUs de ce hub.",
+    "section_help": "Chaque hôte fait tourner un agent GpuViewR qui pousse ses échantillons nvidia-smi vers ce hub. La première ligne est ce hub lui-même — étiqueté avec le hostname système.",
     "admin_only": "Seuls les administrateurs peuvent gérer les hôtes.",
     "hub_badge": "Hub",
     "hub_badge_help": "Cet hôte est le hub lui-même — il collecte ses propres GPU via nvidia-smi local, sans agent distant.",

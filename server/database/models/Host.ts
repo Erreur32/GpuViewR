@@ -161,13 +161,27 @@ export const HostsRepo = {
    * its system hostname on every boot so the Hosts table never
    * shows a stale value when the admin renames the box. Called
    * from `runMigrations()` after the table is created.
+   *
+   * Label policy: defaults to the OS hostname (e.g. "debian-server")
+   * — pre-v0.4.0 installs that still carry the legacy 'local' label
+   * get a one-shot backfill so the UI stops showing the placeholder.
+   * A user-customised label (anything other than 'local') is kept
+   * intact so renaming via the Hosts UI sticks across restarts.
    */
   seedLocalIfMissing(db = getDatabase()): void {
     const sysHostname = os.hostname() || null;
-    const existing = db.prepare('SELECT id FROM hosts WHERE id = ?').get(LOCAL_HOST_ID);
+    const defaultLabel = sysHostname ?? 'local';
+    const existing = db.prepare('SELECT id, label FROM hosts WHERE id = ?').get(LOCAL_HOST_ID) as
+      | { id: string; label: string }
+      | undefined;
     if (existing) {
-      // Refresh hostname only — preserve last_seen / status set elsewhere.
+      // Refresh hostname unconditionally. Backfill label only if it
+      // still matches the legacy default 'local' AND we know the real
+      // hostname — never overwrite a user-customised label.
       db.prepare('UPDATE hosts SET hostname = ? WHERE id = ?').run(sysHostname, LOCAL_HOST_ID);
+      if (existing.label === 'local' && sysHostname) {
+        db.prepare('UPDATE hosts SET label = ? WHERE id = ?').run(sysHostname, LOCAL_HOST_ID);
+      }
       return;
     }
     const now = Math.floor(Date.now() / 1000);
@@ -176,6 +190,6 @@ export const HostsRepo = {
        (id, label, hostname, kind, endpoint, token_hash, capabilities,
         agent_version, protocol_ver, enrolled_at, last_seen, status)
        VALUES (?, ?, ?, 'local', NULL, NULL, NULL, NULL, 1, ?, NULL, 'online')`,
-    ).run(LOCAL_HOST_ID, 'local', sysHostname, now);
+    ).run(LOCAL_HOST_ID, defaultLabel, sysHostname, now);
   },
 };

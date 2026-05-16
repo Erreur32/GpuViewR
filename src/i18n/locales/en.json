@@ -472,7 +472,7 @@
   },
   "hosts": {
     "section_title": "Remote hosts",
-    "section_help": "Each host runs a GpuViewR agent that pushes nvidia-smi samples to this hub. The 'local' row is the hub's own GPUs.",
+    "section_help": "Each host runs a GpuViewR agent that pushes nvidia-smi samples to this hub. The first row is the hub itself — labelled with its system hostname.",
     "admin_only": "Only administrators can manage hosts.",
     "hub_badge": "Hub",
     "hub_badge_help": "This host is the hub itself — it collects its own GPUs via local nvidia-smi, no remote agent.",

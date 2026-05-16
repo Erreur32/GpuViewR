@@ -117,7 +117,7 @@ function handleHealthSystem(ctx: RouteCtx): Response | null {
     // local row so the FleetIndicator stays hidden (≤1 host).
     if (isFleetDemo()) return json({ hosts: fakeFleetHosts() });
     return json({ hosts: [{
-      id: 'local', label: 'local', hostname: null, kind: 'local',
+      id: 'local', label: 'demo-hub', hostname: 'demo-hub.local', kind: 'local',
       endpoint: null, capabilities: null, agent_version: null,
       protocol_ver: 1, enrolled_at: Math.floor(Date.now() / 1000) - 86400,
       last_seen: Math.floor(Date.now() / 1000) - 2, status: 'online',

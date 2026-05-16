@@ -55,8 +55,8 @@ const NOW = Math.floor(Date.now() / 1000);
 export const DEMO_FLEET_HOSTS: DemoHost[] = [
   {
     id: 'local',
-    label: 'local',
-    hostname: null,
+    label: 'demo-hub',
+    hostname: 'demo-hub.local',
     kind: 'local',
     status: 'online',
     agent_version: null,

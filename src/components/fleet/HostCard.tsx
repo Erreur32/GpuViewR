@@ -53,9 +53,19 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
             <h3 className="text-sm font-semibold leading-tight truncate" style={{ color: 'var(--gv-text)' }} title={host.label}>
               {host.label}
             </h3>
-            <p className="text-[11px] mt-0.5 font-mono truncate" style={{ color: 'var(--gv-text-dim)' }}>
-              {host.hostname ?? host.id.slice(0, 13)}
-            </p>
+            {/* Skip the secondary line when it'd just repeat the label
+                — happens on the local row where label = hostname after
+                seedLocalIfMissing's hostname backfill (v0.4.0+). */}
+            {host.hostname && host.hostname !== host.label && (
+              <p className="text-[11px] mt-0.5 font-mono truncate" style={{ color: 'var(--gv-text-dim)' }}>
+                {host.hostname}
+              </p>
+            )}
+            {!host.hostname && (
+              <p className="text-[11px] mt-0.5 font-mono truncate" style={{ color: 'var(--gv-text-dim)' }}>
+                {host.id.slice(0, 13)}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
