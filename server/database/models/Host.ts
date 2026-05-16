@@ -171,15 +171,28 @@ export const HostsRepo = {
   seedLocalIfMissing(db = getDatabase()): void {
     const sysHostname = hostHostname();
     const defaultLabel = sysHostname ?? 'local';
-    const existing = db.prepare('SELECT id, label FROM hosts WHERE id = ?').get(LOCAL_HOST_ID) as
-      | { id: string; label: string }
+    const existing = db.prepare('SELECT id, label, hostname FROM hosts WHERE id = ?').get(LOCAL_HOST_ID) as
+      | { id: string; label: string; hostname: string | null }
       | undefined;
     if (existing) {
-      // Refresh hostname unconditionally. Backfill label only if it
-      // still matches the legacy default 'local' AND we know the real
-      // hostname — never overwrite a user-customised label.
+      // Refresh hostname unconditionally. Backfill label when it still
+      // looks auto-generated, never when it looks user-customised:
+      //   - 'local'                  : the legacy literal default.
+      //   - == previous hostname     : a previous boot auto-set the label
+      //                                from os.hostname() (which inside
+      //                                Docker returned the container id
+      //                                like '48f38404d5f8'). Now that we
+      //                                can read the real host hostname,
+      //                                propagate it to the label too.
+      //   - looks like a 12-hex docker container id : same case, but for
+      //                                installs where label and hostname
+      //                                got desynced somehow.
+      const looksLikeContainerId = /^[0-9a-f]{12}$/.test(existing.label);
+      const wasAutoSet = existing.label === 'local'
+        || existing.label === existing.hostname
+        || looksLikeContainerId;
       db.prepare('UPDATE hosts SET hostname = ? WHERE id = ?').run(sysHostname, LOCAL_HOST_ID);
-      if (existing.label === 'local' && sysHostname) {
+      if (wasAutoSet && sysHostname && sysHostname !== existing.label) {
         db.prepare('UPDATE hosts SET label = ? WHERE id = ?').run(sysHostname, LOCAL_HOST_ID);
       }
       return;

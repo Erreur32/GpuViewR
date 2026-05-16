@@ -36,6 +36,12 @@ export default function Dashboard() {
   const latest = useGpuStore((s) => s.latest);
   const seriesMap = useGpuStore((s) => s.series);
   const samples = Array.from(latest.values()).sort((a, b) => a.gpu_index - b.gpu_index);
+  // Host identity chip (visible even on mono-host installs where the
+  // dropdown HostSelector hides itself) — answers "which box am I
+  // looking at" at a glance. Falls back to a short id when the label
+  // hasn't been backfilled yet.
+  const currentHost = hosts.find((h) => h.id === selectedHostId);
+  const currentHostLabel = currentHost?.label || currentHost?.hostname || selectedHostId.slice(0, 13);
   const selectedGpu = useUiStore((s) => s.selectedGpu);
   const gaugeView = useUiStore((s) => s.gaugeView);
   const setGaugeView = useUiStore((s) => s.setGaugeView);
@@ -62,6 +68,7 @@ export default function Dashboard() {
           <h2 className="text-xl font-semibold leading-none" style={{ color: 'var(--gv-text)' }}>
             {t('dashboard.gpus_all_title', { count: samples.length })}
           </h2>
+          <HostChip label={currentHostLabel} isLocal={selectedHostId === LOCAL_HOST_ID} />
           <GpuTabs samples={samples} />
           <div className="ml-auto"><RangeSelector /></div>
         </div>
@@ -94,6 +101,7 @@ export default function Dashboard() {
         <span className="text-xs leading-none" style={{ color: 'var(--gv-text-dim)' }}>
           GPU #{active.gpu_index} · driver {active.driver_version || '-'}
         </span>
+        <HostChip label={currentHostLabel} isLocal={selectedHostId === LOCAL_HOST_ID} />
         <HostSelector hosts={hosts} selectedHostId={selectedHostId} />
         <GpuTabs samples={samples} />
 
@@ -352,6 +360,39 @@ function HostSelector({
         ))}
       </select>
     </label>
+  );
+}
+
+// Always-visible host identity. On mono-host installs the HostSelector
+// is hidden (it's a dropdown — pointless with one option), so without
+// this chip the user has no clue which box the Dashboard is reading
+// from. The "Hub" pill flag matches Settings → Hosts when the row is
+// the local host.
+function HostChip({ label, isLocal }: Readonly<{ label: string; isLocal: boolean }>) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full"
+      style={{
+        background: 'var(--gv-surface-alt)',
+        border: '1px solid var(--gv-border)',
+        color: 'var(--gv-text-muted)',
+      }}
+      title={isLocal ? 'Hub (local host)' : 'Remote host'}
+    >
+      <Server className="w-3 h-3" />
+      <span className="font-mono">{label}</span>
+      {isLocal && (
+        <span
+          className="text-[9px] uppercase tracking-wider font-semibold px-1 rounded"
+          style={{
+            color: 'var(--gv-info)',
+            background: 'color-mix(in srgb, var(--gv-info) 14%, transparent)',
+          }}
+        >
+          Hub
+        </span>
+      )}
+    </span>
   );
 }
 
