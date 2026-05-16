@@ -12,12 +12,16 @@ router.get('/', (_req, res) => {
   let online = 0;
   let lagging = 0;
   let offline = 0;
+  // Keep in sync with src/store/hostsStore.ts LAGGING_THRESHOLD_S. Both
+  // surfaces compute lagging client-side from last_seen rather than from
+  // a stored column, so the two thresholds must agree.
+  const LAGGING_THRESHOLD_S = 25;
   for (const h of hosts) {
     if (h.status === 'online') {
-      // Treat agents that haven't been seen in >15s as lagging in the
+      // Treat agents that haven't been seen recently as lagging in the
       // health view, even if the 30s watchdog hasn't tipped them to
       // 'offline' yet. Mirrors the UI traffic-light heuristic.
-      if (h.kind === 'agent' && h.last_seen !== null && now - h.last_seen > 15) lagging++;
+      if (h.kind === 'agent' && h.last_seen !== null && now - h.last_seen > LAGGING_THRESHOLD_S) lagging++;
       else online++;
     } else if (h.status === 'offline') {
       offline++;

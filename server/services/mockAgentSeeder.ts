@@ -24,6 +24,7 @@ import { logger } from '../utils/logger.js';
 import { rand01, sweep, distributeVram } from './_mockHelpers.js';
 
 export const MOCK_AGENT_HOST_ID = 'mock-agent-1';
+export const MOCK_AGENT_AMD_HOST_ID = 'mock-agent-amd';
 
 interface FakeAgentDevice {
   index: number;
@@ -55,15 +56,34 @@ const DEVICES: FakeAgentDevice[] = [
   },
 ];
 
+// AMD-flavoured devices for the second mock agent. Name keywords
+// ("Radeon" / "AMD") are what src/components/ui/VendorIcon.tsx pattern-
+// matches to swap the host card icon, so this is the only way to
+// exercise the AMD logo path under MOCK_GPU=1 without a real ROCm box.
+const DEVICES_AMD: FakeAgentDevice[] = [
+  {
+    index: 0,
+    name: 'Mock AMD Radeon RX 7900 XTX',
+    uuid: 'ROCm-mockagt-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    driver: '6.0.2',
+    memTotal: 24576,
+    powerCap: 355,
+    pciBusId: '00000000:0c:00.0',
+    pcieGen: 4, pcieGenMax: 4,
+    pcieWidth: 16, pcieWidthMax: 16,
+    phase: Math.PI / 2,
+  },
+];
+
 const FAKE_PROCESSES: ReadonlyArray<{ pid: number; name: string; gpu: number }> = [
   { pid: 9001, name: 'pytorch-train', gpu: 0 },
   { pid: 9002, name: 'jupyter-kernel', gpu: 0 },
   { pid: 9003, name: 'ray-worker', gpu: 0 },
 ];
 
-function buildSamples(): GpuSample[] {
+function buildSamples(devices: readonly FakeAgentDevice[] = DEVICES): GpuSample[] {
   const { iso, epoch } = nowTimestamp();
-  return DEVICES.map((d) => ({
+  return devices.map((d) => ({
     gpu_index: d.index,
     name: d.name,
     uuid: d.uuid,
@@ -88,9 +108,9 @@ function buildSamples(): GpuSample[] {
   }));
 }
 
-function buildProcesses(samples: GpuSample[]): GpuProcess[] {
+function buildProcesses(samples: GpuSample[], devices: readonly FakeAgentDevice[] = DEVICES): GpuProcess[] {
   const uuidByIndex = new Map<number, string>();
-  for (const d of DEVICES) uuidByIndex.set(d.index, d.uuid);
+  for (const d of devices) uuidByIndex.set(d.index, d.uuid);
   const memByGpu = new Map<number, number>();
   for (const s of samples) memByGpu.set(s.gpu_index, s.memory_used);
   const procsByGpu = new Map<number, GpuProcess[]>();
@@ -119,22 +139,26 @@ class MockAgentSeeder {
     if (this.timer) return;
     // Idempotent insert — running dev:mock twice in a row must not
     // duplicate the row.
-    if (!HostsRepo.findById(MOCK_AGENT_HOST_ID)) {
-      HostsRepo.insert({
-        id: MOCK_AGENT_HOST_ID,
-        label: 'Mock Agent',
-        hostname: 'mock-agent.local',
-        kind: 'agent',
-        token_hash: null,
-        capabilities: JSON.stringify({ gpu: true, system: false, temps: false, processes: true }),
-        agent_version: '0.3.0-mock',
-        status: 'online',
-      });
-      logger.info('mockAgent', `Seeded synthetic host ${MOCK_AGENT_HOST_ID}`);
-    }
+    this.seedHost(MOCK_AGENT_HOST_ID, 'Mock Agent', 'mock-agent.local', '0.3.0-mock');
+    this.seedHost(MOCK_AGENT_AMD_HOST_ID, 'Mock Agent (AMD)', 'mock-agent-amd.local', '0.4.0-mock');
     logger.warn('mockAgent', `Mock agent seeder started (tick=${config.gpuTickMs}ms) — synthetic data`);
     this.tick();
     this.timer = setInterval(() => this.tick(), config.gpuTickMs);
+  }
+
+  private seedHost(id: string, label: string, hostname: string, agentVersion: string): void {
+    if (HostsRepo.findById(id)) return;
+    HostsRepo.insert({
+      id,
+      label,
+      hostname,
+      kind: 'agent',
+      token_hash: null,
+      capabilities: JSON.stringify({ gpu: true, system: false, temps: false, processes: true }),
+      agent_version: agentVersion,
+      status: 'online',
+    });
+    logger.info('mockAgent', `Seeded synthetic host ${id}`);
   }
 
   stop(): void {
@@ -143,11 +167,16 @@ class MockAgentSeeder {
   }
 
   private tick(): void {
-    const samples = buildSamples();
+    this.tickOneHost(MOCK_AGENT_HOST_ID, DEVICES);
+    this.tickOneHost(MOCK_AGENT_AMD_HOST_ID, DEVICES_AMD);
+  }
+
+  private tickOneHost(hostId: string, devices: readonly FakeAgentDevice[]): void {
+    const samples = buildSamples(devices);
     for (const s of samples) {
       try {
         GpuDeviceRepository.upsert({
-          host_id: MOCK_AGENT_HOST_ID,
+          host_id: hostId,
           gpu_index: s.gpu_index,
           name: s.name,
           uuid: s.uuid,
@@ -158,13 +187,13 @@ class MockAgentSeeder {
         logger.debug('mockAgent', `device upsert failed: ${(err as Error).message}`);
       }
     }
-    metricsBus.emit('sample', { host_id: MOCK_AGENT_HOST_ID, samples });
-    agentProcessStore.set(MOCK_AGENT_HOST_ID, {
+    metricsBus.emit('sample', { host_id: hostId, samples });
+    agentProcessStore.set(hostId, {
       ts: Math.floor(Date.now() / 1000),
-      processes: buildProcesses(samples),
+      processes: buildProcesses(samples, devices),
     });
     try {
-      HostsRepo.markSeen(MOCK_AGENT_HOST_ID);
+      HostsRepo.markSeen(hostId);
     } catch { /* best-effort */ }
   }
 }

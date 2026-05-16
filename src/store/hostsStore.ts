@@ -130,15 +130,24 @@ export function useIsMonoHost(): boolean {
   return useHostsStore((s) => s.hosts.length <= 1);
 }
 
+// Window between "fresh" and "the watchdog will give up". The watchdog
+// flips the host to 'offline' at OFFLINE_THRESHOLD_S = 30s (server/
+// services/hostsWatchdog.ts), so we have to leave it strictly less.
+// Earlier this was 15s and tripped on any tick-jitter > a single sample
+// (TICK_MS=1000 → 16 missed samples). 25s is the new compromise: still
+// distinct from offline, but tolerant of a brief WS reconnect or a
+// backgrounded browser tab. Keep in sync with server/routes/health.ts.
+export const LAGGING_THRESHOLD_S = 25;
+
 /** Derive a displayed "effective" status that incorporates the lag
  *  window the watchdog uses internally: an agent whose last_seen is
- *  more than 15s old shows as 'lagging' even if status is still
- *  'online' (the 30 s flip lives on the server side). */
+ *  more than LAGGING_THRESHOLD_S old shows as 'lagging' even if status
+ *  is still 'online' (the 30 s flip lives on the server side). */
 export function effectiveStatus(h: HostRecord, now = Math.floor(Date.now() / 1000)): HostStatus {
   if (h.status !== 'online') return h.status;
   if (h.kind !== 'agent') return 'online';
   if (h.last_seen === null) return 'online';
-  if (now - h.last_seen > 15) return 'lagging';
+  if (now - h.last_seen > LAGGING_THRESHOLD_S) return 'lagging';
   return 'online';
 }
 
