@@ -18,7 +18,7 @@ import bcrypt from 'bcryptjs';
 import { HostsRepo, LOCAL_HOST_ID, type HostRecord } from '../database/models/Host.js';
 import { metricsBus } from './_metricsBus.js';
 import { logger } from '../utils/logger.js';
-import type { GpuSample } from './_nvidiaParsers.js';
+import type { GpuSample } from './parsers/nvidia.js';
 import { agentProcessStore } from './agentProcessStore.js';
 import type { GpuProcess } from './processCollector.js';
 

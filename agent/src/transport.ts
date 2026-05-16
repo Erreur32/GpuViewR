@@ -16,7 +16,7 @@
 
 import { WebSocket } from 'ws';
 import { logger } from './logger.js';
-import type { GpuSample } from '../../server/services/_nvidiaParsers.js';
+import type { GpuSample } from '../../server/services/parsers/nvidia.js';
 import type { AgentGpuProcess } from './collectors/processes.js';
 import type { AgentConfig } from './config.js';
 

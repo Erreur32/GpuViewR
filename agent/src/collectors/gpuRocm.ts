@@ -12,8 +12,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import {
   mapRocmInfoToSamples,
   parseRocmInfo,
-} from '../../../server/services/_rocmParsers.js';
-import type { GpuSample } from '../../../server/services/_nvidiaParsers.js';
+} from '../../../server/services/parsers/rocm.js';
+import type { GpuSample } from '../../../server/services/parsers/nvidia.js';
 import { logger } from '../logger.js';
 
 export type GpuCollectorOptions = Readonly<{

@@ -1,4 +1,4 @@
-// Pure helpers for rocm-smi --json parsing. Sibling of _nvidiaParsers.ts;
+// Pure helpers for rocm-smi --json parsing. Sibling of parsers/nvidia.ts;
 // same role: shared between the hub and the agent so a single parse path
 // covers both. No I/O, no side effects.
 //
@@ -17,7 +17,7 @@
 // box): `ROCm-${normalizedBus}`. Used as the gpu_uuid in samples AND
 // process snapshots so the UI's `${pid}-${gpu_uuid}` React key stays stable.
 
-import { nowTimestamp, type GpuSample } from './_nvidiaParsers.js';
+import { nowTimestamp, type GpuSample } from './nvidia.js';
 
 export interface RocmCard {
   index: number;

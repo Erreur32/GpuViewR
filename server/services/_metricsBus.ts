@@ -8,7 +8,7 @@
 // came from local nvidia-smi or a remote agent.
 
 import { EventEmitter } from 'node:events';
-import type { GpuSample } from './_nvidiaParsers.js';
+import type { GpuSample } from './parsers/nvidia.js';
 
 export interface SampleEvent {
   host_id: string;

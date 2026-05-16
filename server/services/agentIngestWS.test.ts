@@ -19,7 +19,7 @@ import { _setDatabaseForTests, closeDatabase } from '../database/connection.js';
 import { HostsRepo } from '../database/models/Host.js';
 import { authenticateAgent, setupAgentIngestWS } from './agentIngestWS.js';
 import { metricsBus, type SampleEvent, type HostStatusEvent } from './_metricsBus.js';
-import type { GpuSample } from './_nvidiaParsers.js';
+import type { GpuSample } from './parsers/nvidia.js';
 
 let server: http.Server;
 let baseUrl: string;

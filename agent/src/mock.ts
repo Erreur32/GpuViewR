@@ -4,7 +4,7 @@
 // — kept minimal here since the agent doesn't need process names.
 
 import { randomInt } from 'node:crypto';
-import { nowTimestamp, type GpuSample } from '../../server/services/_nvidiaParsers.js';
+import { nowTimestamp, type GpuSample } from '../../server/services/parsers/nvidia.js';
 
 function frand(): number {
   return randomInt(0, 1_000_000) / 1_000_000;

@@ -4,7 +4,7 @@
 //
 // rocm-smi quirks worth knowing:
 //  - --showpids returns a single CSV string per PID, not an object;
-//    parsing lives in _rocmParsers.
+//    parsing lives in parsers/rocm.
 //  - Empty case = stdout empty, exit 0, harmless WARNING on stderr.
 //  - No equivalent of nvidia-smi pmon → gpu_pct is always null.
 //  - No process type (C/G/G+C) — we set 'C' (compute) which is what
@@ -18,7 +18,7 @@
 //    --showpidgpus; that case logs a one-shot warning.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { parseRocmInfo, parseRocmPids, rocmUuidFromBus } from '../../../server/services/_rocmParsers.js';
+import { parseRocmInfo, parseRocmPids, rocmUuidFromBus } from '../../../server/services/parsers/rocm.js';
 import type { AgentGpuProcess, ProcessCollectorHandle, ProcessCollectorOptions, ProcessSnapshot } from './processes.js';
 import { createCpuSampler, readCmdline } from './_procTicks.js';
 import { logger } from '../logger.js';

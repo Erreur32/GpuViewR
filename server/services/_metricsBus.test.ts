@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { metricsBus, type SampleEvent } from './_metricsBus.js';
-import type { GpuSample } from './_nvidiaParsers.js';
+import type { GpuSample } from './parsers/nvidia.js';
 
 function makeSample(idx: number): GpuSample {
   return {

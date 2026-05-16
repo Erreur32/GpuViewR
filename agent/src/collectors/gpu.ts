@@ -1,5 +1,5 @@
 // nvidia-smi collector for the agent. Mirrors the hub's gpuCollector
-// in pure form: spawn, parse via _nvidiaParsers, emit GpuSample[].
+// in pure form: spawn, parse via parsers/nvidia, emit GpuSample[].
 // No DB writes, no event emitter — the caller (transport) decides
 // what to do with each tick. Shares the parser with the hub so any
 // future driver-format quirk fix lands in one place.
@@ -14,7 +14,7 @@ import {
   parsePciThroughput,
   type GpuSample,
   type PcieThroughput,
-} from '../../../server/services/_nvidiaParsers.js';
+} from '../../../server/services/parsers/nvidia.js';
 import { logger } from '../logger.js';
 
 export type GpuCollectorOptions = Readonly<{

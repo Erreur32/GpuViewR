@@ -15,12 +15,12 @@ import {
   parsePciThroughput,
   type GpuSample,
   type PcieThroughput,
-} from './_nvidiaParsers.js';
+} from './parsers/nvidia.js';
 import { metricsBus } from './_metricsBus.js';
 
 // Re-export so existing `import { type GpuSample } from './gpuCollector.js'`
 // in alertService / exportService / mockGpu / gpuStreamWS still resolves.
-// The canonical home is now _nvidiaParsers.ts (shared with the agent).
+// The canonical home is now parsers/nvidia.ts (shared with the agent).
 export type { GpuSample };
 
 class GpuCollector extends EventEmitter {

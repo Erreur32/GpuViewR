@@ -17,7 +17,7 @@ import { HostsRepo } from '../database/models/Host.js';
 import { GpuDeviceRepository } from '../database/models/GpuMetric.js';
 import { metricsBus } from './_metricsBus.js';
 import { agentProcessStore } from './agentProcessStore.js';
-import { nowTimestamp, type GpuSample } from './_nvidiaParsers.js';
+import { nowTimestamp, type GpuSample } from './parsers/nvidia.js';
 import type { GpuProcess } from './processCollector.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';

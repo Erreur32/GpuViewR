@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import { _setDatabaseForTests, closeDatabase } from '../database/connection.js';
 import { GpuDeviceRepository, GpuMetricRepository } from '../database/models/GpuMetric.js';
 import { HostsRepo, LOCAL_HOST_ID } from '../database/models/Host.js';
-import type { GpuSample } from './_nvidiaParsers.js';
+import type { GpuSample } from './parsers/nvidia.js';
 import {
   __testOnly,
   startAgentMetricsPersistor,

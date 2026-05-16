@@ -4,7 +4,7 @@ import { gpuCollector } from '../services/gpuCollector.js';
 import { agentProcessStore } from '../services/agentProcessStore.js';
 import { metricsBus } from '../services/_metricsBus.js';
 import { LOCAL_HOST_ID } from '../database/models/Host.js';
-import type { GpuSample } from '../services/_nvidiaParsers.js';
+import type { GpuSample } from '../services/parsers/nvidia.js';
 
 const router = Router();
 

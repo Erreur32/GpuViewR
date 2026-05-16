@@ -8,7 +8,7 @@ import {
   parseRocmPids,
   rocmDeviceName,
   rocmUuidFromBus,
-} from './_rocmParsers.js';
+} from './rocm.js';
 
 // Real dumps captured on a Strix Halo / Radeon 8060S box (Jarvis,
 // gfx1151). Pasted verbatim so any regression in rocm-smi's JSON shape
