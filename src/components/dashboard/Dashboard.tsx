@@ -16,6 +16,7 @@ import PcieThroughputTile from './PcieThroughputTile';
 import AllGpusGrid from './AllGpusGrid';
 import MultiGpuChart from './MultiGpuChart';
 import UpdateBanner from '../ui/UpdateBanner';
+import VendorIcon, { detectVendor } from '../ui/VendorIcon';
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -82,7 +83,12 @@ export default function Dashboard() {
           any), then the view + range selectors on the right. The previous
           two-line layout cost a full row of vertical space for no gain. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 className="text-xl font-semibold leading-none" style={{ color: 'var(--gv-text)' }}>
+        <h2 className="text-xl font-semibold leading-none inline-flex items-center gap-2" style={{ color: 'var(--gv-text)' }}>
+          <VendorIcon
+            vendor={detectVendor(active.name)}
+            size={20}
+            title={detectVendor(active.name)?.toUpperCase() ?? active.name}
+          />
           {active.name}
         </h2>
         <span className="text-xs leading-none" style={{ color: 'var(--gv-text-dim)' }}>
