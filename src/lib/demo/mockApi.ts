@@ -118,7 +118,7 @@ function handleHealthSystem(ctx: RouteCtx): Response | null {
     if (isFleetDemo()) return json({ hosts: fakeFleetHosts() });
     return json({ hosts: [{
       id: 'local', label: 'demo-hub', hostname: 'demo-hub.local', kind: 'local',
-      endpoint: null, capabilities: null, agent_version: null,
+      endpoint: null, capabilities: null, agent_version: null, install_mode: null, auto_update: 0,
       protocol_ver: 1, enrolled_at: Math.floor(Date.now() / 1000) - 86400,
       last_seen: Math.floor(Date.now() / 1000) - 2, status: 'online',
     }] });
@@ -131,7 +131,7 @@ function handleHealthSystem(ctx: RouteCtx): Response | null {
         id: crypto.randomUUID(),
         label: (ctx.body as { label?: string })?.label ?? 'demo-host',
         hostname: null, kind: 'agent', endpoint: null,
-        capabilities: null, agent_version: null, protocol_ver: 1,
+        capabilities: null, agent_version: null, install_mode: null, auto_update: 0, protocol_ver: 1,
         enrolled_at: Math.floor(Date.now() / 1000), last_seen: null,
         status: 'pending',
       },

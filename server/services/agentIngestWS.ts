@@ -13,6 +13,10 @@
 // agent gets 1008 Policy Violation and must reconnect with backoff.
 
 import type { IncomingMessage } from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcryptjs';
 import { config } from '../config.js';
@@ -27,6 +31,14 @@ import type { GpuProcess } from './_processTypes.js';
 const RATE_LIMIT_PER_SEC = 100;
 const LAST_SEEN_THROTTLE_MS = 1000;
 const PROTOCOL_VER = 1;
+/** Cooldown between auto-update pushes to the same host. Stops a hard
+ *  crash-loop on the remote (agent crashes → systemd restarts → hello
+ *  with same old version → another push) from saturating the WS. */
+const AUTO_UPDATE_COOLDOWN_MS = 5 * 60_000;
+/** Hard cap on the bundle base64 payload size. Real bundles are
+ *  ~215 KB; 2 MB is comfortable headroom and refuses anything absurd
+ *  if the build pipeline goes wrong. */
+const MAX_BUNDLE_BYTES = 2 * 1024 * 1024;
 
 interface HelloFrame {
   type: 'hello';
@@ -34,6 +46,7 @@ interface HelloFrame {
   agent_version?: string;
   protocol_ver?: number;
   hostname?: string;
+  install_mode?: 'docker' | 'systemd' | 'unknown';
   capabilities?: { gpu?: boolean; system?: boolean; temps?: boolean; processes?: boolean };
 }
 
@@ -140,6 +153,105 @@ function safeSend(ws: WebSocket, payload: unknown): void {
   }
 }
 
+// ── Auto-update push (v0.5.3+) ──────────────────────────────────────
+//
+// The hub holds the canonical agent.mjs (the same file served at
+// /agent.mjs for bare-metal bootstraps). On a successful hello from
+// an agent that has opted into auto-update, the hub pushes that bundle
+// down the existing WS so the agent can self-replace and restart.
+//
+// We cache the bundle + its SHA256 once at boot. The bundle changes
+// only on hub upgrade (image rebuild) so re-reading the file on every
+// hello would be pure waste.
+//
+// Security note: the WS is already authenticated (bcrypt token or
+// bootstrap shared-secret), so a connected agent already trusts the
+// hub. Adding binary-replace authority on top is still a meaningful
+// escalation though, which is why auto_update is opt-in per host
+// (default 0) and Docker hosts are skipped entirely (their bundle
+// lives in the read-only image layer, can't be replaced from inside).
+
+const __filename = fileURLToPath(import.meta.url);
+const BUNDLE_PATH = path.resolve(path.dirname(__filename), '..', '..', 'agent', 'dist', 'agent.mjs');
+
+interface CachedBundle { base64: string; sha256: string; size: number; version: string }
+let cachedBundle: CachedBundle | null = null;
+/** In-memory per-host throttle: last push timestamp. Resets on hub
+ *  restart, which is exactly what we want — a fresh hub means a fresh
+ *  bundle, so re-pushing right away is correct behaviour. */
+const lastPushedAtMs = new Map<string, number>();
+
+function loadBundle(hubVersion: string): CachedBundle | null {
+  if (cachedBundle) return cachedBundle;
+  if (!fs.existsSync(BUNDLE_PATH)) {
+    logger.warn('agent', `Auto-update unavailable: bundle missing at ${BUNDLE_PATH}`);
+    return null;
+  }
+  const buf = fs.readFileSync(BUNDLE_PATH);
+  if (buf.length > MAX_BUNDLE_BYTES) {
+    logger.warn('agent', `Auto-update disabled: bundle ${buf.length}B > cap ${MAX_BUNDLE_BYTES}B`);
+    return null;
+  }
+  const sha256 = createHash('sha256').update(buf).digest('hex');
+  cachedBundle = { base64: buf.toString('base64'), sha256, size: buf.length, version: hubVersion };
+  logger.info('agent', `Auto-update bundle cached: ${buf.length}B, sha256=${sha256.slice(0, 12)}…, version=${hubVersion}`);
+  return cachedBundle;
+}
+
+/** True when the agent declared a version we know is older than the
+ *  hub. Same semver-ish rules as the frontend's isAgentOutdated —
+ *  intentionally simple: major.minor.patch numeric compare, prerelease
+ *  suffixes stripped, unparseable → false (don't push). */
+function isOlder(agentVer: string | null, hubVer: string): boolean {
+  if (!agentVer) return false;
+  const parse = (v: string): [number, number, number] | null => {
+    let clean = v;
+    if (clean.startsWith('v')) clean = clean.slice(1);
+    const dashAt = clean.indexOf('-');
+    if (dashAt >= 0) clean = clean.slice(0, dashAt);
+    const parts = clean.split('.').map((p) => Number.parseInt(p, 10));
+    if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
+    return [parts[0], parts[1], parts[2]];
+  };
+  const a = parse(agentVer); const h = parse(hubVer);
+  if (!a || !h) return false;
+  if (a[0] !== h[0]) return a[0] < h[0];
+  if (a[1] !== h[1]) return a[1] < h[1];
+  return a[2] < h[2];
+}
+
+function maybePushAutoUpdate(ws: WebSocket, host: HostRecord, hubVersion: string): void {
+  // Gate 1: opt-in.
+  if (!host.auto_update) return;
+  // Gate 2: bare-metal only — Docker agents can't rewrite a baked-in
+  // bundle. The 'unknown' bucket (legacy agents, dev runs) is also
+  // skipped: better to surface the manual pill than push to something
+  // we can't reliably restart.
+  if (host.install_mode !== 'systemd') return;
+  // Gate 3: outdated.
+  if (!isOlder(host.agent_version, hubVersion)) return;
+  // Gate 4: cooldown — protect against crash-loop amplification.
+  const lastAt = lastPushedAtMs.get(host.id) ?? 0;
+  if (Date.now() - lastAt < AUTO_UPDATE_COOLDOWN_MS) {
+    logger.info('agent', `Auto-update skipped for ${host.id}: cooldown active`);
+    return;
+  }
+  const bundle = loadBundle(hubVersion);
+  if (!bundle) return;
+  lastPushedAtMs.set(host.id, Date.now());
+  logger.info(
+    'agent',
+    `Auto-update push → ${host.id} (label=${host.label}, ${host.agent_version} → ${hubVersion}, ${bundle.size}B)`,
+  );
+  safeSend(ws, {
+    type: 'agent_update',
+    target_version: hubVersion,
+    sha256: bundle.sha256,
+    size: bundle.size,
+    bundle_b64: bundle.base64,
+  });
+}
+
 /**
  * Returns the WSS in noServer mode. The HTTP `upgrade` event is
  * dispatched centrally in index.ts (see gpuStreamWS for the rationale).
@@ -210,7 +322,7 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion:
       return;
     }
 
-    dispatchFrame(ws, host, frame);
+    dispatchFrame(ws, host, frame, hubVersion);
 
     if (now - lastSeenWroteAt > LAST_SEEN_THROTTLE_MS) {
       HostsRepo.markSeen(host.id);
@@ -226,10 +338,10 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion:
   ws.on('error', (err) => logger.warn('agent', `Socket error from ${host.id}:`, err.message));
 }
 
-function dispatchFrame(ws: WebSocket, host: HostRecord, frame: IncomingFrame): void {
+function dispatchFrame(ws: WebSocket, host: HostRecord, frame: IncomingFrame, hubVersion: string): void {
   switch (frame.type) {
     case 'hello':
-      handleHello(host, frame as HelloFrame);
+      handleHello(ws, host, frame as HelloFrame, hubVersion);
       return;
     case 'sample':
       handleSample(host, frame as SampleFrame);
@@ -260,7 +372,7 @@ function handleProcesses(host: HostRecord, frame: ProcessFrame): void {
   });
 }
 
-function handleHello(host: HostRecord, frame: HelloFrame): void {
+function handleHello(ws: WebSocket, host: HostRecord, frame: HelloFrame, hubVersion: string): void {
   if (frame.host_id !== host.id) {
     // Session was authenticated; the frame's host_id mismatch is
     // either a bug in the agent or an attempt to confuse the hub.
@@ -269,12 +381,22 @@ function handleHello(host: HostRecord, frame: HelloFrame): void {
     return;
   }
   const caps = frame.capabilities ? JSON.stringify(frame.capabilities) : null;
+  // install_mode: only overwrite when the agent declares it. A NULL
+  // payload (pre-v0.5.3 agent) leaves the DB column alone, so we don't
+  // wipe a previously-recorded mode on protocol downgrade.
   HostsRepo.update(host.id, {
     hostname: frame.hostname ?? host.hostname,
     agent_version: frame.agent_version ?? host.agent_version,
+    install_mode: frame.install_mode ?? host.install_mode,
     capabilities: caps ?? host.capabilities,
     protocol_ver: frame.protocol_ver ?? host.protocol_ver,
   });
+  // Re-read with the freshly-merged values: maybePushAutoUpdate gates
+  // on install_mode + agent_version, both of which may have just been
+  // populated by this hello (a v0.5.3+ remote that's connecting for
+  // the first time after upgrade has them in `frame`, not in `host`).
+  const refreshed = HostsRepo.findById(host.id);
+  if (refreshed) maybePushAutoUpdate(ws, refreshed, hubVersion);
 }
 
 function handleSample(host: HostRecord, frame: SampleFrame): void {

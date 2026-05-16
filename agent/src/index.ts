@@ -6,7 +6,7 @@
 import { spawnSync } from 'node:child_process';
 import { loadConfig, type AgentConfig, type GpuVendor } from './config.js';
 import { logger } from './logger.js';
-import { createTransport } from './transport.js';
+import { createTransport, INSTALL_MODE } from './transport.js';
 import { createGpuCollector, type GpuCollectorHandle } from './collectors/gpu.js';
 import { createRocmGpuCollector } from './collectors/gpuRocm.js';
 import { createProcessCollector, type ProcessCollectorHandle } from './collectors/processes.js';
@@ -20,6 +20,7 @@ logger.info('boot', `gpuviewr-agent starting (${config.hubs.length} hub${config.
 for (const h of config.hubs) logger.info('boot', `  → ${h.url} (host_id=${h.hostId})`);
 logger.info('boot', `Features: ${JSON.stringify(config.features)}`);
 logger.info('boot', `GPU vendor: ${vendor} (configured: ${config.gpuVendor})`);
+logger.info('boot', `Install mode: ${INSTALL_MODE} (hub will use this to suggest the right update command)`);
 if (config.mockGpu) logger.warn('boot', 'MOCK_GPU=1 — synthetic GPU samples, no smi spawn');
 
 const transport = createTransport(config);

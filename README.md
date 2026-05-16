@@ -196,6 +196,21 @@ AGENT_TOKENS=<token-on-hub1>,<token-on-hub2>
 The agent maintains parallel WS connections; a buffer is kept per-hub
 so a slow hub doesn't gate samples to the others.
 
+### Auto-update (bare-metal only)
+
+For bare-metal (systemd) agents, you can flip the **Auto-update**
+toggle in Settings → Hosts (the circular arrows icon next to
+Rotate / Delete). After that, whenever the hub is upgraded, the
+new `agent.mjs` is pushed down the existing WS at the next
+reconnect, written atomically to `/opt/gpuviewr-agent/agent.mjs`,
+and systemd restarts the agent on a verified SHA256 match.
+
+Off by default — flipping it on gives the hub binary-execute
+authority on the remote machine, so it has to be a conscious
+admin decision. Docker agents update through `docker compose pull
+&& up -d` instead (their bundle lives in the read-only image
+layer, not a writable file, so the same trick doesn't apply).
+
 ---
 
 ## Architecture

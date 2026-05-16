@@ -22,18 +22,46 @@
 //    kill the agent — other hubs keep going. A repeated 4001 on the
 //    SAME hub still exits because the token is permanently bad.
 
+import { readFileSync, existsSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { WebSocket } from 'ws';
 import { logger } from './logger.js';
 import type { GpuSample } from '../../server/services/parsers/nvidia.js';
 import type { AgentGpuProcess } from './collectors/processes.js';
 import type { AgentConfig, HubTarget } from './config.js';
 
+export type InstallMode = 'docker' | 'systemd' | 'unknown';
+
+// Detected once at module load — the runtime context doesn't change
+// over the life of the agent process. Result is included in every
+// hello frame so the hub can show the *right* update command per
+// host (bare-metal curl vs `docker compose pull`).
+export const INSTALL_MODE: InstallMode = detectInstallMode();
+
+function detectInstallMode(): InstallMode {
+  // Strongest signal — Docker mounts an empty marker file.
+  if (existsSync('/.dockerenv')) return 'docker';
+  // Fallback: cgroup v1 paths usually contain /docker/ or /containerd/.
+  try {
+    const cg = readFileSync('/proc/self/cgroup', 'utf8');
+    if (/docker|containerd|kubepods/i.test(cg)) return 'docker';
+  } catch { /* /proc not readable — happens on non-Linux */ }
+  // systemd-launched agents have INVOCATION_ID set, but absence
+  // doesn't prove bare-metal (could be a launched-by-hand binary).
+  // We bucket every non-Docker run as 'systemd' since the update
+  // command is the same: curl + systemctl restart.
+  if (process.env.INVOCATION_ID || process.env.JOURNAL_STREAM) return 'systemd';
+  // If we got here we're outside Docker but not under systemd —
+  // most likely a developer running `node agent.mjs` by hand.
+  return 'unknown';
+}
+
 const BUFFER_MAX = 3600;
 const RECONNECT_MIN_MS = 1_000;
 const PING_INTERVAL_MS = 15_000;
 const REPLAY_CHUNK = 50;
 const REPLAY_DELAY_MS = 600;
-const AGENT_VERSION = '0.5.0';
+const AGENT_VERSION = '0.5.3';
 const PROTOCOL_VER = 1;
 // Number of consecutive auth failures before we give up on a hub
 // entirely. One 4001 might be a transient race during hub restart;
@@ -168,6 +196,7 @@ export function createTransport(config: AgentConfig): Transport {
       agent_version: AGENT_VERSION,
       protocol_ver: PROTOCOL_VER,
       hostname: process.env.HOSTNAME || null,
+      install_mode: INSTALL_MODE,
       capabilities: {
         gpu: config.features.gpu,
         system: config.features.system,
@@ -203,9 +232,70 @@ export function createTransport(config: AgentConfig): Transport {
       case 'config':
         // Reserved for future hub-driven tick rate changes.
         break;
+      case 'agent_update':
+        // Self-replace + exit. systemd / Docker restart-policy picks
+        // up the new binary on the next launch. Failures (bad
+        // checksum, write error) are logged and the agent keeps
+        // running the old version — never crash on a bad push.
+        applyAgentUpdate(conn, frame);
+        break;
       default:
         logger.debug(conn.tag, `Unknown frame type from hub: ${frame.type}`);
     }
+  }
+
+  function applyAgentUpdate(conn: HubConnection, frame: IncomingFrame): void {
+    const targetVersion = String(frame.target_version ?? '?');
+    const sha256 = String(frame.sha256 ?? '');
+    const sizeClaim = Number(frame.size ?? 0);
+    const b64 = String(frame.bundle_b64 ?? '');
+    if (!sha256 || !b64) {
+      logger.warn(conn.tag, 'agent_update: missing sha256 or bundle_b64; ignoring');
+      return;
+    }
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(b64, 'base64');
+    } catch (err) {
+      logger.warn(conn.tag, `agent_update: base64 decode failed: ${(err as Error).message}`);
+      return;
+    }
+    if (sizeClaim && buf.length !== sizeClaim) {
+      logger.warn(conn.tag, `agent_update: size mismatch (got ${buf.length}, expected ${sizeClaim})`);
+      return;
+    }
+    const computed = createHash('sha256').update(buf).digest('hex');
+    if (computed !== sha256) {
+      logger.warn(conn.tag, `agent_update: sha256 mismatch (got ${computed.slice(0, 12)}…, expected ${sha256.slice(0, 12)}…)`);
+      return;
+    }
+    // process.argv[1] is the path of the launched script — for the
+    // systemd unit that's /opt/gpuviewr-agent/agent.mjs. Atomic swap:
+    // write to a sibling .new file, fsync, rename. POSIX rename(2) is
+    // atomic on the same filesystem, so a half-written .new can never
+    // be picked up as agent.mjs on next boot.
+    const target = process.argv[1];
+    if (!target || !existsSync(target)) {
+      logger.warn(conn.tag, `agent_update: can't resolve own binary path (argv[1]=${target}); skipping`);
+      return;
+    }
+    const tmp = `${target}.new`;
+    try {
+      writeFileSync(tmp, buf, { mode: 0o755 });
+      const fd = openSync(tmp, 'r');
+      try { fsyncSync(fd); } finally { closeSync(fd); }
+      renameSync(tmp, target);
+    } catch (err) {
+      logger.error(conn.tag, `agent_update: filesystem swap failed: ${(err as Error).message}`);
+      return;
+    }
+    logger.success(
+      conn.tag,
+      `agent_update applied: ${AGENT_VERSION} → ${targetVersion} (${buf.length}B). Exiting; systemd will restart.`,
+    );
+    // Tiny tail so the log line flushes through the logger transport
+    // before the process dies. 100ms is enough for stdout to drain.
+    setTimeout(() => process.exit(0), 100).unref();
   }
 
   function scheduleReconnect(conn: HubConnection): void {

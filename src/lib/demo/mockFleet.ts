@@ -111,6 +111,8 @@ export function fakeFleetHosts() {
     endpoint: null,
     capabilities: h.kind === 'agent' ? '{"gpu":true,"system":true,"temps":true,"processes":true}' : null,
     agent_version: h.agent_version,
+    install_mode: h.kind === 'agent' ? 'docker' : null,
+    auto_update: 0,
     protocol_ver: 1,
     enrolled_at: h.enrolledAt,
     last_seen: h.status === 'offline' ? now - 600 : h.status === 'lagging' ? now - 28 : now - 2,

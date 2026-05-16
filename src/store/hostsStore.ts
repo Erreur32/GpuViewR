@@ -14,6 +14,7 @@ import { api } from '../lib/api';
 
 export type HostKind = 'local' | 'agent' | 'prometheus';
 export type HostStatus = 'pending' | 'online' | 'lagging' | 'offline' | 'disabled';
+export type InstallMode = 'docker' | 'systemd' | 'unknown';
 
 export interface HostRecord {
   id: string;
@@ -23,6 +24,15 @@ export interface HostRecord {
   endpoint: string | null;
   capabilities: string | null;
   agent_version: string | null;
+  /** Reported by agent v0.5.3+ in its hello frame. NULL on pre-v0.5.3
+   *  agents — UI treats NULL the same as 'unknown' (shows both update
+   *  recipes since we can't tell which one applies). */
+  install_mode: InstallMode | null;
+  /** 0/1 (SQLite). When 1 + install_mode='systemd' + agent < hub, the
+   *  hub pushes the new agent.mjs over the WS at hello time. Default 0
+   *  (opt-in) — flipping this gives the hub binary-execute authority
+   *  on the remote host, so it has to be a conscious admin decision. */
+  auto_update: number;
   protocol_ver: number;
   enrolled_at: number;
   last_seen: number | null;
@@ -55,6 +65,7 @@ interface HostsState {
   rename: (id: string, label: string) => Promise<void>;
   rotateToken: (id: string) => Promise<string>;
   remove: (id: string) => Promise<void>;
+  setAutoUpdate: (id: string, enabled: boolean) => Promise<void>;
 }
 
 export const useHostsStore = create<HostsState>((set, get) => ({
@@ -104,6 +115,14 @@ export const useHostsStore = create<HostsState>((set, get) => ({
     const r = await api<{ host: HostRecord }>(`/hosts/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ label }),
+    });
+    set((state) => ({ hosts: state.hosts.map((h) => (h.id === id ? r.host : h)) }));
+  },
+
+  setAutoUpdate: async (id, enabled) => {
+    const r = await api<{ host: HostRecord }>(`/hosts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ auto_update: enabled }),
     });
     set((state) => ({ hosts: state.hosts.map((h) => (h.id === id ? r.host : h)) }));
   },

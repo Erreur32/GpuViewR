@@ -101,6 +101,15 @@ router.patch('/:id', (req, res) => {
     }
     patch.status = req.body.status as HostStatus;
   }
+  if (req.body?.auto_update !== undefined) {
+    // Accept boolean from the UI; stored as 0/1 because SQLite has no
+    // native bool. Reject any other shape so a fat-fingered PATCH
+    // can't insert a string here.
+    if (typeof req.body.auto_update !== 'boolean') {
+      return res.status(400).json({ error: 'auto_update must be a boolean' });
+    }
+    patch.auto_update = req.body.auto_update ? 1 : 0;
+  }
   const updated = HostsRepo.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'Not found' });
   res.json({ host: stripSensitive(updated) });

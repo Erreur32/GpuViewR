@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle } from 'lucide-react';
+import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
@@ -134,7 +134,13 @@ function HostRow({
         <StatusPill status={status} lastSeenEpoch={null} />
       </td>
       <td className="px-4 py-3 font-mono text-xs">
-        <VersionCell isLocal={isLocal} agentVersion={host.agent_version} kind={host.kind} t={t} />
+        <VersionCell
+          isLocal={isLocal}
+          agentVersion={host.agent_version}
+          installMode={host.install_mode}
+          kind={host.kind}
+          t={t}
+        />
       </td>
       <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--gv-text-muted)' }}>
         {lastSeenLabel}
@@ -143,6 +149,7 @@ function HostRow({
         <div className="flex justify-end gap-1.5">
           {!isLocal && (
             <>
+              <AutoUpdateToggle host={host} t={t} />
               <IconBtn title={t('hosts.rotate_token')} onClick={onRotate}>
                 <KeyRound size={14} />
               </IconBtn>
@@ -166,10 +173,11 @@ function HostRow({
 // (local hub / agent with reported version / agent without one) read
 // more clearly as guarded early returns.
 function VersionCell({
-  isLocal, agentVersion, kind, t,
+  isLocal, agentVersion, installMode, kind, t,
 }: Readonly<{
   isLocal: boolean;
   agentVersion: string | null;
+  installMode: 'docker' | 'systemd' | 'unknown' | null;
   kind: string;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }>) {
@@ -186,7 +194,7 @@ function VersionCell({
         <span style={{ color: 'var(--gv-warn)' }} title={t('hosts.agent_version_help')}>
           v{agentVersion}
         </span>
-        <AgentUpdateButton t={t} agentVersion={agentVersion} />
+        <AgentUpdateButton t={t} agentVersion={agentVersion} installMode={installMode} />
       </span>
     );
   }
@@ -194,25 +202,44 @@ function VersionCell({
 }
 
 /** Clickable warning shown when an agent is older than the hub.
- *  Click → copies the update curl one-liner to clipboard + shows a
- *  toast. Hover → tooltip with the same command and a hint that
- *  Docker users should run `docker compose pull && up -d` in their
- *  agent dir instead. The hub URL is read from window.location so
- *  the recipe is correct whether the user accesses the dashboard
- *  on LAN or behind a reverse proxy. */
+ *  Click → copies the update one-liner that matches THIS host's
+ *  install mode (docker vs systemd). The mode is reported by the
+ *  agent in its hello frame (v0.5.3+); legacy / unknown agents get
+ *  both recipes shown in the tooltip and the bare-metal one is
+ *  copied as a sensible default. Running the bare-metal recipe on a
+ *  Docker host creates a "double agent" install — that's exactly
+ *  what this per-host selection avoids. */
+function pickUpdateCmd(installMode: 'docker' | 'systemd' | 'unknown' | null, hubOrigin: string): {
+  primary: string;
+  /** Non-null when we are guessing — UI shows both recipes in the tooltip. */
+  secondary: string | null;
+} {
+  const systemdCmd = `sudo curl -fsSL ${hubOrigin}/agent.mjs -o /opt/gpuviewr-agent/agent.mjs && sudo systemctl restart gpuviewr-agent`;
+  const dockerCmd = 'cd ~/gpuviewr-agent-* && docker compose pull && docker compose up -d';
+  if (installMode === 'systemd') return { primary: systemdCmd, secondary: null };
+  if (installMode === 'docker') return { primary: dockerCmd, secondary: null };
+  return { primary: systemdCmd, secondary: dockerCmd };
+}
+
 function AgentUpdateButton({
-  t, agentVersion,
-}: Readonly<{ t: (key: string, opts?: Record<string, unknown>) => string; agentVersion: string }>) {
+  t, agentVersion, installMode,
+}: Readonly<{
+  t: (key: string, opts?: Record<string, unknown>) => string;
+  agentVersion: string;
+  installMode: 'docker' | 'systemd' | 'unknown' | null;
+}>) {
   const hubOrigin = typeof globalThis.window === 'object' ? globalThis.location.origin : '';
-  const updateCmd = `sudo curl -fsSL ${hubOrigin}/agent.mjs -o /opt/gpuviewr-agent/agent.mjs && sudo systemctl restart gpuviewr-agent`;
-  const tooltip = t('hosts.agent_outdated_help', {
+  const { primary, secondary } = pickUpdateCmd(installMode, hubOrigin);
+  const tooltipKey = secondary ? 'hosts.agent_outdated_help_both' : 'hosts.agent_outdated_help';
+  const tooltip = t(tooltipKey, {
     agent: agentVersion,
     hub: HUB_VERSION,
-    cmd: updateCmd,
+    cmd: primary,
+    cmd_alt: secondary ?? '',
   });
   const onClick = async () => {
-    const ok = await copyText(updateCmd);
-    if (ok) notify('success', t('hosts.agent_outdated_copied'), updateCmd);
+    const ok = await copyText(primary);
+    if (ok) notify('success', t('hosts.agent_outdated_copied'), primary);
     else notify('error', t('hosts.copy_failed'), t('hosts.copy_failed_hint'));
   };
   return (
@@ -279,6 +306,61 @@ function HubBadge({ t }: Readonly<{ t: (key: string) => string }>) {
       <Server className="w-2.5 h-2.5" />
       {t('hosts.hub_badge')}
     </span>
+  );
+}
+
+/** Toggle that flips hosts.auto_update on the API. Compact icon button
+ *  to match Rotate / Delete next to it. Disabled when the agent's
+ *  install_mode is anything other than 'systemd' — Docker agents can't
+ *  self-replace their bundled binary, and an 'unknown' agent is too
+ *  old (pre-v0.5.3) to even handle the agent_update frame. The tooltip
+ *  explains the state so admins don't wonder why it's greyed out. */
+function AutoUpdateToggle({
+  host, t,
+}: Readonly<{
+  host: HostRecord;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}>) {
+  const setAutoUpdate = useHostsStore((s) => s.setAutoUpdate);
+  const supported = host.install_mode === 'systemd';
+  const enabled = host.auto_update === 1;
+  const titleKey = supported
+    ? (enabled ? 'hosts.auto_update_on' : 'hosts.auto_update_off')
+    : 'hosts.auto_update_unsupported';
+  const onClick = async () => {
+    if (!supported) return;
+    try {
+      await setAutoUpdate(host.id, !enabled);
+      notify('success', t(enabled ? 'hosts.auto_update_disabled' : 'hosts.auto_update_enabled'), '');
+    } catch (err) {
+      notify('error', t('hosts.auto_update_failed'), (err as Error).message);
+    }
+  };
+  return (
+    <button
+      type="button"
+      title={t(titleKey)}
+      onClick={onClick}
+      disabled={!supported}
+      aria-pressed={enabled}
+      className="inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
+      style={{
+        background: enabled ? 'color-mix(in srgb, var(--gv-accent) 18%, transparent)' : 'transparent',
+        color: !supported
+          ? 'var(--gv-text-dim)'
+          : (enabled ? 'var(--gv-accent)' : 'var(--gv-text-muted)'),
+        cursor: supported ? 'pointer' : 'not-allowed',
+        opacity: supported ? 1 : 0.4,
+      }}
+      onMouseEnter={(e) => {
+        if (supported && !enabled) e.currentTarget.style.background = 'var(--gv-surface-alt)';
+      }}
+      onMouseLeave={(e) => {
+        if (!enabled) e.currentTarget.style.background = 'transparent';
+      }}
+    >
+      <RefreshCw size={14} />
+    </button>
   );
 }
 

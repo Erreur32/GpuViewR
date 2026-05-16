@@ -16,6 +16,11 @@ export const LOCAL_HOST_ID = 'local';
 
 export type HostKind = 'local' | 'agent' | 'prometheus';
 export type HostStatus = 'pending' | 'online' | 'offline' | 'disabled';
+/** How the agent runs on the remote: 'docker' compose stack vs
+ *  'systemd' (bare-metal). Drives which update command the UI shows
+ *  per host — picking the wrong one creates a "double agent" install.
+ *  'unknown' = pre-v0.5.3 agent or a developer running `node` by hand. */
+export type InstallMode = 'docker' | 'systemd' | 'unknown';
 
 export interface HostRecord {
   id: string;
@@ -28,6 +33,14 @@ export interface HostRecord {
   /** JSON string of { gpu, system, temps, processes } booleans, or null until first hello. */
   capabilities: string | null;
   agent_version: string | null;
+  install_mode: InstallMode | null;
+  /** 0/1 (SQLite has no real bool). When 1 and the agent's reported
+   *  version < hub version AND install_mode='systemd', the hub pushes
+   *  the latest agent.mjs over the WS at hello time. Default 0 (opt-in)
+   *  because auto-update gives the hub binary-execution authority on
+   *  the remote — admins must consciously trust this hub before
+   *  flipping it on. */
+  auto_update: number;
   protocol_ver: number;
   enrolled_at: number;
   last_seen: number | null;
@@ -43,6 +56,8 @@ export interface HostInsertInput {
   token_hash?: string | null;
   capabilities?: string | null;
   agent_version?: string | null;
+  install_mode?: InstallMode | null;
+  auto_update?: number;
   protocol_ver?: number;
   status?: HostStatus;
 }
@@ -57,6 +72,8 @@ CREATE TABLE IF NOT EXISTS hosts (
   token_hash    TEXT,
   capabilities  TEXT,
   agent_version TEXT,
+  install_mode  TEXT,
+  auto_update   INTEGER NOT NULL DEFAULT 0,
   protocol_ver  INTEGER NOT NULL DEFAULT 1,
   enrolled_at   INTEGER NOT NULL,
   last_seen     INTEGER,
@@ -96,8 +113,8 @@ export const HostsRepo = {
       .prepare(
         `INSERT INTO hosts
          (id, label, hostname, kind, endpoint, token_hash, capabilities,
-          agent_version, protocol_ver, enrolled_at, last_seen, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+          agent_version, install_mode, auto_update, protocol_ver, enrolled_at, last_seen, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
       )
       .run(
         input.id,
@@ -108,6 +125,8 @@ export const HostsRepo = {
         input.token_hash ?? null,
         input.capabilities ?? null,
         input.agent_version ?? null,
+        input.install_mode ?? null,
+        input.auto_update ?? 0,
         input.protocol_ver ?? 1,
         now,
         input.status ?? 'pending',
@@ -123,14 +142,14 @@ export const HostsRepo = {
       .prepare(
         `UPDATE hosts SET
            label = ?, hostname = ?, kind = ?, endpoint = ?, token_hash = ?,
-           capabilities = ?, agent_version = ?, protocol_ver = ?,
-           last_seen = ?, status = ?
+           capabilities = ?, agent_version = ?, install_mode = ?, auto_update = ?,
+           protocol_ver = ?, last_seen = ?, status = ?
          WHERE id = ?`,
       )
       .run(
         m.label, m.hostname, m.kind, m.endpoint, m.token_hash,
-        m.capabilities, m.agent_version, m.protocol_ver,
-        m.last_seen, m.status, id,
+        m.capabilities, m.agent_version, m.install_mode, m.auto_update,
+        m.protocol_ver, m.last_seen, m.status, id,
       );
     return this.findById(id);
   },

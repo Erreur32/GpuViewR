@@ -151,6 +151,25 @@ function migrateMultiHost(database: Database.Database): void {
   ensureHostsSchema(database);
   HostsRepo.seedLocalIfMissing(database);
 
+  // v0.5.3: ADD COLUMN hosts.install_mode (nullable). Existing rows
+  // stay NULL until the corresponding agent reconnects and re-sends
+  // its hello frame — the UI treats NULL as 'unknown' and falls back
+  // to showing both update recipes.
+  const hostCols = database
+    .prepare("PRAGMA table_info(hosts)")
+    .all() as Array<{ name: string }>;
+  if (!hostCols.some((c) => c.name === 'install_mode')) {
+    database.exec('ALTER TABLE hosts ADD COLUMN install_mode TEXT;');
+    logger.success('DB', 'hosts.install_mode column added.');
+  }
+  // v0.5.3: ADD COLUMN hosts.auto_update (default 0 = OFF). Opt-in
+  // because flipping it gives the hub binary-execution authority on
+  // the remote machine — admins consciously trust this hub first.
+  if (!hostCols.some((c) => c.name === 'auto_update')) {
+    database.exec('ALTER TABLE hosts ADD COLUMN auto_update INTEGER NOT NULL DEFAULT 0;');
+    logger.success('DB', 'hosts.auto_update column added (default OFF).');
+  }
+
   // -- gpu_metrics: ADD COLUMN host_id (legacy v0.2.x DB) — the
   //    host-prefixed index is created unconditionally below because
   //    applySchema can't reference host_id on a still-legacy table.
