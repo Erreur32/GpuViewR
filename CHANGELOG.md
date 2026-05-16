@@ -5,6 +5,90 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-05-16
+
+### Added
+- **`docker-compose.nvidia.yaml`** at the repo root. Mirrors the AMD
+  recipe — NVIDIA Container Toolkit passthrough enabled out of the
+  box. Three compose variants now sit side by side: `nvidia` (NVIDIA
+  toolkit), `amd` (`/opt/rocm` + `/dev/kfd` + `/dev/dri`), and the
+  vendor-neutral `docker-compose.yaml` (no GPU, hub as aggregator
+  only). Quick start lists all three as parallel curl recipes.
+- **`HUB_HOSTNAME` env override** for the hub's displayed hostname.
+  Wins over the bind-mount auto-detection — useful when
+  `/etc/hostname` isn't bind-mounted or returns the container id on
+  a particular kernel.
+- **Hub `Dockerfile` bakes the agent bundle** (`agent/dist/agent.mjs`
+  + `agent/install.sh.tpl`). `/install.sh` + `/agent.mjs` no longer
+  503 on first boot — the curl-install path for enrolling remote
+  agents works out of the box.
+- **Dashboard `HostChip`** showing the resolved hostname + a "Hub"
+  pill on `LOCAL_HOST_ID`. Visible on mono-host installs too, where
+  the `HostSelector` dropdown self-hides. Same chip on the "All
+  GPUs" view.
+- **`Hub` badge on the System page** Host card title — matches the
+  badge in Settings → Hosts so the visual language stays consistent.
+
+### Changed
+- **Compose files renamed `.yml` → `.yaml`.** YAML.org spec
+  preference; Docker Compose v2 auto-discovers `.yaml` first. Five
+  files: `docker-compose.{yaml,nvidia.yaml,amd.yaml,agent.yaml,
+  agent.amd.yaml}`. No `.yml` symlinks kept — clean break.
+- **Hostname resolution inside containers.** `os.hostname()` returns
+  the container id on Docker. New `server/utils/hostHostname.ts`
+  tries in order: `HUB_HOSTNAME` env, `/host/etc/hostname` bind-mount,
+  `/host/proc/sys/kernel/hostname`, `os.hostname()` as last resort.
+  All three compose variants now bind-mount `/etc/hostname` read-only.
+- **Label backfill in `seedLocalIfMissing`** also recognises
+  previously-auto-set values: legacy `'local'`, `label === hostname`
+  (Docker auto-set), or anything matching the 12-hex container-id
+  shape. User-customised labels still preserved.
+- **`docker-entrypoint.sh` probe is vendor-aware.** Reads
+  `GPU_VENDOR` and checks the corresponding binary (nvidia-smi,
+  `/opt/rocm/bin/rocm-smi`, or both for `auto`). Replaces the
+  hardcoded "nvidia-smi not found" warning that triggered on every
+  AMD container start.
+- **System page "GPU" subtitle**, `no_gpu` placeholder,
+  `hosts.section_help`, `hosts.hub_badge_help` and the boot banner
+  are now vendor-aware (mention both `nvidia-smi` and `rocm-smi`
+  where relevant).
+
+### Fixed
+- **Hub-side rate-limit warning** logged once per offending frame
+  during a disconnect close (80+ lines per agent reconnect storm).
+  Now logged exactly once per session with the actual frame rate
+  in the message.
+- **Agent-side `flushBuffer()` reconnect storm.** After an outage of
+  more than ~100 s the offline-replay queue dump exceeded the hub's
+  `RATE_LIMIT_PER_SEC=100` ceiling in a single tick, got the agent
+  kicked, reconnected, kicked again. Chunked drain (50 frames per
+  600 ms) stays under the ceiling and yields to live tick frames
+  between batches.
+- **`agent/Dockerfile` parser path** still referenced the pre-J1
+  `_nvidiaParsers.ts` / `_rocmParsers.ts` filenames, breaking the
+  GHCR agent build on every push since the J1 rename. COPY now grabs
+  `server/services/parsers/` wholesale.
+
+## [0.4.1] - 2026-05-16
+
+### Added
+- **`server/utils/hostHostname.ts`** reads the real host hostname from
+  `/host/proc/sys/kernel/hostname` (bind-mount) when the hub runs in a
+  container. Replaces `os.hostname()` at three call sites — Hosts
+  table label, System page chip, and the local-row seed.
+- **`Hub` badge on the System page** Host card title (matches the
+  badge in Settings → Hosts).
+
+### Changed
+- `docker-entrypoint.sh` probe is now vendor-aware via `GPU_VENDOR`
+  — no more "nvidia-smi not found" warning on AMD installs.
+- Hub `Dockerfile` bakes `agent/dist/agent.mjs` into the runtime
+  image so `/install.sh` + `/agent.mjs` work on first boot.
+- Boot banner subtitle: "Real-time NVIDIA / AMD GPU Dashboard".
+- `no_gpu` UI placeholder, `system.zone_gpu_sub`,
+  `hosts.section_help` and `hosts.hub_badge_help` mention both
+  `nvidia-smi` and `rocm-smi`.
+
 ## [0.4.0] - 2026-05-16
 
 ### Added
