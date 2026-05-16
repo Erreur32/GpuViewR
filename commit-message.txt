@@ -1,71 +1,43 @@
-release: v0.4.0 — local AMD/ROCm support, Hosts page UX overhaul
+release: v0.4.1 — AMD install polish (real hostname, vendor-aware UI)
 
-Single-host AMD machines (Strix Halo, RDNA3, discrete Radeon) can now
-run GpuViewR with one container, no separate agent — the hub itself
-talks to rocm-smi on the host. GPU_VENDOR=auto (default) probes
-nvidia-smi first and falls back to rocm-smi; nvidia / amd force the
-corresponding collector. Docker image bumped to trixie + python3 +
-libdrm-amdgpu1 so the shared rocm-smi Python script runs unchanged.
-New docker-compose.amd.yml at the repo root for the single-host
-recipe (/dev/kfd + /dev/dri, /opt/rocm:ro, LD_LIBRARY_PATH,
-GPU_VENDOR=amd).
+First user-visible iteration of the v0.4.0 AMD path after a real
+Jarvis Strix Halo install. Three Docker-Container-specific traps
+came out of that:
 
-Hub side
-- New server/services/rocmGpuCollector.ts + rocmProcessCollector.ts.
-  Same lifecycle, same DB persistence, same metricsBus contract as
-  the nvidia path — the vendor split stops at the spawn boundary.
-  Six call sites previously hardcoded gpuCollector.getLatest() now
-  route through activeGpuCollector.getActiveCollector() / getActive
-  ProcessCollector() so the WS broadcast, REST endpoints and Hosts
-  page automatically light up on AMD.
-- server/services/parsers/{nvidia,rocm}.ts: shared parse layer
-  consumed by both the hub and the bundled agent. Replaces the old
-  flat _nvidiaParsers.ts / _rocmParsers.ts.
-- Dockerfile: bookworm → trixie (glibc 2.38) so the bind-mounted
-  librocm_smi64.so.1 loads cleanly; ships python3 + libdrm-amdgpu1.
-  NVIDIA users pay ~30 MB extra for one image, one tag.
-- New shared modules _gpuCollectorBase.ts + _procUtil.ts trim the
-  per-vendor collectors down to vendor-specific code only (–128 LOC
-  net across the four collectors; SonarCloud duplication 36.8 % /
-  30.3 % cleared).
+- os.hostname() returned the container ID ("48f38404d5f8") on every
+  surface that read it (Hosts table label, System page chip,
+  seedLocalIfMissing's hostname column, host card subtitle). Inside
+  a container, that's the container's UTS namespace name, not the
+  underlying host. The compose files already bind-mount /proc:/host
+  /proc:ro for the process collectors; new utility
+  server/utils/hostHostname.ts reads /host/proc/sys/kernel/hostname
+  from there to recover the real value (e.g. "jarvis"). Bare-metal
+  installs without HOST_PROC fall back to os.hostname(). Cached
+  after the first call.
+- docker-entrypoint.sh hardcoded the nvidia-smi probe, so AMD users
+  got a misleading "WARNING: nvidia-smi not found in PATH" at every
+  container start even when GPU_VENDOR=amd worked fine. The script
+  now mirrors the Node-side resolution: nvidia / amd check their own
+  binary; auto probes both and warns only if neither is reachable;
+  MOCK_GPU=1 skips the check entirely.
+- The hub image shipped without agent/dist/agent.mjs because the
+  builder stage never ran npm run build:agent. Every boot logged
+  "[WARN] [agent-dist] agent.mjs missing … /install.sh + /agent.mjs
+  will 503". The bundle is now built in the builder stage and copied
+  into runtime alongside the install.sh template — the curl install
+  path for remote agents works out of the box.
 
-Hosts page (formerly "Fleet")
-- "Fleet" tab labelled Hosts / Hôtes — info-icon tooltip on the
-  title explains the AWS Fleet / FleetDM industry term. URLs (/fleet),
-  component names and the i18n namespace stay intact so bookmarks
-  survive.
-- Vendor logo on every host card and Dashboard GPU card. Inferred
-  from the GPU product name (case-insensitive substring on NVIDIA /
-  GeForce / Quadro / Tesla / RTX / GTX vs AMD / Radeon / Instinct /
-  Ryzen-AI). Official NVIDIA green and AMD red. Falls back to the
-  neutral Server icon for Intel / empty / unknown.
-- Single combined chart everywhere — replaces the previous stacked
-  sub-charts. Metric chips (Temp / Util / Power) toggle visibility
-  on one uPlot with multi-axis Y (% for util + temp, W for power).
-  Per-host mode: colour = metric, stroke dash = host. Total mode:
-  colour = metric, one curve aggregated across the fleet (avg util,
-  max temp, sum power). Cursor-following tooltip shows the
-  timestamp and every visible series value at the hovered x.
-- Local-host row labelled with the system hostname instead of the
-  literal "local". Pre-0.4.0 installs get a one-shot backfill on
-  next boot; a user-customised label is kept intact.
-- Lagging derivation now reads live WS sample timestamps instead of
-  the polled /api/hosts cadence — the green/orange flicker between
-  the 15 s poll ticks is gone. Threshold relaxed 15s → 25s.
-- Sparkline next to the status pill gets a "60s util" label so
-  users stop reading it as a latency graph.
+UI strings caught up to the AMD reality:
+- System page "GPU" section subtitle no longer claims "Accélérateurs
+  NVIDIA remontés par nvidia-smi" — both vendors mentioned now.
+- "Hub" badge added to the System page Host card title (matches the
+  badge in Settings → Hosts) so users see at a glance that THIS box
+  is the master, not a remote agent.
+- "no_gpu" placeholder mentions rocm-smi as a possibility too and
+  points users at GPU_VENDOR + the hub boot logs.
+- hosts.section_help + hosts.hub_badge_help mention both smi
+  binaries.
+- Boot banner subtitle: "Real-time NVIDIA / AMD GPU Dashboard".
 
-Fixes / SonarCloud
-- Refactor of the per-vendor collectors collapses duplicated
-  lifecycle code into a shared GpuCollectorBase abstract class and a
-  _procUtil module (resolveProcessName, readCmdline, CpuSampler).
-- Smell cleanup on FleetChart.tsx (unused Range import, unused
-  clientHeight variable, three nested template literals) and
-  FleetPage.tsx (info-tooltip span → button so tabIndex doesn't sit
-  on a non-interactive element).
-- Mock seeder gains an AMD-flavoured agent (Mock AMD Radeon RX 7900
-  XTX) so MOCK_GPU=1 exercises the new vendor logo path on dev
-  hosts.
-
-Typecheck + hub build + agent build + 39 server tests + 8 agent
-tests all green.
+Typecheck + build green; behaviour validated end-to-end on a Strix
+Halo Mini-PC via docker-compose.amd.yml.
