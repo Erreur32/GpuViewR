@@ -226,6 +226,11 @@
     "exports_enabled": "Enabled",
     "exports_test": "Send test",
     "exports_interval": "Interval (s)",
+    "exports_filter_title": "Filter by host / GPU",
+    "exports_filter_help": "Restrict this exporter to specific hosts (and per-host, to specific GPU indices). Leave everything checked to push all samples — that's the default.",
+    "exports_filter_summary_all": "all hosts",
+    "exports_filter_summary_partial": "{{selected}}/{{total}} hosts",
+    "exports_filter_no_hosts": "No hosts enrolled yet.",
     "exports_user": "Username",
     "exports_pass": "Password",
     "exports_prom_help": "Pull-based: a Prometheus scraper hits",
@@ -342,10 +347,14 @@
     "save": "Save",
     "cancel": "Cancel",
     "close": "Close",
+    "copy": "Copy",
     "copied": "Copied",
     "refresh": "Refresh",
     "connected": "Live",
-    "disconnected": "Offline"
+    "disconnected": "Offline",
+    "done": "Done",
+    "ago": "ago",
+    "ago_relative": "{{time}} ago"
   },
   "footer": {
     "aggregate_help": "Aggregate across all GPUs: average temperature · average utilization · average fan · total power",
@@ -538,14 +547,5 @@
     "uninstall_cmd": "Uninstall command",
     "delete_confirm": "Delete from hub",
     "delete_history_kept": "Historical metrics (gpu_metrics, alert_events) are kept under this host id for audit. Re-enrolling later creates a fresh UUID — old data won't be linked."
-  },
-  "common": {
-    "copy": "Copy",
-    "copied": "Copied",
-    "close": "Close",
-    "cancel": "Cancel",
-    "done": "Done",
-    "ago": "ago",
-    "ago_relative": "{{time}} ago"
   }
 }

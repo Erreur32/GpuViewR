@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Activity, Database, Webhook, Save, PlayCircle, BellRing, Eye, Home, HelpCircle } from 'lucide-react';
+import { Send, Activity, Database, Webhook, Save, PlayCircle, BellRing, Eye, EyeOff, Home, HelpCircle, Filter } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
+import { useHostsStore } from '../../store/hostsStore';
+import { useGpuStore } from '../../store/gpuStore';
 import { notify } from '../../store/toastStore';
 
 type SubTab = 'notification' | 'homeassistant' | 'prometheus' | 'influxdb';
@@ -10,9 +12,18 @@ type SubTab = 'notification' | 'homeassistant' | 'prometheus' | 'influxdb';
 // Shared shape for every exporter: an on/off switch and the
 // optional host-stats inclusion flag. Each concrete config extends
 // this base so we don't repeat the two lines four times.
+//
+// Mirrors server/services/exportService.ts HostGpuFilter:
+//   {} (empty)             = no filter, all hosts/GPUs
+//   { hostA: null }         = host included, all its GPUs
+//   { hostA: [0, 2] }       = host included, only these gpu_index
+//   (host absent from key)  = host excluded
+type HostGpuFilter = Record<string, number[] | null>;
+
 interface ExporterBase {
   enabled: boolean;
   includeSystemStats: boolean;
+  hostFilter: HostGpuFilter;
 }
 
 interface PrometheusConfig extends ExporterBase {}
@@ -149,10 +160,19 @@ export default function ExportsSettings() {
     }
   };
 
-  const testIt = async (kind: keyof AllConfigs) => {
+  // Test the pending form state instead of the previously-saved config.
+  // The block passes its current `s` here; the backend merges it onto
+  // the stored config (masked secrets preserved) and runs the test
+  // against that. This avoids the trap where filling the URL field
+  // then hitting Test would test the EMPTY stored URL and surface a
+  // misleading "ECONNREFUSED 127.0.0.1:1883".
+  const testIt = async <K extends keyof AllConfigs>(kind: K, draft?: AllConfigs[K]) => {
     setBusy(true);
     try {
-      const r = await api<{ ok: boolean; message: string }>(`/exports/${kind}/test`, { method: 'POST' });
+      const r = await api<{ ok: boolean; message: string }>(`/exports/${kind}/test`, {
+        method: 'POST',
+        body: draft ? JSON.stringify(draft) : undefined,
+      });
       notify(r.ok ? 'success' : 'warn', r.message);
     } catch (err) {
       notify('error', t('common.error'), (err as Error).message);
@@ -219,12 +239,12 @@ export default function ExportsSettings() {
       </div>
 
       {sub === 'notification' && (
-        <WebhookBlock cfg={cfg.webhook} disabled={!isAdmin || busy} onSave={(p) => save('webhook', p)} onTest={() => testIt('webhook')} />
+        <WebhookBlock cfg={cfg.webhook} disabled={!isAdmin || busy} onSave={(p) => save('webhook', p)} onTest={(p) => testIt('webhook', p)} />
       )}
 
       {sub === 'homeassistant' && (
         <div className="space-y-4">
-          <MqttBlock cfg={cfg.mqtt} info={info?.mqtt} disabled={!isAdmin || busy} onSave={(p) => save('mqtt', p)} onTest={() => testIt('mqtt')} />
+          <MqttBlock cfg={cfg.mqtt} info={info?.mqtt} disabled={!isAdmin || busy} onSave={(p) => save('mqtt', p)} onTest={(p) => testIt('mqtt', p)} />
           <HomeAssistantHelp />
         </div>
       )}
@@ -234,13 +254,162 @@ export default function ExportsSettings() {
       )}
 
       {sub === 'influxdb' && (
-        <InfluxBlock cfg={cfg.influxdb} info={info?.influxdb} disabled={!isAdmin || busy} onSave={(p) => save('influxdb', p)} onTest={() => testIt('influxdb')} />
+        <InfluxBlock cfg={cfg.influxdb} info={info?.influxdb} disabled={!isAdmin || busy} onSave={(p) => save('influxdb', p)} onTest={(p) => testIt('influxdb', p)} />
       )}
     </section>
   );
 }
 
 // ── Subcomponents ──────────────────────────────────────────────────────────
+
+/** Collapsible per-host / per-GPU filter. Collapsed by default because
+ *  most installs want "export everything"; admins who want to scope a
+ *  push opt in by expanding the disclosure. The summary line announces
+ *  the current state ("tous les hôtes" or "2/4 hôtes") so users can
+ *  see at a glance whether a filter is active without expanding.
+ *
+ *  Empty filter object = no filter applied (passthrough on the server).
+ *  This is the default for fresh installs and the result of fully
+ *  toggling everything off then on again. Keeps an upgrade path clean
+ *  for the v0.5.2 → v0.5.4 transition where this field was added. */
+function HostFilterDisclosure({ value, onChange, disabled }: Readonly<{
+  value: HostGpuFilter;
+  onChange: (next: HostGpuFilter) => void;
+  disabled?: boolean;
+}>) {
+  const { t } = useTranslation();
+  const hosts = useHostsStore((s) => s.hosts);
+  const latestByHost = useGpuStore((s) => s.latestByHost);
+
+  // GPU indices observed for each host. We read from live samples
+  // rather than the agent capabilities frame so this stays accurate
+  // for hosts that haven't pushed a hello with GPU enumeration yet.
+  const gpusByHost = useMemo(() => {
+    const m = new Map<string, number[]>();
+    for (const host of hosts) {
+      const fromLive = latestByHost.get(host.id);
+      const indices = fromLive ? Array.from(fromLive.keys()).sort((a, b) => a - b) : [];
+      m.set(host.id, indices);
+    }
+    return m;
+  }, [hosts, latestByHost]);
+
+  const filterEmpty = Object.keys(value).length === 0;
+  const totalHosts = hosts.length;
+  const selectedHosts = filterEmpty ? totalHosts : Object.keys(value).length;
+  const summary = filterEmpty
+    ? t('settings.exports_filter_summary_all')
+    : t('settings.exports_filter_summary_partial', { selected: selectedHosts, total: totalHosts });
+
+  const toggleHost = (hostId: string, on: boolean) => {
+    // Build the "everything on" snapshot we synthesise when the user
+    // first interacts with the filter — flipping one host off shouldn't
+    // silently include zero other hosts. Once at least one entry is
+    // explicit, we only mutate the entries the user touches.
+    const baseline: HostGpuFilter = filterEmpty
+      ? Object.fromEntries(hosts.map((h) => [h.id, null] as const))
+      : { ...value };
+    if (on) baseline[hostId] = null;
+    else delete baseline[hostId];
+    // If user re-checks every host with "all GPUs", collapse back to
+    // {} so the saved shape is canonical and the summary reads
+    // "tous les hôtes" instead of "4/4 hôtes".
+    const allOn = hosts.length > 0
+      && hosts.every((h) => h.id in baseline && baseline[h.id] === null);
+    onChange(allOn ? {} : baseline);
+  };
+
+  const toggleGpu = (hostId: string, gpuIdx: number, on: boolean) => {
+    const baseline: HostGpuFilter = filterEmpty
+      ? Object.fromEntries(hosts.map((h) => [h.id, null] as const))
+      : { ...value };
+    const cur = baseline[hostId];
+    const all = gpusByHost.get(hostId) ?? [];
+    let next: number[];
+    if (cur === null || cur === undefined) {
+      next = on ? [...all] : all.filter((g) => g !== gpuIdx);
+    } else {
+      const set = new Set(cur);
+      if (on) set.add(gpuIdx); else set.delete(gpuIdx);
+      next = Array.from(set).sort((a, b) => a - b);
+    }
+    if (next.length === 0) {
+      delete baseline[hostId];
+    } else if (all.length > 0 && next.length === all.length) {
+      // user re-checked every GPU on this host → collapse to null
+      // (= "all GPUs of this host") so the saved shape is canonical.
+      baseline[hostId] = null;
+    } else {
+      baseline[hostId] = next;
+    }
+    const allOn = hosts.length > 0
+      && hosts.every((h) => h.id in baseline && baseline[h.id] === null);
+    onChange(allOn ? {} : baseline);
+  };
+
+  return (
+    <details className="rounded-lg" style={{ border: '1px solid var(--gv-border)' }}>
+      <summary
+        className="px-3 py-2 cursor-pointer flex items-center gap-2 text-xs"
+        style={{ color: 'var(--gv-text-muted)' }}
+      >
+        <Filter className="w-3.5 h-3.5" />
+        <span className="font-medium">{t('settings.exports_filter_title')}</span>
+        <span style={{ color: filterEmpty ? 'var(--gv-text-dim)' : 'var(--gv-accent)' }}>· {summary}</span>
+      </summary>
+      <div className="px-3 py-2 border-t space-y-1.5" style={{ borderColor: 'var(--gv-border)' }}>
+        <p className="text-[11px] mb-2" style={{ color: 'var(--gv-text-dim)' }}>
+          {t('settings.exports_filter_help')}
+        </p>
+        {hosts.length === 0 ? (
+          <p className="text-xs italic" style={{ color: 'var(--gv-text-dim)' }}>
+            {t('settings.exports_filter_no_hosts')}
+          </p>
+        ) : (
+          hosts.map((host) => {
+            const isOn = filterEmpty || host.id in value;
+            const hostGpus = gpusByHost.get(host.id) ?? [];
+            const gpuFilter = filterEmpty || !isOn ? null : value[host.id];
+            return (
+              <div key={host.id} className="flex items-center gap-3 flex-wrap text-sm">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isOn}
+                    disabled={disabled}
+                    onChange={(e) => toggleHost(host.id, e.target.checked)}
+                  />
+                  <span className="font-medium">{host.label}</span>
+                  <span className="text-[10px]" style={{ color: 'var(--gv-text-dim)' }}>
+                    ({hostGpus.length} GPU)
+                  </span>
+                </label>
+                {isOn && hostGpus.length > 0 && (
+                  <div className="flex gap-2 ml-2">
+                    {hostGpus.map((gpuIdx) => {
+                      const gpuOn = gpuFilter === null ? true : gpuFilter.includes(gpuIdx);
+                      return (
+                        <label key={gpuIdx} className="inline-flex items-center gap-1 cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            checked={gpuOn}
+                            disabled={disabled}
+                            onChange={(e) => toggleGpu(host.id, gpuIdx, e.target.checked)}
+                          />
+                          <span>GPU{gpuIdx}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </details>
+  );
+}
 
 function Toggle({ label, checked, onChange, disabled }: Readonly<{
   label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean;
@@ -313,8 +482,10 @@ function PrometheusBlock({ cfg, info, disabled, onSave }: Readonly<{
   const { t } = useTranslation();
   const [enabled, setEnabled] = useState(cfg.enabled);
   const [includeSys, setIncludeSys] = useState(cfg.includeSystemStats === true);
+  const [hostFilter, setHostFilter] = useState<HostGpuFilter>(cfg.hostFilter ?? {});
   useEffect(() => { setEnabled(cfg.enabled); }, [cfg.enabled]);
   useEffect(() => { setIncludeSys(cfg.includeSystemStats === true); }, [cfg.includeSystemStats]);
+  useEffect(() => { setHostFilter(cfg.hostFilter ?? {}); }, [cfg.hostFilter]);
   return (
     <Block icon={<Activity className="w-4 h-4" />} title="Prometheus">
       <Toggle label={t('settings.exports_enabled')} checked={enabled} onChange={setEnabled} disabled={disabled} />
@@ -328,7 +499,8 @@ function PrometheusBlock({ cfg, info, disabled, onSave }: Readonly<{
         onChange={setIncludeSys}
         disabled={disabled}
       />
-      <button className="btn-primary" disabled={disabled} onClick={() => onSave({ enabled, includeSystemStats: includeSys })}>
+      <HostFilterDisclosure value={hostFilter} onChange={setHostFilter} disabled={disabled} />
+      <button className="btn-primary" disabled={disabled} onClick={() => onSave({ enabled, includeSystemStats: includeSys, hostFilter })}>
         <Save className="w-4 h-4" /> {t('common.save')}
       </button>
       {cfg.enabled && info && (
@@ -349,7 +521,7 @@ function PrometheusBlock({ cfg, info, disabled, onSave }: Readonly<{
 }
 
 function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
-  cfg: MqttConfig; info?: MqttDispatchInfo; disabled?: boolean; onSave: (c: MqttConfig) => void; onTest: () => void;
+  cfg: MqttConfig; info?: MqttDispatchInfo; disabled?: boolean; onSave: (c: MqttConfig) => void; onTest: (c: MqttConfig) => void;
 }>) {
   const { t } = useTranslation();
   const [s, setS] = useState(cfg);
@@ -377,11 +549,16 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
         onChange={(v) => setS({ ...s, includeSystemStats: v })}
         disabled={disabled}
       />
+      <HostFilterDisclosure
+        value={s.hostFilter ?? {}}
+        onChange={(hostFilter) => setS({ ...s, hostFilter })}
+        disabled={disabled}
+      />
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
           <Save className="w-4 h-4" /> {t('common.save')}
         </button>
-        <button className="btn-ghost" disabled={disabled} onClick={onTest}>
+        <button className="btn-ghost" disabled={disabled} onClick={() => onTest(s)}>
           <PlayCircle className="w-4 h-4" /> {t('settings.exports_test')}
         </button>
       </div>
@@ -456,7 +633,7 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
 }
 
 function InfluxBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
-  cfg: InfluxConfig; info?: InfluxDispatchInfo; disabled?: boolean; onSave: (c: InfluxConfig) => void; onTest: () => void;
+  cfg: InfluxConfig; info?: InfluxDispatchInfo; disabled?: boolean; onSave: (c: InfluxConfig) => void; onTest: (c: InfluxConfig) => void;
 }>) {
   const { t } = useTranslation();
   const [s, setS] = useState(cfg);
@@ -481,11 +658,16 @@ function InfluxBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
         onChange={(v) => setS({ ...s, includeSystemStats: v })}
         disabled={disabled}
       />
+      <HostFilterDisclosure
+        value={s.hostFilter ?? {}}
+        onChange={(hostFilter) => setS({ ...s, hostFilter })}
+        disabled={disabled}
+      />
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
           <Save className="w-4 h-4" /> {t('common.save')}
         </button>
-        <button className="btn-ghost" disabled={disabled} onClick={onTest}>
+        <button className="btn-ghost" disabled={disabled} onClick={() => onTest(s)}>
           <PlayCircle className="w-4 h-4" /> {t('settings.exports_test')}
         </button>
       </div>
@@ -515,7 +697,7 @@ function InfluxBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
 }
 
 function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
-  cfg: WebhookConfig; disabled?: boolean; onSave: (c: WebhookConfig) => void; onTest: () => void;
+  cfg: WebhookConfig; disabled?: boolean; onSave: (c: WebhookConfig) => void; onTest: (c: WebhookConfig) => void;
 }>) {
   const { t } = useTranslation();
   const [s, setS] = useState(cfg);
@@ -662,11 +844,17 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
         />
       )}
 
+      <HostFilterDisclosure
+        value={s.hostFilter ?? {}}
+        onChange={(hostFilter) => setS({ ...s, hostFilter })}
+        disabled={disabled}
+      />
+
       <div className="flex gap-2">
         <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
           <Save className="w-4 h-4" /> {t('common.save')}
         </button>
-        <button className="btn-ghost" disabled={disabled} onClick={onTest}>
+        <button className="btn-ghost" disabled={disabled} onClick={() => onTest(s)}>
           <PlayCircle className="w-4 h-4" /> {t('settings.exports_test')}
         </button>
       </div>
@@ -1029,17 +1217,38 @@ function HelpStepText({ text }: Readonly<{ text: string }>) {
 function Field({ label, value, onChange, disabled, type = 'text', placeholder }: Readonly<{
   label: string; value: string; onChange: (v: string) => void; disabled?: boolean; type?: string; placeholder?: string;
 }>) {
+  // Password fields get an eye-toggle inline so admins can verify
+  // what they typed (or what was preserved from a previous save) —
+  // helps avoid the "wrong password but I can't see why" loop. The
+  // toggle only flips the input type locally; nothing is logged.
+  const isPassword = type === 'password';
+  const [revealed, setRevealed] = useState(false);
   return (
     <div>
       <label className="label">{label}</label>
-      <input
-        type={type}
-        className="input"
-        value={value}
-        disabled={disabled}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      <div className="relative">
+        <input
+          type={isPassword && !revealed ? 'password' : 'text'}
+          className={'input' + (isPassword ? ' pr-9' : '')}
+          value={value}
+          disabled={disabled}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setRevealed((v) => !v)}
+            disabled={disabled}
+            tabIndex={-1}
+            aria-label={revealed ? 'Hide' : 'Show'}
+            className="absolute top-1/2 right-2 -translate-y-1/2 p-1 rounded hover:bg-[var(--gv-surface-alt)] transition-colors"
+            style={{ color: 'var(--gv-text-muted)' }}
+          >
+            {revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

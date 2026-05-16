@@ -119,6 +119,7 @@ export interface PrometheusConfig {
   // alongside the per-GPU gauges. Off by default so existing scrape
   // configs don't gain new series unannounced.
   includeSystemStats: boolean;
+  hostFilter: HostGpuFilter;
 }
 
 // Host-level Prometheus gauges, emitted only when
@@ -133,6 +134,22 @@ export const PROMETHEUS_HOST_METRICS: readonly PrometheusMetricSpec[] = [
   { name: 'gpuviewr_host_memory_used_ratio', help: 'Host memory used (0-1)',    type: 'gauge', unit: 'ratio' },
 ];
 
+/**
+ * Per-host / per-GPU export filter.
+ *
+ * Shape:
+ *   {} (empty)              → no filter, everything is exported
+ *   { hostA: null }          → host included, ALL its GPUs
+ *   { hostA: [0, 2] }        → host included, only GPU indices 0 and 2
+ *   (host absent from key)   → host excluded entirely
+ *
+ * Default everywhere is `{}` so existing installs keep their current
+ * behaviour after upgrade (no surprise data loss in downstream
+ * dashboards). The UI surfaces this in a collapsed "Filtrage avancé"
+ * disclosure — it's an opt-in advanced tool, not a primary toggle.
+ */
+export type HostGpuFilter = Record<string, number[] | null>;
+
 export interface MqttConfig {
   enabled: boolean;
   url: string;            // mqtt://host:1883 or mqtts://...
@@ -146,6 +163,7 @@ export interface MqttConfig {
   // strictly GPU-scoped for installs that already monitor the host
   // through other means.
   includeSystemStats: boolean;
+  hostFilter: HostGpuFilter;
 }
 
 // Flat host-state payload keys published on `${topicPrefix}/host/state`
@@ -178,6 +196,7 @@ export interface InfluxConfig {
   // with CPU usage, load averages and memory used %. Off by default
   // so existing dashboards don't see new series unannounced.
   includeSystemStats: boolean;
+  hostFilter: HostGpuFilter;
 }
 
 export const INFLUX_HOST_FIELD_KEYS = [
@@ -224,6 +243,7 @@ export interface WebhookConfig {
   // Telegram-only
   token?: string;
   chatId?: string;
+  hostFilter: HostGpuFilter;
 }
 
 export interface ExportConfigs {
@@ -236,7 +256,7 @@ export interface ExportConfigs {
 const CONFIG_KEY = 'export_configs';
 
 const DEFAULTS: ExportConfigs = {
-  prometheus: { enabled: false, includeSystemStats: false },
+  prometheus: { enabled: false, includeSystemStats: false, hostFilter: {} },
   mqtt: {
     enabled: false,
     url: 'mqtt://localhost:1883',
@@ -246,6 +266,7 @@ const DEFAULTS: ExportConfigs = {
     haDiscovery: false,
     intervalSeconds: 10,
     includeSystemStats: false,
+    hostFilter: {},
   },
   influxdb: {
     enabled: false,
@@ -256,6 +277,7 @@ const DEFAULTS: ExportConfigs = {
     measurement: 'gpu_metrics',
     intervalSeconds: 10,
     includeSystemStats: false,
+    hostFilter: {},
   },
   webhook: {
     enabled: false,
@@ -270,8 +292,60 @@ const DEFAULTS: ExportConfigs = {
     includeSystemStats: true,
     token: '',
     chatId: '',
+    hostFilter: {},
   },
 };
+
+/** Apply a HostGpuFilter to a per-host samples map. Empty filter →
+ *  passthrough (everything exported). Hosts not in the filter are
+ *  dropped. For included hosts: `null` value = all GPUs, array value
+ *  = only those gpu_index values. Returns a NEW map so callers can
+ *  iterate safely; never mutates the input. Exported so the
+ *  Prometheus route (pull-based, lives outside ExportService) can
+ *  apply the same filter as the push-based exporters. */
+export function applyHostFilter(
+  samplesByHost: ReadonlyMap<string, GpuSample[]>,
+  hostFilter: HostGpuFilter | undefined,
+): Map<string, GpuSample[]> {
+  if (!hostFilter || Object.keys(hostFilter).length === 0) {
+    return new Map(samplesByHost);
+  }
+  const out = new Map<string, GpuSample[]>();
+  for (const [hostId, samples] of samplesByHost) {
+    if (!(hostId in hostFilter)) continue;
+    const gpus = hostFilter[hostId];
+    if (gpus === null || gpus === undefined) {
+      out.set(hostId, samples);
+    } else {
+      const allowed = new Set(gpus);
+      const filtered = samples.filter((s) => allowed.has(s.gpu_index));
+      if (filtered.length > 0) out.set(hostId, filtered);
+    }
+  }
+  return out;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test-time override merge
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** Merge the form-state override into the stored config for a single
+ *  exporter slot. Masked secret sentinels in the override are dropped
+ *  so the stored secret is preserved (the UI sends "••••" when the
+ *  user hasn't retyped a secret; treating that literally would log
+ *  the broker in with four bullets and fail auth). */
+function mergeOverrideForTest(
+  kind: ExporterKind,
+  stored: ExportConfigs,
+  override: Record<string, unknown>,
+): ExportConfigs {
+  const sanitized: Record<string, unknown> = { ...override };
+  const isMasked = (v: unknown): boolean => typeof v === 'string' && /^•+$/.test(v);
+  if (kind === 'mqtt' && isMasked(sanitized.password)) delete sanitized.password;
+  if (kind === 'influxdb' && isMasked(sanitized.token)) delete sanitized.token;
+  if (kind === 'webhook' && isMasked(sanitized.token)) delete sanitized.token;
+  return { ...stored, [kind]: { ...stored[kind], ...sanitized } };
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Service
@@ -532,7 +606,12 @@ class ExportService {
     // which is *almost* compatible with the old `<prefix>/gpu<N>/state`
     // — users with existing HA Discovery wired in must redo it after
     // upgrade. Documented in Docs/MIGRATION.md.
-    for (const [host_id, samples] of this.latestSamplesByHost) {
+    //
+    // hostFilter is applied here so the broker only sees the topics
+    // the admin opted in. Empty filter = passthrough (no behaviour
+    // change for installs that haven't touched the advanced section).
+    const filtered = applyHostFilter(this.latestSamplesByHost, cfg.hostFilter);
+    for (const [host_id, samples] of filtered) {
       for (const s of samples) {
         const base = `${cfg.topicPrefix}/${host_id}/gpu${s.gpu_index}`;
         const payload = {
@@ -654,11 +733,13 @@ class ExportService {
 
   private async pushInflux(cfg: InfluxConfig): Promise<void> {
     if (this.latestSamplesByHost.size === 0) return;
+    const filtered = applyHostFilter(this.latestSamplesByHost, cfg.hostFilter);
+    if (filtered.size === 0) return;
     const lines: string[] = [];
     // Multi-host: add host=<id> tag to every line so dashboards can
     // filter / group by host. The hub-level system stats line stays
     // tagged by os_hostname (was the old `host=` tag).
-    for (const [host_id, samples] of this.latestSamplesByHost) {
+    for (const [host_id, samples] of filtered) {
       for (const s of samples) {
         lines.push(buildInfluxLine(cfg.measurement, host_id, s));
       }
@@ -691,7 +772,13 @@ class ExportService {
   // ────────────────────────────────────────────────────────────────────────
 
   private async pushWebhook(cfg: WebhookConfig): Promise<void> {
-    const all = this.getLatestSamples();
+    // Apply the host/GPU filter first so the flat `samples` array and
+    // the `samples_by_host` map agree on which hosts are visible.
+    // Empty filter = passthrough.
+    const filtered = applyHostFilter(this.latestSamplesByHost, cfg.hostFilter);
+    if (filtered.size === 0) return;
+    const all: GpuSample[] = [];
+    for (const samples of filtered.values()) all.push(...samples);
     if (all.length === 0) return;
     const sys = cfg.includeSystemStats ? getSystemStats() : undefined;
     // Per-host segregation in the payload so receivers can route on
@@ -699,7 +786,7 @@ class ExportService {
     // an extra `samples_by_host` key; the legacy flat `samples` array
     // is kept for forward-compat with v0.2.x integrations.
     const samplesByHost: Record<string, Array<Partial<GpuSample>>> = {};
-    for (const [host_id, samples] of this.latestSamplesByHost) {
+    for (const [host_id, samples] of filtered) {
       samplesByHost[host_id] = samples.map((s) => filterSampleFields(s, cfg.payloadFields));
     }
     const body: Record<string, unknown> = {
@@ -905,13 +992,27 @@ class ExportService {
   }
 
   /** Test a single exporter with a representative sample. */
-  async test(kind: ExporterKind): Promise<{ ok: boolean; message: string }> {
-    const c = this.getConfigs();
+  /**
+   * Test an exporter end-to-end. If `override` is provided, the test
+   * runs against the override merged on top of the stored config —
+   * lets the UI test pending form changes without forcing a Save
+   * first (previous behaviour: filling the URL field then clicking
+   * Test would test the EMPTY stored URL and fail with a confusing
+   * "connect ECONNREFUSED 127.0.0.1:1883" because the merged config
+   * fell back to the localhost default).
+   *
+   * Masked secret sentinels in the override (`••••`) are stripped
+   * before merge, so a "test with new URL but same password" works
+   * without having to retype the saved password.
+   */
+  async test(kind: ExporterKind, override?: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
+    const stored = this.getConfigs();
+    const cfg = override ? mergeOverrideForTest(kind, stored, override) : stored;
     try {
       if (kind === 'prometheus') return { ok: true, message: 'Prometheus is pull-based; scrape /metrics to test.' };
-      if (kind === 'webhook') return await this.testWebhook(c.webhook);
-      if (kind === 'influxdb') return await this.testInflux(c.influxdb);
-      if (kind === 'mqtt') return await this.testMqtt(c.mqtt);
+      if (kind === 'webhook') return await this.testWebhook(cfg.webhook);
+      if (kind === 'influxdb') return await this.testInflux(cfg.influxdb);
+      if (kind === 'mqtt') return await this.testMqtt(cfg.mqtt);
       return { ok: false, message: 'Unknown exporter' };
     } catch (err) {
       return { ok: false, message: (err as Error).message };

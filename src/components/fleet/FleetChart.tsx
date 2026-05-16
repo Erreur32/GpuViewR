@@ -33,13 +33,25 @@ type Mode = 'per-host' | 'total';
 
 const METRICS: readonly Metric[] = ['utilization', 'temperature', 'power'] as const;
 
-// Matches the Dashboard's LiveChart default palette so users see the
-// same colour for a given metric on both pages.
-const METRIC_COLOR: Record<Metric, string> = {
-  utilization: '#2f7bff', // --gv-accent
-  temperature: '#f59e0b', // --gv-warn
-  power: '#10b981',       // --gv-ok
-};
+// Build the metric → colour map from the user's chartColors store
+// (the same source the Dashboard's LiveChart reads). Falls back to
+// CSS theme variables so a user who hasn't touched the picker still
+// gets sensible defaults that move with the active theme. Keeping the
+// fallback chain in one place avoids the FleetChart and LiveChart
+// drifting apart again. Returns string keys for util/temp/pow that
+// match the ChartSeriesKey contract in uiStore.ts.
+function metricColors(chartColors: { util?: string; temp?: string; pow?: string }): Record<Metric, string> {
+  const root = typeof globalThis.window === 'object'
+    ? getComputedStyle(globalThis.document.documentElement)
+    : null;
+  const cssVar = (name: string, fallback: string): string =>
+    (root?.getPropertyValue(name).trim() || fallback);
+  return {
+    utilization: chartColors.util ?? cssVar('--gv-accent', '#6366f1'),
+    temperature: chartColors.temp ?? cssVar('--gv-warn', '#a855f7'),
+    power:       chartColors.pow  ?? cssVar('--gv-ok',     '#3b82f6'),
+  };
+}
 
 const METRIC_SCALE: Record<Metric, '%' | 'W'> = {
   utilization: '%',
@@ -181,7 +193,13 @@ export default function FleetChart() {
   const { t } = useTranslation();
   const hosts = useHostsStore((s) => s.hosts);
   const range = useUiStore((s) => s.range);
+  const chartColors = useUiStore((s) => s.chartColors);
   const seriesVersion = useGpuStore((s) => s.latestByHost);
+
+  // Memoised so the JSX below can read METRIC_COLOR[m] like before
+  // without rebuilding the map on every nested chip/label render.
+  // Re-derives when the user changes a preset in Settings → Charts.
+  const METRIC_COLOR = useMemo(() => metricColors(chartColors), [chartColors]);
 
   // Default: all three metrics on at once — that's the whole point of
   // the multi-axis chart. Users who want a single metric uncheck the
@@ -352,7 +370,7 @@ export default function FleetChart() {
         </div>
       </header>
 
-      <ChartPlot entries={entries} data={data} />
+      <ChartPlot entries={entries} data={data} metricColor={METRIC_COLOR} />
 
       {/* Legend: host chips when per-host mode (toggle each host across
           all visible metrics at once). Total mode just shows the metric
@@ -424,6 +442,7 @@ function HostDashSwatch({ dash }: Readonly<{ dash: number[] }>) {
 interface ChartPlotProps {
   entries: SeriesEntry[];
   data: AlignedData;
+  metricColor: Record<Metric, string>;
 }
 
 interface CursorState {
@@ -459,7 +478,7 @@ function fmtValue(v: number | null, unit: string): string {
 // efficiency. The cursor-following tooltip is a portal-free absolute
 // div, positioned via the setCursor hook so all visible series values
 // at the hovered x show up at once.
-function ChartPlot({ entries, data }: Readonly<ChartPlotProps>) {
+function ChartPlot({ entries, data, metricColor }: Readonly<ChartPlotProps>) {
   const { t } = useTranslation();
   const timeFormat = useUiStore((s) => s.timeFormat);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -472,8 +491,12 @@ function ChartPlot({ entries, data }: Readonly<ChartPlotProps>) {
 
   // React's hook deps want a stable primitive — the entries' key joined
   // captures both the count AND the order of series, which is what
-  // triggers a uPlot rebuild.
-  const seriesShape = entries.map((e) => e.key).join('|');
+  // triggers a uPlot rebuild. We append the metric-colour signature so
+  // a Settings → Chart palette change also rebuilds the uPlot (its
+  // stroke colours are baked into the series defs and can't be updated
+  // in place without destroy + recreate).
+  const colorSig = `${metricColor.utilization}|${metricColor.temperature}|${metricColor.power}`;
+  const seriesShape = `${entries.map((e) => e.key).join('|')}#${colorSig}`;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -486,7 +509,7 @@ function ChartPlot({ entries, data }: Readonly<ChartPlotProps>) {
       const label = e.host ? `${e.host.label} · ${metricLabel}` : metricLabel;
       seriesDefs.push({
         label,
-        stroke: METRIC_COLOR[e.metric],
+        stroke: metricColor[e.metric],
         width: e.host ? 1.5 : 2,
         scale: METRIC_SCALE[e.metric],
         dash: dash.length > 0 ? dash : undefined,
@@ -603,7 +626,7 @@ function ChartPlot({ entries, data }: Readonly<ChartPlotProps>) {
                 <div key={e.key} className="flex items-center justify-between gap-3">
                   <span
                     className="inline-flex items-center gap-1.5 truncate"
-                    style={{ color: METRIC_COLOR[e.metric] }}
+                    style={{ color: metricColor[e.metric] }}
                   >
                     <svg width="14" height="4" aria-hidden="true">
                       <line

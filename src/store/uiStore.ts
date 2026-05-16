@@ -19,7 +19,9 @@ export const DEFAULT_THRESHOLDS: Required<ChartThresholds> = {
 
 // Default palette ("Royal") applied on first run when the user has no
 // custom chart colors yet. Mirrors the Royal preset in SettingsPage.
-const ROYAL_DEFAULT_COLORS: Required<ChartColors> = {
+// Exported so the FleetChart can reuse the same fallback rather than
+// hardcoding its own metric → colour map.
+export const ROYAL_DEFAULT_COLORS: Required<ChartColors> = {
   util: '#6366f1',
   temp: '#a855f7',
   pow: '#3b82f6',
