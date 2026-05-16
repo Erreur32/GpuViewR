@@ -238,10 +238,21 @@ function AgentUpdateButton({
  *  inputs as in-sync (no spurious warnings). Pre-release suffixes
  *  ('-mock', '-rc1') are stripped before compare — they're either
  *  test fixtures or release candidates we don't want to flag.
+ *
+ *  Implementation note: prefixes / suffixes are stripped with
+ *  string ops (slice + indexOf + split) rather than regex to avoid
+ *  the SonarCloud S5852 backtracking hotspot — `agent_version` is
+ *  user-controllable (comes from agent hello frame stored in DB) so
+ *  we don't trust the input length, and any catastrophic-backtracking
+ *  pattern would be a free DoS vector on whatever browser tab opens
+ *  the Hosts page.
  */
 export function isAgentOutdated(agent: string, hub: string): boolean {
   const parse = (v: string): [number, number, number] | null => {
-    const clean = v.replace(/^v/, '').replace(/-.*$/, '');
+    let clean = v;
+    if (clean.startsWith('v')) clean = clean.slice(1);
+    const dashAt = clean.indexOf('-');
+    if (dashAt >= 0) clean = clean.slice(0, dashAt);
     const parts = clean.split('.').map((p) => Number.parseInt(p, 10));
     if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
     return [parts[0], parts[1], parts[2]];
