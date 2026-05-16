@@ -77,11 +77,19 @@ services:
 
       # Resolve PID → process name without sharing the host PID namespace.
       HOST_PROC: /host/proc
+      # Real host hostname (the container's UTS namespace hides it).
+      # The hub reads /host/etc/hostname when this points at it.
+      HOST_ETC: /host/etc
+      # Optional explicit override — wins over both bind-mounts:
+      # HUB_HOSTNAME: jarvis
 
     volumes:
       - ./data:/app/data
       - /opt/rocm:/opt/rocm:ro
       - /proc:/host/proc:ro
+      # Static file from the host — kernel-independent way to recover
+      # the real hostname from inside the container.
+      - /etc/hostname:/host/etc/hostname:ro
 
     cap_drop: [ALL]
     cap_add:

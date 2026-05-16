@@ -53,12 +53,19 @@ services:
       # Resolve GPU process names without sharing the host PID namespace.
       # Pair with the /proc:/host/proc:ro bind mount below.
       HOST_PROC: /host/proc
+      # Real host hostname (the container's UTS namespace hides it).
+      HOST_ETC: /host/etc
+      # Optional explicit override — wins over the bind-mounts above:
+      # HUB_HOSTNAME: my-server
 
     volumes:
       - ./data:/app/data
       # Read-only view of host /proc so we can resolve PID → process name
       # when nvidia-smi returns "[Not Found]" (multi-tenant / hardened setups).
       - /proc:/host/proc:ro
+      # Static file from the host — kernel-independent way to recover
+      # the real hostname from inside the container.
+      - /etc/hostname:/host/etc/hostname:ro
       # Backward-compat with bigsk1/gpu-monitor users: these are read-only
       # references; new metrics go into ./data/gpuviewr.db. Optional.
       # - ./history:/app/legacy/history:ro
