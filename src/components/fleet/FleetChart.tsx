@@ -25,6 +25,7 @@ import { useGpuStore, type HistoryRow } from '../../store/gpuStore';
 import { useHostsStore, type HostRecord } from '../../store/hostsStore';
 import { useUiStore, type Range } from '../../store/uiStore';
 import { api } from '../../lib/api';
+import { fmtDateTime } from '../../lib/time';
 import RangeSelector from '../dashboard/RangeSelector';
 
 type Metric = 'temperature' | 'utilization' | 'power';
@@ -425,13 +426,50 @@ interface ChartPlotProps {
   data: AlignedData;
 }
 
+interface CursorState {
+  t: number | null;
+  // Values per entry index, parallel to `entries`. null when the cursor
+  // is outside the chart or the series has no point at that index.
+  values: (number | null)[];
+}
+
+interface TipState {
+  left: number;
+  top: number;
+  flipX: boolean;
+  flipY: boolean;
+  show: boolean;
+}
+
+const EMPTY_TIP: TipState = { left: 0, top: 0, flipX: false, flipY: false, show: false };
+
+function metricUnit(metric: Metric): string {
+  if (metric === 'temperature') return '°C';
+  if (metric === 'power') return 'W';
+  return '%';
+}
+
+function fmtValue(v: number | null, unit: string): string {
+  if (v === null || !Number.isFinite(v)) return '—';
+  return unit === 'W' ? `${Math.round(v)} ${unit}` : `${Math.round(v)}${unit}`;
+}
+
 // Wraps the uPlot instance and rebuilds it whenever the series shape
 // changes (entries' key list). Data-only updates use setData for
-// efficiency.
+// efficiency. The cursor-following tooltip is a portal-free absolute
+// div, positioned via the setCursor hook so all visible series values
+// at the hovered x show up at once.
 function ChartPlot({ entries, data }: Readonly<ChartPlotProps>) {
   const { t } = useTranslation();
+  const timeFormat = useUiStore((s) => s.timeFormat);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);
+  const entriesRef = useRef<SeriesEntry[]>(entries);
+  entriesRef.current = entries;
+
+  const [cursor, setCursor] = useState<CursorState>({ t: null, values: [] });
+  const [tip, setTip] = useState<TipState>(EMPTY_TIP);
+
   // React's hook deps want a stable primitive — the entries' key joined
   // captures both the count AND the order of series, which is what
   // triggers a uPlot rebuild.
@@ -484,6 +522,38 @@ function ChartPlot({ entries, data }: Readonly<ChartPlotProps>) {
         },
       ],
       series: seriesDefs,
+      hooks: {
+        setCursor: [
+          (u) => {
+            const idx = u.cursor.idx;
+            const left = u.cursor.left ?? -1;
+            const top = u.cursor.top ?? -1;
+            if (idx === null || idx === undefined || left < 0 || top < 0) {
+              setCursor({ t: null, values: [] });
+              setTip((prev) => (prev.show ? { ...prev, show: false } : prev));
+              return;
+            }
+            const ts = (u.data[0]?.[idx] as number | undefined) ?? null;
+            // u.data[1..] is parallel to entriesRef.current; each entry's
+            // value at the current index. null when the series has no
+            // point at that x (sparse data, fresh hosts catching up).
+            const values: (number | null)[] = entriesRef.current.map((_, i) => {
+              const v = u.data[i + 1]?.[idx];
+              return typeof v === 'number' && Number.isFinite(v) ? v : null;
+            });
+            setCursor({ t: ts, values });
+            const w = u.over.clientWidth;
+            const h = u.over.clientHeight;
+            setTip({
+              left,
+              top,
+              flipX: left > w - 220,
+              flipY: top < 120,
+              show: true,
+            });
+          },
+        ],
+      },
     };
 
     plotRef.current = new uPlot(opts, data, containerRef.current);
@@ -506,5 +576,57 @@ function ChartPlot({ entries, data }: Readonly<ChartPlotProps>) {
     plotRef.current?.setData(data);
   }, [data]);
 
-  return <div ref={containerRef} className="w-full" style={{ minHeight: 240 }} />;
+  return (
+    <div className="relative">
+      <div ref={containerRef} className="w-full" style={{ minHeight: 240 }} />
+      {tip.show && cursor.t !== null && entries.length > 0 && (
+        <div
+          className="pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md text-[11px] shadow-lg backdrop-blur-sm"
+          style={{
+            left: tip.left,
+            top: tip.top,
+            transform: `translate(${tip.flipX ? 'calc(-100% - 14px)' : '14px'}, ${tip.flipY ? '14px' : 'calc(-100% - 14px)'})`,
+            background: 'color-mix(in srgb, var(--gv-surface) 92%, transparent)',
+            border: '1px solid var(--gv-border)',
+            color: 'var(--gv-text)',
+            minWidth: 200,
+            maxWidth: 320,
+          }}
+        >
+          <div className="font-semibold tabular-nums mb-1" style={{ color: 'var(--gv-text-muted)' }}>
+            {fmtDateTime(cursor.t, timeFormat)}
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {entries.map((e, i) => {
+              const dash = HOST_DASH[e.hostIdx % HOST_DASH.length];
+              const label = e.host
+                ? `${e.host.label} · ${t(`dashboard.metrics.${e.metric}`)}`
+                : t(`dashboard.metrics.${e.metric}`);
+              return (
+                <div key={e.key} className="flex items-center justify-between gap-3">
+                  <span
+                    className="inline-flex items-center gap-1.5 truncate"
+                    style={{ color: METRIC_COLOR[e.metric] }}
+                  >
+                    <svg width="14" height="4" aria-hidden="true">
+                      <line
+                        x1="0" y1="2" x2="14" y2="2"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeDasharray={dash.length === 0 ? undefined : dash.join(',')}
+                      />
+                    </svg>
+                    <span className="truncate" style={{ color: 'var(--gv-text)' }}>{label}</span>
+                  </span>
+                  <span className="font-semibold tabular-nums shrink-0">
+                    {fmtValue(cursor.values[i] ?? null, metricUnit(e.metric))}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
