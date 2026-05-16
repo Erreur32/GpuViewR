@@ -19,7 +19,7 @@
  
 **Real-time NVIDIA GPU monitoring dashboard, packaged as a single Docker image.**
 
-[**🔴 Live demo**](https://erreur32.github.io/GpuViewR/) · [**🛰️ Fleet demo**](https://erreur32.github.io/GpuViewR/fleet?fleet=1) (4 fake hosts, multi-host UI) — synthetic data, runs entirely in the browser
+[**🔴 Live demo**](https://erreur32.github.io/GpuViewR/) · [**🛰️ Multi-host demo**](https://erreur32.github.io/GpuViewR/fleet?fleet=1) (4 fake hosts) — synthetic data, runs entirely in the browser
 
 [Screenshot](#screenshot) · [Quick start](#quick-start) · [Configuration](#configuration) · [First login](#first-login) · [Customizing](#customizing-the-look) · [Alerts](#alerts) · [Multi-host](#multi-host) · [Roadmap](#roadmap)
 
@@ -282,6 +282,12 @@ machines. Architecture: one **hub** (this Docker container) plus N
 lightweight **agents** that push `nvidia-smi` samples to it over an
 outbound WebSocket.
 
+> **Terminology note:** the UI tab is called **Hosts** (the centralised
+> overview of every machine the hub monitors). Other tools in this space
+> — AWS Fleet, FleetDM, HashiCorp Nomad — call the same concept a
+> "fleet". Both terms refer to the same thing here, and you'll still see
+> `fleet` in URLs, store keys, and internal component names.
+
 | Component | What it does | Lives where |
 |---|---|---|
 | **Hub** | UI, auth, DB, alerts engine, exports (Prom/MQTT/Influx/Webhook), `/agent` WS endpoint | Wherever you ran the Quick start above |
@@ -349,7 +355,7 @@ What works (parity with the NVIDIA agent):
 
 - Temperature, utilization, power, graphics clock, VRAM used/total
 - GPU process list (pid, name, VRAM used, full command, CPU %)
-- Per-host Fleet card + history + alerts + exports
+- Per-host card on the Hosts tab + history + alerts + exports
 
 What's `null` on ROCm (driver doesn't expose it):
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Cpu, Zap, CheckCircle2, LayoutGrid, BarChart3, Activity, MemoryStick, Cable } from 'lucide-react';
+import { Cpu, Zap, CheckCircle2, LayoutGrid, BarChart3, Activity, MemoryStick, Cable, Info } from 'lucide-react';
 import { useHostsStore, effectiveStatus, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, type GpuSample } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
@@ -114,7 +114,18 @@ export default function FleetPage() {
     <div className="space-y-6">
       <header className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('fleet.title')}</h1>
+          <h1 className="text-2xl font-bold tracking-tight inline-flex items-center gap-2">
+            {t('fleet.title')}
+            <span
+              tabIndex={0}
+              aria-label={t('fleet.title_help')}
+              title={t('fleet.title_help')}
+              className="inline-flex items-center cursor-help opacity-60 hover:opacity-100"
+              style={{ color: 'var(--gv-text-muted)' }}
+            >
+              <Info className="w-4 h-4" />
+            </span>
+          </h1>
           <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('fleet.subtitle')}</p>
         </div>
         {/* Order mirrors Dashboard + System: Jauges (detailed) first,
