@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, KeyRound, Trash2, Terminal, Container, Server } from 'lucide-react';
+import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle } from 'lucide-react';
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
@@ -167,14 +167,91 @@ function HostRow({
 // more clearly as guarded early returns.
 function VersionCell({
   isLocal, agentVersion, kind, t,
-}: Readonly<{ isLocal: boolean; agentVersion: string | null; kind: string; t: (key: string) => string }>) {
+}: Readonly<{
+  isLocal: boolean;
+  agentVersion: string | null;
+  kind: string;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}>) {
   if (isLocal) {
     return <span title={t('hosts.hub_version_help')}>v{HUB_VERSION}</span>;
   }
   if (agentVersion) {
-    return <span title={t('hosts.agent_version_help')}>v{agentVersion}</span>;
+    const outdated = isAgentOutdated(agentVersion, HUB_VERSION);
+    if (!outdated) {
+      return <span title={t('hosts.agent_version_help')}>v{agentVersion}</span>;
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span style={{ color: 'var(--gv-warn)' }} title={t('hosts.agent_version_help')}>
+          v{agentVersion}
+        </span>
+        <AgentUpdateButton t={t} agentVersion={agentVersion} />
+      </span>
+    );
   }
   return <span style={{ color: 'var(--gv-text-dim)' }}>{kind}</span>;
+}
+
+/** Clickable warning shown when an agent is older than the hub.
+ *  Click → copies the update curl one-liner to clipboard + shows a
+ *  toast. Hover → tooltip with the same command and a hint that
+ *  Docker users should run `docker compose pull && up -d` in their
+ *  agent dir instead. The hub URL is read from window.location so
+ *  the recipe is correct whether the user accesses the dashboard
+ *  on LAN or behind a reverse proxy. */
+function AgentUpdateButton({
+  t, agentVersion,
+}: Readonly<{ t: (key: string, opts?: Record<string, unknown>) => string; agentVersion: string }>) {
+  const hubOrigin = typeof globalThis.window === 'object' ? globalThis.location.origin : '';
+  const updateCmd = `sudo curl -fsSL ${hubOrigin}/agent.mjs -o /opt/gpuviewr-agent/agent.mjs && sudo systemctl restart gpuviewr-agent`;
+  const tooltip = t('hosts.agent_outdated_help', {
+    agent: agentVersion,
+    hub: HUB_VERSION,
+    cmd: updateCmd,
+  });
+  const onClick = async () => {
+    const ok = await copyText(updateCmd);
+    if (ok) notify('success', t('hosts.agent_outdated_copied'), updateCmd);
+    else notify('error', t('hosts.copy_failed'), t('hosts.copy_failed_hint'));
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={tooltip}
+      aria-label={t('hosts.agent_outdated_badge')}
+      className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider"
+      style={{
+        color: 'var(--gv-warn)',
+        background: 'color-mix(in srgb, var(--gv-warn) 14%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--gv-warn) 35%, transparent)',
+      }}
+    >
+      <AlertTriangle className="w-2.5 h-2.5" />
+      {t('hosts.agent_outdated_pill')}
+    </button>
+  );
+}
+
+/** Semver-ish compare. Returns true if agent < hub. Treats bad/missing
+ *  inputs as in-sync (no spurious warnings). Pre-release suffixes
+ *  ('-mock', '-rc1') are stripped before compare — they're either
+ *  test fixtures or release candidates we don't want to flag.
+ */
+export function isAgentOutdated(agent: string, hub: string): boolean {
+  const parse = (v: string): [number, number, number] | null => {
+    const clean = v.replace(/^v/, '').replace(/-.*$/, '');
+    const parts = clean.split('.').map((p) => Number.parseInt(p, 10));
+    if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
+    return [parts[0], parts[1], parts[2]];
+  };
+  const a = parse(agent);
+  const h = parse(hub);
+  if (!a || !h) return false;
+  if (a[0] !== h[0]) return a[0] < h[0];
+  if (a[1] !== h[1]) return a[1] < h[1];
+  return a[2] < h[2];
 }
 
 function HubBadge({ t }: Readonly<{ t: (key: string) => string }>) {

@@ -100,7 +100,16 @@ docker compose pull && docker compose up -d
 
 ### Switch vendor
 
-Edit `~/gpuviewr/.env` :
+Just re-run `install.sh` — it re-detects the local GPU vendor and
+updates `COMPOSE_PROFILES` in `.env` in place (your secrets and
+other customisations are preserved):
+
+```bash
+cd ~/gpuviewr
+curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
+```
+
+Or edit `.env` manually if you prefer:
 
 ```env
 COMPOSE_PROFILES=amd       # was: nvidia
@@ -217,8 +226,7 @@ See [`Docs/V0_5_PLAN.md`](Docs/V0_5_PLAN.md) for the detailed architecture ratio
 
 ## Troubleshooting
 
-**`Aucun GPU détecté` / `No GPU detected` in the UI** : the local
-sidecar didn't connect. Check:
+**"No GPU detected" in the UI**: the local sidecar didn't connect. Check:
 
 ```bash
 docker compose logs gpuviewr-hub | grep -iE 'vendor|agent'
@@ -226,35 +234,14 @@ docker compose logs gpuviewr-agent-local | tail -20
 ```
 
 Common cases:
-- `COMPOSE_PROFILES` empty in `.env` → no sidecar started. Set it to `nvidia` or `amd`.
-- AMD: `rocm-smi` exits 0 with empty stdout → permissions on `/dev/kfd` or `LD_LIBRARY_PATH`. The compose's defaults work on Debian; override `VIDEO_GID`/`RENDER_GID` if `getent group` shows different numbers.
+- `COMPOSE_PROFILES` empty in `.env` → no sidecar started. Set it to `nvidia` or `amd` (or re-run `install.sh` and it'll fix this for you).
+- AMD: `rocm-smi` exits 0 with empty stdout → permissions on `/dev/kfd` or `LD_LIBRARY_PATH`. The compose defaults work on Debian; override `VIDEO_GID`/`RENDER_GID` if `getent group video render` shows different numbers.
 - NVIDIA: container can't see `nvidia-smi` → NVIDIA Container Toolkit not installed on the host.
 
-**UI shows container id instead of hostname** : the bind-mount of `/etc/hostname` didn't take effect. Either re-`down && up -d` after pulling the latest compose (compose recreates the container then), or set `HUB_HOSTNAME=jarvis` in `.env` to override.
+**UI shows container id instead of hostname**: the `/etc/hostname` bind-mount didn't take effect. Either `down && up -d` after pulling the latest compose (recreates the container), or set `HUB_HOSTNAME=<your-name>` in `.env` to override.
 
----
+**Stale session after `rm -rf data` reset**: the browser holds a JWT signed by the old `JWT_SECRET`. v0.5.2+ auto-detects this and redirects to `/login?expired=1` with an amber banner. On older builds, manually clear the site's localStorage in DevTools and reload.
 
-## Migrating from v0.4.x
-
-v0.5.0 made the hub vendor-neutral and moved local GPU collection
-into a sidecar agent. The DB migration is **automatic** — the row
-`id='local'` (`kind='local'`) is updated to `kind='agent'` on first
-boot, FKs in `gpu_metrics` / `gpu_devices` / `alert_events` keep
-pointing at the same host. Your history is preserved.
-
-If something goes wrong, the clean-slate reset is one command:
-
-```bash
-docker compose down -v   # ⚠️ drops the SQLite DB
-rm -rf ./data
-docker compose up -d
-```
-
-See [`Docs/MIGRATION.md`](Docs/MIGRATION.md) for the full notes
-(including the v0.2 → v0.3 multi-host migration if you're on an even
-older install).
-
----
 
 ## Roadmap
 

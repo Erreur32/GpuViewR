@@ -133,11 +133,20 @@ EOF
   chmod 600 .env
   echo -e "  ${G}✓${R} Generated ${C}.env${R} (mode 600). COMPOSE_PROFILES=${C}${VENDOR:-empty}${R}"
 else
-  # Preserve user customisations. Only nudge them about the vendor.
-  echo -e "  ${Y}○${R} ${C}.env${R} already exists — leaving untouched."
-  if [ -n "$VENDOR" ] && ! grep -q "^COMPOSE_PROFILES=${VENDOR}\b" .env 2>/dev/null; then
-    echo -e "  ${Y}⚠${R} Detected vendor ${C}${VENDOR}${R} but COMPOSE_PROFILES in .env does not match."
-    echo -e "      Edit .env if you want to enable the local sidecar agent."
+  # Preserve user customisations. Auto-fix COMPOSE_PROFILES if the
+  # detected vendor changed (e.g. user swapped the GPU) — that one
+  # line is install.sh's responsibility, all the other secrets +
+  # tunables in .env stay untouched.
+  echo -e "  ${Y}○${R} ${C}.env${R} already exists — preserving secrets + customisations."
+  if [ -n "$VENDOR" ] && ! grep -q "^COMPOSE_PROFILES=${VENDOR}\$" .env 2>/dev/null; then
+    if grep -q "^COMPOSE_PROFILES=" .env 2>/dev/null; then
+      # Replace existing line (cross-platform: write to tmp + mv)
+      sed -i.bak "s|^COMPOSE_PROFILES=.*|COMPOSE_PROFILES=${VENDOR}|" .env && rm -f .env.bak
+      echo -e "  ${G}✓${R} Auto-updated COMPOSE_PROFILES to ${C}${VENDOR}${R} (detected vendor changed)."
+    else
+      echo "COMPOSE_PROFILES=${VENDOR}" >> .env
+      echo -e "  ${G}✓${R} Appended COMPOSE_PROFILES=${C}${VENDOR}${R} to .env."
+    fi
   fi
 fi
 
