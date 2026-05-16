@@ -1,11 +1,23 @@
 import 'dotenv/config';
 
+function parseVendor(raw: string | undefined): 'auto' | 'nvidia' | 'amd' {
+  const v = (raw ?? '').toLowerCase();
+  if (v === 'nvidia' || v === 'amd' || v === 'auto') return v;
+  return 'auto';
+}
+
 export const config = {
   port: Number.parseInt(process.env.PORT || '3015', 10),
   jwtSecret: process.env.JWT_SECRET || '',
   publicUrl: process.env.PUBLIC_URL || '',
   tz: process.env.TZ || 'UTC',
   gpuTickMs: Number.parseInt(process.env.GPU_TICK_MS || '1000', 10),
+  // 'auto' probes nvidia-smi then rocm-smi at boot. Explicit 'nvidia'
+  // or 'amd' forces the corresponding collector even if both binaries
+  // happen to be installed. Boot-time selection lives in
+  // server/index.ts (J3 of the AMD master mode plan).
+  gpuVendor: parseVendor(process.env.GPU_VENDOR),
+  rocmSmiPath: process.env.ROCM_SMI_PATH || '/opt/rocm/bin/rocm-smi',
   retentionDays: Number.parseInt(process.env.RETENTION_DAYS || '7', 10),
   dataDir: process.env.DATA_DIR || './data',
   nodeEnv: process.env.NODE_ENV || 'development',
