@@ -5,6 +5,47 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-05-16
+
+### Fixed
+
+- **Bare-metal agent crashed at boot with `ERR_MODULE_NOT_FOUND
+  'ws'`.** The bundle was built with `--external:ws`, expecting the
+  install path to set up a `node_modules` alongside, but `install.sh`
+  only drops `agent.mjs` on disk. Now `ws` is bundled inline (38 KB →
+  161 KB bundle, acceptable). The optional native deps
+  (`bufferutil` / `utf-8-validate`) stay external — `ws` falls back
+  gracefully.
+- **Bare-metal `install.sh` died on AMD hosts** with "nvidia-smi not
+  found". Pre-flight now accepts either `nvidia-smi` or `rocm-smi`
+  (PATH or `/opt/rocm/bin/rocm-smi`); only exits when neither is
+  found. Matches the v0.5 vendor-neutral story.
+
+### Added
+
+- **`/install-agent.sh`** — Docker-flavoured remote agent installer,
+  symmetric to `install.sh` (bare-metal). Auto-detects vendor on the
+  target, pulls the matching `docker-compose.agent.{nvidia,amd}.yaml`
+  from main, generates `.env` from `--hub` + `--token`, runs
+  `docker compose up -d`. The hub serves it at `/install-agent.sh`.
+  EnrollHostModal's "Docker" mode now shows the new curl one-liner
+  (works on both vendors instead of NVIDIA-only `docker run --gpus`).
+- **install.sh respects `$PWD`** when the user has `cd`'d into a
+  non-default dir (anything other than `/`, `$HOME`, `/root`, or
+  `/tmp`). No more need for `GPUVIEWR_INSTALL_DIR=/path` env override
+  when the user is already where they want the install. Same logic
+  in `install-agent.sh`.
+
+### Changed
+
+- **install.sh silenced `WARN[0000]` noise** during install. Compose
+  v2 writes some warnings to `/dev/tty` directly (bypasses normal
+  stdout/stderr redirects), and output buffering on a `curl | bash`
+  pipe occasionally surfaced them before `.env` lived on disk.
+  Passing `--progress quiet` to both `compose pull` and `compose up
+  -d` kills the chatter; the final "Container Healthy" summary
+  still prints.
+
 ## [0.5.0] - 2026-05-16
 
 ### Architecture

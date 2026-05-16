@@ -1,78 +1,37 @@
-release: v0.5.0 — vendor-neutral hub + sidecar agent + multi-hub
+release: v0.5.1 — bare-metal agent fix + install-agent.sh + UX polish
 
-Major architecture refactor. The hub is no longer GPU-aware: all
-samples (local and remote) come through the agent WebSocket ingest
-path. Local GPU monitoring is provided by a sidecar agent running in
-the same docker compose stack. One curl one-liner installs the
-whole thing.
+Patch release on top of v0.5.0. Two real bugs in the bare-metal
+install path, plus the Docker remote-agent one-liner we'd promised
+in the v0.5 plan, plus a couple of UX wrinkles caught in dogfooding.
 
-See Docs/V0_5_PLAN.md for the design rationale + every jalon.
+Fixed
+- Bare-metal agent crashed at boot with ERR_MODULE_NOT_FOUND 'ws'.
+  Bundle was built with --external:ws, expecting install.sh to
+  npm install a node_modules alongside — but it doesn't. Bundle now
+  inlines ws (38 KB → 161 KB, acceptable). The optional native deps
+  bufferutil / utf-8-validate stay external; ws falls back without
+  them.
+- Bare-metal install.sh died on AMD hosts with "nvidia-smi not
+  found". Pre-flight now accepts either nvidia-smi or rocm-smi.
 
-Architecture (—128 LOC net hub side, ~80 MB smaller image)
-- Removed: gpuCollector.ts, rocmGpuCollector.ts, activeGpuCollector.ts,
-  processCollector.ts, rocmProcessCollector.ts, _gpuCollectorBase.ts,
-  _procUtil.ts, nvidiaSmi.ts, rocmSmi.ts. The hub image no longer
-  bundles python3 or libdrm-amdgpu1.
-- Added: server/services/_processTypes.ts (shared GpuProcess type)
-  and server/services/retentionJob.ts (lifted out of the deleted
-  gpuCollector).
-- Six route call sites switched from getActiveCollector().getLatest()
-  to metricsBus.getLatestByHost(host) — no more LOCAL_HOST_ID special
-  branch.
+Added
+- /install-agent.sh — Docker remote-agent installer, symmetric to
+  install.sh (bare-metal). Auto-detects vendor on the target, pulls
+  the matching docker-compose.agent.{nvidia,amd}.yaml from main,
+  generates .env from --hub + --token, runs docker compose up -d.
+  Hub serves it at /install-agent.sh.
+- EnrollHostModal Docker mode now shows the new curl one-liner
+  (works on both vendors) instead of the NVIDIA-only docker run
+  command.
+- install.sh respects $PWD when the user has cd'd into a non-default
+  dir. No more need for GPUVIEWR_INSTALL_DIR=/path. Same logic in
+  install-agent.sh.
 
-Installation
-- install.sh at the repo root. One curl one-liner auto-detects vendor
-  (nvidia-smi → nvidia, rocm-smi → amd, neither → aggregator-only),
-  pulls docker-compose.yaml, generates .env with random secrets +
-  LAN IP + COMPOSE_PROFILES, runs `docker compose up -d`.
-- Single docker-compose.yaml. Hub always started; agent-nvidia and
-  agent-amd live in named profiles. Only one sidecar exists at
-  runtime (shared container_name).
-- Switch vendor by editing one line in .env and re-running up -d.
+Changed
+- install.sh silenced the WARN[0000] noise from Compose v2 by passing
+  --progress quiet to both `compose pull` and `compose up -d`.
 
-Bootstrap auth for the sidecar
-- New config.localAgentBootstrap (LOCAL_AGENT_BOOTSTRAP env). When
-  set, an agent presenting that token + HOST_ID=LOCAL_HOST_ID is
-  auto-enrolled (row upserted as kind='agent') without going through
-  Settings → Hosts. Constant-time compare to avoid leaking the
-  secret through timing.
-- seedLocalIfMissing migrates legacy kind='local' rows to
-  kind='agent' on first v0.5 boot. The row keeps its id='local' so
-  every FK in gpu_metrics / gpu_devices / alert_events keeps
-  pointing at the same record. History preserved.
-
-Agent multi-hub
-- One agent can push to N hubs in parallel:
-    HUB_URLS=wss://h1/agent,wss://h2/agent
-    HOST_IDS=<id-on-h1>,<id-on-h2>
-    AGENT_TOKENS=<token-on-h1>,<token-on-h2>
-- Each hub gets its own WS, reconnect backoff state, ping timer,
-  and offline-replay buffer — a slow hub never gates samples to a
-  fast one.
-- AUTH_FAILURE_LIMIT=3: a single bad hub gives up after three
-  consecutive 4001/1008 closes, but the agent stays alive and
-  other hubs keep going.
-- Legacy singular HUB_URL/HOST_ID/AGENT_TOKEN continues to work
-  (array-of-1 internally). Mixed (both shapes present) → fatal exit,
-  no ambiguity.
-
-Compose renames + README rewrite
-- compose.yaml → docker-compose.yaml (back to the conventional name
-  the wider Docker ecosystem expects).
-- compose.agent.{nvidia,amd}.yaml → docker-compose.agent.{nvidia,amd}.yaml.
-- README rewritten 586 → 210 lines. Single install path, no more
-  per-vendor sections, manual fallback in collapsed <details>.
-- Docs/REMOVE_UPDATE_SH.md deleted (pure history, not referenced).
-
-Validation
-- typecheck + hub build + agent build all green.
-- 39 server tests + 8 agent tests pass.
-- agent.mjs: 35.6 → 38.2 kb (+2 kb for multi-hub bookkeeping).
-- Hub image expected: ~250 MB → ~170 MB.
-
-Migration path for v0.4.x users
-- `docker compose pull && docker compose up -d` — auto-migration
-  runs at boot. JWT secret may have rotated if you regenerated .env,
-  in which case re-login.
-- If anything goes wrong: `docker compose down -v && rm -rf ./data
-  && docker compose up -d` — clean slate.
+Upgrade
+- docker compose pull && docker compose up -d on the master.
+- Bare-metal: re-run the curl install.sh — it pulls the new
+  agent.mjs (161 KB with ws inline) from the freshly-pulled hub.
