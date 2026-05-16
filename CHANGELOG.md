@@ -5,6 +5,36 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-05-16
+
+### Fixed
+
+- **Agent now reports its real version.** `AGENT_VERSION` was a
+  hardcoded `'0.5.3'` literal in `agent/src/transport.ts`, so the
+  v0.6.0 bundle still announced itself as 0.5.3 in the hello frame
+  and in any log line it touched. Esbuild now injects
+  `__AGENT_VERSION__` from `agent/package.json` at bundle time —
+  same trick Vite uses for the frontend `__APP_VERSION__`. The typeof
+  guard keeps `tsx`/dev runs alive with a `'0.0.0-dev'` fallback.
+- **Agent Docker image now builds.** The version-injection refactor
+  moved the esbuild call into `agent/scripts/build.mjs`, but
+  `agent/Dockerfile` didn't COPY that directory into the builder
+  stage — `npm run build` failed with `MODULE_NOT_FOUND` and the
+  v0.6.0 GHCR push was rejected.
+
+### Added
+
+- **Boot banner with version + install mode.** Agents now log a
+  prominent first line that grep-friendly shows up under
+  `systemctl status` and `docker logs`:
+  `gpuviewr-agent v0.6.1 (docker) starting on node v22.x.x`. Saves
+  the "which version is actually running" guesswork after a binary
+  rollout.
+- **"Type" column in the Hosts settings table.** Shows Docker /
+  Binaire / Hub / — (with icons + tooltips) based on the `install_mode`
+  the agent reports in its hello frame. Pre-v0.5.3 agents render as
+  a muted `—` with a tooltip explaining the upgrade.
+
 ## [0.6.0] - 2026-05-16
 
 ### Added

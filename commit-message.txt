@@ -1,40 +1,35 @@
-release: v0.6.0 — sysfs-direct AMD GPU backend + processes throttling
+release: v0.6.1 — agent version visibility + Hosts Type column
 
-Performance release for AMD agents. GPU samples no longer spawn
-rocm-smi on the hot path — the new sysfs backend reads
-/sys/class/drm/card*/device/ directly, cutting per-tick wall time
-from ~80-130 ms to under 1 ms. On idle AMD hosts this drops the
-agent's CPU baseline from ~0.2-0.4 core to near-zero.
+Patch release that closes the "which agent version is actually
+running on this box" gap left by v0.6.0. The bundle now announces
+its real version in the hello frame and at boot, and the Hosts
+settings table grows a dedicated Type column so admins can spot
+Docker vs bare-metal agents at a glance.
+
+Fixed
+- AGENT_VERSION was a hardcoded '0.5.3' string in transport.ts, so
+  the v0.6.0 bundle still reported itself as 0.5.3 to the hub and in
+  any log line it printed. Esbuild now injects __AGENT_VERSION__
+  from agent/package.json at bundle time (same trick the frontend
+  uses with Vite + __APP_VERSION__). Dev/tsx runs fall back to
+  '0.0.0-dev' via a typeof guard.
+- agent/Dockerfile didn't COPY the new agent/scripts/ dir into the
+  builder stage; `npm run build` then failed with MODULE_NOT_FOUND
+  and the v0.6.0 GHCR push was rejected. One-line COPY fix.
 
 Added
-- Sysfs-direct GPU collector for AMD (createAmdgpuSysfsCollector).
-  Discovers amdgpu cards via /sys/class/drm/card*/device/uevent
-  (filters out connector entries and cards bound to other drivers),
-  reads gpu_busy_percent, mem_info_vram_{used,total}, pp_dpm_sclk
-  (active level), hwmon temp1_input + power1_average. Reuses the
-  rocm parsers' DEVICE_NAMES table and ROCm-${pciBus} uuid scheme
-  so the UI's per-process React keys stay stable across the switch.
-- GPU_BACKEND env (auto|sysfs|rocm-smi, default auto). Probes sysfs
-  first and falls back to the legacy rocm-smi collector only if no
-  amdgpu card is discovered — safe upgrade for hosts where /sys is
-  masked or the driver isn't loaded.
-- PROCESSES_TICK_MS env (AMD only). Decouples rocm-smi --showpids
-  cadence from TICK_MS. Default max(2000ms, TICK_MS * 2) halves the
-  Python-script cost on the process collector path while keeping
-  the process list refresh visibly snappy.
+- Boot banner first line shows version + install mode + node
+  version so it surfaces under `systemctl status` (last journal
+  lines) and `docker logs`:
+    "gpuviewr-agent v0.6.1 (docker) starting on node v22.x.x"
+- New "Type" column in Settings → Hosts: Docker / Binaire / Hub /
+  — (with icons + tooltips) based on the install_mode the agent
+  reports in its hello frame. Agents predating v0.5.3 render as a
+  muted "—" with a tooltip pointing at the upgrade. Local hub row
+  is tagged "Hub" since it has no remote agent.
 
-Changed
-- docker-compose.agent.amd.yaml documents the new env vars and
-  notes that /opt/rocm is only needed when FEATURES=processes is
-  enabled. The sysfs path requires only the amdgpu kernel driver.
-- README pre-requisites for AMD updated accordingly.
-- createRocmGpuCollector gained an inflight guard (same pattern as
-  processesRocm) to prevent tick pile-up if a slow rocm-smi call
-  momentarily exceeds TICK_MS.
-
-Tests
-- 8 new tests (agent/src/collectors/gpuAmdgpuSysfs.test.ts): card
-  discovery filtering, pp_dpm_sclk active-level parsing, uevent
-  parsing, full sample mapping with a fake /sys tree (Strix Halo
-  device IDs).
-- New parseGpuBackend tests in config.test.ts.
+Upgrade
+- Hub image: `docker compose pull && docker compose up -d` picks
+  up the new bundle.
+- Bare-metal agents: re-run the curl one-liner (or the auto-update
+  toggle if enabled) — the hub now serves the patched agent.mjs.
