@@ -5,6 +5,71 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-16
+
+### Added
+- **Single-host AMD install — no agent required.** The hub itself now
+  speaks `rocm-smi` on the local machine, so an AMD-only box (Strix
+  Halo, RDNA3, discrete Radeon) can run GpuViewR via a single
+  `docker compose -f docker-compose.amd.yml up -d` — no separate
+  agent container, no enrollment dance. Selection is automatic:
+  `GPU_VENDOR=auto` (default) probes `nvidia-smi` first and falls
+  back to `rocm-smi`; `nvidia` / `amd` force the corresponding
+  collector. New `ROCM_SMI_PATH` env (default `/opt/rocm/bin/rocm-smi`).
+  - `server/services/rocmGpuCollector.ts`: hub-side ROCm sample
+    collector with the same lifecycle / DB persistence /
+    `metricsBus` broadcast / `hosts.last_seen` heartbeat as the
+    nvidia collector. Includes the "empty stdout, exit 0" trap
+    so a misconfigured `LD_LIBRARY_PATH` surfaces as one warn line
+    instead of a silent no-data symptom.
+  - `server/services/rocmProcessCollector.ts`: hub-side
+    `/api/processes` for local AMD via `rocm-smi --showpids
+    --showbus --json`. Same `Snapshot` shape as the NVIDIA path,
+    so the frontend gets the same `GpuProcess[]` it expects.
+  - `server/services/activeGpuCollector.ts`: vendor resolution
+    module. Owns both the sample and process collector picks;
+    consumers (`/api/gpu`, `/api/processes`, `/api/health`,
+    `/api/system`, `gpuStreamWS`) route through getters instead
+    of importing the singletons directly.
+  - `Dockerfile` now bundles `python3` + `libdrm-amdgpu1` for
+    rocm-smi (a Python script under `/opt/rocm/libexec/`). One
+    image, both vendors — NVIDIA users pay ~30 MB extra for the
+    interpreter but never reach the code path.
+  - `docker-compose.amd.yml` at the repo root for the single-host
+    AMD recipe (`/dev/kfd` + `/dev/dri`, `/opt/rocm:ro`
+    bind-mount, `LD_LIBRARY_PATH`, `GPU_VENDOR=amd`).
+- **Unified-chart mode on the Hosts page.** Third toggle alongside
+  *Per host* and *All hosts total*: a single uPlot with util +
+  temp + power overlaid, util/temp on the percent axis and power
+  on its own watts axis — same layout and colours as the
+  Dashboard's `LiveChart` so the visual language matches across
+  pages. Aggregates across the visible fleet (avg utilization,
+  max temperature, sum power).
+- **Vendor logo on host cards.** Replaces the neutral `Server`
+  icon with the inferred NVIDIA (#77b900) / AMD (#f63737) badge,
+  derived from a case-insensitive substring scan over GPU product
+  names. Falls back to `Server` for Intel / empty / unknown.
+
+### Changed
+- **"Fleet" page label is now "Hosts" / "Hôtes".** Clearer for the
+  solo-sysadmin user; industry terminology (AWS Fleet, FleetDM)
+  is preserved via an info-icon tooltip on the page title and a
+  note in the Multi-host README section. URLs (`/fleet`),
+  component names, and the i18n namespace are intentionally
+  unchanged for bookmark compatibility.
+- **Vendor parsers moved to `server/services/parsers/`.** The
+  agent already reached across the directory tree to import them;
+  the underscore prefix and flat layout were the only thing that
+  made them feel "internal". `nvidia.ts` and `rocm.ts` now live
+  in their own subdir, signalling explicitly that they're the
+  shared parse layer between hub and agent. No behaviour change.
+- **Hub Dockerfile bumped from `node:22-bookworm-slim` to
+  `node:22-trixie-slim`** (glibc 2.41). Same reasoning as the
+  agent in v0.3.1: modern ROCm builds need `GLIBC_2.38` /
+  `GLIBCXX_3.4.32`, and bookworm's 2.36 caused the bind-mounted
+  `librocm_smi64.so.1` to fail to load. NVIDIA installs are
+  unaffected.
+
 ## [0.3.1] - 2026-05-16
 
 ### Added

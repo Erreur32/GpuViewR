@@ -6,7 +6,10 @@
 # This rewrite uses the same Docker volumes/port for migration compatibility.
 
 # ---------- Stage 1: Build ----------
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e AS builder
+# Trixie (Debian 13, glibc 2.38) for the runtime stage so a bind-mounted
+# /opt/rocm with modern ABI requirements loads cleanly. Builder uses the
+# same base to keep native-module compilation environment identical.
+FROM --platform=$BUILDPLATFORM node:22-trixie-slim@sha256:02684a61c3e87ae3e9ec7ef98e312a6ec35483644e204e80fc053648c3e87d75 AS builder
 
 WORKDIR /app
 
@@ -33,14 +36,23 @@ RUN npm prune --production && npm cache clean --force
 
 
 # ---------- Stage 2: Runtime ----------
-FROM node:22-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e
+FROM node:22-trixie-slim@sha256:02684a61c3e87ae3e9ec7ef98e312a6ec35483644e204e80fc053648c3e87d75
 
 WORKDIR /app
 
 # Runtime needs:
-#  gosu    : drop privileges in entrypoint
-#  tzdata  : honor TZ env var
-#  We do NOT bundle nvidia-smi: it's mounted/exposed by the NVIDIA container toolkit.
+#  gosu             : drop privileges in entrypoint
+#  tzdata           : honor TZ env var
+#  python3          : rocm-smi is a Python script under /opt/rocm/libexec/ —
+#                     full python3 (not python3-minimal) because the script
+#                     imports json/argparse/subprocess from the stdlib.
+#                     Adds ~30 MB to the image; NVIDIA users pay for it but
+#                     never reach the code path. One image, one tag.
+#  libdrm-amdgpu1   : silences the cosmetic "Fail to open libdrm_amdgpu.so"
+#                     warning rocm-smi prints on every invocation.
+#  We do NOT bundle nvidia-smi: it's mounted/exposed by the NVIDIA container
+#  toolkit. rocm-smi comes from a /opt/rocm bind-mount — see
+#  docker-compose.amd.yml.
 RUN apt-get update \
   && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends \
@@ -48,6 +60,8 @@ RUN apt-get update \
     tzdata \
     wget \
     ca-certificates \
+    python3 \
+    libdrm-amdgpu1 \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /app/data && chown -R node:node /app
 

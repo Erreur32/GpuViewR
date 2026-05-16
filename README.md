@@ -365,7 +365,26 @@ What's `null` on ROCm (driver doesn't expose it):
 - PCIe gen/width and RX/TX throughput
 - Per-process GPU % (no `nvidia-smi pmon` equivalent in `rocm-smi`)
 
-Quickstart on the AMD host (e.g. your Strix Halo Mini-PC):
+Two AMD install paths:
+
+**(a) Single-host AMD — hub local, no agent** (since v0.4.0)
+
+The hub container can talk to `rocm-smi` directly on the host. Pick
+this when you have one AMD box and want the simplest possible setup:
+
+```bash
+# 1. Pre-flight check — JSON should come out clean.
+rocm-smi --showid --json
+
+# 2. Drop docker-compose.amd.yml + .env, then:
+echo "JWT_SECRET=$(openssl rand -base64 32)" > .env
+docker compose -f docker-compose.amd.yml up -d
+```
+
+**(b) Remote AMD agent — hub elsewhere, agent on the AMD box**
+
+When the hub already runs on another machine (NVIDIA box, dev laptop,
+etc.) and you want to enrol an AMD host into the existing fleet:
 
 ```bash
 # 1. Pre-flight check — JSON should come out clean.
@@ -376,21 +395,20 @@ rocm-smi --showid --json
 docker compose -f docker-compose.agent.amd.yml up -d
 ```
 
-The compose file bind-mounts the host's `/opt/rocm` tree (rocm-smi
-is a Python script, so we mount the parent dir to get the
-interpreter entry point AND its native libraries in one shot) and
-uses `/dev/kfd` + `/dev/dri` instead of the NVIDIA Container
-Toolkit. The agent image ships `python3` so the script can run
-inside the container. `LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/lib64`
-is set in the compose env so the ctypes loader finds
-`librocm_smi64.so.1` — without it rocm-smi prints an error to
-stderr but **exits 0 with empty stdout**, and the agent silently
-ships no samples. The compose file does this for you. Check `getent group video render` on your
-host — if `render` isn't GID 109 (ROCm installers sometimes shift it
-to 992), set `VIDEO_GID` and `RENDER_GID` in `.env` accordingly. If
-you see `Fail to open libdrm_amdgpu.so` on startup, install
-`libdrm-amdgpu1` to silence it — the warning is cosmetic, JSON
-output is valid either way.
+Both compose files bind-mount the host's `/opt/rocm` tree (rocm-smi
+is a Python script, so we mount the parent dir to get the interpreter
+entry point AND its native libraries in one shot) and use `/dev/kfd`
++ `/dev/dri` instead of the NVIDIA Container Toolkit. The hub +
+agent images both ship `python3` so the script can run inside the
+container, and set `LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/lib64`
+so the ctypes loader finds `librocm_smi64.so.1` — without it
+rocm-smi prints an error to stderr but **exits 0 with empty stdout**,
+and you silently get no samples. Check `getent group video render`
+on your host — if `render` isn't GID 109 (ROCm installers sometimes
+shift it to 992), set `VIDEO_GID` and `RENDER_GID` in `.env`
+accordingly. If you see `Fail to open libdrm_amdgpu.so` on startup,
+install `libdrm-amdgpu1` to silence it — the warning is cosmetic,
+JSON output is valid either way.
 
 Multi-GPU AMD boxes currently attribute all processes to `card0`
 (single-card limitation, lifted in a follow-up). NVIDIA agents are
