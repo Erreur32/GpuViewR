@@ -26,7 +26,7 @@
   "dashboard": {
     "live": "LIVE",
     "offline": "OFFLINE",
-    "no_gpu": "No GPU detected: check that nvidia-smi is available in the container.",
+    "no_gpu": "No GPU detected: check that the smi binary for your vendor (nvidia-smi or rocm-smi) is available in the container, and that GPU_VENDOR is set correctly. Look at the hub logs for the resolved vendor on boot.",
     "history": "Live performance",
     "export_csv_help": "Download the current GPU's history for the selected range as CSV",
     "view_arc": "Gauges",

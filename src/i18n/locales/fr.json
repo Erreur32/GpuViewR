@@ -26,7 +26,7 @@
   "dashboard": {
     "live": "LIVE",
     "offline": "HORS LIGNE",
-    "no_gpu": "Aucun GPU détecté: vérifiez que nvidia-smi est disponible dans le conteneur.",
+    "no_gpu": "Aucun GPU détecté : vérifiez que le binaire smi de votre vendor (nvidia-smi ou rocm-smi) est accessible dans le conteneur et que GPU_VENDOR est correctement défini. Regardez les logs du hub pour le vendor résolu au boot.",
     "history": "Performance en direct",
     "export_csv_help": "Télécharger l'historique du GPU courant sur la période sélectionnée en CSV",
     "view_arc": "Jauges",
