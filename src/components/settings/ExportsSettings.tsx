@@ -430,6 +430,30 @@ function bindHostFilter<S extends { hostFilter?: HostGpuFilter }>(
   };
 }
 
+/** Save + Test pair shared across MQTT / Influx / Webhook blocks.
+ *  Hands the current form state to both callbacks so a click on Test
+ *  runs against unsaved values (server merges onto stored config
+ *  with masked secrets preserved). PromBlock skips this — it has no
+ *  Test action because Prometheus is pull-based. */
+function SaveTestButtons<S>({ s, disabled, onSave, onTest }: Readonly<{
+  s: S;
+  disabled?: boolean;
+  onSave: (s: S) => void;
+  onTest: (s: S) => void;
+}>) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex gap-2">
+      <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
+        <Save className="w-4 h-4" /> {t('common.save')}
+      </button>
+      <button className="btn-ghost" disabled={disabled} onClick={() => onTest(s)}>
+        <PlayCircle className="w-4 h-4" /> {t('settings.exports_test')}
+      </button>
+    </div>
+  );
+}
+
 function Toggle({ label, checked, onChange, disabled }: Readonly<{
   label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean;
 }>) {
@@ -569,14 +593,7 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
         disabled={disabled}
       />
       <HostFilterDisclosure {...bindHostFilter(s, setS)} disabled={disabled} />
-      <div className="flex gap-2">
-        <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
-          <Save className="w-4 h-4" /> {t('common.save')}
-        </button>
-        <button className="btn-ghost" disabled={disabled} onClick={() => onTest(s)}>
-          <PlayCircle className="w-4 h-4" /> {t('settings.exports_test')}
-        </button>
-      </div>
+      <SaveTestButtons s={s} disabled={disabled} onSave={onSave} onTest={onTest} />
       {cfg.enabled && info && (
         <>
           {/* Connection / runtime status — kept outside the "what's
@@ -674,14 +691,7 @@ function InfluxBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
         disabled={disabled}
       />
       <HostFilterDisclosure {...bindHostFilter(s, setS)} disabled={disabled} />
-      <div className="flex gap-2">
-        <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
-          <Save className="w-4 h-4" /> {t('common.save')}
-        </button>
-        <button className="btn-ghost" disabled={disabled} onClick={() => onTest(s)}>
-          <PlayCircle className="w-4 h-4" /> {t('settings.exports_test')}
-        </button>
-      </div>
+      <SaveTestButtons s={s} disabled={disabled} onSave={onSave} onTest={onTest} />
       {cfg.enabled && info && (
         <DispatchPanel
           rows={[
@@ -857,14 +867,7 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
 
       <HostFilterDisclosure {...bindHostFilter(s, setS)} disabled={disabled} />
 
-      <div className="flex gap-2">
-        <button className="btn-primary" disabled={disabled} onClick={() => onSave(s)}>
-          <Save className="w-4 h-4" /> {t('common.save')}
-        </button>
-        <button className="btn-ghost" disabled={disabled} onClick={() => onTest(s)}>
-          <PlayCircle className="w-4 h-4" /> {t('settings.exports_test')}
-        </button>
-      </div>
+      <SaveTestButtons s={s} disabled={disabled} onSave={onSave} onTest={onTest} />
     </Block>
   );
 }
