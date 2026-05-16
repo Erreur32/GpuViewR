@@ -456,8 +456,6 @@
     "metric_hide": "Masquer le graphe {{metric}}",
     "mode_per_host": "Par hôte",
     "mode_total": "Tous hôtes",
-    "mode_unified": "Unifié",
-    "combined_chart_title_unified": "Tous les hôtes · util + temp + puissance (agrégé) · 60 dernières secondes",
     "legend_show": "Afficher {{label}}",
     "legend_hide": "Masquer {{label}}",
     "legend_total": "Tous hôtes",
