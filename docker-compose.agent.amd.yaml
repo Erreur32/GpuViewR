@@ -20,6 +20,13 @@
 #   - The agent image now ships python3-minimal so the script can
 #     actually run; distroless was a no-go for the AMD path.
 #
+# v0.6+ — GPU samples now default to a sysfs-direct backend that reads
+# /sys/class/drm/card*/device/ instead of spawning rocm-smi every tick.
+# Coût par tick : ~80-130 ms → < 1 ms. rocm-smi is still needed for the
+# `processes` feature (--showpids reads /sys/class/kfd/kfd/proc/ which
+# we don't parse natively yet), but at a slower cadence — see
+# PROCESSES_TICK_MS below.
+#
 # Prerequisites on the remote host:
 #   1. AMD GPU + amdgpu kernel driver.
 #   2. ROCm installed at /opt/rocm (the standard location for AMD's
@@ -86,6 +93,28 @@ services:
       FEATURES: ${FEATURES:-gpu,system,temps,processes}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       RECONNECT_MAX_MS: ${RECONNECT_MAX_MS:-30000}
+
+      # GPU sampling backend on AMD:
+      #   auto      (default) — prefer sysfs, fall back to rocm-smi if
+      #                          /sys/class/drm exposes no amdgpu card.
+      #                          The cheap path on every modern setup.
+      #   sysfs     — force sysfs. Cheapest (~µs per tick), no Python
+      #                spawn. Fails fast if /sys/class/drm is masked.
+      #   rocm-smi  — legacy path, spawns rocm-smi every tick
+      #                (~80-130 ms wall). Only useful as an escape hatch
+      #                if a kernel/driver combo exposes incomplete sysfs.
+      GPU_BACKEND: ${GPU_BACKEND:-auto}
+
+      # Process collector cadence (AMD only). rocm-smi --showpids is the
+      # Python script that costs ~80-130 ms per call. Default = max(2000ms,
+      # TICK_MS * 2) — halves the legacy 1 Hz CPU cost while keeping the
+      # process list refresh visibly snappy. Set to 1000 to restore the
+      # pre-v0.6 cadence, or 5000+ for near-zero overhead.
+      PROCESSES_TICK_MS: ${PROCESSES_TICK_MS:-2000}
+
+      # Override only if your distro mounts the DRM class elsewhere.
+      # Default works for every standard /sys mount inside a container.
+      # SYS_CLASS_DRM: /sys/class/drm
 
       # Timezone for log timestamps. Defaults to UTC; override in
       # .env (e.g. TZ=Europe/Paris) — requires tzdata in the image,

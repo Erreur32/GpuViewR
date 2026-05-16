@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFeatures, parseGpuVendor } from './config.js';
+import { parseFeatures, parseGpuBackend, parseGpuVendor } from './config.js';
 
 test('parseFeatures: parses canonical CSV', () => {
   assert.deepEqual(parseFeatures('gpu,system,temps,processes'), {
@@ -47,4 +47,21 @@ test('parseGpuVendor: unknown / undefined falls back to auto', () => {
   assert.equal(parseGpuVendor(undefined), 'auto');
   assert.equal(parseGpuVendor(''), 'auto');
   assert.equal(parseGpuVendor('intel'), 'auto');
+});
+
+test('parseGpuBackend: explicit values pass through', () => {
+  assert.equal(parseGpuBackend('sysfs'), 'sysfs');
+  assert.equal(parseGpuBackend('rocm-smi'), 'rocm-smi');
+  assert.equal(parseGpuBackend('auto'), 'auto');
+});
+
+test('parseGpuBackend: case + whitespace tolerated', () => {
+  assert.equal(parseGpuBackend(' SYSFS '), 'sysfs');
+  assert.equal(parseGpuBackend('ROCM-SMI'), 'rocm-smi');
+});
+
+test('parseGpuBackend: unknown / undefined falls back to auto', () => {
+  assert.equal(parseGpuBackend(undefined), 'auto');
+  assert.equal(parseGpuBackend(''), 'auto');
+  assert.equal(parseGpuBackend('libdrm'), 'auto');
 });

@@ -121,7 +121,7 @@ Then `docker compose up -d` — the previous sidecar stops, the new one starts.
 
 - Docker Engine 23+ with the Compose v2 plugin
 - **NVIDIA**: [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
-- **AMD**: ROCm installed at `/opt/rocm`, `rocm-smi --version` works as the docker user
+- **AMD**: amdgpu kernel driver loaded. ROCm at `/opt/rocm` is only needed if you enable `FEATURES=processes` (the sysfs GPU backend reads `/sys/class/drm/` directly — no `rocm-smi` spawn per tick)
 
 ---
 

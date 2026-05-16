@@ -48,6 +48,12 @@ export function createRocmGpuCollector(opts: GpuCollectorOptions): GpuCollectorH
   let rocmSmiAvailable: boolean | null = null;
   let firstStderrLogged = false;
   let emptyOutputWarned = false;
+  // Guard against pile-up: rocm-smi wall time is ~80-130 ms and the
+  // default tick is 1000 ms, but a momentarily busy host (or a stuck
+  // python import) can push past that. Without this, setInterval keeps
+  // queueing ticks behind the slow one and we end up with N concurrent
+  // rocm-smi processes. Same pattern as processesRocm.ts.
+  let inflight = false;
 
   function checkRocmSmi(): boolean {
     if (rocmSmiAvailable !== null) return rocmSmiAvailable;
@@ -61,6 +67,8 @@ export function createRocmGpuCollector(opts: GpuCollectorOptions): GpuCollectorH
   }
 
   function tick(): void {
+    if (inflight) return;
+    inflight = true;
     const child = spawn(opts.rocmSmiPath, INFO_FLAGS);
     let stdout = '';
     let stderr = '';
@@ -69,8 +77,12 @@ export function createRocmGpuCollector(opts: GpuCollectorOptions): GpuCollectorH
     // warning when libdrm-amdgpu1 isn't installed. We only surface it once,
     // at debug level — JSON on stdout is still complete.
     child.stderr.on('data', (d) => (stderr += d.toString()));
-    child.on('error', (err) => logger.error('gpu', 'rocm-smi spawn failed:', err.message));
+    child.on('error', (err) => {
+      inflight = false;
+      logger.error('gpu', 'rocm-smi spawn failed:', err.message);
+    });
     child.on('close', (code) => {
+      inflight = false;
       if (code !== 0) {
         logger.warn('gpu', `rocm-smi exited ${code}: ${stderr.trim()}`);
         return;

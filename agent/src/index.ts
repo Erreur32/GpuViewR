@@ -9,6 +9,7 @@ import { logger } from './logger.js';
 import { createTransport, INSTALL_MODE } from './transport.js';
 import { createGpuCollector, type GpuCollectorHandle } from './collectors/gpu.js';
 import { createRocmGpuCollector } from './collectors/gpuRocm.js';
+import { createAmdgpuSysfsCollector } from './collectors/gpuAmdgpuSysfs.js';
 import { createProcessCollector, type ProcessCollectorHandle } from './collectors/processes.js';
 import { createRocmProcessCollector } from './collectors/processesRocm.js';
 import { buildMockSamples } from './mock.js';
@@ -36,7 +37,11 @@ if (config.features.gpu) {
     emit();
     mockTimer = setInterval(emit, config.tickMs);
   } else {
-    gpuHandle = buildGpuCollector(vendor, config);
+    // Top-level await is fine in ESM/node22. Required for the AMD sysfs
+    // path: discovery reads /sys asynchronously, and we want the boot
+    // log line ("sysfs amdgpu / rocm-smi / nvidia") settled before we
+    // start ticking.
+    gpuHandle = await buildGpuCollector(vendor, config);
     if (!gpuHandle.available()) {
       const bin = vendor === 'amd' ? config.rocmSmiPath : config.nvidiaSmiPath;
       logger.error('boot', `${vendor} smi not found at ${bin} — exiting (set MOCK_GPU=1 for dev)`);
@@ -103,14 +108,8 @@ function resolveVendor(cfg: AgentConfig): 'nvidia' | 'amd' {
   return 'nvidia';
 }
 
-function buildGpuCollector(v: GpuVendor, cfg: AgentConfig): GpuCollectorHandle {
-  if (v === 'amd') {
-    return createRocmGpuCollector({
-      rocmSmiPath: cfg.rocmSmiPath,
-      tickMs: cfg.tickMs,
-      onSample: (samples) => transport.enqueueSample(samples),
-    });
-  }
+async function buildGpuCollector(v: GpuVendor, cfg: AgentConfig): Promise<GpuCollectorHandle> {
+  if (v === 'amd') return buildAmdGpuCollector(cfg);
   return createGpuCollector({
     nvidiaSmiPath: cfg.nvidiaSmiPath,
     tickMs: cfg.tickMs,
@@ -118,11 +117,60 @@ function buildGpuCollector(v: GpuVendor, cfg: AgentConfig): GpuCollectorHandle {
   });
 }
 
+/** AMD backend selection. `sysfs` is preferred (~µs per tick vs
+ *  ~80-130 ms for rocm-smi); `rocm-smi` stays as a fallback for hosts
+ *  where /sys/class/drm is masked or empty (rare in containers with
+ *  /dev/dri mapped, but possible on locked-down PaaS).
+ *
+ *  GPU_BACKEND=auto (default): probe sysfs, fall through to rocm-smi
+ *  if no amdgpu card was discovered.
+ *  GPU_BACKEND=sysfs: force sysfs, never spawn rocm-smi for samples.
+ *  GPU_BACKEND=rocm-smi: legacy path (one rocm-smi spawn per tick). */
+async function buildAmdGpuCollector(cfg: AgentConfig): Promise<GpuCollectorHandle> {
+  const onSample = (samples: Parameters<typeof transport.enqueueSample>[0]) =>
+    transport.enqueueSample(samples);
+
+  if (cfg.gpuBackend === 'rocm-smi') {
+    logger.info('boot', 'AMD backend: rocm-smi (forced via GPU_BACKEND=rocm-smi)');
+    return createRocmGpuCollector({
+      rocmSmiPath: cfg.rocmSmiPath,
+      tickMs: cfg.tickMs,
+      onSample,
+    });
+  }
+
+  const sysfs = createAmdgpuSysfsCollector({
+    sysClassDrm: cfg.sysClassDrm,
+    tickMs: cfg.tickMs,
+    onSample,
+  });
+  const cards = await sysfs.discover();
+  if (cards > 0) {
+    logger.info('boot', `AMD backend: sysfs (${cards} card${cards === 1 ? '' : 's'} via ${cfg.sysClassDrm})`);
+    return sysfs;
+  }
+
+  if (cfg.gpuBackend === 'sysfs') {
+    // Forced sysfs but no card → return the empty handle so the caller's
+    // available()===false path takes over with the standard "smi not
+    // found" error. Avoids a silent no-op.
+    logger.error('boot', `GPU_BACKEND=sysfs but no amdgpu card found under ${cfg.sysClassDrm}`);
+    return sysfs;
+  }
+
+  logger.warn('boot', `AMD backend: sysfs found 0 cards under ${cfg.sysClassDrm}, falling back to rocm-smi`);
+  return createRocmGpuCollector({
+    rocmSmiPath: cfg.rocmSmiPath,
+    tickMs: cfg.tickMs,
+    onSample,
+  });
+}
+
 function buildProcessCollector(v: GpuVendor, cfg: AgentConfig): ProcessCollectorHandle {
   if (v === 'amd') {
     return createRocmProcessCollector({
       rocmSmiPath: cfg.rocmSmiPath,
-      tickMs: cfg.tickMs,
+      tickMs: cfg.processesTickMs,
       hostProc: cfg.hostProc,
       onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
     });

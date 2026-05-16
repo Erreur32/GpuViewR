@@ -11,6 +11,12 @@ export interface AgentFeatures {
 
 export type GpuVendor = 'auto' | 'nvidia' | 'amd';
 
+/** AMD-only knob. `auto` lets the agent prefer the cheap sysfs reader
+ *  and fall back to rocm-smi if no amdgpu card is discovered under
+ *  `/sys/class/drm/`. `sysfs` forces sysfs (fails fast if absent).
+ *  `rocm-smi` keeps the legacy path that spawns rocm-smi every tick. */
+export type GpuBackend = 'auto' | 'sysfs' | 'rocm-smi';
+
 /** A single hub target. Multi-hub mode (v0.5+) lets one agent push
  *  to N hubs in parallel — each gets its own WS, its own host_id +
  *  token (the agent can be enrolled under different ids on different
@@ -28,6 +34,9 @@ export interface AgentConfig {
   bufferPersist: boolean;
   agentLabel: string | null;
   gpuVendor: GpuVendor;
+  gpuBackend: GpuBackend;
+  sysClassDrm: string;
+  processesTickMs: number;
   nvidiaSmiPath: string;
   rocmSmiPath: string;
   hostProc: string;
@@ -39,6 +48,12 @@ export interface AgentConfig {
 export function parseGpuVendor(raw: string | undefined): GpuVendor {
   const v = (raw || '').trim().toLowerCase();
   if (v === 'nvidia' || v === 'amd' || v === 'auto') return v;
+  return 'auto';
+}
+
+export function parseGpuBackend(raw: string | undefined): GpuBackend {
+  const v = (raw || '').trim().toLowerCase();
+  if (v === 'sysfs' || v === 'rocm-smi' || v === 'auto') return v;
   return 'auto';
 }
 
@@ -144,13 +159,24 @@ export function parseHubTargets(env: NodeJS.ProcessEnv = process.env): HubTarget
 }
 
 export function loadConfig(): AgentConfig {
+  const tickMs = parseInt10('TICK_MS', 1000);
+  // Process collection is intentionally throttled relative to GPU samples.
+  // rocm-smi --showpids spawns Python every call (~80-130 ms wall); running
+  // it at the same cadence as the cheap sysfs reader would re-introduce the
+  // exact CPU load the sysfs backend exists to eliminate. Default = 2×
+  // tickMs (plancher 2 s) — halves the cost vs the legacy 1 Hz cadence
+  // while keeping the process list visibly fresh.
+  const processesDefault = Math.max(2_000, tickMs * 2);
   return {
     hubs: parseHubTargets(),
-    tickMs: parseInt10('TICK_MS', 1000),
+    tickMs,
     features: parseFeatures(process.env.FEATURES || 'gpu,system,temps,processes'),
     bufferPersist: parseBool('AGENT_BUFFER_PERSIST', false),
     agentLabel: process.env.AGENT_LABEL?.trim() || null,
     gpuVendor: parseGpuVendor(process.env.GPU_VENDOR),
+    gpuBackend: parseGpuBackend(process.env.GPU_BACKEND),
+    sysClassDrm: process.env.SYS_CLASS_DRM || '/sys/class/drm',
+    processesTickMs: parseInt10('PROCESSES_TICK_MS', processesDefault),
     nvidiaSmiPath: process.env.NVIDIA_SMI_PATH || 'nvidia-smi',
     rocmSmiPath: process.env.ROCM_SMI_PATH || 'rocm-smi',
     hostProc: process.env.HOST_PROC || '/host/proc',
