@@ -143,10 +143,15 @@ fi
 # ── Up ───────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "  ${B}→${R} Pulling images..."
-docker compose pull >/dev/null 2>&1 || true
+# --quiet kills the "WARN[0000] The 'X' variable is not set" noise that
+# Compose v2 writes to /dev/tty (bypasses normal stdout/stderr
+# redirects). Output reordering between the curl-download step and the
+# .env generation occasionally surfaces those warnings for a few ms
+# before .env lands on disk.
+docker compose --progress quiet pull --quiet 2>/dev/null || true
 
 echo -e "  ${B}→${R} Starting stack..."
-docker compose up -d
+docker compose --progress quiet up -d
 
 # ── Final hint ───────────────────────────────────────────────────────────────
 IP="$(grep '^HOST_IP=' .env | cut -d= -f2-)"
