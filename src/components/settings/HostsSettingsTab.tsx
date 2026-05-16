@@ -54,6 +54,7 @@ export default function HostsSettingsTab() {
               <tr className="text-left text-[11px] uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>
                 <th className="px-4 py-3 font-medium">{t('hosts.col_label')}</th>
                 <th className="px-4 py-3 font-medium">{t('hosts.col_status')}</th>
+                <th className="px-4 py-3 font-medium">{t('hosts.col_type')}</th>
                 <th className="px-4 py-3 font-medium">{t('hosts.col_agent')}</th>
                 <th className="px-4 py-3 font-medium">{t('hosts.col_last_seen')}</th>
                 <th className="px-4 py-3 font-medium text-right">{t('hosts.col_actions')}</th>
@@ -70,7 +71,7 @@ export default function HostsSettingsTab() {
               ))}
               {hosts.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm" style={{ color: 'var(--gv-text-muted)' }}>
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm" style={{ color: 'var(--gv-text-muted)' }}>
                     {t('hosts.empty')}
                   </td>
                 </tr>
@@ -133,6 +134,9 @@ function HostRow({
             "22s · En ligne · 22s il y a" — redundant. */}
         <StatusPill status={status} lastSeenEpoch={null} />
       </td>
+      <td className="px-4 py-3">
+        <InstallTypeCell isLocal={isLocal} installMode={host.install_mode} t={t} />
+      </td>
       <td className="px-4 py-3 font-mono text-xs">
         <VersionCell
           isLocal={isLocal}
@@ -161,6 +165,52 @@ function HostRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+// Install-type pill (Docker / Binaire / unknown). Reads install_mode
+// the agent reported in its hello frame. Pre-v0.5.3 agents had no way
+// to declare it → null/unknown both render as the muted "?" badge.
+// The local hub row sits outside the agent fleet, so we mark it as
+// "Hub" rather than guessing an install method.
+function InstallTypeCell({
+  isLocal, installMode, t,
+}: Readonly<{
+  isLocal: boolean;
+  installMode: 'docker' | 'systemd' | 'unknown' | null;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}>) {
+  if (isLocal) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs"
+            style={{ color: 'var(--gv-text-muted)' }}
+            title={t('hosts.type_hub_help')}>
+        <Server size={14} /> {t('hosts.type_hub')}
+      </span>
+    );
+  }
+  if (installMode === 'docker') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs"
+            title={t('hosts.type_docker_help')}>
+        <Container size={14} /> {t('hosts.type_docker')}
+      </span>
+    );
+  }
+  if (installMode === 'systemd') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs"
+            title={t('hosts.type_binary_help')}>
+        <Terminal size={14} /> {t('hosts.type_binary')}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs"
+          style={{ color: 'var(--gv-text-dim)' }}
+          title={t('hosts.type_unknown_help')}>
+      <AlertTriangle size={14} /> {t('hosts.type_unknown')}
+    </span>
   );
 }
 

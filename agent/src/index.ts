@@ -6,7 +6,7 @@
 import { spawnSync } from 'node:child_process';
 import { loadConfig, type AgentConfig, type GpuVendor } from './config.js';
 import { logger } from './logger.js';
-import { createTransport, INSTALL_MODE } from './transport.js';
+import { AGENT_VERSION, createTransport, INSTALL_MODE } from './transport.js';
 import { createGpuCollector, type GpuCollectorHandle } from './collectors/gpu.js';
 import { createRocmGpuCollector } from './collectors/gpuRocm.js';
 import { createAmdgpuSysfsCollector } from './collectors/gpuAmdgpuSysfs.js';
@@ -17,11 +17,14 @@ import { buildMockSamples } from './mock.js';
 const config = loadConfig();
 const vendor = resolveVendor(config);
 
-logger.info('boot', `gpuviewr-agent starting (${config.hubs.length} hub${config.hubs.length === 1 ? '' : 's'}, label=${config.agentLabel ?? '(none)'})`);
+// Banner line first: version + install mode are what people grep for in
+// `systemctl status` / `docker logs` when figuring out which agent is
+// stale. Keep it short and unmistakable.
+logger.info('boot', `gpuviewr-agent v${AGENT_VERSION} (${INSTALL_MODE}) starting on node ${process.version}`);
+logger.info('boot', `${config.hubs.length} hub${config.hubs.length === 1 ? '' : 's'}, label=${config.agentLabel ?? '(none)'}`);
 for (const h of config.hubs) logger.info('boot', `  → ${h.url} (host_id=${h.hostId})`);
 logger.info('boot', `Features: ${JSON.stringify(config.features)}`);
 logger.info('boot', `GPU vendor: ${vendor} (configured: ${config.gpuVendor})`);
-logger.info('boot', `Install mode: ${INSTALL_MODE} (hub will use this to suggest the right update command)`);
 if (config.mockGpu) logger.warn('boot', 'MOCK_GPU=1 — synthetic GPU samples, no smi spawn');
 
 const transport = createTransport(config);

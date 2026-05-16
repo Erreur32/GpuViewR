@@ -61,7 +61,12 @@ const RECONNECT_MIN_MS = 1_000;
 const PING_INTERVAL_MS = 15_000;
 const REPLAY_CHUNK = 50;
 const REPLAY_DELAY_MS = 600;
-const AGENT_VERSION = '0.5.3';
+// Build-time inject via esbuild --define (scripts/build.mjs). The
+// typeof guard keeps `tsx`/dev runs alive — when the literal isn't
+// substituted, `typeof __AGENT_VERSION__` evaluates to 'undefined'
+// without throwing, and we fall back to a clearly tagged dev marker.
+export const AGENT_VERSION: string =
+  typeof __AGENT_VERSION__ !== 'undefined' ? __AGENT_VERSION__ : '0.0.0-dev';
 const PROTOCOL_VER = 1;
 // Number of consecutive auth failures before we give up on a hub
 // entirely. One 4001 might be a transient race during hub restart;

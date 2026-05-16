@@ -1,6 +1,6 @@
 {
   "name": "gpuviewr-agent",
-  "version": "0.3.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Remote GpuViewR agent — collects nvidia-smi locally and pushes to a central hub via WebSocket",
   "type": "module",
@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/agent.mjs --external:bufferutil --external:utf-8-validate --banner:js=\"import { createRequire as _createRequire } from 'module'; const require = _createRequire(import.meta.url);\"",
+    "build": "node scripts/build.mjs",
     "start:bundle": "node dist/agent.mjs",
     "test": "tsx --test src/**/*.test.ts",
     "typecheck": "tsc --noEmit"
