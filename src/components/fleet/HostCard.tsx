@@ -1,4 +1,4 @@
-import { Server, Activity, MemoryStick, Thermometer, Zap, Cpu } from 'lucide-react';
+import { Activity, MemoryStick, Thermometer, Zap, Cpu } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useGpuStore, type GpuSample } from '../../store/gpuStore';
 import { effectiveStatus, type HostRecord } from '../../store/hostsStore';
@@ -7,6 +7,7 @@ import StatusPill from './StatusPill';
 import GpuMiniTile from './GpuMiniTile';
 import MetricRow from '../ui/MetricRow';
 import Sparkline from '../dashboard/Sparkline';
+import VendorIcon, { detectVendor } from '../ui/VendorIcon';
 
 type Props = Readonly<{
   host: HostRecord;
@@ -35,6 +36,7 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
   const stats = aggregateHostStats(hostSamples);
   const sparklineValues = buildHostSparkline(seriesByHost, host.id);
   const utilColor = colorFor(statusFor(stats.avgUtil ?? 0, 85, 95));
+  const vendor = detectVendor(hostSamples.map((s) => s.name));
 
   return (
     <button
@@ -45,7 +47,7 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
     >
       <header className="flex items-start justify-between gap-2 min-w-0">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <Server size={16} style={{ color: 'var(--gv-text-muted)', flexShrink: 0 }} />
+          <VendorIcon vendor={vendor} size={18} title={vendor ? vendor.toUpperCase() : host.label} />
           <div className="min-w-0">
             <h3 className="text-sm font-semibold leading-tight truncate" style={{ color: 'var(--gv-text)' }} title={host.label}>
               {host.label}
