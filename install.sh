@@ -157,15 +157,13 @@ curl -fsSL -o docker-compose.yaml "${RAW_URL}/docker-compose.yaml"
 # ── Up ───────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "  ${B}→${R} Pulling images..."
-# --quiet kills the "WARN[0000] The 'X' variable is not set" noise that
-# Compose v2 writes to /dev/tty (bypasses normal stdout/stderr
-# redirects). Output reordering between the curl-download step and the
-# .env generation occasionally surfaces those warnings for a few ms
-# before .env lands on disk.
-docker compose --progress quiet pull --quiet 2>/dev/null || true
+# Native compose progress — the user sees image layers downloading
+# in real time. The WARN env-var noise that used to leak here is
+# killed by the .env-before-curl + export step earlier in this script.
+docker compose pull || true
 
 echo -e "  ${B}→${R} Starting stack..."
-docker compose --progress quiet up -d
+docker compose up -d
 
 # ── Final hint ───────────────────────────────────────────────────────────────
 IP="$(grep '^HOST_IP=' .env | cut -d= -f2-)"

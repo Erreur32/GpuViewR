@@ -167,10 +167,10 @@ fi
 # ── Up ───────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "  ${B}→${R} Pulling image..."
-docker compose --progress quiet pull --quiet 2>/dev/null || true
+docker compose pull || true
 
 echo -e "  ${B}→${R} Starting agent..."
-docker compose --progress quiet up -d
+docker compose up -d
 
 # ── Final hint ───────────────────────────────────────────────────────────────
 echo ""
