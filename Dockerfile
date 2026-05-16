@@ -31,6 +31,13 @@ RUN NO_UPDATE_NOTIFIER=1 npm ci --loglevel=error --no-fund
 COPY . .
 RUN npm run build
 
+# Bundle the remote agent next to the hub. The hub serves /install.sh
+# and /agent.mjs (server/routes/agentDistribution.ts) so a remote
+# machine can `curl … | sudo bash` itself in — that path needs
+# agent.mjs to exist. Building it here means a single docker compose
+# up gives users the curl install for free, no extra step.
+RUN npm run build:agent
+
 # Drop devDependencies, keep compiled native binaries
 RUN npm prune --production && npm cache clean --force
 
@@ -77,6 +84,11 @@ COPY --chown=node:node --from=builder /app/server ./server
 COPY --chown=node:node --from=builder /app/tsconfig.json ./
 COPY --chown=node:node --from=builder /app/CHANGELOG.md ./
 COPY --chown=node:node --from=builder /app/README.md ./
+# Bundled agent (built in the builder stage above) — required by
+# server/routes/agentDistribution.ts for the GET /install.sh + /agent.mjs
+# curl install path. Without it those endpoints 503 with a warn log.
+COPY --chown=node:node --from=builder /app/agent/dist/agent.mjs ./agent/dist/agent.mjs
+COPY --chown=node:node --from=builder /app/agent/install.sh.tpl ./agent/install.sh.tpl
 
 ENV NODE_ENV=production
 ENV PORT=3015
