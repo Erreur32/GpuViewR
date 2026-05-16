@@ -232,6 +232,13 @@ export default function EnrollHostModal({ onClose }: Props) {
               copied={copied === 'cmd'}
               kind="pre"
             />
+
+            <p
+              className="text-[11px] leading-snug"
+              style={{ color: 'var(--gv-text-dim)' }}
+            >
+              💡 {t('hosts.update_hint')}
+            </p>
           </div>
 
           <div className="flex justify-end">

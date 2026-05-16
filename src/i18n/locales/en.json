@@ -19,6 +19,7 @@
     "submit_register": "Create admin account",
     "first_user_hint": "First user becomes admin automatically",
     "logout": "Sign out",
+    "session_expired": "Your session has expired — sign in again. (Happens after a hub reset or token rotation.)",
     "errors": {
       "invalid": "Invalid credentials"
     }
@@ -504,6 +505,7 @@
     "install_docker_hint": "Auto-detects vendor (NVIDIA / AMD), pulls the matching compose file, generates .env, runs `docker compose up -d`. Single command for both vendors.",
     "tls_label": "Hub uses TLS (wss://)",
     "tls_help": "Auto-detected from the hub URL: IP addresses default to ws:// (LAN), domain names default to wss:// (reverse proxy with cert). Flip if your setup differs.",
+    "update_hint": "To update the agent later, just re-run this exact same command — it's idempotent.",
     "copy_failed": "Couldn't copy",
     "copy_failed_hint": "Your browser blocks clipboard access on this URL. Select the text and use Ctrl+C manually.",
     "rotate_token": "Rotate token",

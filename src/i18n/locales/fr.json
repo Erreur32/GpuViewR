@@ -19,6 +19,7 @@
     "submit_register": "Créer le compte admin",
     "first_user_hint": "Le premier utilisateur devient automatiquement admin",
     "logout": "Déconnexion",
+    "session_expired": "Votre session a expiré — reconnectez-vous. (Se produit après un reset du hub ou une rotation de token.)",
     "errors": {
       "invalid": "Identifiants invalides"
     }
@@ -504,6 +505,7 @@
     "install_docker_hint": "Auto-détection vendor (NVIDIA / AMD), télécharge le bon compose, génère .env, lance `docker compose up -d`. Une seule commande pour les deux vendors.",
     "tls_label": "Hub en TLS (wss://)",
     "tls_help": "Auto-détecté depuis l'URL du hub : les IP utilisent ws:// par défaut (LAN), les noms de domaine wss:// (reverse-proxy avec certificat). Coche/décoche selon ton setup.",
+    "update_hint": "Pour mettre à jour l'agent plus tard, ré-exécute cette commande exacte — elle est idempotente.",
     "copy_failed": "Copie impossible",
     "copy_failed_hint": "Ton navigateur bloque l'accès au presse-papiers sur cette URL. Sélectionne le texte et fais Ctrl+C manuellement.",
     "rotate_token": "Régénérer le jeton",

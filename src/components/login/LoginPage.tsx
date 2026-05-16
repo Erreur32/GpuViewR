@@ -1,6 +1,6 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LogIn, UserPlus } from 'lucide-react';
+import { LogIn, UserPlus, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
 export default function LoginPage() {
@@ -10,6 +10,21 @@ export default function LoginPage() {
   const isRegister = !hasUsers;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  // ?expired=1 lands here when api.ts auto-logs-out on a 401 (stale
+  // JWT after a hub reset, secret rotation, etc.). Show a banner so
+  // the user doesn't think it's a random bug.
+  const [sessionExpired, setSessionExpired] = useState(false);
+  useEffect(() => {
+    const params = new URLSearchParams(globalThis.location.search);
+    if (params.get('expired') === '1') {
+      setSessionExpired(true);
+      // Clean the query string from the URL bar — pure cosmetic, so
+      // a future reload of /login doesn't keep the banner.
+      const url = new URL(globalThis.location.href);
+      url.searchParams.delete('expired');
+      globalThis.history.replaceState({}, '', url.toString());
+    }
+  }, []);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -73,6 +88,20 @@ export default function LoginPage() {
               minLength={isRegister ? 8 : undefined}
             />
           </div>
+
+          {sessionExpired && !error && (
+            <div
+              className="text-sm flex items-start gap-2 rounded-lg px-3 py-2"
+              style={{
+                color: 'var(--gv-warn)',
+                background: 'color-mix(in srgb, var(--gv-warn) 12%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--gv-warn) 30%, transparent)',
+              }}
+            >
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{t('auth.session_expired')}</span>
+            </div>
+          )}
 
           {error && (
             <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
