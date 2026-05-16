@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recipe — NVIDIA Container Toolkit passthrough enabled out of the
   box. Three compose variants now sit side by side: `nvidia` (NVIDIA
   toolkit), `amd` (`/opt/rocm` + `/dev/kfd` + `/dev/dri`), and the
-  vendor-neutral `docker-compose.yaml` (no GPU, hub as aggregator
+  vendor-neutral `compose.yaml` (no GPU, hub as aggregator
   only). Quick start lists all three as parallel curl recipes.
 - **`HUB_HOSTNAME` env override** for the hub's displayed hostname.
   Wins over the bind-mount auto-detection — useful when

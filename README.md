@@ -76,39 +76,43 @@ echo "HOST_IP=$(hostname -I | awk '{print $1}')" >> .env
 # echo "TZ=Europe/Paris"       >> .env
 ```
 
-### Step 2: grab the `docker-compose.yaml`
+### Step 2: grab `compose.yaml`
 
-Pick the one that matches your vendor — they're equivalent except the
-NVIDIA one enables the NVIDIA Container Toolkit passthrough by default,
-the AMD one bind-mounts `/opt/rocm` and the device nodes, and the
-vendor-neutral one ships neither (use it when the hub is a pure
-aggregator for remote agents, no local GPU).
+Since v0.5.0 there is a **single** compose file. The vendor is picked
+via the `COMPOSE_PROFILES` env (line in `.env`) so the same file
+works on NVIDIA, AMD, or aggregator-only hosts:
 
 ```bash
-# NVIDIA host — toolkit passthrough enabled out of the box
-curl -fsSL -o docker-compose.yaml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.nvidia.yaml
-
-# AMD host — see the dedicated section below for the AMD-specific recipe
-curl -fsSL -o docker-compose.yaml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.amd.yaml
-
-# No local GPU (hub as remote-agent aggregator)
-curl -fsSL -o docker-compose.yaml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.yaml
+curl -fsSL -o compose.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/compose.yaml
 ```
 
-All three pull the same `ghcr.io/erreur32/gpuviewr:latest` image,
-expose the dashboard on `${DASHBOARD_PORT}`, persist SQLite under
-`./data`, and bind-mount the host `/proc` read-only so GPU process
-names resolve correctly without sharing the host PID namespace.
+Then in your `.env`:
 
-Browse the files directly on GitHub to see exactly what gets pulled —
-they're short and heavily commented:
+```env
+COMPOSE_PROFILES=nvidia      # or: amd, or empty (= aggregator-only)
+```
 
-- [`docker-compose.nvidia.yaml`](docker-compose.nvidia.yaml) (NVIDIA host)
-- [`docker-compose.amd.yaml`](docker-compose.amd.yaml) (AMD host)
-- [`docker-compose.yaml`](docker-compose.yaml) (vendor-neutral / aggregator)
+The `compose.yaml` defines three services — `hub` (always started),
+`agent-nvidia` (started when `COMPOSE_PROFILES=nvidia`), and
+`agent-amd` (when `COMPOSE_PROFILES=amd`). Only one of the two
+sidecar services exists at runtime; they share the same container
+name so you can switch vendors by editing `.env` and re-running
+`docker compose up -d`.
+
+> **Easier**: skip Step 1 + Step 2 entirely and let `install.sh`
+> auto-detect everything:
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
+> ```
+
+Browse the file directly on GitHub to see exactly what gets pulled —
+it's short and heavily commented:
+
+- [`compose.yaml`](compose.yaml) (hub + nvidia/amd sidecars via profiles)
+- [`compose.agent.nvidia.yaml`](compose.agent.nvidia.yaml) (remote NVIDIA agent — different host than the hub)
+- [`compose.agent.amd.yaml`](compose.agent.amd.yaml) (remote AMD agent)
 
 > **Process names — alternative.** If you prefer the simpler model, drop
 > the `/proc:/host/proc:ro` mount + `HOST_PROC` env and add `pid: host`
@@ -299,7 +303,7 @@ You only need agents if you want to monitor _other_ machines.
    > on the hub side. Run `npm run build:agent` once after a fresh clone
    > to build it; the Docker hub image bundles it automatically.
 
-A drop-in [`docker-compose.agent.yaml`](docker-compose.agent.yaml) is
+A drop-in [`compose.agent.nvidia.yaml`](compose.agent.nvidia.yaml) is
 provided at the repo root for users who prefer compose, and a bare-metal
 systemd path (Node SEA binary) is documented in
 [`agent/README.md`](agent/README.md) for hosts without Docker.
@@ -342,8 +346,8 @@ getent group video render          # note the GIDs (Debian: 44 / 109)
 
 # 2. New folder, grab the compose, write the .env.
 mkdir gpuviewr && cd gpuviewr
-curl -fsSL -o docker-compose.amd.yaml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.amd.yaml
+curl -fsSL -o compose.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/compose.yaml
 cat > .env <<EOF
 JWT_SECRET=$(openssl rand -base64 32)
 DASHBOARD_PORT=7510
@@ -354,8 +358,8 @@ TZ=Europe/Paris
 EOF
 
 # 3. Up.
-docker compose -f docker-compose.amd.yaml up -d
-docker compose -f docker-compose.amd.yaml logs -f
+docker compose -f compose.yaml up -d
+docker compose -f compose.yaml logs -f
 ```
 
 UI on `http://<your-box>:7510` — first user becomes admin.
@@ -373,8 +377,8 @@ rocm-smi --showid --json
 #    AGENT_TOKEN (printed once by Settings → Hosts → + Add host on
 #    the hub).
 mkdir gpuviewr-agent && cd gpuviewr-agent
-curl -fsSL -o docker-compose.agent.amd.yaml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.agent.amd.yaml
+curl -fsSL -o compose.agent.amd.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/compose.agent.amd.yaml
 # Edit .env with the values copied from the hub UI:
 cat > .env <<EOF
 HUB_URL=wss://gpu.example.com/agent
@@ -382,7 +386,7 @@ HOST_ID=<uuid-from-hub>
 AGENT_TOKEN=<token-from-hub>
 EOF
 
-docker compose -f docker-compose.agent.amd.yaml up -d
+docker compose -f compose.agent.amd.yaml up -d
 ```
 
 Both compose files bind-mount the host's `/opt/rocm` tree (rocm-smi
@@ -421,10 +425,10 @@ either:
 ```bash
 # 1. (Recommended) Refresh your compose to the latest with the
 #    /etc/hostname bind-mount baked in:
-curl -fsSL -o docker-compose.amd.yaml \
-  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.amd.yaml
-docker compose -f docker-compose.amd.yaml down
-docker compose -f docker-compose.amd.yaml up -d
+curl -fsSL -o compose.yaml \
+  https://raw.githubusercontent.com/Erreur32/GpuViewR/main/compose.yaml
+docker compose -f compose.yaml down
+docker compose -f compose.yaml up -d
 
 # 2. (Workaround) Pin the hostname explicitly via .env — wins over
 #    any auto-detection, no compose change needed:

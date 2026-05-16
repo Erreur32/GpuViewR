@@ -1,0 +1,149 @@
+# ===========================================
+# GpuViewR — master compose (v0.5+)
+# ===========================================
+#
+# Single compose file for the master/host. The hub is vendor-neutral
+# since v0.5 — local GPU monitoring is handled by a sidecar agent
+# selected via COMPOSE_PROFILES (nvidia / amd / empty for aggregator-
+# only mode). install.sh writes that variable into .env so
+# `docker compose up -d` just works without flags.
+#
+# Quickstart (recommended):
+#   curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
+#
+# Manual:
+#   1. wget -O compose.yaml https://raw.githubusercontent.com/.../compose.yaml
+#   2. cat > .env <<EOF
+#      JWT_SECRET=$(openssl rand -base64 32)
+#      LOCAL_AGENT_BOOTSTRAP=$(openssl rand -base64 32)
+#      HOST_IP=$(hostname -I | awk '{print $1}')
+#      HUB_HOSTNAME=$(hostname)
+#      DASHBOARD_PORT=7510
+#      TZ=Europe/Paris
+#      COMPOSE_PROFILES=nvidia       # or: amd, or empty
+#      EOF
+#   3. docker compose up -d
+# ===========================================
+
+services:
+  # Vendor-neutral hub. Always started. No GPU code, no python3, no
+  # /dev/* devices — just REST + WS + SQLite + UI.
+  hub:
+    image: ghcr.io/erreur32/gpuviewr:latest
+    container_name: gpuviewr-hub
+    restart: unless-stopped
+
+    ports:
+      - "${DASHBOARD_PORT:-7510}:3015"
+
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      # Shared-secret used by the sidecar agent for bootstrap auth.
+      # Leave empty to disable the local sidecar path (aggregator-only).
+      LOCAL_AGENT_BOOTSTRAP: ${LOCAL_AGENT_BOOTSTRAP:-}
+      PORT: 3015
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
+      CONTAINER_NAME: gpuviewr-hub
+      HOST_IP: ${HOST_IP:-}
+      TZ: ${TZ:-Europe/Paris}
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+      # Resolve real host hostname inside the container.
+      HOST_PROC: /host/proc
+      HOST_ETC: /host/etc
+      # Optional explicit override (wins over /host/etc/hostname):
+      # HUB_HOSTNAME: my-server
+
+    volumes:
+      - ./data:/app/data
+      - /proc:/host/proc:ro
+      - /etc/hostname:/host/etc/hostname:ro
+
+    networks: [gpuviewr]
+
+    cap_drop: [ALL]
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # NVIDIA sidecar — only started when COMPOSE_PROFILES contains "nvidia".
+  # On an AMD host this service is invisible to Docker, so the
+  # `runtime: nvidia` line below doesn't trip the daemon.
+  agent-nvidia:
+    image: ghcr.io/erreur32/gpuviewr-agent:latest
+    container_name: gpuviewr-agent-local
+    restart: unless-stopped
+    profiles: [nvidia]
+    depends_on:
+      hub:
+        condition: service_healthy
+    environment:
+      HUB_URL: ws://hub:3015/agent
+      AGENT_TOKEN: ${LOCAL_AGENT_BOOTSTRAP}
+      HOST_ID: local
+      AGENT_LABEL: ${HUB_HOSTNAME:-master}
+      GPU_VENDOR: nvidia
+      TZ: ${TZ:-Europe/Paris}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    networks: [gpuviewr]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility]
+    runtime: nvidia
+
+  # AMD sidecar — only started when COMPOSE_PROFILES contains "amd".
+  # Identical container_name as agent-nvidia → only one of the two ever
+  # exists at runtime, no conflict.
+  agent-amd:
+    image: ghcr.io/erreur32/gpuviewr-agent:latest
+    container_name: gpuviewr-agent-local
+    restart: unless-stopped
+    profiles: [amd]
+    depends_on:
+      hub:
+        condition: service_healthy
+    environment:
+      HUB_URL: ws://hub:3015/agent
+      AGENT_TOKEN: ${LOCAL_AGENT_BOOTSTRAP}
+      HOST_ID: local
+      AGENT_LABEL: ${HUB_HOSTNAME:-master}
+      GPU_VENDOR: amd
+      ROCM_SMI_PATH: /opt/rocm/bin/rocm-smi
+      # Without LD_LIBRARY_PATH the rocm-smi Python script can't find
+      # librocm_smi64.so.1 and exits 0 with empty stdout — silent
+      # no-data symptom. /etc/ld.so.conf.d/rocm.conf isn't in the
+      # container so we point the loader at the bind-mounted lib dirs.
+      LD_LIBRARY_PATH: /opt/rocm/lib:/opt/rocm/lib64
+      TZ: ${TZ:-Europe/Paris}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    # Debian default GIDs (video=44, render=109). ROCm-installed boxes
+    # may shift render to 992 — override in .env if `getent group render`
+    # disagrees.
+    group_add:
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-109}"
+    volumes:
+      - /opt/rocm:/opt/rocm:ro
+    networks: [gpuviewr]
+
+networks:
+  gpuviewr:
+    driver: bridge
