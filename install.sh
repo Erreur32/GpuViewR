@@ -24,7 +24,22 @@ else
   R=""; B=""; G=""; Y=""; C=""; RED=""
 fi
 
-INSTALL_DIR="${GPUVIEWR_INSTALL_DIR:-$HOME/gpuviewr}"
+# Install dir resolution, in priority order:
+#   1. GPUVIEWR_INSTALL_DIR env  → explicit override, always wins.
+#   2. $PWD if it looks intentional → user has cd'd into a dir they
+#      chose (mkdir /home/docker/gpuviewr && cd into it, etc.). We
+#      respect it. The "looks intentional" filter excludes places that
+#      are usually the SSH landing point or session scratch, not where
+#      you'd want a service install:
+#          /  $HOME  /root  /tmp
+#   3. $HOME/gpuviewr → legacy default for the lazy curl|bash case.
+if [ -n "${GPUVIEWR_INSTALL_DIR:-}" ]; then
+  INSTALL_DIR="$GPUVIEWR_INSTALL_DIR"
+elif [ "$PWD" = "/" ] || [ "$PWD" = "$HOME" ] || [ "$PWD" = "/tmp" ] || [ "$PWD" = "/root" ]; then
+  INSTALL_DIR="$HOME/gpuviewr"
+else
+  INSTALL_DIR="$PWD"
+fi
 BRANCH="${GPUVIEWR_BRANCH:-main}"
 RAW_URL="https://raw.githubusercontent.com/Erreur32/GpuViewR/${BRANCH}"
 
