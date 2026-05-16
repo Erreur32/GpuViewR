@@ -1,38 +1,40 @@
-release: v0.5.3 — install_mode detection + opt-in WS auto-update
+release: v0.6.0 — sysfs-direct AMD GPU backend + processes throttling
 
-Minor release that closes the "double agent" footgun and ships the
-mechanism to keep bare-metal agents in sync automatically.
+Performance release for AMD agents. GPU samples no longer spawn
+rocm-smi on the hot path — the new sysfs backend reads
+/sys/class/drm/card*/device/ directly, cutting per-tick wall time
+from ~80-130 ms to under 1 ms. On idle AMD hosts this drops the
+agent's CPU baseline from ~0.2-0.4 core to near-zero.
 
 Added
-- Agent declares its install_mode (docker / systemd / unknown) in
-  the hello frame. Hub stores it per host (new hosts.install_mode
-  column, idempotent ALTER TABLE migration). The Hosts tab "Update"
-  pill now shows ONLY the recipe matching the remote — running the
-  bare-metal curl on a Docker host used to spin up a second agent
-  in parallel. Pre-v0.5.3 agents that can't report their mode get
-  both recipes in the tooltip with an explicit warning.
-- Opt-in WebSocket auto-update for systemd hosts. New per-host
-  toggle (circular-arrows icon next to Rotate/Delete) flips
-  hosts.auto_update. When ON for a bare-metal host trailing the hub,
-  the hub pushes the new agent.mjs as base64 + SHA256 over the
-  existing WS at hello time. Agent verifies the checksum, writes
-  /opt/gpuviewr-agent/agent.mjs.new, fsyncs, renames atomically,
-  exits → systemd Restart= picks up the new binary. 5 min cooldown
-  per host prevents crash-loop amplification. Off by default —
-  flipping it grants the hub binary-execute authority on the remote.
-  Docker hosts excluded (read-only image layer).
+- Sysfs-direct GPU collector for AMD (createAmdgpuSysfsCollector).
+  Discovers amdgpu cards via /sys/class/drm/card*/device/uevent
+  (filters out connector entries and cards bound to other drivers),
+  reads gpu_busy_percent, mem_info_vram_{used,total}, pp_dpm_sclk
+  (active level), hwmon temp1_input + power1_average. Reuses the
+  rocm parsers' DEVICE_NAMES table and ROCm-${pciBus} uuid scheme
+  so the UI's per-process React keys stay stable across the switch.
+- GPU_BACKEND env (auto|sysfs|rocm-smi, default auto). Probes sysfs
+  first and falls back to the legacy rocm-smi collector only if no
+  amdgpu card is discovered — safe upgrade for hosts where /sys is
+  masked or the driver isn't loaded.
+- PROCESSES_TICK_MS env (AMD only). Decouples rocm-smi --showpids
+  cadence from TICK_MS. Default max(2000ms, TICK_MS * 2) halves the
+  Python-script cost on the process collector path while keeping
+  the process list refresh visibly snappy.
 
-Validation
-- typecheck clean (5 pre-existing errors not touched)
-- hub + agent build green (agent bundle 163.5 KB)
-- 19/22 server tests pass (3 pre-existing v0.4→v0.5 migration
-  failures, not touched)
-- No new SonarCloud-flagged patterns; commit 13a4d0c green on
-  Sonar / CodeQL / Snyk before tagging
+Changed
+- docker-compose.agent.amd.yaml documents the new env vars and
+  notes that /opt/rocm is only needed when FEATURES=processes is
+  enabled. The sysfs path requires only the amdgpu kernel driver.
+- README pre-requisites for AMD updated accordingly.
+- createRocmGpuCollector gained an inflight guard (same pattern as
+  processesRocm) to prevent tick pile-up if a slow rocm-smi call
+  momentarily exceeds TICK_MS.
 
-Upgrade
-- Hub: docker compose pull && docker compose up -d on the master.
-- Bare-metal agents: re-run install.sh from the hub (idempotent),
-  or enable auto-update once and let the next push happen.
-- Docker agents: docker compose pull && docker compose up -d in
-  the agent's compose dir.
+Tests
+- 8 new tests (agent/src/collectors/gpuAmdgpuSysfs.test.ts): card
+  discovery filtering, pp_dpm_sclk active-level parsing, uevent
+  parsing, full sample mapping with a fake /sys tree (Strix Halo
+  device IDs).
+- New parseGpuBackend tests in config.test.ts.

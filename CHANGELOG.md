@@ -5,6 +5,36 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-16
+
+### Added
+
+- **Sysfs-direct AMD GPU backend.** The agent now reads GPU samples
+  (temperature, utilization, VRAM, clock, power) straight from
+  `/sys/class/drm/card*/device/` instead of spawning `rocm-smi` every
+  tick. `rocm-smi` is a Python script that loads `librocm_smi64.so`
+  via ctypes per call (~80-130 ms wall, ~50-80 ms CPU at 100 %); the
+  sysfs path takes < 1 ms. On a 1 Hz tick this drops the AMD agent's
+  CPU baseline from ~0.2-0.4 core to near-zero on idle hosts.
+- **`GPU_BACKEND` env var (AMD only).** Defaults to `auto`: probe
+  sysfs first, fall back to `rocm-smi` if `/sys/class/drm` exposes no
+  amdgpu card. `sysfs` forces the cheap path; `rocm-smi` keeps the
+  legacy collector. NVIDIA path is unchanged.
+- **`PROCESSES_TICK_MS` env var (AMD only).** Decouples the
+  `rocm-smi --showpids` cadence from `TICK_MS`. Defaults to
+  `max(2000ms, TICK_MS × 2)` — halves the legacy 1 Hz CPU cost while
+  keeping the process list visibly fresh.
+
+### Changed
+
+- The AMD compose stub now documents the new env vars and notes that
+  ROCm at `/opt/rocm` is only required when `FEATURES` includes
+  `processes`. The sysfs backend works with just the amdgpu kernel
+  driver, no userland ROCm needed.
+- `createRocmGpuCollector` gained the same `inflight` guard that
+  `processesRocm` already had — prevents tick pile-up if a slow
+  `rocm-smi` call momentarily exceeds `TICK_MS`.
+
 ## [0.5.3] - 2026-05-16
 
 ### Added
