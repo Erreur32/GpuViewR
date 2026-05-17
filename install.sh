@@ -35,10 +35,13 @@ fi
 #   3. $HOME/gpuviewr → legacy default for the lazy curl|bash case.
 if [ -n "${GPUVIEWR_INSTALL_DIR:-}" ]; then
   INSTALL_DIR="$GPUVIEWR_INSTALL_DIR"
+  INSTALL_REASON="from \$GPUVIEWR_INSTALL_DIR"
 elif [ "$PWD" = "/" ] || [ "$PWD" = "$HOME" ] || [ "$PWD" = "/tmp" ] || [ "$PWD" = "/root" ]; then
   INSTALL_DIR="$HOME/gpuviewr"
+  INSTALL_REASON="default — \$PWD '$PWD' is a session landing dir; cd into a target dir or set GPUVIEWR_INSTALL_DIR=… to override"
 else
   INSTALL_DIR="$PWD"
+  INSTALL_REASON="from current \$PWD"
 fi
 BRANCH="${GPUVIEWR_BRANCH:-main}"
 RAW_URL="https://raw.githubusercontent.com/Erreur32/GpuViewR/${BRANCH}"
@@ -47,6 +50,8 @@ echo ""
 echo -e "${C}${B}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${R}"
 echo -e "${C}${B}  GpuViewR — master install${R}"
 echo -e "${C}${B}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${R}"
+echo ""
+echo -e "  ${C}Install directory:${R} ${B}${INSTALL_DIR}${R}  ${Y}(${INSTALL_REASON})${R}"
 echo ""
 
 # ── Preflight ────────────────────────────────────────────────────────────────

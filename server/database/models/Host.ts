@@ -45,6 +45,17 @@ export interface HostRecord {
   enrolled_at: number;
   last_seen: number | null;
   status: HostStatus;
+  /** Unix epoch seconds. Updated every scheduler tick that considers
+   *  this host (whether or not a push happens). NULL until the first
+   *  tick after v0.6.5 boot. Drives the "last checked Xm ago" tooltip. */
+  last_update_check_at: number | null;
+  /** Unix epoch seconds of the last successful agent_update push (auto
+   *  or force). NULL means we've never pushed. Survives hub restarts —
+   *  bootstraps the in-memory cooldown map at startup. */
+  last_update_pushed_at: number | null;
+  /** Hub version that was pushed at last_update_pushed_at. NULL if
+   *  never pushed. Lets the UI show "v0.6.3 → v0.6.4" in the tooltip. */
+  last_update_pushed_version: string | null;
 }
 
 export interface HostInsertInput {
@@ -77,7 +88,10 @@ CREATE TABLE IF NOT EXISTS hosts (
   protocol_ver  INTEGER NOT NULL DEFAULT 1,
   enrolled_at   INTEGER NOT NULL,
   last_seen     INTEGER,
-  status        TEXT NOT NULL DEFAULT 'pending'
+  status        TEXT NOT NULL DEFAULT 'pending',
+  last_update_check_at       INTEGER,
+  last_update_pushed_at      INTEGER,
+  last_update_pushed_version TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_hosts_status ON hosts(status);
@@ -143,13 +157,16 @@ export const HostsRepo = {
         `UPDATE hosts SET
            label = ?, hostname = ?, kind = ?, endpoint = ?, token_hash = ?,
            capabilities = ?, agent_version = ?, install_mode = ?, auto_update = ?,
-           protocol_ver = ?, last_seen = ?, status = ?
+           protocol_ver = ?, last_seen = ?, status = ?,
+           last_update_check_at = ?, last_update_pushed_at = ?, last_update_pushed_version = ?
          WHERE id = ?`,
       )
       .run(
         m.label, m.hostname, m.kind, m.endpoint, m.token_hash,
         m.capabilities, m.agent_version, m.install_mode, m.auto_update,
-        m.protocol_ver, m.last_seen, m.status, id,
+        m.protocol_ver, m.last_seen, m.status,
+        m.last_update_check_at, m.last_update_pushed_at, m.last_update_pushed_version,
+        id,
       );
     return this.findById(id);
   },

@@ -378,6 +378,27 @@ function AutoUpdateToggle({
   const titleKey = supported
     ? (enabled ? 'hosts.auto_update_on' : 'hosts.auto_update_off')
     : 'hosts.auto_update_unsupported';
+  // Build a multi-line tooltip suffix with the scheduler state when
+  // auto_update is on. \n renders as newline in browser native tooltips
+  // since Chrome 100+ / Firefox 89+. Falls back gracefully on older
+  // browsers (newline shown as space).
+  const titleSuffix = (() => {
+    if (!supported || !enabled) return '';
+    const nowSec = Math.floor(Date.now() / 1000);
+    const parts: string[] = [];
+    if (host.last_update_check_at) {
+      parts.push(`\n${t('hosts.auto_update_last_check', { ago: formatRelative(nowSec - host.last_update_check_at) })}`);
+    } else {
+      parts.push(`\n${t('hosts.auto_update_never_checked')}`);
+    }
+    if (host.last_update_pushed_at && host.last_update_pushed_version) {
+      parts.push(`\n${t('hosts.auto_update_last_push', {
+        version: host.last_update_pushed_version,
+        ago: formatRelative(nowSec - host.last_update_pushed_at),
+      })}`);
+    }
+    return parts.join('');
+  })();
   const onClick = async () => {
     if (!supported) return;
     try {
@@ -390,7 +411,7 @@ function AutoUpdateToggle({
   return (
     <button
       type="button"
-      title={t(titleKey)}
+      title={t(titleKey) + titleSuffix}
       onClick={onClick}
       disabled={!supported}
       aria-pressed={enabled}

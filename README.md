@@ -57,10 +57,41 @@ curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh |
 ```
 
 `install.sh` auto-detects your GPU vendor (NVIDIA / AMD / none), pulls
-`docker-compose.yaml` into `~/gpuviewr/`, generates a `.env` with
-random JWT + bootstrap secret + LAN IP, and starts the stack. Done.
+`docker-compose.yaml` into the install directory (see below), generates
+a `.env` with random JWT + bootstrap secret + LAN IP, and starts the
+stack. Done.
 
 Open `http://<your-host-ip>:7510` — first user becomes admin.
+
+### Where it installs
+
+The script picks the destination directory in this order:
+
+1. **`GPUVIEWR_INSTALL_DIR`** env var — explicit override, always wins.
+2. **Current `$PWD`** — respected unless it's a session landing dir
+   (`/`, `$HOME`, `/root`, `/tmp` — places nobody actually means as
+   their service install dir).
+3. **Fallback:** `$HOME/gpuviewr` — the lazy `curl | bash` default.
+
+The script logs the chosen directory at startup, e.g.:
+`Install directory: /root/gpuviewr (default — $PWD '/root' is a session landing dir; …)`.
+
+Examples:
+
+```bash
+# FHS-friendly, under /opt
+mkdir -p /opt/gpuviewr && cd /opt/gpuviewr
+curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
+
+# One-liner with explicit override
+GPUVIEWR_INSTALL_DIR=/srv/gpuviewr curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
+
+# Lazy default — lands in $HOME/gpuviewr (= /root/gpuviewr for root)
+curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
+```
+
+Re-running on an existing install is idempotent: it preserves your
+`.env` (secrets stay), pulls the latest compose, restarts the stack.
 
 <details>
 <summary>Manual install (if you'd rather not curl-pipe-bash)</summary>
@@ -173,12 +204,24 @@ Got another machine with a GPU you want monitored by the same hub?
 2. On the remote machine, run:
 
 ```bash
-curl -fsSL https://<your-hub>/install.sh | sudo bash -s -- \
-  --url https://<your-hub> \
+curl -fsSL http://<your-hub>:7510/install.sh | sudo bash -s -- \
+  --url http://<your-hub>:7510 \
   --token <host_id>.<secret>
 ```
 
-(The hub serves the agent install script directly. Works on Debian/Ubuntu/RHEL/Rocky/Alma/Fedora; installs Node 22 if missing, sets up a systemd unit.)
+The hub serves the agent install script directly. Works on
+Debian/Ubuntu/RHEL/Rocky/Alma/Fedora; installs Node 22 if missing,
+sets up a systemd unit at `/opt/gpuviewr-agent/`.
+
+**`--url` accepts both schemes** (since v0.6.4): `http://`, `https://`,
+`ws://`, `wss://` — the script normalises both forms internally
+(curl can't speak `ws://`, so it converts to `http://` for the
+bundle download, and back to `ws://` for the agent's runtime env).
+
+**Token format:** `<host_id>.<secret>` — the Add Host modal builds it
+for you, just copy the whole line. If you only have a bare token
+(e.g. one you rotated), prefix it manually with `<host_id>.` from
+the hub UI before pasting.
 
 **Docker alternative**: pull `docker-compose.agent.nvidia.yaml` or
 `docker-compose.agent.amd.yaml` from this repo onto the remote, fill
@@ -198,18 +241,35 @@ so a slow hub doesn't gate samples to the others.
 
 ### Auto-update (bare-metal only)
 
-For bare-metal (systemd) agents, you can flip the **Auto-update**
-toggle in Settings → Hosts (the circular arrows icon next to
-Rotate / Delete). After that, whenever the hub is upgraded, the
-new `agent.mjs` is pushed down the existing WS at the next
-reconnect, written atomically to `/opt/gpuviewr-agent/agent.mjs`,
-and systemd restarts the agent on a verified SHA256 match.
+For bare-metal (systemd) agents, flip the **Auto-update** toggle in
+Settings → Hosts (the circular arrows icon next to Rotate / Delete).
+Once enabled, the hub pushes a new `agent.mjs` over the existing WS
+in two cases:
+
+- **At agent reconnect** (WS hello) — fires immediately when the
+  agent's version is older than the hub's.
+- **On a periodic scheduler tick** (v0.6.5+) — default every hour,
+  configurable via `AUTO_UPDATE_CHECK_INTERVAL_MS` env on the hub.
+  Catches agents that are stably connected and would otherwise
+  never see a new release.
+
+The bundle is verified against the hub-provided SHA256, written
+atomically to `/opt/gpuviewr-agent/agent.mjs` (the systemd unit
+ships with `ReadWritePaths=/opt/gpuviewr-agent` for this), and the
+agent calls `exit(0)`. `Restart=always` brings it back on the new
+binary. A 5-minute cooldown protects against crash-loop pile-up
+(configurable via `AUTO_UPDATE_COOLDOWN_MS`).
+
+The Auto-update toggle's tooltip surfaces the scheduler state per
+host: "Last check: 12m ago" / "Last push: → 0.6.5 (3h ago)". For
+an on-demand push (bypassing all gates), use the **Update now**
+button (download-cloud icon) — same row.
 
 Off by default — flipping it on gives the hub binary-execute
-authority on the remote machine, so it has to be a conscious
-admin decision. Docker agents update through `docker compose pull
-&& up -d` instead (their bundle lives in the read-only image
-layer, not a writable file, so the same trick doesn't apply).
+authority on the remote machine, so it has to be a conscious admin
+decision. Docker agents update through `docker compose pull && up -d`
+instead (their bundle lives in the read-only image layer, not a
+writable file, so the same trick doesn't apply).
 
 ---
 

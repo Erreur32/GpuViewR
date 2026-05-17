@@ -37,6 +37,16 @@ export interface HostRecord {
   enrolled_at: number;
   last_seen: number | null;
   status: HostStatus;
+  /** Unix epoch seconds of the last time the periodic scheduler
+   *  considered this host (v0.6.5+). NULL on rows that predate the
+   *  scheduler or that have never been ticked. Drives the
+   *  AutoUpdateToggle tooltip's "last check Xm ago" line. */
+  last_update_check_at: number | null;
+  /** Unix epoch seconds of the last successful agent_update push
+   *  (auto or force). NULL = never pushed. */
+  last_update_pushed_at: number | null;
+  /** Hub version pushed at last_update_pushed_at. NULL if never. */
+  last_update_pushed_version: string | null;
 }
 
 export const LOCAL_HOST_ID = 'local';

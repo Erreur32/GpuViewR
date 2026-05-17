@@ -5,6 +5,51 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5] - 2026-05-17
+
+### Added
+
+- **Periodic auto-update scheduler for systemd agents.** Until now
+  the hub's auto-update only fired at WS hello, so an agent that
+  stayed connected for weeks never saw a new release unless an
+  admin clicked "Update now". A new background scheduler ticks
+  every hour (configurable via `AUTO_UPDATE_CHECK_INTERVAL_MS`),
+  iterates `auto_update=1 + install_mode=systemd + connected`
+  hosts, and calls the existing `maybePushAutoUpdate` so the four
+  gate checks (opt-in, install_mode, isOlder, cooldown) stay in
+  one place. First tick is delayed 30 s after boot to let fresh
+  agents complete their welcome handshake first.
+- **Persistent auto-update state.** Three new columns on `hosts`:
+  `last_update_check_at`, `last_update_pushed_at`,
+  `last_update_pushed_version`. Survive hub restarts and bootstrap
+  the in-memory cooldown map at `setupAgentIngestWS` time — a hub
+  bounce no longer re-pushes the bundle to every agent that
+  immediately reconnects.
+- **Auto-update tooltip in Settings → Hosts.** The auto_update
+  toggle now shows "Last check: Xm ago" and "Last push: → vN
+  (Xm ago)" on hover, with full i18n (FR + EN).
+- **Configurable cooldown.** `AUTO_UPDATE_COOLDOWN_MS` env var,
+  default 5 min (unchanged). Lower it to test the scheduler
+  end-to-end without waiting 5 minutes between iterations.
+
+### Changed
+
+- **Hub install.sh now logs the resolved INSTALL_DIR** at startup
+  with the reason it picked that path (env var / `$PWD` / default
+  fallback). Catches `cd /opt && curl|bash` → "dumped loose in
+  /opt" before the user notices.
+- **README install section rewritten.** New "Where it installs"
+  subsection with the 3-rule resolution + concrete examples.
+  Agent install section clarified: `--url` accepts http(s) and
+  ws(s) interchangeably (since v0.6.4), and token format gotchas
+  spelled out.
+
+### Upgrade
+
+- Hub: `docker compose pull && docker compose up -d`. The DB
+  migration adds 3 columns idempotently — no manual step.
+- Agents: no change required.
+
 ## [0.6.4] - 2026-05-17
 
 ### Fixed

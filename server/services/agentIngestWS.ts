@@ -33,8 +33,13 @@ const LAST_SEEN_THROTTLE_MS = 1000;
 const PROTOCOL_VER = 1;
 /** Cooldown between auto-update pushes to the same host. Stops a hard
  *  crash-loop on the remote (agent crashes → systemd restarts → hello
- *  with same old version → another push) from saturating the WS. */
-const AUTO_UPDATE_COOLDOWN_MS = 5 * 60_000;
+ *  with same old version → another push) from saturating the WS.
+ *  Configurable via AUTO_UPDATE_COOLDOWN_MS env (default 5 min) — bumping
+ *  it down to e.g. 60s is useful for testing the v0.6.5 scheduler. */
+const AUTO_UPDATE_COOLDOWN_MS = (() => {
+  const raw = Number.parseInt(process.env.AUTO_UPDATE_COOLDOWN_MS ?? '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 5 * 60_000;
+})();
 /** Hard cap on the bundle base64 payload size. Real bundles are
  *  ~215 KB; 2 MB is comfortable headroom and refuses anything absurd
  *  if the build pipeline goes wrong. */
@@ -184,8 +189,26 @@ const lastPushedAtMs = new Map<string, number>();
 /** Live WebSocket registry, keyed by canonical host_id (set after auth).
  *  Lets the REST API push agent_update frames out-of-band — without it,
  *  the only path to send is the closure inside handleConnection. Cleared
- *  on close so a stale socket can't accidentally receive a push. */
-const liveAgentSockets = new Map<string, WebSocket>();
+ *  on close so a stale socket can't accidentally receive a push.
+ *  Exported so the v0.6.5 auto-update scheduler can iterate connected
+ *  hosts without re-implementing the auth/lifecycle bookkeeping here. */
+export const liveAgentSockets = new Map<string, WebSocket>();
+
+/** Populate lastPushedAtMs from the DB at boot so the cooldown survives
+ *  hub restarts. Without this, a hub bounce immediately re-pushes the
+ *  same bundle on every reconnect (one push per agent), which on a fleet
+ *  of N hosts means N × bundle_size egress for nothing. Called once
+ *  during setupAgentIngestWS. */
+function bootstrapCooldownFromDb(): void {
+  let restored = 0;
+  for (const h of HostsRepo.list()) {
+    if (h.last_update_pushed_at) {
+      lastPushedAtMs.set(h.id, h.last_update_pushed_at * 1000);
+      restored++;
+    }
+  }
+  if (restored > 0) logger.info('agent', `Auto-update cooldown bootstrapped from DB: ${restored} host(s)`);
+}
 
 function loadBundle(hubVersion: string): CachedBundle | null {
   if (cachedBundle) return cachedBundle;
@@ -254,7 +277,8 @@ export function forceAgentUpdate(
 
   // Manual triggers still update the cooldown timestamp so the
   // post-restart hello doesn't immediately re-push on top of itself.
-  lastPushedAtMs.set(hostId, Date.now());
+  const nowMs = Date.now();
+  lastPushedAtMs.set(hostId, nowMs);
   logger.info(
     'agent',
     `Force-update push → ${host.id} (label=${host.label}, ${host.agent_version ?? '?'} → ${hubVersion}, ${bundle.size}B)`,
@@ -266,10 +290,18 @@ export function forceAgentUpdate(
     size: bundle.size,
     bundle_b64: bundle.base64,
   });
+  // Persist for the UI tooltip + cooldown survival across hub restarts.
+  HostsRepo.update(hostId, {
+    last_update_pushed_at: Math.floor(nowMs / 1000),
+    last_update_pushed_version: hubVersion,
+  });
   return { ok: true, version: hubVersion, size: bundle.size };
 }
 
-function maybePushAutoUpdate(ws: WebSocket, host: HostRecord, hubVersion: string): void {
+/** Exported so the v0.6.5 scheduler (server/services/agentUpdateScheduler.ts)
+ *  can re-use the exact same gate logic on its periodic tick — no risk of
+ *  the scheduler and the welcome-time path drifting apart. */
+export function maybePushAutoUpdate(ws: WebSocket, host: HostRecord, hubVersion: string): void {
   // Gate 1: opt-in.
   if (!host.auto_update) return;
   // Gate 2: bare-metal only — Docker agents can't rewrite a baked-in
@@ -287,7 +319,8 @@ function maybePushAutoUpdate(ws: WebSocket, host: HostRecord, hubVersion: string
   }
   const bundle = loadBundle(hubVersion);
   if (!bundle) return;
-  lastPushedAtMs.set(host.id, Date.now());
+  const nowMs = Date.now();
+  lastPushedAtMs.set(host.id, nowMs);
   logger.info(
     'agent',
     `Auto-update push → ${host.id} (label=${host.label}, ${host.agent_version} → ${hubVersion}, ${bundle.size}B)`,
@@ -299,6 +332,11 @@ function maybePushAutoUpdate(ws: WebSocket, host: HostRecord, hubVersion: string
     size: bundle.size,
     bundle_b64: bundle.base64,
   });
+  // Persist for the UI tooltip + cooldown survival across hub restarts.
+  HostsRepo.update(host.id, {
+    last_update_pushed_at: Math.floor(nowMs / 1000),
+    last_update_pushed_version: hubVersion,
+  });
 }
 
 /**
@@ -306,6 +344,12 @@ function maybePushAutoUpdate(ws: WebSocket, host: HostRecord, hubVersion: string
  * dispatched centrally in index.ts (see gpuStreamWS for the rationale).
  */
 export function setupAgentIngestWS(hubVersion: string): WebSocketServer {
+  // Bootstrap cooldown map BEFORE the WSS starts accepting connections.
+  // Otherwise a fast-reconnecting agent could welcome+isOlder before
+  // we'd loaded its last_update_pushed_at, and we'd re-push the bundle
+  // for free.
+  bootstrapCooldownFromDb();
+
   const wss = new WebSocketServer({ noServer: true });
 
   wss.on('connection', (ws, req) => {

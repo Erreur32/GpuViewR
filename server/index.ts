@@ -16,6 +16,7 @@ import { startRetentionJob } from './services/retentionJob.js';
 import { mockAgentSeeder } from './services/mockAgentSeeder.js';
 import { setupGpuWebSocket } from './services/gpuStreamWS.js';
 import { setupAgentIngestWS } from './services/agentIngestWS.js';
+import { startAutoUpdateScheduler } from './services/agentUpdateScheduler.js';
 import { startHostsWatchdog } from './services/hostsWatchdog.js';
 import { startAgentMetricsPersistor, stopAgentMetricsPersistor } from './services/agentMetricsPersistor.js';
 import { alertService } from './services/alertService.js';
@@ -145,6 +146,7 @@ async function bootstrap(): Promise<void> {
 
   mockAgentSeeder.start();
   startRetentionJob();
+  startAutoUpdateScheduler(readVersion());
   startHostsWatchdog();
   // Persists samples from agents (local sidecar + remote) to SQLite.
   // The hub no longer runs its own collector in v0.5+; all GPU samples

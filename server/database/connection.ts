@@ -169,6 +169,24 @@ function migrateMultiHost(database: Database.Database): void {
     database.exec('ALTER TABLE hosts ADD COLUMN auto_update INTEGER NOT NULL DEFAULT 0;');
     logger.success('DB', 'hosts.auto_update column added (default OFF).');
   }
+  // v0.6.5: auto-update bookkeeping for the periodic scheduler.
+  // Three nullable columns so existing rows stay NULL until the first
+  // scheduler tick / push touches them. Persisting last_update_pushed_at
+  // lets the in-memory cooldown survive hub restarts (bootstrapped at
+  // setupAgentIngestWS time), and the UI tooltip can show "last
+  // checked Xm ago" / "last pushed vA → vB".
+  if (!hostCols.some((c) => c.name === 'last_update_check_at')) {
+    database.exec('ALTER TABLE hosts ADD COLUMN last_update_check_at INTEGER;');
+    logger.success('DB', 'hosts.last_update_check_at column added.');
+  }
+  if (!hostCols.some((c) => c.name === 'last_update_pushed_at')) {
+    database.exec('ALTER TABLE hosts ADD COLUMN last_update_pushed_at INTEGER;');
+    logger.success('DB', 'hosts.last_update_pushed_at column added.');
+  }
+  if (!hostCols.some((c) => c.name === 'last_update_pushed_version')) {
+    database.exec('ALTER TABLE hosts ADD COLUMN last_update_pushed_version TEXT;');
+    logger.success('DB', 'hosts.last_update_pushed_version column added.');
+  }
 
   // -- gpu_metrics: ADD COLUMN host_id (legacy v0.2.x DB) — the
   //    host-prefixed index is created unconditionally below because
