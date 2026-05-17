@@ -81,7 +81,14 @@ fi
 [[ -n "$TOKEN"   ]] || die "Missing --token (printed once by the hub on enrollment)."
 
 # Token format: <host_id>.<secret>. The hub UI concatenates these so the
-# install line stays single-flag à la Beszel.
+# install line stays single-flag à la Beszel. A no-dot token typically
+# comes from copying just the rotated secret out of the UI (the v0.6.3
+# rotate-token endpoint returned only the secret half — fixed in v0.6.4
+# but old installs of the hub still ship the broken response). Detect
+# this explicitly so the failure mode is "die with a helpful message"
+# instead of "install with a garbage HOST_ID that silently never auths".
+[[ "$TOKEN" == *.* ]] \
+  || die "Invalid --token: missing '.'. Expected format <host_id>.<secret> from the hub's 'Add Host' modal. Got: $TOKEN"
 HOST_ID="${TOKEN%%.*}"
 SECRET="${TOKEN#*.}"
 HOST_ID="${HOST_ID#gpvr_}"  # tolerate a "gpvr_" prefix if the user pasted whole
@@ -179,10 +186,18 @@ fi
 install -d -m 0755 -o "$SERVICE_USER" -g "$SERVICE_USER" "$INSTALL_DIR"
 
 # ──────────────────────────────────────────────────────────────────────
+# Derive the HTTP form of the hub URL for the bundle download. curl can't
+# speak ws:// — passing it as-is yields "Empty reply from server". The
+# user can give us http(s):// or ws(s):// interchangeably; we normalize
+# both directions here so the downstream lines (download + env file)
+# never have to care which scheme the input used.
+HTTP_URL="${HUB_URL/#ws:/http:}"
+HTTP_URL="${HTTP_URL/#wss:/https:}"
+
 # Download bundle from the hub (the hub serves /agent.mjs)
 # ──────────────────────────────────────────────────────────────────────
-say "Downloading agent bundle from ${HUB_URL%/}/agent.mjs..."
-curl -fsSL --retry 3 -o "$BIN_PATH" "${HUB_URL%/}/agent.mjs"
+say "Downloading agent bundle from ${HTTP_URL%/}/agent.mjs..."
+curl -fsSL --retry 3 -o "$BIN_PATH" "${HTTP_URL%/}/agent.mjs"
 chmod 0644 "$BIN_PATH"
 chown "$SERVICE_USER:$SERVICE_USER" "$BIN_PATH"
 

@@ -5,6 +5,46 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-05-17
+
+### Fixed
+
+- **Install script: `--url ws://` produced "Empty reply from server".**
+  `curl` can't speak `ws://`, so the bundle download line was failing
+  silently when users passed the WS URL directly. The script now
+  derives the HTTP form (`ws→http`, `wss→https`) for the download
+  while keeping the WS form for the agent's env file. Both schemes
+  are now interchangeable as `--url` input.
+- **Install script: no-dot token installed silently with garbage
+  `HOST_ID`.** A token without a `.` separator (e.g. one copied from
+  the v0.6.3 `rotate-token` response) used to pass the existing
+  `HOST_ID != SECRET` check by accident, then the agent would
+  register with a wrong `host_id` and stay offline forever. Now the
+  script bails up-front with a clear "missing '.' — copy the line
+  from the Add Host modal" message.
+- **`POST /hosts/:id/rotate-token` returned an install-incompatible
+  token.** The response previously contained only the random secret
+  (`gpvr_<base64url>`), with no `host_id` prefix, while the install
+  script expects `<host_id>.<secret>` (the format the Add Host modal
+  produces at enrollment). Rotated tokens now ship the full
+  `<host_id>.<secret>` bundle, ready to paste into the install
+  command. The bcrypt hash is still computed on the raw secret half
+  — only the response payload changed.
+- **`scripts/update-version.sh` didn't bump `agent/package.json`.**
+  The agent build reads its own `package.json` to inject
+  `__AGENT_VERSION__`, so without this fix every release would ship
+  an agent bundle stamped with the previous version, making the hub
+  re-push the "newer" bundle on every reconnect until the cooldown
+  fired. The script now bumps `agent/package.json` alongside the
+  root `package.json` (and reports it in the summary).
+
+### Upgrade
+
+- Hub: `docker compose pull && docker compose up -d`.
+- Agents: no agent-side change in this release; agents stay on
+  v0.6.3 (or later) and reconnect normally. Future enrollments
+  benefit from the install-script fixes automatically.
+
 ## [0.6.3] - 2026-05-17
 
 ### Fixed

@@ -157,7 +157,11 @@ async function handleRotate(req: Request, res: Response): Promise<void> {
   const token = generateToken();
   const token_hash = await bcrypt.hash(token, SALT_ROUNDS);
   HostsRepo.update(cur.id, { token_hash });
-  res.json({ token });
+  // Return <host_id>.<token> so the rotated value is install-script
+  // compatible out of the box — matches the enroll modal's bundle
+  // format. The bcrypt hash is still computed on the raw secret half;
+  // the host_id prefix is just for UX (install.sh splits on the dot).
+  res.json({ token: `${cur.id}.${token}` });
 }
 
 /** Force-push the current hub bundle to a connected systemd agent.

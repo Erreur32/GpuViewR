@@ -133,6 +133,19 @@ else
   echo -e "  ${RED}✗${R} package.json                       ${RED}(file not found)${R}"
 fi
 
+# ── 1b. agent/package.json (separate workspace; its build reads pkg.version
+#       to inject __AGENT_VERSION__, so without this bump the released
+#       agent bundle would advertise the old version on every hello frame
+#       and the hub would keep trying to push the "newer" bundle every
+#       reconnect until cooldown.) ─────────────────────────────────────────
+AGENT_PKG="$REPO_ROOT/agent/package.json"
+if [ -f "$AGENT_PKG" ]; then
+  sedi "$AGENT_PKG" "s/\"version\": \"$CURRENT_ESC\"/\"version\": \"$NEW\"/"
+  echo -e "  ${G}✓${R} agent/package.json                 ${C}(\"version\": \"$NEW\")${R}"
+else
+  echo -e "  ${Y}○${R} agent/package.json                 ${Y}(not found, skipped)${R}"
+fi
+
 # ── 2. package-lock.json (root + packages.""."version") ─────────────────────
 if [ -f "$PACKAGE_LOCK" ]; then
   sedi "$PACKAGE_LOCK" "0,/\"version\": \"$CURRENT_ESC\"/s/\"version\": \"$CURRENT_ESC\"/\"version\": \"$NEW\"/"

@@ -1,53 +1,50 @@
-release: v0.6.3 — agent log spam, CPU spikes, and systemd auto-update
+release: v0.6.4 — install/enroll UX fixes
 
-Patch release fixing the four agent issues that combined to spam
-journals and burn CPU on systemd installs (worst-observed: 12% of a
-core sustained over 12h, ~10-minute EROFS + close 1008 cycle).
-Also makes the "Update now" button + auto-update genuinely
-functional on systemd hosts — until now they were both ornamental
-because of two unrelated systemd-unit defaults.
+Patch release closing the four install/enroll UX bugs surfaced
+during the .209 redeploy session (post v0.6.3). All four caused
+silent failures or confusing error messages that ate ~30 min of
+debug time before being root-caused. None changes agent runtime
+behavior, so existing agents stay on v0.6.3 and only new
+enrollments (or hub-side rotations) benefit.
 
 Fixed
-- EROFS on every agent_update. ProtectSystem=strict +
-  ReadWritePaths= rendered /opt/gpuviewr-agent read-only, so the
-  atomic writeFileSync('agent.mjs.new') always failed. Pre-check
-  with fs.accessSync(W_OK), warn once per session, then stay quiet.
-- NVIDIA process collector ticked at TICK_MS instead of
-  PROCESSES_TICK_MS. The variable existed and was correct for AMD
-  but the NVIDIA branch in agent/src/index.ts passed cfg.tickMs
-  instead. Halves nvidia-smi --query-compute-apps + pmon spawn rate.
-- Replay-storm close 1008 loop. Replay drained at REPLAY_CHUNK fps
-  while live samples kept being sent in parallel, combined > 100 fps
-  → hub close 1008 → reconnect → replay → same. New per-connection
-  `replaying` flag queues live samples behind the drain so the wire
-  never carries two concurrent streams.
-- Reconnect backoff reset to 1s on `open`, before the connection
-  had proven stable. A hub closing 1008 immediately after welcome
-  looped at 1s. New stableTimer resets only after 30s of uptime.
-- False boot WARN on docker-aliased hubs ("HUB_URL uses ws://
-  against a non-private host (hub)"). Validation now fires only
-  for IP literals that are actually public.
-
-Changed
-- agent/install.sh.tpl: Restart=on-failure → Restart=always.
-  The agent self-replaces its binary and exits 0; on-failure
-  treated that as success and left the service dead.
-- agent/install.sh.tpl: ReadWritePaths=${INSTALL_DIR}. Carves the
-  install dir out of ProtectSystem=strict so the atomic
-  writeFileSync + renameSync can land.
+- install.sh.tpl: `--url ws://...` produced `curl: (52) Empty
+  reply from server`. The download line is HTTP only (curl can't
+  speak ws://). Now derives HTTP_URL from any input scheme before
+  the download, keeps WS_URL for the agent env. Both http(s)://
+  and ws(s):// are now interchangeable as `--url` input.
+- install.sh.tpl: a token without a dot (e.g. a v0.6.3-style
+  rotated token) silently passed the existing HOST_ID != SECRET
+  check and installed with a wrong host_id that never authed
+  against the hub. New explicit `[[ "$TOKEN" == *.* ]]` guard
+  bails up-front with a "missing '.' — copy from Add Host modal"
+  message.
+- server/routes/hosts.ts: POST /hosts/:id/rotate-token now
+  returns `<host_id>.<token>` instead of just `<token>`, matching
+  the format the install script expects (same as the enroll
+  modal). Bcrypt hash is still computed on the raw secret half —
+  only the response payload changed.
+- scripts/update-version.sh: now bumps agent/package.json
+  alongside the root package.json. Without this, the agent build
+  was stamping the bundle with the OLD __AGENT_VERSION__, which
+  made the hub treat every agent reconnect as "out of date" and
+  re-push the same bundle until the 5-min cooldown fired. Had to
+  manually bump agent/package.json in v0.6.3; automatic from
+  v0.6.4 onward (this release still requires the manual bump
+  since the fix can't update its own predecessor).
 
 Why this matters
-- The two systemd-unit defaults silently broke auto-update from
-  v0.5.0 onward; the EROFS error in the journal looked like a
-  one-off but was actually a permanent regression hidden behind
-  the noise of the reconnect storm. With both fixed, "Update now"
-  becomes a real button on systemd, not just on Docker.
+- Each of the four bugs was a silent failure. The install script
+  errors were cryptic ("Empty reply from server") or absent ("the
+  service started but is offline forever, no clue why").
+  Together they made the "add a new host" workflow a coin flip
+  for anyone who didn't memorize the exact http:// + Add-Host-
+  modal-token combination. Now any path through the workflow
+  either succeeds or fails loudly.
 
 Upgrade
 - Hub: `docker compose pull && docker compose up -d`.
-- Agents on Docker: `docker compose pull && docker compose up -d`.
-- Agents on systemd: v0.6.2 cannot auto-update itself (the EROFS is
-  precisely the bug being fixed). Manual upgrade required once:
-  reinstall via the install script, or scp the new agent.mjs into
-  /opt/gpuviewr-agent/ and `systemctl restart gpuviewr-agent`.
-  From v0.6.3 onward the auto-update path works end-to-end.
+- Agents: no change required, agents stay on v0.6.3+.
+- Already-rotated tokens: re-rotate after upgrading the hub to
+  get a v0.6.4-format token, OR fix the install line by hand
+  with `<host_id>.<that_token>` before passing to install.sh.
