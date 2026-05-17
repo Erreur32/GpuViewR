@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6] - 2026-05-17
+
+### Fixed
+
+- **SonarCloud duplication on new code.** The v0.6.5 hosts-table
+  migration repeated the same idempotent ADD-COLUMN pattern three
+  times in `server/database/connection.ts`, which tripped the
+  Quality Gate's "Duplicated Lines on New Code" threshold (8.3% >
+  3%). Refactored to a small `[name, type][]` table + loop — same
+  runtime behavior, ~12 fewer lines, no duplication. No DB change.
+
 ## [0.6.5] - 2026-05-17
 
 ### Added

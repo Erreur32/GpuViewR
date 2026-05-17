@@ -1,64 +1,25 @@
-release: v0.6.5 — periodic auto-update + install UX
+release: v0.6.6 — SonarCloud dedupe hotfix
 
-Minor release closing the auto-update gap that hit us in v0.6.3:
-a stable agent connected for weeks never saw new hub releases
-because the update check only fired at WS hello. The new
-scheduler ticks every hour by default and considers all opted-in
-systemd agents currently connected. Also persists the per-host
-update state to DB so the UI can show it and the cooldown
-survives hub restarts.
+The v0.6.5 hosts-table migration in connection.ts repeated the
+same ADD-COLUMN-if-missing pattern three times in a row (one
+block per new column: last_update_check_at,
+last_update_pushed_at, last_update_pushed_version). SonarCloud
+flagged 8.3% Duplicated Lines on New Code (18 lines in
+connection.ts at 100%), above the QG's 3% threshold.
 
-Bundled with two small install-UX touch-ups that came up during
-the v0.6.3/v0.6.4 deployments.
-
-Added
-- server/services/agentUpdateScheduler.ts: setInterval iterating
-  eligible hosts every AUTO_UPDATE_CHECK_INTERVAL_MS (default 1h,
-  env-configurable). Calls maybePushAutoUpdate so the gate logic
-  isn't duplicated. First tick delayed 30s after boot so fresh
-  agents complete their welcome handshake on the existing path
-  before we layer the periodic path on top.
-- hosts table: 3 new nullable columns added via idempotent
-  ALTER TABLE: last_update_check_at, last_update_pushed_at,
-  last_update_pushed_version. Written by both push paths
-  (maybePushAutoUpdate + forceAgentUpdate) and the scheduler.
-- agentIngestWS bootstrap: populates lastPushedAtMs from DB at
-  setup time so the 5-min cooldown carries across hub restarts.
-- AutoUpdateToggle tooltip: shows "Last check: Xm ago" and
-  "Last push: → vN (Xm ago)" when auto_update is ON. Reuses the
-  existing formatRelative helper; FR + EN i18n keys added.
-- AUTO_UPDATE_COOLDOWN_MS env var on the hub. Default 5 min
-  unchanged; configurable mainly for testing the scheduler
-  without waiting between iterations.
-
-Changed
-- install.sh: logs the resolved INSTALL_DIR at startup with the
-  reason (env var / current $PWD / session-landing-dir fallback
-  to $HOME/gpuviewr). Catches `cd /opt && curl|bash` → "files
-  dumped loose in /opt" before the user notices.
-- README: new "Where it installs" subsection documenting the
-  3-rule install dir resolution + concrete examples for /opt,
-  GPUVIEWR_INSTALL_DIR, etc. Agent install section clarified —
-  --url accepts http(s) and ws(s) interchangeably (v0.6.4),
-  token format `<host_id>.<secret>` spelled out with the
-  "if you only have a bare token, prefix it manually" hint
-  for users coming from a rotated token.
+Fixed
+- server/database/connection.ts: refactored the three ADD-COLUMN
+  blocks into a single loop over a [name, type][] array. Same
+  idempotent runtime behavior, ~12 fewer lines, no duplication.
+  No DB-level change — the columns are still added the same way
+  with the same names and types.
 
 Why this matters
-- v0.6.3 fixed the agent runtime; v0.6.4 fixed the install
-  workflow; v0.6.5 closes the loop on the actual update path
-  end-to-end. The "Update now" button stops being the only
-  realistic way to update a stable fleet — for a deploy of N
-  hosts with auto_update enabled, a hub upgrade now propagates
-  within one scheduler interval (default ~1 h) without manual
-  intervention. The DB-backed state means admins can see at a
-  glance which hosts the scheduler has touched, when, and
-  whether a push actually happened.
+- Keeps the QG green so the SonarCloud badge in the README stays
+  accurate. Also a sane pattern to reuse next time we add
+  multiple columns in one migration.
 
 Upgrade
-- Hub: `docker compose pull && docker compose up -d`. The 3-
-  column migration runs at boot, idempotent on re-runs.
-- Agents: no change required, agents stay on v0.6.3+. Agents on
-  v0.6.3+ with auto_update=ON will pick up the periodic push
-  automatically on the next scheduler tick after the hub
-  upgrade.
+- Hub: `docker compose pull && docker compose up -d`. No DB or
+  runtime change vs v0.6.5 — purely a code cleanup.
+- Agents: no change required.

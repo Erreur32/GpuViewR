@@ -175,17 +175,16 @@ function migrateMultiHost(database: Database.Database): void {
   // lets the in-memory cooldown survive hub restarts (bootstrapped at
   // setupAgentIngestWS time), and the UI tooltip can show "last
   // checked Xm ago" / "last pushed vA → vB".
-  if (!hostCols.some((c) => c.name === 'last_update_check_at')) {
-    database.exec('ALTER TABLE hosts ADD COLUMN last_update_check_at INTEGER;');
-    logger.success('DB', 'hosts.last_update_check_at column added.');
-  }
-  if (!hostCols.some((c) => c.name === 'last_update_pushed_at')) {
-    database.exec('ALTER TABLE hosts ADD COLUMN last_update_pushed_at INTEGER;');
-    logger.success('DB', 'hosts.last_update_pushed_at column added.');
-  }
-  if (!hostCols.some((c) => c.name === 'last_update_pushed_version')) {
-    database.exec('ALTER TABLE hosts ADD COLUMN last_update_pushed_version TEXT;');
-    logger.success('DB', 'hosts.last_update_pushed_version column added.');
+  const v065Columns: ReadonlyArray<readonly [string, 'INTEGER' | 'TEXT']> = [
+    ['last_update_check_at', 'INTEGER'],
+    ['last_update_pushed_at', 'INTEGER'],
+    ['last_update_pushed_version', 'TEXT'],
+  ];
+  for (const [name, type] of v065Columns) {
+    if (!hostCols.some((c) => c.name === name)) {
+      database.exec(`ALTER TABLE hosts ADD COLUMN ${name} ${type};`);
+      logger.success('DB', `hosts.${name} column added.`);
+    }
   }
 
   // -- gpu_metrics: ADD COLUMN host_id (legacy v0.2.x DB) — the
