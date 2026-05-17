@@ -1,44 +1,53 @@
-release: v0.6.2 — manual "Update now" button for systemd agents
+release: v0.6.3 — agent log spam, CPU spikes, and systemd auto-update
 
-Patch release shipping the on-demand agent push. Auto-update only
-fires at WS reconnect, so a stably-connected agent could sit on an
-old version indefinitely. The new button lets admins force a push
-from the Hosts settings tab without SSHing into the target to
-`systemctl restart` first.
+Patch release fixing the four agent issues that combined to spam
+journals and burn CPU on systemd installs (worst-observed: 12% of a
+core sustained over 12h, ~10-minute EROFS + close 1008 cycle).
+Also makes the "Update now" button + auto-update genuinely
+functional on systemd hosts — until now they were both ornamental
+because of two unrelated systemd-unit defaults.
 
-Added
-- POST /api/hosts/:id/force-update — bypasses the auto_update +
-  cooldown + version-compare gates and pushes the current hub
-  bundle over the live WS. Keeps the install_mode=systemd guard
-  (Docker bundles are baked into the image, can't be replaced from
-  inside) and a live-connection guard (409 if the agent isn't
-  currently connected).
-- agentIngestWS now keeps a Map<host_id, WebSocket> registry,
-  populated at connection time and cleared on close. Reconnects
-  evict the previous socket before storing the new one so a stale
-  WS can't accidentally receive a push.
-- hostsStore.forceUpdate(id) is the matching client action.
-- ForceUpdateButton in HostsSettingsTab (DownloadCloud icon, sits
-  before AutoUpdateToggle). Disabled with explanatory tooltip when
-  install_mode != systemd or the agent is offline.
-- i18n keys added to fr.json + en.json (force_update,
-  force_update_unsupported, force_update_offline, force_update_sent,
-  force_update_failed).
+Fixed
+- EROFS on every agent_update. ProtectSystem=strict +
+  ReadWritePaths= rendered /opt/gpuviewr-agent read-only, so the
+  atomic writeFileSync('agent.mjs.new') always failed. Pre-check
+  with fs.accessSync(W_OK), warn once per session, then stay quiet.
+- NVIDIA process collector ticked at TICK_MS instead of
+  PROCESSES_TICK_MS. The variable existed and was correct for AMD
+  but the NVIDIA branch in agent/src/index.ts passed cfg.tickMs
+  instead. Halves nvidia-smi --query-compute-apps + pmon spawn rate.
+- Replay-storm close 1008 loop. Replay drained at REPLAY_CHUNK fps
+  while live samples kept being sent in parallel, combined > 100 fps
+  → hub close 1008 → reconnect → replay → same. New per-connection
+  `replaying` flag queues live samples behind the drain so the wire
+  never carries two concurrent streams.
+- Reconnect backoff reset to 1s on `open`, before the connection
+  had proven stable. A hub closing 1008 immediately after welcome
+  looped at 1s. New stableTimer resets only after 30s of uptime.
+- False boot WARN on docker-aliased hubs ("HUB_URL uses ws://
+  against a non-private host (hub)"). Validation now fires only
+  for IP literals that are actually public.
 
-Reverted
-- The FleetChart "filter hosts with no live samples" change is
-  rolled back. It hid legitimate hosts during the WS-warmup window
-  after page load. The original "index-0 host's solid line is
-  invisible when the local hub has no sidecar" UX issue stays open
-  and will be addressed in a follow-up patch.
+Changed
+- agent/install.sh.tpl: Restart=on-failure → Restart=always.
+  The agent self-replaces its binary and exits 0; on-failure
+  treated that as success and left the service dead.
+- agent/install.sh.tpl: ReadWritePaths=${INSTALL_DIR}. Carves the
+  install dir out of ProtectSystem=strict so the atomic
+  writeFileSync + renameSync can land.
 
 Why this matters
-- Without this button, the only way to push a new bundle was to
-  wait for an unplanned agent reconnect (network blip, hub restart,
-  systemd Restart=on-failure). On a stable mesh of agents that's
-  essentially never. The button gives admins immediate control
-  without losing the existing auto_update safety rails.
+- The two systemd-unit defaults silently broke auto-update from
+  v0.5.0 onward; the EROFS error in the journal looked like a
+  one-off but was actually a permanent regression hidden behind
+  the noise of the reconnect storm. With both fixed, "Update now"
+  becomes a real button on systemd, not just on Docker.
 
 Upgrade
 - Hub: `docker compose pull && docker compose up -d`.
-- Agents: click the new DownloadCloud icon in Settings → Hosts.
+- Agents on Docker: `docker compose pull && docker compose up -d`.
+- Agents on systemd: v0.6.2 cannot auto-update itself (the EROFS is
+  precisely the bug being fixed). Manual upgrade required once:
+  reinstall via the install script, or scp the new agent.mjs into
+  /opt/gpuviewr-agent/ and `systemctl restart gpuviewr-agent`.
+  From v0.6.3 onward the auto-update path works end-to-end.

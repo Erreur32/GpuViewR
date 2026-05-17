@@ -221,7 +221,10 @@ Type=simple
 User=${SERVICE_USER}
 EnvironmentFile=${ENV_FILE}
 ExecStart=${NODE_BIN} ${BIN_PATH}
-Restart=on-failure
+# Restart=always (not on-failure): the agent self-replaces its binary on
+# hub-pushed updates and exits 0 to let the supervisor pick up the new
+# code. on-failure would treat that as success and leave the service dead.
+Restart=always
 RestartSec=5
 
 # Hardening — agent only needs network out + read /proc + spawn nvidia-smi.
@@ -229,7 +232,11 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=
+# Carved out from ProtectSystem=strict so hub-pushed agent_update frames
+# can atomically swap agent.mjs (writeFileSync + renameSync). Without it,
+# every update attempt EROFSes and spams the journal every welcome.
+# The dir is chown'd to the service user above; no other path is writable.
+ReadWritePaths=${INSTALL_DIR}
 # /proc is needed for the (eventual) processes feature; keep it readable.
 ProcSubset=all
 

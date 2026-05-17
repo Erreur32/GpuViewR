@@ -22,7 +22,8 @@
 //    kill the agent — other hubs keep going. A repeated 4001 on the
 //    SAME hub still exits because the token is permanently bad.
 
-import { readFileSync, existsSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync, accessSync, constants as fsConstants } from 'node:fs';
+import { dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { WebSocket } from 'ws';
 import { logger } from './logger.js';
@@ -61,6 +62,14 @@ const RECONNECT_MIN_MS = 1_000;
 const PING_INTERVAL_MS = 15_000;
 const REPLAY_CHUNK = 50;
 const REPLAY_DELAY_MS = 600;
+// A connection has to stay open this long before we consider it "stable"
+// and reset the reconnect backoff. Without it, a hub that accepts the WS
+// then closes 1008 right after welcome would reboucle à 1s indefinitely.
+const STABLE_RESET_MS = 30_000;
+
+// Module-level: same FS for every hub, so warn once per process even if
+// several hubs push the same agent_update frame.
+let agentUpdateRoWarned = false;
 // Build-time inject via esbuild --define (scripts/build.mjs). The
 // typeof guard keeps `tsx`/dev runs alive — when the literal isn't
 // substituted, `typeof __AGENT_VERSION__` evaluates to 'undefined'
@@ -107,8 +116,15 @@ interface HubConnection {
   reconnectTimer: NodeJS.Timeout | null;
   pingTimer: NodeJS.Timeout | null;
   replayTimer: NodeJS.Timeout | null;
+  /** Fires STABLE_RESET_MS after `open`; resets reconnectDelayMs. */
+  stableTimer: NodeJS.Timeout | null;
   buffer: BufferableFrame[];
   authFailures: number;
+  /** True while a drain pass is in flight. New samples produced during
+   *  the drain are queued instead of sent inline — keeps the wire under
+   *  the hub's rate limit (replay chunk + live samples could otherwise
+   *  combine and trip a close 1008). */
+  replaying: boolean;
   /** Short tag for logging — `hub1`, `hub2` … so messages stay
    *  unambiguous when N hubs share the same logger. */
   tag: string;
@@ -124,8 +140,10 @@ export function createTransport(config: AgentConfig): Transport {
     reconnectTimer: null,
     pingTimer: null,
     replayTimer: null,
+    stableTimer: null,
     buffer: [],
     authFailures: 0,
+    replaying: false,
     tag: config.hubs.length > 1 ? `hub${i + 1}` : 'ws',
   }));
 
@@ -155,13 +173,15 @@ export function createTransport(config: AgentConfig): Transport {
 
   function flushBuffer(conn: HubConnection): void {
     if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) return;
-    if (conn.replayTimer) return;
+    if (conn.replaying) return;
+    conn.replaying = true;
     drainChunk(conn, 0);
   }
 
   function drainChunk(conn: HubConnection, totalDrained: number): void {
     if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) {
       conn.replayTimer = null;
+      conn.replaying = false;
       return;
     }
     let drained = totalDrained;
@@ -175,6 +195,7 @@ export function createTransport(config: AgentConfig): Transport {
     if (conn.buffer.length === 0) {
       if (drained > 0) logger.info(conn.tag, `Replayed ${drained} buffered frame(s) after reconnect`);
       conn.replayTimer = null;
+      conn.replaying = false;
       return;
     }
     conn.replayTimer = setTimeout(() => drainChunk(conn, drained), REPLAY_DELAY_MS);
@@ -284,6 +305,23 @@ export function createTransport(config: AgentConfig): Transport {
       logger.warn(conn.tag, `agent_update: can't resolve own binary path (argv[1]=${target}); skipping`);
       return;
     }
+    // systemd install ships with ProtectSystem=strict + ReadWritePaths=
+    // (cf. agent/install.sh.tpl), which mounts /opt read-only. Without
+    // this pre-check the writeFileSync below EROFS every ~2h and spams
+    // the journal. Detect once, warn once, then stay quiet.
+    const installDir = dirname(target);
+    try {
+      accessSync(installDir, fsConstants.W_OK);
+    } catch {
+      if (!agentUpdateRoWarned) {
+        agentUpdateRoWarned = true;
+        logger.warn(
+          conn.tag,
+          `agent_update skipped: install dir is read-only (${installDir}). systemd unit needs ReadWritePaths=${installDir}, or use the Docker install for auto-updates.`,
+        );
+      }
+      return;
+    }
     const tmp = `${target}.new`;
     try {
       writeFileSync(tmp, buf, { mode: 0o755 });
@@ -325,12 +363,27 @@ export function createTransport(config: AgentConfig): Transport {
     conn.ws = ws;
     ws.on('open', () => {
       logger.success(conn.tag, 'Connection open');
-      conn.reconnectDelayMs = RECONNECT_MIN_MS;
+      // Don't reset backoff on `open` alone — a hub that accepts the
+      // WS then closes 1008 right after welcome would loop at 1s.
+      // Only reset after the connection has held for STABLE_RESET_MS.
+      if (conn.stableTimer) clearTimeout(conn.stableTimer);
+      conn.stableTimer = setTimeout(() => {
+        conn.reconnectDelayMs = RECONNECT_MIN_MS;
+        conn.stableTimer = null;
+      }, STABLE_RESET_MS);
       startPing(conn);
     });
     ws.on('message', (data) => handleIncoming(conn, data.toString()));
     ws.on('close', (code, reason) => {
       stopPing(conn);
+      if (conn.stableTimer) {
+        clearTimeout(conn.stableTimer);
+        conn.stableTimer = null;
+      }
+      // If a replay was in flight, mark it done so the next reconnect
+      // can start a fresh drain (drainChunk also resets this on its
+      // own NOT-OPEN exit, but it only runs between chunks).
+      conn.replaying = false;
       const r = reason?.toString() || '';
       logger.warn(conn.tag, `Connection closed (code=${code}${r ? `, reason=${r}` : ''})`);
       conn.ws = null;
@@ -359,7 +412,11 @@ export function createTransport(config: AgentConfig): Transport {
 
   function broadcast(frame: BufferableFrame): void {
     for (const conn of connections) {
-      if (conn.ws?.readyState === WebSocket.OPEN) {
+      // If a replay drain is in flight, queue behind it instead of
+      // racing — otherwise live samples + buffered frames combine and
+      // trip the hub's RATE_LIMIT_PER_SEC, triggering a close 1008
+      // → reconnect → replay → close storm.
+      if (conn.ws?.readyState === WebSocket.OPEN && !conn.replaying) {
         sendRaw(conn, frame);
       } else {
         pushToBuffer(conn, frame);
@@ -384,6 +441,11 @@ export function createTransport(config: AgentConfig): Transport {
           clearTimeout(conn.replayTimer);
           conn.replayTimer = null;
         }
+        if (conn.stableTimer) {
+          clearTimeout(conn.stableTimer);
+          conn.stableTimer = null;
+        }
+        conn.replaying = false;
         if (conn.ws) {
           try { conn.ws.close(1000); } catch { /* ignore */ }
           conn.ws = null;

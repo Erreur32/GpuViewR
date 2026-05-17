@@ -102,10 +102,20 @@ function validateHubUrl(url: string): void {
     }
     if (u.protocol === 'ws:') {
       const host = u.hostname;
-      const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1';
-      const isPrivate = /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-      if (!isLoopback && !isPrivate) {
-        process.stderr.write(`[WARN] HUB_URL uses ws:// against a non-private host (${host}). Use wss:// in production.\n`);
+      // Only warn when the URL embeds a literal *public* IP — that's the
+      // actual unsafe case. A bare hostname (docker alias like "hub",
+      // LAN DNS name like "stats.lan") almost always resolves to a
+      // private IP at runtime; without async DNS we can't verify that
+      // here, and the previous check fired a false positive on every
+      // docker-compose deploy. Trust the operator for hostnames.
+      const isIpv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+      const isIpv6 = host.includes(':');
+      if (isIpv4 || isIpv6) {
+        const isLoopback = host === '127.0.0.1' || host === '::1';
+        const isPrivate = /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+        if (!isLoopback && !isPrivate) {
+          process.stderr.write(`[WARN] HUB_URL uses ws:// against a public IP (${host}). Use wss:// in production.\n`);
+        }
       }
     }
   } catch {

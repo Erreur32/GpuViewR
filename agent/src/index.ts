@@ -180,7 +180,7 @@ function buildProcessCollector(v: GpuVendor, cfg: AgentConfig): ProcessCollector
   }
   return createProcessCollector({
     nvidiaSmiPath: cfg.nvidiaSmiPath,
-    tickMs: cfg.tickMs,
+    tickMs: cfg.processesTickMs,
     hostProc: cfg.hostProc,
     onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
   });

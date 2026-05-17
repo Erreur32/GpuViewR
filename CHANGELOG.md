@@ -5,6 +5,56 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-05-17
+
+### Fixed
+
+- **Agent EROFS spam on systemd installs.** With `ProtectSystem=strict`
+  and an empty `ReadWritePaths=`, `/opt/gpuviewr-agent` was read-only,
+  so every hub-pushed `agent_update` raised `filesystem swap failed:
+  EROFS` and contributed to a close 1008 / reconnect storm. The agent
+  now pre-checks write access on the install dir and emits a single
+  WARN per session instead of one ERROR per update push.
+- **NVIDIA process collector ran at `TICK_MS` instead of
+  `PROCESSES_TICK_MS`.** The AMD branch already used the throttled
+  value; the NVIDIA branch passed `cfg.tickMs` (1 s) instead of
+  `cfg.processesTickMs` (default 2 s). Halves nvidia-smi compute-apps
+  + pmon spawn rate with `FEATURES=processes`.
+- **Rate-limit storm during replay.** A reconnect with N buffered
+  frames drained at `REPLAY_CHUNK` fps in parallel with live samples;
+  combined they tripped the hub's `RATE_LIMIT_PER_SEC=100` and looped
+  close 1008 → reconnect → replay → close. A new per-connection
+  `replaying` flag queues live samples behind the drain so the wire
+  carries one stream at a time.
+- **Reconnect backoff reset too eager.** The 1 s backoff reset fired
+  on `open`, before the connection had held — a hub that accepted the
+  WS then closed 1008 immediately would loop at 1 s. Reset now waits
+  30 s of stable connection.
+- **False WARN at boot on docker-aliased hubs.** `ws://` validation
+  flagged any non-IPv4-private hostname (e.g. compose alias `hub`)
+  as "non-private". The warn now fires only for IP literals that are
+  actually public.
+
+### Changed
+
+- **Systemd unit `Restart=on-failure` → `Restart=always`.** The agent
+  self-replaces its binary on hub-pushed updates and exits 0; the
+  previous policy treated that as success and left the service dead.
+- **Systemd unit `ReadWritePaths=/opt/gpuviewr-agent` added.** Carves
+  the install dir out of `ProtectSystem=strict` so the atomic
+  `writeFileSync` + `renameSync` lands. Combined with the fixes
+  above, auto-update is now functional end-to-end on systemd.
+
+### Upgrade
+
+- Hub: `docker compose pull && docker compose up -d`.
+- Agents on Docker: `docker compose pull && docker compose up -d`.
+- Agents on systemd: v0.6.2 cannot auto-update itself (the EROFS is
+  the bug we're fixing). Reinstall via the install script, or `scp`
+  the new `agent.mjs` into `/opt/gpuviewr-agent/` and
+  `systemctl restart gpuviewr-agent`. From v0.6.3 onward, the
+  "Update now" button works on systemd too.
+
 ## [0.6.2] - 2026-05-16
 
 ### Added
