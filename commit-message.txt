@@ -1,28 +1,37 @@
-release: v0.7.5 — enable Update now button + auto-update toggle on Windows hosts
+release: v0.7.6 — tsc cleanup, zero errors at repo root
 
-v0.6.9 added install_mode='windows' end-to-end (agent detection,
-hub forceAgentUpdate + maybePushAutoUpdate accept windows alongside
-systemd), but the UI side missed two spots in HostsSettingsTab.tsx:
-both AutoUpdateToggle and ForceUpdateButton were hardcoded to
-`host.install_mode === 'systemd'`. Result: Windows host rows show
-the toggle and button greyed out as "unsupported", even though the
-backend was ready to push updates to them.
+Tech debt drain. `npx tsc --noEmit` was reporting 4 errors at the
+start of this session, all pre-existing. v0.7.0 cleared 2 (JSX
+namespace move in TS 5). v0.7.6 clears the remaining 2:
 
-Replaced both call sites with a new isAgentSelfUpdatable() helper
-that mirrors the backend gate exactly: systemd || windows. Anything
-else (docker, unknown) stays unsupported as before.
+1. server/routes/alerts.ts L92/L104/L177 — `req.params.id` cast to
+   `string`. Express's untyped Request<> widens params to
+   `string | string[]` for backward compat with query-style
+   params, but path params are always strings at runtime. Matches
+   the existing pattern in server/routes/hosts.ts:143 with the
+   explanatory comment.
+
+2. server/services/authService.ts L31 — replaced
+   `jwt.verify(...) as JwtPayload` (which TS 5 flags because
+   `string | JwtPayload` doesn't sufficiently overlap with our
+   custom JwtPayload type) with a defensive runtime narrowing:
+   - Reject string payloads (jwt-signed-as-string branch — we
+     never sign strings so this is dead code at runtime).
+   - Validate `decoded.sub` is a number, `decoded.username` a
+     string, `decoded.role` admin|user.
+   - Return a freshly-shaped object so the caller sees exactly
+     our interface, not the upstream `JwtPayload` superset.
+   Hardens against tokens signed with the same secret but a
+   different payload shape (cross-app reuse, future schema
+   migration, dev artefact).
+
+No behaviour change for valid tokens. Invalid-shape tokens now
+return null instead of being passed through with potentially
+undefined required fields.
 
 Files
-- src/components/settings/HostsSettingsTab.tsx: +helper function,
-  two one-line call-site swaps.
+- server/routes/alerts.ts (3 line edits + one explanatory comment)
+- server/services/authService.ts (verifyToken refactored)
 
-Verified locally with `npm run build` (Vite green).
-
-User-facing
-- Windows agent rows in Settings -> Hosts now show:
-    - auto_update toggle clickable + tooltip says "Auto-update on/off"
-    - "Update now" button clickable when host is online
-- Click "Update now" to force-push the current hub's bundle to the
-  Windows agent. The launcher.ps1 supervisor on the agent picks up
-  agent.mjs.pending on the next iteration (~5 s) and restarts node
-  with the new bundle.
+Verified locally: `npx tsc --noEmit` → 0 errors, 0 warnings.
+`npm run build` → green (Vite + PWA SW generated).

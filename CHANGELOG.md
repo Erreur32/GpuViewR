@@ -5,6 +5,28 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.6] - 2026-05-18
+
+### Internal
+
+- **`tsc --noEmit` now passes with zero errors at repo root**
+  (was 4 → 2 after v0.7.0's JSX namespace fix → 0 here):
+  - `server/routes/alerts.ts` L92/L104/L177 — cast `req.params.id`
+    to `string` to match the codebase pattern in
+    `server/routes/hosts.ts:143`. Express's untyped `Request<>`
+    generic widens params to `string | string[]` even though path
+    params are always strings at runtime.
+  - `server/services/authService.ts` L31 — replaced the `as
+    JwtPayload` cast with a defensive runtime narrowing:
+    `jwt.verify` returns `string | JwtPayload`, we now reject
+    string payloads + validate the field shape (`sub` number,
+    `username` string, `role` admin|user) before returning. Hardens
+    against tokens signed with the same secret but different
+    payload shapes (cross-app reuse, future schema migration).
+- Reasoning for the cleanup: `npx tsc --noEmit` is now a useful
+  pre-push signal again — any error is genuinely from the current
+  change set, not noise to filter out.
+
 ## [0.7.5] - 2026-05-18
 
 ### Fixed

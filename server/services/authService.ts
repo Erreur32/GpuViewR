@@ -28,7 +28,23 @@ export const authService = {
 
   verifyToken(token: string): JwtPayload | null {
     try {
-      return jwt.verify(token, config.jwtSecret) as JwtPayload;
+      // jsonwebtoken's verify can return `string | JwtPayload` because
+      // tokens signed with `sign(string, secret)` decode back to a
+      // string. We sign objects, so the string branch is unreachable
+      // — but type-narrow on it anyway rather than a blind cast. Same
+      // for the field shape: validate at the runtime boundary so a
+      // token signed with the same secret but a different payload
+      // shape (cross-app reuse, future schema migration, dev artefact)
+      // gets rejected instead of silently flowing through as a
+      // partially-shaped JwtPayload.
+      const decoded = jwt.verify(token, config.jwtSecret);
+      if (typeof decoded === 'string') return null;
+      if (
+        typeof decoded.sub !== 'number' ||
+        typeof decoded.username !== 'string' ||
+        (decoded.role !== 'admin' && decoded.role !== 'user')
+      ) return null;
+      return { sub: decoded.sub, username: decoded.username, role: decoded.role };
     } catch {
       return null;
     }

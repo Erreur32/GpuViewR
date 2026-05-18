@@ -89,7 +89,10 @@ function buildRulePatch(body: Record<string, unknown>): RulePatch {
 }
 
 router.patch('/rules/:id', requireAdmin, (req, res) => {
-  const id = Number.parseInt(req.params.id, 10);
+  // Cast: express's untyped Request<> generic widens req.params
+  // to `string | string[]` even though path params are always
+  // strings at runtime. Same pattern as server/routes/hosts.ts.
+  const id = Number.parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
   const body = req.body || {};
   const err = validate(body, true);
@@ -101,7 +104,7 @@ router.patch('/rules/:id', requireAdmin, (req, res) => {
 });
 
 router.delete('/rules/:id', requireAdmin, (req, res) => {
-  const id = Number.parseInt(req.params.id, 10);
+  const id = Number.parseInt(req.params.id as string, 10);
   AlertRuleRepo.delete(id);
   alertService.invalidateCache();
   res.json({ ok: true });
@@ -174,7 +177,7 @@ router.get('/events', (req, res) => {
 });
 
 router.delete('/events/:id', (_req, res) => {
-  const id = Number.parseInt(_req.params.id, 10);
+  const id = Number.parseInt(_req.params.id as string, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
   const ok = AlertEventRepo.delete(id);
   res.json({ ok });
