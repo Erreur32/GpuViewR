@@ -1,72 +1,37 @@
-release: v0.8.0 — fix master missing on /fleet 1h/24h, color-by-host chart redesign
+release: v0.8.1 — per-metric color shade on top of v0.8.0 host palette
 
-Closes two /fleet bugs the user surfaced post-v0.7. Minor bump
-because the persistence behaviour for LOCAL_HOST_ID changed (local
-samples now land in gpu_metrics, were silently skipped before).
+Follow-up to v0.8.0's host-colored chart redesign. User feedback:
+the 3 metrics for the same host all in the exact same hue
+(distinguished only by stroke width) was still hard to read at a
+glance, especially on a single-host display.
 
-Bug 1 — master host missing from /fleet 1h/24h ranges
-- agentMetricsPersistor.ts:38 skipped every sample whose host_id
-  matched LOCAL_HOST_ID. That skip was defensive code from v0.4
-  where the hub ran its own gpuCollector that persisted local
-  samples inline before re-emitting them on the bus, so the skip
-  prevented double-writes.
-- v0.5 removed gpuCollector — the local sidecar has been the ONLY
-  producer of local samples since. The skip silently dropped every
-  local sample from gpu_metrics.
-- Live charts didn't show the symptom (they read in-memory store);
-  1h/24h charts did (they read SQLite history that was being
-  skipped). The user noticed: "sur les autre filtre personne, on
-  ne vois que les agent".
-- Fix: removed the skip. Updated the persistor unit test that
-  asserted the old behaviour to assert the new one (local samples
-  must land in gpu_metrics + a device row gets upserted).
+v0.8.1 layers an HSL lightness shift on top of the host's base
+palette colour:
+- utilization: base hue (the headline number)
+- temperature: same hue, ~18% lighter
+- power:       same hue, ~18% darker
 
-Bug 2 — multi-host chart unreadable
-- Pre-v0.8 the FleetChart painted each curve in its metric's
-  colour and distinguished hosts via a dash pattern (solid for
-  host 0, long-dash for host 1, dotted for host 2, …). Above 2
-  hosts the dashes became hard to track. User feedback: "les
-  trait tillés ça fait moche, uniformise couleur par machine".
-- New design:
-    - 10-color palette indexed by host (blue / green / orange /
-      purple / red / teal / yellow / pink / indigo / lime),
-      assigned in order of hostsWithData.
-    - All curves SOLID — HOST_DASH array dropped entirely.
-    - Metric distinction now via line width: utilization 2.25px
-      (headline), temperature 1.5px, power 1px.
-    - Total mode (single curve per metric) keeps the original
-      metric-coloured behaviour since there's no host
-      distinction to convey.
-    - Metric chips show line-width previews (neutral colour in
-      per-host mode, metric colour in total mode).
-    - Per-host legend swatch swapped from a dashed line preview
-      to a solid bold line in the host's colour. HostDashSwatch
-      renamed to HostColorSwatch.
+Combined with the existing per-metric widths (util 2.25 /
+temp 1.5 / power 1.0), the three metrics for the same host now
+read as a clear color family — same hue, different shade and
+weight. Total mode keeps the metric-colored single-curve
+rendering from v0.8.0.
+
+Pre-computed once at module scope (10 hosts × 3 metrics = 30
+entries cached in a Map) so there's no per-render color math —
+hostMetricColor(idx, metric) is a Map lookup after first call.
 
 Files
-- server/services/agentMetricsPersistor.ts: dropped LOCAL_HOST_ID
-  import + skip + obsolete v0.4-era comment.
-- server/services/agentMetricsPersistor.test.ts: test flipped
-  from "samples are skipped" to "samples ARE persisted", asserts
-  +1 metric row and 1 device row after a LOCAL sample comes in.
-- src/components/fleet/FleetChart.tsx: HOST_PALETTE +
-  hostColor() + METRIC_WIDTH constants. Header comment rewritten
-  to reflect the new contract. Metric chip rendering, ChartPlot
-  stroke selection, tooltip rendering, legend swatch all
-  updated to use host color where applicable. HostDashSwatch
-  → HostColorSwatch.
+- src/components/fleet/FleetChart.tsx: new
+  METRIC_LIGHTNESS_DELTA table + hexToRgb / rgbToHsl / hslToRgb /
+  rgbToHex helpers + hostMetricColor() with module-scoped cache.
+  Two call sites swapped: ChartPlot seriesDefs stroke +
+  cursor-tooltip stroke.
 
-Verified locally
-- tsc --noEmit: 0 errors.
-- npm run build: green.
-- npm test: 19/22 (3 pre-existing migration test failures
-  unchanged — orthogonal tech debt).
+Verified locally: tsc 0 errors, vite build green. No tests
+affected (chart is pure UI, no test harness).
 
 Upgrade
 - Hub: docker compose pull && docker compose up -d
-  --force-recreate (or rerun install.sh for the polite flow).
-- Master row on the 1h/24h chart starts populating from the
-  moment the new hub records its first sample. The "missing"
-  period before the upgrade stays empty (samples were dropped,
-  no backfill possible).
-- Visual change is immediate; no operator action.
+  --force-recreate (or rerun install.sh).
+- Visual change immediate; no operator action.

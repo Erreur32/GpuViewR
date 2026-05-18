@@ -106,6 +106,91 @@ const METRIC_WIDTH: Record<Metric, number> = {
   power: 1.0,
 };
 
+// HSL lightness offset per metric, applied on top of the host's base
+// palette color. Utilization keeps the base hue (the headline
+// number); temperature is shifted brighter; power darker. Combined
+// with the per-metric stroke width above, this gives every metric
+// for the same host a visually distinct rendering while keeping the
+// "same host = same color family" gestalt the v0.8.0 redesign aimed
+// for. Sat shift is small (-0.1 for power) so the darker shade
+// doesn't go muddy on dim themes.
+const METRIC_LIGHTNESS_DELTA: Record<Metric, number> = {
+  utilization: 0,
+  temperature: 0.18,   // ~18% lighter
+  power: -0.18,        // ~18% darker
+};
+
+// Parse #RRGGBB → [r, g, b] in [0,1].
+function hexToRgb(hex: string): [number, number, number] {
+  return [
+    Number.parseInt(hex.slice(1, 3), 16) / 255,
+    Number.parseInt(hex.slice(3, 5), 16) / 255,
+    Number.parseInt(hex.slice(5, 7), 16) / 255,
+  ];
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const c = (n: number) => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h: number;
+  if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return [h / 6, s, l];
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  if (s === 0) return [l, l, l];
+  const hue2rgb = (p: number, q: number, t: number): number => {
+    let tt = t;
+    if (tt < 0) tt += 1;
+    if (tt > 1) tt -= 1;
+    if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+    if (tt < 1 / 2) return q;
+    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [
+    hue2rgb(p, q, h + 1 / 3),
+    hue2rgb(p, q, h),
+    hue2rgb(p, q, h - 1 / 3),
+  ];
+}
+
+/** Shade a host's base color by the metric's lightness delta. The
+ *  result is the actual stroke color drawn for that (host, metric)
+ *  pair. Pre-computed to a Map at module scope to avoid touching
+ *  color math on every render — 10 hosts × 3 metrics = 30 entries. */
+const HOST_METRIC_COLOR_CACHE = new Map<string, string>();
+function hostMetricColor(hostIdx: number, metric: Metric): string {
+  const key = `${hostIdx}|${metric}`;
+  const hit = HOST_METRIC_COLOR_CACHE.get(key);
+  if (hit) return hit;
+  const base = hostColor(hostIdx);
+  const delta = METRIC_LIGHTNESS_DELTA[metric];
+  if (delta === 0) {
+    HOST_METRIC_COLOR_CACHE.set(key, base);
+    return base;
+  }
+  const [r, g, b] = hexToRgb(base);
+  const [h, s, l] = rgbToHsl(r, g, b);
+  const [nr, ng, nb] = hslToRgb(h, s, Math.min(0.92, Math.max(0.08, l + delta)));
+  const shaded = rgbToHex(nr, ng, nb);
+  HOST_METRIC_COLOR_CACHE.set(key, shaded);
+  return shaded;
+}
+
 const WINDOW_POINTS = 60;
 
 function pickMetricArray(
@@ -601,11 +686,12 @@ function ChartPlot({ entries, data, metricColor }: Readonly<ChartPlotProps>) {
     for (const e of entries) {
       const metricLabel = t(`dashboard.metrics.${e.metric}`);
       const label = e.host ? `${e.host.label} · ${metricLabel}` : metricLabel;
-      // per-host mode: color = host, width = metric.
+      // per-host mode: color = host base shaded by metric (util on
+      // base hue, temp lighter, power darker), width = metric.
       // total mode: color = metric (single curve per metric, no host
-      // distinction — falling back to the metric colour preserves the
-      // visual association with the metric chip).
-      const stroke = e.host ? hostColor(e.hostIdx) : metricColor[e.metric];
+      // distinction — keeps the visual association with the metric
+      // chip).
+      const stroke = e.host ? hostMetricColor(e.hostIdx, e.metric) : metricColor[e.metric];
       seriesDefs.push({
         label,
         stroke,
@@ -719,9 +805,10 @@ function ChartPlot({ entries, data, metricColor }: Readonly<ChartPlotProps>) {
             {entries.map((e, i) => {
               const metricLabel = t(`dashboard.metrics.${e.metric}`);
               const label = e.host ? `${e.host.label} · ${metricLabel}` : metricLabel;
-              // Match the chart: per-host curves use the host color,
-              // total mode curves use the metric color.
-              const stroke = e.host ? hostColor(e.hostIdx) : metricColor[e.metric];
+              // Match the chart: per-host curves use the host base
+              // colour shaded per metric (util base / temp lighter /
+              // power darker); total mode uses metric colour.
+              const stroke = e.host ? hostMetricColor(e.hostIdx, e.metric) : metricColor[e.metric];
               const width = e.host ? METRIC_WIDTH[e.metric] : 2;
               return (
                 <div key={e.key} className="flex items-center justify-between gap-3">

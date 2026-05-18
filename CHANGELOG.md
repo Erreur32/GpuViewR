@@ -5,6 +5,35 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-05-18
+
+### Changed
+
+- **/fleet per-host chart: metric distinguished by colour shade
+  in addition to line width.** v0.8.0 introduced host-coloured
+  curves but the 3 metrics for the same host shared the exact
+  same hue, distinguished only by stroke width. On a single host
+  the three lines packed close together and the widths weren't
+  enough to read at a glance. v0.8.1 layers an HSL lightness
+  shift on top:
+  - utilization: base host colour (the headline number)
+  - temperature: same hue + ~18 % lighter
+  - power: same hue + ~18 % darker
+  Combined with the existing per-metric widths (util 2.25 / temp
+  1.5 / power 1.0), the three metrics for the same host now read
+  as a clear colour family — same hue, different shade and
+  weight. Pre-computed once at module scope (10 hosts × 3
+  metrics = 30 cache entries) so no per-render colour math.
+  Tooltip line previews follow the same shading.
+
+### Internal
+
+- `src/components/fleet/FleetChart.tsx`: new
+  `METRIC_LIGHTNESS_DELTA` table, `hexToRgb` / `rgbToHsl` /
+  `hslToRgb` / `rgbToHex` helpers, `hostMetricColor(hostIdx,
+  metric)` with a module-scoped cache. Two call sites swapped
+  from `hostColor(idx)` to `hostMetricColor(idx, metric)`.
+
 ## [0.8.0] - 2026-05-18
 
 Closes two long-standing /fleet bugs the user surfaced after the
