@@ -5,6 +5,83 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.9] - 2026-05-18
+
+Iteration release driven by the first real Windows agent install
+(VPN'd Win10 against the .210 lab hub). Each item below maps to a
+bug that surfaced during that test run and got patched on the fly.
+
+### Added
+
+- **Auto-install Node 22+ via `winget` on Windows.** When the
+  installer detects Node missing or older than 22, it now runs
+  `winget install OpenJS.NodeJS.LTS --silent
+  --accept-source-agreements --accept-package-agreements`, refreshes
+  `$env:Path` from the Machine + User registry hives so the freshly-
+  installed `node.exe` is visible without a logoff, and re-probes.
+  Older Win10 SKUs without `winget` still get the previous "go to
+  nodejs.org" failure message. Mirrors `install.sh.tpl`'s NodeSource
+  auto-install on Linux.
+- **`install_mode='windows'` propagated end-to-end.** Agent's
+  `detectInstallMode()` returns `'windows'` on `process.platform ===
+  'win32'`. Hub's `forceAgentUpdate` + `maybePushAutoUpdate` now
+  accept `'windows'` alongside `'systemd'` for the auto-update gate
+  (semantics match: `launcher.ps1`'s while-loop swaps
+  `agent.mjs.pending` into place on the next iteration, ~5 s
+  downtime, equivalent to systemd's `RestartSec=5`). New "Windows"
+  pill in `InstallTypeCell` on the Hosts settings page with i18n
+  EN/FR.
+- **Central SVG icon registry** (`src/components/ui/icons/IconRegistry.tsx`).
+  Single typed source of truth — addressable as `<Icon
+  name="platform.windows" size={14} />`. Six initial entries:
+  `vendor.nvidia`, `vendor.amd`, `platform.windows`,
+  `platform.linux`, `platform.docker`, `platform.systemd`. Adding
+  a new icon = one record entry. Windows icon uses the modern
+  Fluent four-square logo in `#0078D4` (Microsoft's current brand
+  color, crisper at 14-16 px than the older asymmetric Win10
+  variant).
+- **Scheduled-task supervisor captures node output.** `launcher.ps1`
+  now redirects every stream from `node agent.mjs` to
+  `C:\ProgramData\GpuViewR-Agent\agent.log` via `*>>` append. The
+  hidden SYSTEM task previously discarded all output to a void; a
+  crashing agent was invisible. Tailable with `Get-Content '...'
+  -Wait`. The final install message surfaces the log path as the
+  first diagnostic command.
+- **`scripts/check-docker-build.js` asserts install-distribution
+  files inside the built image.** Runs `docker run --rm <tag> sh -c
+  'test -f ...'` for the four files the install endpoints serve at
+  runtime (`install.sh.tpl`, `install.ps1.tpl`, `agent.mjs`,
+  `install-agent.sh`). Codifies the lesson from the v0.6.7 → v0.6.8
+  incident where `install.ps1.tpl` was on disk but missing from the
+  image, so the route 503d for every Windows user.
+
+### Fixed
+
+- **`install.ps1` ACL step failed on VPN'd / domain-joined / localized
+  Windows hosts.** The script was calling `New-Object
+  FileSystemAccessRule('NT AUTHORITY\SYSTEM', ...)` which requires
+  LSA to translate the name into a SID — that lookup fails on some
+  installs with "Impossible de traduire certaines ou toutes les
+  références d'identité." Switched to the well-known SID constants
+  (`S-1-5-18` = LocalSystem, `S-1-5-32-544` = BuiltinAdministrators).
+  SIDs are language-independent and need no name resolution. The ACL
+  step is also now wrapped in `try/catch` — on a future surprise it
+  degrades to a warning ("falling back to default ProgramData ACL")
+  instead of aborting the install. The agent token is still not
+  world-readable in that fallback because ProgramData's default ACL
+  already excludes non-admin Users from read access.
+
+### Internal
+
+- **`refactor(modal): replace nested ternaries with mode-keyed
+  lookups`.** SonarCloud flagged three nested-ternary code smells
+  introduced by the v0.6.7 modal additions; fixed by building a
+  `Record<InstallMode, string>` map up front and indexing into it.
+  No behavior change.
+- **Dependabot dependency bumps** merged: `react-router-dom 7.15.1`
+  + `tsx 4.22.1` (npm minor patch group), and
+  `github/codeql-action 3.35.5` (CI workflows).
+
 ## [0.6.8] - 2026-05-18
 
 ### Fixed
