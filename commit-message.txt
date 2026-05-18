@@ -1,57 +1,42 @@
-release: v0.8.2 — fix Windows fsync EPERM, add SYS_PTRACE to agents, drop Tous hôtes toggle
+release: v0.8.3 — /fleet live chart polish (forward-fill + time-axis format + range rebuild)
 
-Three independent items shipped together.
+Two visual issues from the v0.8.2 deploy on /fleet:
 
-Fix — Windows auto-update was failing with fsync EPERM
-- First real agent_update push to a Windows agent (v0.6.9 → v0.8.0
-  from the .210 lab hub) surfaced the bug. agent/src/transport.ts
-  opened the staged agent.mjs.pending file with 'r' (read-only)
-  then called fsyncSync on the fd. POSIX accepts this; Windows
-  FlushFileBuffers needs GENERIC_WRITE.
-- Result: swap aborted before agent.mjs.pending was visible to
-  launcher.ps1, the agent stayed on the old version, and the hub
-  kept seeing the pre-update hub_version on reconnect.
-- Fix: open with 'r+' instead. Works cross-platform; fsync flushes
-  buffers as intended on both Linux and Windows.
+Fix 1 — "graph advances, new trait shows 1 s later" on live mode
+- Cause: when multiple hosts pushed samples at slightly different
+  sub-second offsets (host A at t=10.0, host B at t=10.3, …), the
+  unified sortedT had positions where each individual host had no
+  sample. We wrote null at those positions and uPlot broke the
+  line — each host's curve only re-drew its segment when its own
+  next sample landed on the unified timeline (~1 s behind any
+  other host's push).
+- Fix: forward-fill per-host across the unioned timeline. Each
+  host's value is held until its next sample. Lines scroll
+  smoothly together. Leading positions before a host has any data
+  stay null (honest "no data yet" — not a regression).
 
-Added — SYS_PTRACE on the agent docker sidecars
-- Lets the process collector read /proc/<pid>/{cmdline,comm,stat}
-  for processes owned by other UIDs (e.g. ollama running as the
-  system 'ollama' user while the agent container runs as root).
-- Without it the agent only resolves same-UID processes and falls
-  back to "unknown" + missing CPU%.
-- Applied to master compose (agent-nvidia + agent-amd) and the two
-  standalone composes (docker-compose.agent.{amd,nvidia}.yaml).
-
-Changed — /fleet "Tous hôtes" mode toggle removed
-- User feedback: not useful enough to justify the UI real estate.
-- v0.8.1's color-shaded per-metric rendering already conveys per-
-  host detail clearly; the fleet-wide aggregate was rarely
-  consulted in practice.
-- Dropped: the toggle <div>, mode state + setMode, aggregateForTotal
-  helper, METRIC_AGGREGATION table, unused Mode type, the
-  combined_chart_title_total* i18n keys are still in the JSON but
-  unused — left for now in case the feature returns.
+Fix 2 — X-axis showed coarse HH:MM ticks on live mode
+- Cause: uPlot's default time-axis formatter chose a granularity
+  based on the visible range. With 60 s of live data and a 24h
+  timeFormat preference, it sometimes settled on HH:MM, showing
+  the same minute label across every tick.
+- Fix: explicit axes[0].values formatter — HH:MM:SS in live mode,
+  HH:MM in longer ranges. Honors 12h/24h user pref via
+  toLocaleTimeString({hour12}).
+- Additional: range + timeFormat now baked into the seriesShape
+  rebuild key so a range switch (live ↔ 1h ↔ 24h) triggers a
+  uPlot destroy+recreate. Without this the X-axis formatter
+  closure stayed stale on the initial range.
 
 Files
-- agent/src/transport.ts: openSync 'r' → 'r+' for fsync support
-  on Windows.
-- docker-compose.yaml: cap_add SYS_PTRACE on agent-nvidia +
-  agent-amd.
-- docker-compose.agent.{amd,nvidia}.yaml: cap_add SYS_PTRACE.
-- src/components/fleet/FleetChart.tsx: ~80 LOC dropped, header
-  comment rewritten to reflect the simplified design.
+- src/components/fleet/FleetChart.tsx:
+    - data useMemo: forward-fill loop (held-last-value).
+    - ChartPlot gains range prop, threaded from parent.
+    - axes[0] formatter for sub-minute / minute granularity.
+    - seriesShape rebuild key includes range + timeFormat.
 
-Verified locally
-- tsc --noEmit: 0 errors.
-- agent typecheck: 0 errors.
-- npm run build: green.
+No agent-side changes. Bundle unchanged from v0.8.2.
 
 Upgrade
-- Hub: curl …/install.sh | bash (or docker compose pull && up -d
-  --force-recreate).
-- Windows agents on v0.6.9 still stuck: click "Maj" again — this
-  time the fsync swap succeeds and launcher.ps1 picks up the new
-  bundle within ~5 seconds.
-- Agent docker users with non-root ollama: the new SYS_PTRACE cap
-  applies on the next recreate. Re-pull the compose via install.sh.
+- Hub: docker compose pull && up -d --force-recreate (or rerun
+  install.sh). Effect immediate on /fleet.

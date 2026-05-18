@@ -5,6 +5,59 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2026-05-18
+
+Two /fleet chart polish fixes from real-time testing on the
+v0.8.2 deploy.
+
+### Fixed
+
+- **Live chart: "graph advances, new trait appears 1 s later".**
+  When multiple hosts pushed samples at slightly different
+  sub-second offsets (host A at t=10.0, host B at t=10.3, …),
+  the unified `sortedT` had timestamps where each individual
+  host had no sample. Pre-fix, we wrote `null` at those
+  positions and uPlot BROKE the line — visually, the chart's
+  X-axis advanced as soon as ANY host pushed but each host's
+  curve only re-drew its segment when its own next sample
+  landed on the unified timeline (~1 second behind). Fix:
+  forward-fill the per-host series across the unioned
+  timeline — each host's value is held until its next sample.
+  Lines now scroll smoothly together. Leading positions before
+  a host has any data stay `null` (honest "no data yet").
+- **Live chart: X-axis showed HH:MM only (looked like 24h ticks)
+  on the live range.** With `range='live'` (60 s of data),
+  uPlot's default time-axis formatter sometimes settled on the
+  HH:MM format the user has chosen in Settings → time-format,
+  showing the same minute label across every tick. Now an
+  explicit `axes[0].values` formatter renders HH:MM:SS in live
+  mode (always meaningful sub-minute movement) and HH:MM in
+  longer ranges. Honors the 12h / 24h user preference via
+  `toLocaleTimeString({hour12})`.
+- **Range switch (live ↔ 24h ↔ 1h) now rebuilds the chart.**
+  The X-axis formatter is a closure that captures the current
+  `range` at uPlot construction. Switching range without a
+  rebuild left the closure stale. `seriesShape` rebuild key now
+  includes `range` + `timeFormat` so a switch triggers a
+  destroy + recreate.
+
+### Internal
+
+- `src/components/fleet/FleetChart.tsx`:
+    - `data` useMemo: per-host forward-fill loop (was
+      `map.get(t) ?? null`, now hold last non-null value).
+    - `ChartPlotProps` gains a `range: string` prop, threaded
+      through from the parent.
+    - X-axis `values` formatter added with range-aware
+      granularity + `timeFormat` honoring.
+    - `seriesShape` key includes range + timeFormat.
+
+### Upgrade
+
+- Hub: `docker compose pull && up -d --force-recreate` (or
+  `install.sh`).
+- Effect immediate on /fleet — no operator action.
+
 ## [0.8.2] - 2026-05-18
 
 Three independent items shipped together:

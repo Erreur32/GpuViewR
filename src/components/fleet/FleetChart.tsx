@@ -395,10 +395,29 @@ export default function FleetChart() {
     for (const e of entries) for (const t of e.data.times) tSet.add(t);
     let sortedT = Array.from(tSet).sort((a, b) => a - b);
     if (range === 'live') sortedT = sortedT.slice(-WINDOW_POINTS);
+    // Forward-fill across the unified timeline. When multiple hosts
+    // push at slightly different sub-second offsets (host A at
+    // t=10.0, host B at t=10.3, etc.), the unioned `sortedT` has
+    // points where each individual host has no sample. Pre-fix, we
+    // wrote `null` at those positions, which made uPlot BREAK the
+    // line — visible as "graph advances, host's new segment shows up
+    // ~1s later when its next sample lands on a real timestamp".
+    // Forward-fill holds the host's last-known value across the
+    // gap, drawing a continuous line. Leading nulls (no sample yet
+    // for that host at chart open) stay null — those are honest
+    // "no data yet" pixels, not lag.
     const ySeries = entries.map((e) => {
       const map = new Map<number, number>();
       for (let i = 0; i < e.data.times.length; i++) map.set(e.data.times[i], e.data.values[i]);
-      return sortedT.map((t) => map.get(t) ?? null);
+      let last: number | null = null;
+      return sortedT.map((t) => {
+        const v = map.get(t);
+        if (v !== undefined) {
+          last = v;
+          return v;
+        }
+        return last;
+      });
     });
     return [sortedT, ...ySeries] as AlignedData;
   }, [entries, range]);
@@ -472,7 +491,7 @@ export default function FleetChart() {
         </div>
       </header>
 
-      <ChartPlot entries={entries} data={data} metricColor={METRIC_COLOR} />
+      <ChartPlot entries={entries} data={data} metricColor={METRIC_COLOR} range={range} />
 
       {/* Per-host legend. Renders EVERY enrolled host — including
           those without live samples — so the admin sees at a glance
@@ -546,6 +565,7 @@ interface ChartPlotProps {
   entries: SeriesEntry[];
   data: AlignedData;
   metricColor: Record<Metric, string>;
+  range: string;
 }
 
 interface CursorState {
@@ -581,7 +601,7 @@ function fmtValue(v: number | null, unit: string): string {
 // efficiency. The cursor-following tooltip is a portal-free absolute
 // div, positioned via the setCursor hook so all visible series values
 // at the hovered x show up at once.
-function ChartPlot({ entries, data, metricColor }: Readonly<ChartPlotProps>) {
+function ChartPlot({ entries, data, metricColor, range }: Readonly<ChartPlotProps>) {
   const { t } = useTranslation();
   const timeFormat = useUiStore((s) => s.timeFormat);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -599,7 +619,12 @@ function ChartPlot({ entries, data, metricColor }: Readonly<ChartPlotProps>) {
   // stroke colours are baked into the series defs and can't be updated
   // in place without destroy + recreate).
   const colorSig = `${metricColor.utilization}|${metricColor.temperature}|${metricColor.power}`;
-  const seriesShape = `${entries.map((e) => e.key).join('|')}#${colorSig}`;
+  // range + timeFormat baked into the rebuild key so a switch from
+  // live → 24h (or 24h → live) forces a uPlot rebuild and the X-axis
+  // formatter closure re-captures the new value. Without this the
+  // axis labels stayed in their initial format (the user reported
+  // seeing 24h-style HH:MM ticks in live mode after switching back).
+  const seriesShape = `${entries.map((e) => e.key).join('|')}#${colorSig}#${range}#${timeFormat}`;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -635,7 +660,35 @@ function ChartPlot({ entries, data, metricColor }: Readonly<ChartPlotProps>) {
         W: { auto: true },
       },
       axes: [
-        { stroke: 'rgba(148,163,184,0.6)', grid: { stroke: 'rgba(148,163,184,0.08)' } },
+        {
+          stroke: 'rgba(148,163,184,0.6)',
+          grid: { stroke: 'rgba(148,163,184,0.08)' },
+          // Time-axis tick formatter. uPlot's default picks a format
+          // based on the visible range, but on live mode (60 s of
+          // data) it sometimes shows just HH:MM, identical across
+          // ticks. We force HH:MM:SS for live (always meaningful
+          // sub-minute movement) and let the default handle longer
+          // ranges. 12h timeFormat falls back to HH-style with am/pm
+          // suffix via toLocaleTimeString — keeps the user's option
+          // honored.
+          values: (_u, vals) => {
+            const useSec = range === 'live';
+            const useHour12 = timeFormat === '12h';
+            return vals.map((v) => {
+              const d = new Date(v * 1000);
+              if (useSec) {
+                return d.toLocaleTimeString(undefined, {
+                  hour: '2-digit', minute: '2-digit', second: '2-digit',
+                  hour12: useHour12,
+                });
+              }
+              return d.toLocaleTimeString(undefined, {
+                hour: '2-digit', minute: '2-digit',
+                hour12: useHour12,
+              });
+            });
+          },
+        },
         {
           stroke: 'rgba(148,163,184,0.6)',
           grid: { stroke: 'rgba(148,163,184,0.08)' },
