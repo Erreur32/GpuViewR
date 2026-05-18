@@ -99,10 +99,21 @@ services:
       # Without it the table still shows names + VRAM (driver provides
       # those), but the CPU% column stays empty.
       HOST_PROC: /host/proc
+      # Optional: enables friendly Ollama model-name resolution in
+      # the process-table LLM badges (e.g. "llama3.1:8b" instead of
+      # "sha256:a3de86cd1c13..."). Set OLLAMA_DIR in .env to the
+      # ollama dir on the host (typically /usr/share/ollama/.ollama
+      # for systemd installs, or /root/.ollama if you run ollama as
+      # root). Without the matching volume below, the agent falls
+      # back to the sha256 prefix — feature degrades gracefully.
+      OLLAMA_MANIFESTS_DIR: /host/ollama/manifests
       TZ: ${TZ:-Europe/Paris}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - /proc:/host/proc:ro
+      # Uncomment + set OLLAMA_DIR in .env to enable Ollama model
+      # resolution (see env block above):
+      # - ${OLLAMA_DIR:-/usr/share/ollama/.ollama}:/host/ollama:ro
     networks: [gpuviewr]
     deploy:
       resources:
@@ -144,6 +155,10 @@ services:
       # Without this mount the AMD process table shows VRAM only, with
       # "unknown" names and empty CPU/GPU columns.
       HOST_PROC: /host/proc
+      # Optional Ollama model-name resolution — see the agent-nvidia
+      # service above for the full explanation. Uncomment the
+      # matching volume below to enable.
+      OLLAMA_MANIFESTS_DIR: /host/ollama/manifests
       TZ: ${TZ:-Europe/Paris}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     devices:
@@ -158,6 +173,10 @@ services:
     volumes:
       - /opt/rocm:/opt/rocm:ro
       - /proc:/host/proc:ro
+      # Uncomment + set OLLAMA_DIR in .env to enable Ollama model
+      # resolution. Typical paths: /usr/share/ollama/.ollama or
+      # /root/.ollama (if ollama runs as root).
+      # - ${OLLAMA_DIR:-/usr/share/ollama/.ollama}:/host/ollama:ro
     networks: [gpuviewr]
 
 networks:

@@ -22,6 +22,8 @@ import { parseRocmInfo, parseRocmPids, rocmUuidFromBus } from '../../../server/s
 import type { AgentGpuProcess, ProcessCollectorHandle, ProcessCollectorOptions, ProcessSnapshot } from './processes.js';
 import { createCpuSampler, readCmdline, resolveProcessName } from './_procTicks.js';
 import { classifyLLM } from './llmClassifier.js';
+// Note: LLMResolvers is re-exported through ProcessCollectorOptions
+// (Omit<...>) below — no direct import needed here.
 import { logger } from '../logger.js';
 
 export type { ProcessSnapshot };
@@ -96,7 +98,7 @@ export function createRocmProcessCollector(opts: RocmProcessCollectorOptions): P
         if (!name || name.toLowerCase() === 'unknown' || name === '[Not Found]' || name === '-' || name.toLowerCase() === 'n/a') {
           name = resolveProcessName(p.pid, opts.hostProc) ?? '';
         }
-        const llm = classifyLLM(command);
+        const llm = classifyLLM(command, opts.llmResolvers);
         return {
           pid: p.pid,
           process_name: name || 'unknown',

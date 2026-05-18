@@ -13,6 +13,7 @@ import { createAmdgpuSysfsCollector } from './collectors/gpuAmdgpuSysfs.js';
 import { createPdhGpuCollector } from './collectors/gpuWindowsPdh.js';
 import { createProcessCollector, type ProcessCollectorHandle } from './collectors/processes.js';
 import { createRocmProcessCollector } from './collectors/processesRocm.js';
+import { createOllamaResolver, type OllamaResolver } from './collectors/ollamaManifests.js';
 import { buildMockSamples } from './mock.js';
 
 const config = loadConfig();
@@ -41,6 +42,17 @@ transport.start();
 let mockTimer: NodeJS.Timeout | null = null;
 let gpuHandle: GpuCollectorHandle | null = null;
 let processHandle: ProcessCollectorHandle | null = null;
+
+// LLM-aware resolvers — wired into the process collector so the
+// classifier can translate Ollama blob digests to friendly model
+// names. Lifetime matches the agent process; refreshed periodically
+// so newly-pulled models become resolvable without an agent restart.
+const ollamaResolver: OllamaResolver = createOllamaResolver();
+const ollamaRefreshTimer = setInterval(
+  () => ollamaResolver.refresh(),
+  5 * 60_000,
+);
+ollamaRefreshTimer.unref();
 
 if (config.features.gpu) {
   if (config.mockGpu) {
@@ -222,12 +234,20 @@ async function buildAmdGpuCollector(cfg: AgentConfig): Promise<GpuCollectorHandl
 }
 
 function buildProcessCollector(v: GpuVendor, cfg: AgentConfig): ProcessCollectorHandle {
+  // Resolvers are stable for the lifetime of the agent — we
+  // instantiate them at module scope and pass a thin callback
+  // shape so the classifier doesn't need to know about the
+  // resolver's refresh schedule.
+  const llmResolvers = {
+    ollamaModelByDigest: (digest: string) => ollamaResolver.resolve(digest),
+  };
   if (v === 'amd') {
     return createRocmProcessCollector({
       rocmSmiPath: cfg.rocmSmiPath,
       tickMs: cfg.processesTickMs,
       hostProc: cfg.hostProc,
       onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
+      llmResolvers,
     });
   }
   return createProcessCollector({
@@ -235,5 +255,6 @@ function buildProcessCollector(v: GpuVendor, cfg: AgentConfig): ProcessCollector
     tickMs: cfg.processesTickMs,
     hostProc: cfg.hostProc,
     onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
+    llmResolvers,
   });
 }

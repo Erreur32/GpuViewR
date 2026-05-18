@@ -1,37 +1,60 @@
-release: v0.7.6 — tsc cleanup, zero errors at repo root
+release: v0.7.7 — Ollama model-name resolution (closes Palier 3 loop)
 
-Tech debt drain. `npx tsc --noEmit` was reporting 4 errors at the
-start of this session, all pre-existing. v0.7.0 cleared 2 (JSX
-namespace move in TS 5). v0.7.6 clears the remaining 2:
+Resolves the cryptic-sha256 issue left over from v0.7.3: the LLM
+badge tooltip now shows "llama3.1:8b" instead of "sha256:a3de86cd"
+for Ollama runner processes, once the operator wires the optional
+ollama bind-mount.
 
-1. server/routes/alerts.ts L92/L104/L177 — `req.params.id` cast to
-   `string`. Express's untyped Request<> widens params to
-   `string | string[]` for backward compat with query-style
-   params, but path params are always strings at runtime. Matches
-   the existing pattern in server/routes/hosts.ts:143 with the
-   explanatory comment.
+How it works
+- agent/src/collectors/ollamaManifests.ts walks the ollama
+  manifests tree on agent boot, parses each manifest JSON, indexes
+  the model-layer digest (mediaType
+  "application/vnd.ollama.image.model") → tag name
+  ("llama3.1:8b").
+- The Ollama branch of the LLM classifier (already in v0.7.3) now
+  takes an optional resolver param. When the runner cmdline
+  surfaces a sha256-XYZ blob path, the classifier asks the
+  resolver for that digest's friendly name. Falls back to
+  sha256:<prefix> when no match (manifests dir not mounted, model
+  pulled bypassing ollama, etc.).
+- Refresh on a 5-min interval so models pulled after agent boot
+  become resolvable without restart. setInterval unref'd so it
+  doesn't keep the process alive.
 
-2. server/services/authService.ts L31 — replaced
-   `jwt.verify(...) as JwtPayload` (which TS 5 flags because
-   `string | JwtPayload` doesn't sufficiently overlap with our
-   custom JwtPayload type) with a defensive runtime narrowing:
-   - Reject string payloads (jwt-signed-as-string branch — we
-     never sign strings so this is dead code at runtime).
-   - Validate `decoded.sub` is a number, `decoded.username` a
-     string, `decoded.role` admin|user.
-   - Return a freshly-shaped object so the caller sees exactly
-     our interface, not the upstream `JwtPayload` superset.
-   Hardens against tokens signed with the same secret but a
-   different payload shape (cross-app reuse, future schema
-   migration, dev artefact).
+Discovery picks first existing path from:
+  $OLLAMA_MANIFESTS_DIR
+  /host/ollama/manifests   (the docker bind-mount target)
+  /usr/share/ollama/.ollama/manifests
+  $HOME/.ollama/manifests
+  /root/.ollama/manifests
 
-No behaviour change for valid tokens. Invalid-shape tokens now
-return null instead of being passed through with potentially
-undefined required fields.
+Opt-in for docker users
+- docker-compose.yaml adds a commented bind-mount to both sidecars
+  (nvidia + amd):
+    # - ${OLLAMA_DIR:-/usr/share/ollama/.ollama}:/host/ollama:ro
+- Left commented to avoid auto-creating an empty /host/ollama dir
+  on hosts that don't have an ollama install. Operator uncomments
+  + sets OLLAMA_DIR in .env to enable.
+- For binary (systemd) agents the feature is automatic — the
+  discovery ladder finds /usr/share/ollama/.ollama or ~/.ollama
+  with no config.
 
-Files
-- server/routes/alerts.ts (3 line edits + one explanatory comment)
-- server/services/authService.ts (verifyToken refactored)
+Internal
+- New file agent/src/collectors/ollamaManifests.ts (~170 LOC).
+- agent/src/collectors/llmClassifier.ts: new LLMResolvers type
+  threaded through Pattern.model callbacks. Backwards-compatible:
+  calling classifyLLM(cmd) without resolvers still works.
+- agent/src/index.ts: instantiates one OllamaResolver at boot,
+  setInterval 5-min refresh, threaded into both process
+  collectors via a new `llmResolvers` option.
+- Bundle agent.mjs: 185.5 KB → 189.4 KB (+3.9 KB).
 
-Verified locally: `npx tsc --noEmit` → 0 errors, 0 warnings.
-`npm run build` → green (Vite + PWA SW generated).
+Upgrade
+- Hub: docker compose pull && docker compose up -d --force-recreate
+  (or rerun install.sh for the polite prompt flow).
+- For docker agent users wanting friendly names: uncomment the
+  ollama mount in docker-compose.yaml + set OLLAMA_DIR in .env to
+  your ollama dir (typical: /usr/share/ollama/.ollama or
+  /root/.ollama).
+- Binary (systemd / Windows) agents pick up resolution automatic
+  via the discovery ladder. No config change needed.

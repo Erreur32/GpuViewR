@@ -12,7 +12,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { logger } from '../logger.js';
 import { createCpuSampler, readCmdline, resolveProcessName } from './_procTicks.js';
-import { classifyLLM } from './llmClassifier.js';
+import { classifyLLM, type LLMResolvers } from './llmClassifier.js';
 
 export type GpuProcessType = 'C' | 'G' | 'G+C' | null;
 
@@ -43,6 +43,11 @@ export type ProcessCollectorOptions = Readonly<{
   tickMs: number;
   hostProc: string;
   onSnapshot: (snap: ProcessSnapshot) => void;
+  /** Optional resolvers passed to the LLM classifier. The Ollama
+   *  resolver translates blob digests into friendly model names —
+   *  no-op for processes that aren't ollama runners or when no
+   *  manifests dir is reachable. */
+  llmResolvers?: LLMResolvers;
 }>;
 
 export interface ProcessCollectorHandle {
@@ -119,7 +124,7 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
       const enriched: AgentGpuProcess[] = procs.map((p) => {
         const pmon = pmonByPid.get(p.pid);
         const command = readCmdline(p.pid, opts.hostProc);
-        const llm = classifyLLM(command);
+        const llm = classifyLLM(command, opts.llmResolvers);
         return {
           ...p,
           type: pmon?.type ?? (command ? 'C' : null),

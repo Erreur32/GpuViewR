@@ -33,9 +33,24 @@ export interface LLMClassification {
   runtime: string | null;
   /** Best-effort model identifier. For most runtimes this is the
    *  value of the `--model` / `-m` flag (typically a file path or
-   *  HF-style id). For Ollama, the sha256 prefix of the model blob.
-   *  Null when no model info is present in the cmdline. */
+   *  HF-style id). For Ollama, the resolver tries to translate the
+   *  blob's sha256 digest to a friendly name (`llama3.1:8b`) by
+   *  reading the ollama manifests dir — see ollamaManifests.ts.
+   *  Falls back to `sha256:<prefix>` when no resolver is wired or
+   *  the digest isn't in any indexed manifest. Null when no model
+   *  info is present in the cmdline at all. */
   model: string | null;
+}
+
+/** Pluggable resolvers — let the classifier translate cryptic ids
+ *  (blob digests, etc.) into friendly names without doing I/O in
+ *  the hot per-PID path. The collector wires these in once at
+ *  startup; `classifyLLM` calls them synchronously against an
+ *  in-memory cache. */
+export interface LLMResolvers {
+  /** Map a sha256 digest (`sha256:<hex>`) to an ollama model tag
+   *  like `llama3.1:8b`. Return null when unknown. */
+  ollamaModelByDigest?: (digest: string) => string | null;
 }
 
 interface Pattern {
@@ -43,8 +58,10 @@ interface Pattern {
   /** Predicate: does this command line belong to this runtime? */
   matches: (cmd: string) => boolean;
   /** Pull the model id out of the command line. Returns null when
-   *  no model is named (e.g. `ollama serve` with no model argument). */
-  model: (cmd: string) => string | null;
+   *  no model is named (e.g. `ollama serve` with no model argument).
+   *  May consult resolvers for cryptic-id → friendly-name lookups
+   *  (Ollama blob digests today). */
+  model: (cmd: string, resolvers?: LLMResolvers) => string | null;
 }
 
 // ---------- model extractors ----------
@@ -65,12 +82,17 @@ function flagValue(cmd: string, flags: readonly string[]): string | null {
 }
 
 /** Ollama models live at `.../models/blobs/sha256-<hex>`. The cmdline
- *  contains the path; we want the hex prefix as a short identifier. */
-function ollamaModelFromBlobPath(path: string): string | null {
-  // Match the sha256 hash regardless of surrounding chars (the path
-  // could be wrapped in quotes or appear as part of a longer string).
-  const m = /sha256-([0-9a-f]{6,})/i.exec(path);
+ *  contains the path; we extract the FULL digest (for the resolver
+ *  lookup) and return either the resolved friendly name when known,
+ *  or the truncated `sha256:<prefix>` form as a fallback. */
+function ollamaModelFromBlobPath(path: string, resolvers?: LLMResolvers): string | null {
+  // Match the full sha256 hex run (>=12 chars; ollama uses 64-char
+  // hex but we tolerate truncations seen in some logs).
+  const m = /sha256-([0-9a-f]{12,})/i.exec(path);
   if (!m) return null;
+  const fullDigest = `sha256:${m[1]}`;
+  const resolved = resolvers?.ollamaModelByDigest?.(fullDigest);
+  if (resolved) return resolved;
   return `sha256:${m[1].slice(0, 12)}`;
 }
 
@@ -101,11 +123,11 @@ const PATTERNS: readonly Pattern[] = [
   {
     runtime: 'ollama',
     matches: (cmd) => /\bollama\b/i.test(cmd),
-    model: (cmd) => {
+    model: (cmd, resolvers) => {
       // Runner form first — blob path with sha256.
       const modelFlag = flagValue(cmd, ['--model', '-m']);
       if (modelFlag) {
-        const fromBlob = ollamaModelFromBlobPath(modelFlag);
+        const fromBlob = ollamaModelFromBlobPath(modelFlag, resolvers);
         if (fromBlob) return fromBlob;
         return modelBasename(modelFlag);
       }
@@ -185,15 +207,16 @@ const PATTERNS: readonly Pattern[] = [
 
 /**
  * Classify a GPU process command line into an LLM runtime + model.
- * Pure function, no exceptions — every input maps to a valid
- * LLMClassification object. Returns the empty result for null /
- * empty input and for command lines that don't match any pattern.
+ * Pure-ish — the function itself does no I/O; resolvers handle the
+ * (cached) lookups. Every input maps to a valid LLMClassification
+ * object; returns the empty result for null/empty input or for
+ * command lines that don't match any pattern.
  */
-export function classifyLLM(command: string | null | undefined): LLMClassification {
+export function classifyLLM(command: string | null | undefined, resolvers?: LLMResolvers): LLMClassification {
   if (!command) return { runtime: null, model: null };
   for (const p of PATTERNS) {
     if (p.matches(command)) {
-      return { runtime: p.runtime, model: p.model(command) };
+      return { runtime: p.runtime, model: p.model(command, resolvers) };
     }
   }
   return { runtime: null, model: null };

@@ -5,6 +5,76 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.7] - 2026-05-18
+
+Closes the loop on Palier 3 — the LLM badge tooltip now shows
+friendly model names (`llama3.1:8b`) instead of cryptic sha256
+prefixes for Ollama processes.
+
+### Added
+
+- **Ollama model-name resolution.** New
+  `agent/src/collectors/ollamaManifests.ts` walks the Ollama
+  manifests tree (`<ollama>/manifests/<registry>/<library>/<model>/<tag>`)
+  on agent boot, parses each manifest JSON, and indexes the model-
+  layer digest (`mediaType:
+  application/vnd.ollama.image.model`) → tag name (e.g.
+  `llama3.1:8b`). The Ollama branch of the LLM classifier now
+  consults this resolver to translate the sha256 blob path
+  surfaced in the runner cmdline. Falls back to `sha256:<prefix>`
+  when no manifest matches (model pulled outside Ollama, or
+  resolver disabled). Refreshes every 5 min so newly-pulled
+  models become resolvable without an agent restart.
+- **Discovery is automatic with a configurable override.** Probes
+  these paths in order:
+  1. `$OLLAMA_MANIFESTS_DIR` (explicit override)
+  2. `/host/ollama/manifests` (docker bind-mount)
+  3. `/usr/share/ollama/.ollama/manifests` (systemd default)
+  4. `$HOME/.ollama/manifests`
+  5. `/root/.ollama/manifests`
+  First existing dir wins. Boot log line reports the chosen path
+  + indexed manifest count.
+
+### Changed
+
+- **`docker-compose.yaml` adds opt-in Ollama bind-mount.** Both
+  sidecars (nvidia + amd) now have a commented `${OLLAMA_DIR:-…}:/
+  host/ollama:ro` volume entry. Operators uncomment + set
+  `OLLAMA_DIR` in `.env` to enable model resolution. Left
+  commented to avoid auto-creating empty directories on hosts
+  without an Ollama install. Standalone agent composes get the
+  same treatment in a follow-up if anyone asks.
+
+### Internal
+
+- `agent/src/collectors/llmClassifier.ts`: new optional
+  `LLMResolvers` param threaded through `Pattern.model` callbacks.
+  The Ollama pattern uses it to resolve the digest;
+  other runtimes ignore it. API stays backwards-compatible —
+  classifier called without resolvers still works (returns
+  sha256:prefix for Ollama).
+- `agent/src/index.ts`: instantiates one `OllamaResolver` at boot,
+  passes it through to both `createProcessCollector` and
+  `createRocmProcessCollector` via a new `llmResolvers` option.
+  setInterval refresh on a 5-min schedule, `unref()`'d so the
+  refresh doesn't keep the process alive past a graceful shutdown.
+- `agent/src/collectors/processes.ts` + `processesRocm.ts`: pass
+  the resolver through to `classifyLLM`.
+- Bundle: 185.5 KB → 189.4 KB (+3.9 KB).
+
+### Upgrade
+
+- Hub: `docker compose pull && docker compose up -d
+  --force-recreate` (or rerun `install.sh` for the polite prompt
+  flow).
+- To get friendly model names in the Ollama badge tooltip,
+  uncomment the `ollama` volume in your `docker-compose.yaml`
+  agent service and set `OLLAMA_DIR` in `.env` to your ollama
+  dir on the host (most common: `/usr/share/ollama/.ollama` or
+  `/root/.ollama`).
+- Without that mount, the feature degrades gracefully — badges
+  still appear, just with the sha256 prefix as the model id.
+
 ## [0.7.6] - 2026-05-18
 
 ### Internal
