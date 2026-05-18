@@ -139,10 +139,32 @@ EOF
   echo -e "  ${G}✓${R} Generated ${C}.env${R} (mode 600). COMPOSE_PROFILES=${C}${VENDOR:-empty}${R}"
 else
   # Preserve user customisations. Auto-fix COMPOSE_PROFILES if the
-  # detected vendor changed (e.g. user swapped the GPU) — that one
-  # line is install.sh's responsibility, all the other secrets +
-  # tunables in .env stay untouched.
+  # detected vendor changed (e.g. user swapped the GPU), and back-fill
+  # any required secret that's missing because the .env predates the
+  # variable's introduction (e.g. LOCAL_AGENT_BOOTSTRAP arrived in
+  # v0.5.0 — older .env files don't have it and the sidecar crash-loops
+  # with "Missing required env var: AGENT_TOKEN" on upgrade).
   echo -e "  ${Y}○${R} ${C}.env${R} already exists — preserving secrets + customisations."
+
+  # Back-fill missing required secrets. Existing values are never
+  # touched; only absent lines are appended.
+  if ! grep -q "^JWT_SECRET=" .env 2>/dev/null; then
+    {
+      echo ""
+      echo "# Back-filled by install.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ) — missing from older .env."
+      echo "JWT_SECRET=$(openssl rand -base64 32)"
+    } >> .env
+    echo -e "  ${G}✓${R} Back-filled missing ${C}JWT_SECRET${R}."
+  fi
+  if ! grep -q "^LOCAL_AGENT_BOOTSTRAP=" .env 2>/dev/null; then
+    {
+      echo ""
+      echo "# Back-filled by install.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ) — missing from older .env."
+      echo "LOCAL_AGENT_BOOTSTRAP=$(openssl rand -base64 32)"
+    } >> .env
+    echo -e "  ${G}✓${R} Back-filled missing ${C}LOCAL_AGENT_BOOTSTRAP${R} (sidecar agent token)."
+  fi
+
   if [ -n "$VENDOR" ] && ! grep -q "^COMPOSE_PROFILES=${VENDOR}\$" .env 2>/dev/null; then
     if grep -q "^COMPOSE_PROFILES=" .env 2>/dev/null; then
       # Replace existing line (cross-platform: write to tmp + mv)

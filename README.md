@@ -228,6 +228,25 @@ the hub UI before pasting.
 in `HUB_URL`/`HOST_ID`/`AGENT_TOKEN` in a `.env`, then
 `docker compose up -d`.
 
+**Windows alternative** (NVIDIA only, GPU stats only — since v0.6.7):
+the Add Host modal exposes a third **Windows** tab that gives you a
+PowerShell snippet:
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+$env:GPVR_HUB_URL = 'http://<your-hub>:7510'
+$env:GPVR_TOKEN   = '<host_id>.<secret>'
+iex (iwr "$env:GPVR_HUB_URL/install.ps1" -UseBasicParsing).Content
+```
+
+Paste it in an **elevated** PowerShell. Requires Node 22+ and the
+standard NVIDIA driver (`nvidia-smi.exe`). The installer registers a
+SYSTEM-level Scheduled Task that survives reboots and supervises the
+agent in a while-loop. AMD on Windows is not supported (no
+`rocm-smi`). Process list, CPU/RAM telemetry, and the systemd-style
+auto-update *immediate-restart* are skipped for now — see
+`agent/README.md` for the long-form notes.
+
 **One agent → multiple hubs** (failover, shared monitoring, etc.):
 
 ```env
@@ -259,6 +278,12 @@ ships with `ReadWritePaths=/opt/gpuviewr-agent` for this), and the
 agent calls `exit(0)`. `Restart=always` brings it back on the new
 binary. A 5-minute cooldown protects against crash-loop pile-up
 (configurable via `AUTO_UPDATE_COOLDOWN_MS`).
+
+Windows agents also support auto-update from v0.6.7: the bundle is
+written to `C:\ProgramData\GpuViewR-Agent\agent.mjs.pending`,
+`launcher.ps1` swaps it in atomically on the next supervisor
+iteration (≈5 s downtime). Docker agents currently skip auto-update
+— upgrade them via `docker compose pull && docker compose up -d`.
 
 The Auto-update toggle's tooltip surfaces the scheduler state per
 host: "Last check: 12m ago" / "Last push: → 0.6.5 (3h ago)". For

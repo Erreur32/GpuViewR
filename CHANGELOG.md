@@ -5,6 +5,49 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.7] - 2026-05-18
+
+### Added
+
+- **Windows agent support — NVIDIA, GPU stats only.** A new
+  `install.ps1` is served by the hub at `GET /install.ps1` and a
+  third **Windows** tab in the Add Host modal generates a copy-paste
+  PowerShell one-liner. The installer:
+  - validates Administrator + Node 22+ + `nvidia-smi.exe`,
+  - drops the cross-platform `agent.mjs` bundle in
+    `C:\ProgramData\GpuViewR-Agent\`,
+  - writes an env file with stripped ACL (SYSTEM + Administrators
+    only — the agent token can't be read by interactive users),
+  - registers a SYSTEM-level **Scheduled Task** with `AtStartup`
+    trigger (15 s delay so the network is up before the WS dials)
+    and `RestartCount 9999`,
+  - spawns `launcher.ps1`, a tiny supervisor while-loop that swaps
+    in `agent.mjs.pending` (auto-update path) before each `node`
+    invocation and respawns after a 5 s backoff.
+  AMD on Windows is not supported (no `rocm-smi` equivalent in the
+  Windows driver stack). Process list, CPU/RAM telemetry, and
+  `nvidia-smi pmon` are skipped — the WDDM driver model doesn't
+  expose `pmon`, and `/proc` only exists on Linux.
+- **Windows-safe auto-update path.** `agent_update` frames detect
+  `process.platform === 'win32'` and stage the new bundle as
+  `agent.mjs.pending` instead of an in-place `renameSync` onto a
+  possibly-locked file. The launcher's supervisor loop picks it up
+  on the next iteration. Without this branch a clean `exit(0)` from
+  the agent on Windows would never have re-triggered a Scheduled
+  Task `AtStartup` trigger — the agent would have stayed dead until
+  reboot.
+
+### Fixed
+
+- **`install.sh` back-fills missing required secrets on upgrade.**
+  A user upgrading from v0.4.x kept their pre-v0.5 `.env` (no
+  `LOCAL_AGENT_BOOTSTRAP`) and the local sidecar agent crash-looped
+  with `[FATAL] Missing required env var: AGENT_TOKEN`. The
+  installer's "preserve existing .env" branch now back-fills any
+  missing `JWT_SECRET` / `LOCAL_AGENT_BOOTSTRAP` lines (random,
+  date-stamped, appended) without touching pre-existing
+  customisations. Idempotent — running twice doesn't duplicate.
+
 ## [0.6.6] - 2026-05-17
 
 ### Fixed

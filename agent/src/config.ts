@@ -187,9 +187,16 @@ export function loadConfig(): AgentConfig {
     gpuBackend: parseGpuBackend(process.env.GPU_BACKEND),
     sysClassDrm: process.env.SYS_CLASS_DRM || '/sys/class/drm',
     processesTickMs: parseInt10('PROCESSES_TICK_MS', processesDefault),
-    nvidiaSmiPath: process.env.NVIDIA_SMI_PATH || 'nvidia-smi',
+    // Windows: Node's spawn() does NOT consult PATHEXT, so 'nvidia-smi'
+    // alone fails with ENOENT even when the driver is installed. The
+    // .exe is in C:\Windows\System32\ which is always in PATH, so the
+    // bare filename with extension resolves correctly.
+    nvidiaSmiPath: process.env.NVIDIA_SMI_PATH || (process.platform === 'win32' ? 'nvidia-smi.exe' : 'nvidia-smi'),
     rocmSmiPath: process.env.ROCM_SMI_PATH || 'rocm-smi',
-    hostProc: process.env.HOST_PROC || '/host/proc',
+    // /host/proc only exists on Linux. On Windows we don't read /proc
+    // at all (process collector is skipped); empty string makes that
+    // explicit and prevents the path from leaking into log lines.
+    hostProc: process.env.HOST_PROC || (process.platform === 'win32' ? '' : '/host/proc'),
     reconnectMaxMs: parseInt10('RECONNECT_MAX_MS', 30_000),
     tlsInsecure: parseBool('TLS_INSECURE', false),
     mockGpu: parseBool('MOCK_GPU', false),

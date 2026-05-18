@@ -98,6 +98,30 @@ npm start
 
 For a long-running install, wrap it in a systemd unit (sample under `Docs/MULTI_HOST_PLAN.md` §15.2 mode 3).
 
+## Windows (NVIDIA only, GPU stats only)
+
+The agent runs on Windows 10/11 with the standard NVIDIA driver — GPU samples stream to the hub exactly like on Linux. Process list and CPU stats are **not** collected (no `/proc`, and `nvidia-smi pmon` isn't supported on the WDDM driver model). AMD on Windows is not supported (no `rocm-smi` equivalent).
+
+PowerShell as **Administrator**:
+
+```powershell
+# 1. Install Node 22+ from https://nodejs.org (msi installer)
+node --version  # >=22
+
+# 2. Grab the prebuilt bundle
+mkdir C:\ProgramData\GpuViewR-Agent
+cd C:\ProgramData\GpuViewR-Agent
+Invoke-WebRequest https://gpu.example.com/agent.mjs -OutFile agent.mjs
+
+# 3. Run (token from "Settings → Hosts → + Add host" on the hub)
+$env:HUB_URL  = "wss://gpu.example.com/agent"
+$env:HOST_ID  = "<uuid from the hub>"
+$env:AGENT_TOKEN = "<secret from the hub>"
+node agent.mjs
+```
+
+To run on boot, register it as a Scheduled Task with trigger *At startup*, action `node.exe`, argument `C:\ProgramData\GpuViewR-Agent\agent.mjs`, and the three env vars baked into the task definition (Task Scheduler GUI → Actions → New → Environment).
+
 ## Configuration — environment variables
 
 ### Required

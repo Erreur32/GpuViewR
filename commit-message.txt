@@ -1,25 +1,53 @@
-release: v0.6.6 — SonarCloud dedupe hotfix
+release: v0.6.7 — Windows agent (NVIDIA GPU stats) + install.sh secret back-fill
 
-The v0.6.5 hosts-table migration in connection.ts repeated the
-same ADD-COLUMN-if-missing pattern three times in a row (one
-block per new column: last_update_check_at,
-last_update_pushed_at, last_update_pushed_version). SonarCloud
-flagged 8.3% Duplicated Lines on New Code (18 lines in
-connection.ts at 100%), above the QG's 3% threshold.
+Adds first-class Windows support for the agent (GPU samples only,
+NVIDIA-only) and fixes a long-standing install.sh upgrade gotcha
+that bit a user upgrading from v0.4.x.
+
+Added
+- Windows agent installer. New install.ps1 served by the hub at
+  GET /install.ps1, and a third "Windows" tab in the Add Host
+  modal that builds a copy-paste PowerShell snippet. The .ps1
+  validates Administrator + Node 22+ + nvidia-smi.exe, drops the
+  cross-platform agent.mjs bundle in C:\ProgramData\GpuViewR-Agent,
+  writes an env file with SYSTEM+Administrators ACL only, and
+  registers a SYSTEM-level Scheduled Task with AtStartup trigger
+  (15 s delay) and 9999 restart attempts. A small launcher.ps1
+  while-loop supervises node, with a 5 s respawn backoff.
+- Cross-platform agent_update. The agent now detects Windows and
+  stages new bundles as agent.mjs.pending instead of renameSync'ing
+  onto a possibly-locked file. The launcher's loop swaps it in on
+  the next iteration. Without this branch the agent's clean
+  exit(0) after an update would never have re-triggered the
+  Scheduled Task's AtStartup trigger — agent would have stayed
+  dead until reboot.
+- agent/src/config.ts: nvidia-smi.exe default on win32 (Node's
+  spawn() ignores PATHEXT and ENOENTs on the bare "nvidia-smi"
+  filename), empty hostProc default on win32.
+- agent/src/index.ts: fail-fast if vendor resolves to AMD on win32
+  (no rocm-smi on Windows), soft-skip the process collector with
+  a clear log line ("no /proc; nvidia-smi pmon unsupported").
 
 Fixed
-- server/database/connection.ts: refactored the three ADD-COLUMN
-  blocks into a single loop over a [name, type][] array. Same
-  idempotent runtime behavior, ~12 fewer lines, no duplication.
-  No DB-level change — the columns are still added the same way
-  with the same names and types.
+- install.sh now back-fills JWT_SECRET / LOCAL_AGENT_BOOTSTRAP
+  when an existing .env is missing them. Users who installed
+  before v0.5.0 (when LOCAL_AGENT_BOOTSTRAP was introduced) and
+  re-ran the master installer kept their old .env and watched
+  gpuviewr-agent-local crash-loop with [FATAL] Missing required
+  env var: AGENT_TOKEN. The installer's "preserve existing .env"
+  branch now appends any missing required secrets with a fresh
+  openssl rand value and a date-stamped comment, without touching
+  the rest of the file. Idempotent — re-running doesn't dup.
 
-Why this matters
-- Keeps the QG green so the SonarCloud badge in the README stays
-  accurate. Also a sane pattern to reuse next time we add
-  multiple columns in one migration.
+Not supported on Windows
+- AMD GPUs (no rocm-smi in the Windows driver stack).
+- Process list, CPU/RAM telemetry, nvidia-smi pmon (WDDM driver
+  doesn't expose pmon; /proc is Linux-only).
 
 Upgrade
-- Hub: `docker compose pull && docker compose up -d`. No DB or
-  runtime change vs v0.6.5 — purely a code cleanup.
-- Agents: no change required.
+- Hub: cd ~/gpuviewr && curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
+  (idempotent — also back-fills secrets if upgrading from <v0.5).
+- Linux agents: hub auto-update will pick up the new bundle on the
+  next scheduler tick or reconnect.
+- Windows agents: re-run the install.ps1 one-liner from the Add
+  Host modal's Windows tab.

@@ -322,19 +322,36 @@ export function createTransport(config: AgentConfig): Transport {
       }
       return;
     }
-    const tmp = `${target}.new`;
+    // Cross-platform swap strategy:
+    //
+    //   Linux: write .new, fsync, atomic rename(2) → target, exit. systemd
+    //   restarts the unit and picks up the new bundle. rename(2) is atomic
+    //   on the same FS so a half-written .new can never be loaded.
+    //
+    //   Windows: rename-onto-target while the .mjs may still be cached by
+    //   the running node process is fragile (sharing mode quirks, AV
+    //   handles, etc.), and a clean exit(0) doesn't re-trigger a Task
+    //   Scheduler restart from an AtStartup trigger — that would leave
+    //   the agent dead until reboot. We instead stage a sibling
+    //   `agent.mjs.pending`, exit, and let launcher.ps1's while-loop
+    //   atomically swap it on the next iteration (when node is no longer
+    //   running, so no lock contention).
+    const isWin = process.platform === 'win32';
+    const tmp = isWin ? `${target}.pending` : `${target}.new`;
     try {
       writeFileSync(tmp, buf, { mode: 0o755 });
       const fd = openSync(tmp, 'r');
       try { fsyncSync(fd); } finally { closeSync(fd); }
-      renameSync(tmp, target);
+      if (!isWin) renameSync(tmp, target);
     } catch (err) {
       logger.error(conn.tag, `agent_update: filesystem swap failed: ${(err as Error).message}`);
       return;
     }
     logger.success(
       conn.tag,
-      `agent_update applied: ${AGENT_VERSION} → ${targetVersion} (${buf.length}B). Exiting; systemd will restart.`,
+      isWin
+        ? `agent_update staged at ${tmp}: ${AGENT_VERSION} → ${targetVersion} (${buf.length}B). Exiting; launcher.ps1 will swap and restart node.`
+        : `agent_update applied: ${AGENT_VERSION} → ${targetVersion} (${buf.length}B). Exiting; systemd will restart.`,
     );
     // Tiny tail so the log line flushes through the logger transport
     // before the process dies. 100ms is enough for stdout to drain.

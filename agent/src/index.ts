@@ -17,6 +17,14 @@ import { buildMockSamples } from './mock.js';
 const config = loadConfig();
 const vendor = resolveVendor(config);
 
+// Windows support is GPU-only (NVIDIA). AMD on Windows has no rocm-smi
+// equivalent, and the process collector reads /proc which doesn't exist.
+// Fail fast on AMD; soft-skip processes further down.
+if (process.platform === 'win32' && vendor === 'amd') {
+  logger.error('boot', 'AMD GPU monitoring is not supported on Windows (no rocm-smi). Only NVIDIA is supported on this platform.');
+  process.exit(1);
+}
+
 // Banner line first: version + install mode are what people grep for in
 // `systemctl status` / `docker logs` when figuring out which agent is
 // stale. Keep it short and unmistakable.
@@ -56,8 +64,14 @@ if (config.features.gpu) {
 
 // Process collector runs alongside the GPU collector when the smi
 // binary is available. Skipped under MOCK_GPU=1 because synthetic
-// samples don't have real PIDs to enrich.
-if (config.features.processes && !config.mockGpu) {
+// samples don't have real PIDs to enrich. Also skipped on Windows —
+// the collector reads /proc/<pid>/{stat,cmdline} which is Linux-only,
+// and nvidia-smi pmon (used for GPU SM% per pid) isn't supported on
+// the Windows WDDM driver model anyway.
+if (process.platform === 'win32' && config.features.processes) {
+  logger.warn('boot', 'process collector disabled on Windows (no /proc; nvidia-smi pmon unsupported). GPU samples will still stream normally.');
+}
+if (config.features.processes && !config.mockGpu && process.platform !== 'win32') {
   processHandle = buildProcessCollector(vendor, config);
   if (processHandle.available()) {
     processHandle.start();

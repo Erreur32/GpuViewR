@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Container, Terminal } from 'lucide-react';
+import { Container, Terminal, Monitor } from 'lucide-react';
 import { useHostsStore } from '../../store/hostsStore';
 import { notify } from '../../store/toastStore';
 import { copyText } from '../../lib/clipboard';
@@ -8,7 +8,7 @@ import { ModalShell, WarningBanner, CopyValueBlock } from './_modalParts';
 
 type Props = Readonly<{ onClose: () => void }>;
 type Stage = 'form' | 'token';
-type InstallMode = 'docker' | 'curl';
+type InstallMode = 'docker' | 'curl' | 'windows';
 
 // Returned by POST /api/hosts — copied locally because the modal owns
 // the lifecycle (the store keeps only the hash post-enroll, so we hold
@@ -117,7 +117,19 @@ export default function EnrollHostModal({ onClose }: Props) {
     ? `curl -fsSL ${result.hubHttp}/install.sh | sudo bash -s -- \\\n  --url ${result.hubHttp} \\\n  --token ${result.hostId}.${result.token}`
     : '';
 
-  const activeCmd = mode === 'curl' ? curlCmd : dockerCmd;
+  // Windows: PowerShell idiom equivalent to `curl | bash -s -- --args`
+  // doesn't exist (iex can't forward args to the iex'd script), so we
+  // pass credentials via env vars that the .ps1 reads as param() defaults.
+  // The user copy-pastes the block; the script registers a SYSTEM-level
+  // scheduled task. Must be run in an elevated PowerShell.
+  const windowsCmd = result
+    ? `Set-ExecutionPolicy Bypass -Scope Process -Force\n$env:GPVR_HUB_URL = '${result.hubHttp}'\n$env:GPVR_TOKEN   = '${result.hostId}.${result.token}'\niex (iwr "$env:GPVR_HUB_URL/install.ps1" -UseBasicParsing).Content`
+    : '';
+
+  const activeCmd =
+    mode === 'curl' ? curlCmd :
+    mode === 'docker' ? dockerCmd :
+    windowsCmd;
 
   return (
     <ModalShell
@@ -200,6 +212,14 @@ export default function EnrollHostModal({ onClose }: Props) {
                 >
                   <Container size={14} /> {t('hosts.install_mode_docker')}
                 </button>
+                <button
+                  type="button"
+                  className="seg-btn inline-flex items-center gap-1.5"
+                  aria-pressed={mode === 'windows'}
+                  onClick={() => setMode('windows')}
+                >
+                  <Monitor size={14} /> {t('hosts.install_mode_windows')}
+                </button>
               </div>
 
               {/* TLS toggle — auto-detected based on whether the hub
@@ -222,11 +242,17 @@ export default function EnrollHostModal({ onClose }: Props) {
             </div>
 
             <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
-              {mode === 'curl' ? t('hosts.install_curl_hint') : t('hosts.install_docker_hint')}
+              {mode === 'curl' ? t('hosts.install_curl_hint') :
+               mode === 'docker' ? t('hosts.install_docker_hint') :
+               t('hosts.install_windows_hint')}
             </p>
 
             <CopyValueBlock
-              label={mode === 'curl' ? t('hosts.curl_cmd') : t('hosts.docker_cmd')}
+              label={
+                mode === 'curl' ? t('hosts.curl_cmd') :
+                mode === 'docker' ? t('hosts.docker_cmd') :
+                t('hosts.windows_cmd')
+              }
               value={activeCmd}
               onCopy={() => copy(activeCmd, 'cmd')}
               copied={copied === 'cmd'}
