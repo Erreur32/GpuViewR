@@ -70,9 +70,17 @@ WORKDIR /app
 # libdrm-amdgpu1 silences the "Fail to open libdrm_amdgpu.so" warning
 # rocm-smi prints on every invocation — purely cosmetic since the
 # script falls through to sysfs, but it pollutes the agent logs.
+# procps gives us `ps`, which rocm-smi's --showpids shells out to in
+# order to translate PIDs into process names. Without it the script
+# logs `ps: not found` on stderr and reports `process_name="unknown"`
+# for every GPU pid (observed v0.7.0 on the .210 AMD master — see the
+# CHANGELOG entry for v0.7.1). Our own collector's resolveProcessName
+# fallback covers the gap when /proc is mounted, but installing procps
+# fixes the issue at its source and the user sees real names even when
+# the /host/proc bind-mount is missing.
 RUN apt-get update \
   && apt-get upgrade -y \
-  && apt-get install -y --no-install-recommends python3 tzdata libdrm-amdgpu1 \
+  && apt-get install -y --no-install-recommends python3 tzdata libdrm-amdgpu1 procps \
   && rm -rf /var/lib/apt/lists/* \
   && chown -R node:node /app
 

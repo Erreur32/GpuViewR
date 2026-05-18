@@ -1,64 +1,44 @@
-release: v0.7.0 — Windows AMD/Intel via PDH, AMD process-table fixes, README LLM focus
+release: v0.7.1 — install procps in agent image (fix AMD "unknown" process names)
 
-First Windows-stable release (real test green on a home RTX 3090 Ti
-box earlier today). Adds AMD / Intel GPU coverage on Windows through
-the same Performance Data Helper counters Task Manager uses, and
-fixes three latent bugs in the AMD process collector path that
-became visible the moment the .210 lab master compared its table
-against the .209 NVIDIA master. README repositioned around the
-project's actual design driver: monitoring local AI / LLM inference
-runtimes.
+Patch release that fixes the actual root cause of the "process_name
+= unknown" issue surfaced on .210 AMD master during v0.7.0
+validation. v0.7.0's resolveProcessName fallback was correct but
+unnecessary in the common case: rocm-smi --showpids shells out to
+`ps` to translate PIDs into process names, and the agent's runtime
+image (node:22-trixie-slim) ships without `ps`. rocm-smi printed
+`/bin/sh: 1: ps: not found` on stderr and returned the literal
+string "unknown" for process_name, regardless of whether /host/proc
+was mounted.
 
-Added
-- AMD / Intel GPU support on Windows via PDH counters. New
-  gpuWindowsPdh.ts taps Win32_PerfFormattedData_GPUPerformanceCounters
-  _{GPUEngine, GPUAdapterMemory} — language-independent WMI classes,
-  so French / German / non-en-US Windows installs work without the
-  typical localized-counter-path hassle. One long-running powershell
-  process polls the counters and emits one JSON snapshot per tick to
-  stdout. Surfaces utilization (highest engine util per adapter,
-  matches Task Manager) and dedicated VRAM. Temp / power / freq /
-  PCIe stay null — PDH doesn't expose them; NVIDIA users keep the
-  full picture via nvidia-smi.exe.
-- resolveVendor's Windows fallback now routes to PDH. A Windows box
-  without nvidia-smi.exe previously resolved to vendor=nvidia and
-  exited at boot. v0.6.9 made it soft-fail with no GPU samples; v0.7.0
-  routes it through the PDH collector so the table has real numbers.
-- install.ps1 messaging updated. No longer claims "AMD on Windows is
-  not supported"; describes the PDH fallback and what it covers.
-- README banner names the actual AI / LLM runtimes the dashboard is
-  designed to surface (Ollama, llama.cpp, vLLM, ComfyUI, Stable
-  Diffusion, KoboldCpp, text-generation-webui, LM Studio).
+Adding `procps` to the agent Dockerfile fixes the issue at its
+source — rocm-smi now successfully calls `ps -p <pid> -o comm=` and
+returns real names. The v0.7.0 fallback in processesRocm.ts still
+covers the (rarer) case where /host/proc IS mounted but `ps` isn't,
+so this is belt-and-suspenders.
 
-Fixed
-- AMD process table no longer renders "unknown" with empty CPU/GPU
-  columns. Three independent bugs in the same path:
-    1. processesRocm.ts fell back to the literal string 'unknown'
-       when rocm-smi --showpids returned an empty process_name field
-       (common with non-root callers and older ROCm builds). Now uses
-       resolveProcessName(pid, hostProc) — argv[0] basename then
-       /proc/<pid>/comm — same ladder the nvidia collector uses for
-       [Not Found] / N/A rows.
-    2. gpu_pct was hardcoded null. We were already parsing
-       cu_occupancy (the AMD analogue of nvidia-smi pmon's SM%) and
-       discarding it. Now surfaced as gpu_pct.
-    3. Master docker-compose.yaml agent sidecars (both nvidia and
-       amd) were missing /proc:/host/proc:ro + HOST_PROC env. The
-       CPU sampler couldn't read /proc/<pid>/stat, so CPU% was
-       permanently null. Added the mount on both sidecars and on
-       the standalone docker-compose.agent.nvidia.yaml (the
-       standalone AMD compose was already correct).
+Diagnostic that pinpointed the cause:
+
+  $ docker exec gpuviewr-agent-local /opt/rocm/bin/rocm-smi --showpids --json
+  /bin/sh: 1: ps: not found
+  {"system": {"PID1085714": "unknown, 1, 12209102848, 0, unknown"}}
+
+The two "unknown" tokens are process_name and cu_occupancy — both
+populated via `ps`-shells inside rocm-smi.
 
 Internal
-- Agent bundle: 173 KB -> 181 KB (PDH collector + minor refactor).
-- agent/src/index.ts: removed the v0.6.7 win32+amd fail-fast guard.
-- Three new compose changes need a full `up -d` on the hub side
-  (not just `restart`) for the /proc volume to attach.
+- agent/Dockerfile: procps added to the apt install line. Image
+  size delta ~+250 KB.
+- agent/dist/agent.mjs rebuilt at v0.7.1 (no source changes).
+
+Known limitation still standing
+- GPU% column stays `-` on AMD because rocm-smi returns
+  cu_occupancy="unknown" from the driver on certain ROCm/amdgpu
+  combos. Driver-side, out of scope for this release.
 
 Upgrade
 - Hub: cd ~/gpuviewr && docker compose pull && docker compose up -d
-- Linux agents: auto-update picks up the new bundle.
-- Windows agents (v0.6.7+ install.ps1): launcher.ps1 swaps in the
-  new bundle on the next agent_update push.
-- AMD-on-Windows / Intel-on-Windows users: re-run the install.ps1
-  one-liner from the Add Host modal to validate the PDH path.
+  --force-recreate
+- AMD users see real process names on the next collector tick.
+- The /proc bind-mount added to master docker-compose.yaml in
+  v0.7.0 is still recommended for CPU% population — wget the latest
+  docker-compose.yaml from main if you haven't refreshed yet.

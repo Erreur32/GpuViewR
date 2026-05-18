@@ -5,6 +5,61 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-05-18
+
+Patch release fixing two things spotted during v0.7.0 lab validation
+on the .210 AMD master:
+
+### Fixed
+
+- **`process_name="unknown"` on every AMD GPU process.** Root cause
+  was inside the agent's runtime image: `rocm-smi --showpids` shells
+  out to `ps` to translate PIDs into process names, but our
+  `node:22-trixie-slim` base ships without it. `rocm-smi` prints
+  `ps: not found` on stderr and returns the literal string `"unknown"`
+  as the `process_name` CSV field — independent of whether
+  `/host/proc` is mounted or whether our v0.7.0 `resolveProcessName`
+  fallback fires. Adding `procps` to the agent Dockerfile fixes the
+  issue at its source. The fallback in `processesRocm.ts` still
+  covers the case where `/host/proc` IS mounted but `ps` isn't,
+  which is now belt-and-suspenders.
+- **`update-version.sh` was bumping nested dependency versions in
+  `package-lock.json`** when their `"version"` field happened to
+  match the app version being replaced. v0.6.5 → v0.6.9 each
+  silently drifted a `node_modules/source-map-support/node_modules/
+  source-map` entry from 0.6.5 → 0.6.9 — still satisfying its
+  `^0.6.0` constraint by accident. v0.7.0 pushed it to 0.7.0, which
+  violates the constraint and broke `npm ci` on every CI job for the
+  initial v0.7.0 push. The second `sed` is now range-bounded to the
+  `"packages": {` → first `},` window so only the root
+  `packages.""` entry is touched. Already fixed on main in commit
+  `d785bbc`; folded into the release notes here for completeness.
+
+### Internal
+
+- `agent/Dockerfile`: adds `procps` to the `apt install` line.
+  Image size delta: ~+250 KB. Worth it.
+- `agent/dist/agent.mjs`: rebuilt at v0.7.1 (no source changes,
+  just the version stamp).
+
+### Known limitations on AMD after v0.7.1
+
+- **GPU% column still `-`** on .210 — `rocm-smi --showpids` returns
+  `cu_occupancy="unknown"` from the kernel on certain ROCm /
+  amdgpu combinations. Driver-side issue, not our bug. NVIDIA's
+  `nvidia-smi pmon` SM% is the closer-to-universal equivalent.
+
+### Upgrade
+
+- Hub: `cd ~/gpuviewr && docker compose pull && docker compose up
+  -d --force-recreate`. The new agent image (`ghcr.io/erreur32/
+  gpuviewr-agent:latest` or `:v0.7.1`) ships with `ps`. AMD users
+  will see real process names on the next tick.
+- The `/proc:/host/proc:ro` volume mount added in v0.7.0 to the
+  master docker-compose.yaml is still recommended (gives CPU% in
+  the process table) — refresh your local `docker-compose.yaml`
+  from main if you haven't yet.
+
 ## [0.7.0] - 2026-05-18
 
 Minor release — first Windows-stable build (real test green on a home
