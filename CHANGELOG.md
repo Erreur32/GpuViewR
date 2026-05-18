@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.8] - 2026-05-18
+
+### Fixed
+
+- **Windows installer 503 inside the Docker image.** v0.6.7 shipped
+  the `install.ps1.tpl` template in the repo and added the
+  `GET /install.ps1` route, but the hub `Dockerfile` only `COPY`d
+  `install.sh.tpl`. The PowerShell endpoint returned a 503 with
+  `# install.ps1 template not found in this build` to every user
+  who clicked the new **Windows** pill in the Add Host modal.
+  Added the missing `COPY` line. No code change — purely a build
+  recipe omission caught the moment the first real user pasted
+  the one-liner.
+
 ## [0.6.7] - 2026-05-18
 
 ### Added

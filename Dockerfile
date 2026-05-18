@@ -83,6 +83,11 @@ COPY --chown=node:node --from=builder /app/README.md ./
 # curl install path. Without it those endpoints 503 with a warn log.
 COPY --chown=node:node --from=builder /app/agent/dist/agent.mjs ./agent/dist/agent.mjs
 COPY --chown=node:node --from=builder /app/agent/install.sh.tpl ./agent/install.sh.tpl
+# Windows variant of the agent installer (served at /install.ps1, v0.6.7+).
+# Same pattern as install.sh.tpl above: the hub renders __HUB_URL__ on
+# each request. Without this COPY the GET /install.ps1 endpoint 503s
+# with "# install.ps1 template not found in this build".
+COPY --chown=node:node --from=builder /app/agent/install.ps1.tpl ./agent/install.ps1.tpl
 # Docker variant of the agent installer (served at /install-agent.sh).
 COPY --chown=node:node --from=builder /app/install-agent.sh ./install-agent.sh
 

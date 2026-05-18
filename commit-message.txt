@@ -1,53 +1,28 @@
-release: v0.6.7 — Windows agent (NVIDIA GPU stats) + install.sh secret back-fill
+release: v0.6.8 — Dockerfile hotfix for the Windows installer endpoint
 
-Adds first-class Windows support for the agent (GPU samples only,
-NVIDIA-only) and fixes a long-standing install.sh upgrade gotcha
-that bit a user upgrading from v0.4.x.
+v0.6.7 shipped install.ps1.tpl in the repo and wired up
+GET /install.ps1, but the hub Dockerfile only COPY'd install.sh.tpl
+into the image. The endpoint responded with 503 and
+"# install.ps1 template not found in this build" to every user
+who pasted the Windows one-liner from the Add Host modal.
 
-Added
-- Windows agent installer. New install.ps1 served by the hub at
-  GET /install.ps1, and a third "Windows" tab in the Add Host
-  modal that builds a copy-paste PowerShell snippet. The .ps1
-  validates Administrator + Node 22+ + nvidia-smi.exe, drops the
-  cross-platform agent.mjs bundle in C:\ProgramData\GpuViewR-Agent,
-  writes an env file with SYSTEM+Administrators ACL only, and
-  registers a SYSTEM-level Scheduled Task with AtStartup trigger
-  (15 s delay) and 9999 restart attempts. A small launcher.ps1
-  while-loop supervises node, with a 5 s respawn backoff.
-- Cross-platform agent_update. The agent now detects Windows and
-  stages new bundles as agent.mjs.pending instead of renameSync'ing
-  onto a possibly-locked file. The launcher's loop swaps it in on
-  the next iteration. Without this branch the agent's clean
-  exit(0) after an update would never have re-triggered the
-  Scheduled Task's AtStartup trigger — agent would have stayed
-  dead until reboot.
-- agent/src/config.ts: nvidia-smi.exe default on win32 (Node's
-  spawn() ignores PATHEXT and ENOENTs on the bare "nvidia-smi"
-  filename), empty hostProc default on win32.
-- agent/src/index.ts: fail-fast if vendor resolves to AMD on win32
-  (no rocm-smi on Windows), soft-skip the process collector with
-  a clear log line ("no /proc; nvidia-smi pmon unsupported").
+Caught the moment the first real Windows user (PapoMint on
+192.168.32.210) tried the new flow. Pure build-recipe omission,
+no code change — just the missing COPY line.
 
 Fixed
-- install.sh now back-fills JWT_SECRET / LOCAL_AGENT_BOOTSTRAP
-  when an existing .env is missing them. Users who installed
-  before v0.5.0 (when LOCAL_AGENT_BOOTSTRAP was introduced) and
-  re-ran the master installer kept their old .env and watched
-  gpuviewr-agent-local crash-loop with [FATAL] Missing required
-  env var: AGENT_TOKEN. The installer's "preserve existing .env"
-  branch now appends any missing required secrets with a fresh
-  openssl rand value and a date-stamped comment, without touching
-  the rest of the file. Idempotent — re-running doesn't dup.
-
-Not supported on Windows
-- AMD GPUs (no rocm-smi in the Windows driver stack).
-- Process list, CPU/RAM telemetry, nvidia-smi pmon (WDDM driver
-  doesn't expose pmon; /proc is Linux-only).
+- Dockerfile: added COPY --from=builder /app/agent/install.ps1.tpl
+  ./agent/install.ps1.tpl next to the existing install.sh.tpl line.
 
 Upgrade
-- Hub: cd ~/gpuviewr && curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
-  (idempotent — also back-fills secrets if upgrading from <v0.5).
-- Linux agents: hub auto-update will pick up the new bundle on the
-  next scheduler tick or reconnect.
-- Windows agents: re-run the install.ps1 one-liner from the Add
-  Host modal's Windows tab.
+- Hub: `docker compose pull && docker compose up -d` (the `latest`
+  tag rebuilds on every push to main, so this fix lands as soon as
+  CI completes the image push to ghcr.io).
+- Agents: no change required.
+
+Why this slipped past local tests: the Linux install path uses
+install.sh.tpl which was already in the image, so end-to-end
+testing on Linux didn't exercise the missing file. The first real
+exercise of the new PowerShell endpoint was the user's VPN'd
+Win10 box pasting the modal command — exactly where the missing
+COPY surfaced.
