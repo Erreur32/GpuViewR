@@ -1,40 +1,24 @@
-release: v0.8.7 — README polish (vendors+OS icons, collapsible sections, simpler "Where it installs")
+release: v0.8.8 — README emoji diet (kept only the 🧠 LLM banner)
 
-Goal: lower density of the README so a first-time visitor sees a
-short, scannable page instead of a 400-line wall.
+User feedback after v0.8.7: "pas trop d'emoji ca fait pas vraiment
+pro". Too many decorative emojis read as unprofessional.
 
-Added
-- 4-column icon block under the AI / LLM banner with NVIDIA + AMD
-  + Linux (Tux) + Windows logos and the per-platform detection
-  method (nvidia-smi+pmon, ROCm/sysfs amdgpu, systemd+Docker,
-  Scheduled Task+PDH). Followed by a "mixed-fleet" paragraph so
-  it's clear one hub aggregates any combination.
-- public/icons/{nvidia,amd,windows,linux}.svg — same SVG paths as
-  the in-app IconRegistry.tsx for vendors + Windows; Linux is a
-  Tux silhouette in Linux yellow (#FCC624). Files referenced from
-  the README via relative <img src="public/icons/...">.
+Stripped emojis from:
+- Demo links: 🔴 / 🛰️ removed.
+- Feature list: 🟢 🛰️ 🔁 🔢 🚨 📤 🌍 🐳 all gone, bullets stay.
+- Collapsible section headers: ⚙️ 🛰️ 🏗️ 🔧 removed.
 
-Changed
-- Configuration / Add a remote host / Architecture /
-  Troubleshooting now wrapped in <details> blocks. First-time
-  visitor sees only the headers; advanced detail is one click
-  away.
-- "Switch vendor" subsection removed: re-running install.sh
-  auto-detects + updates COMPOSE_PROFILES, the explicit section
-  was redundant with "Update" above.
-- "Where it installs" trimmed from the 3-priority-rules + 3
-  worked-examples block to a one-paragraph "cd first, then run"
-  message with one example. Session-landing-dir fallback and
-  GPUVIEWR_INSTALL_DIR override mentioned in one sentence each.
-- All em-dashes (U+2014) replaced with proper punctuation
-  (mostly commas, one semicolon). Reads more evenly across
-  GitHub web / mobile / raw views.
+Kept the 🧠 in the AI / LLM workloads banner since that's the
+brand identity beat and the only emoji a first-time visitor sees
+above the fold. Everything else is plain text now.
+
+Content is unchanged; only the decorative chrome went.
+
+Files
+- README.md (8 emoji removals).
 
 Internal
-- No app code changes; only README + SVG asset additions.
-- tsc --noEmit: 0 errors, vite build: green, agent bundle
-  unchanged (189.4 KB).
+- No app code changes; agent bundle unchanged (189.4 KB).
 
 Upgrade
-- README-only release. No redeploy needed; the README on
-  github.com refreshes once the commit is pushed.
+- README-only release. No redeploy needed.

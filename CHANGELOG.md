@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.8] - 2026-05-18
+
+### Changed
+
+- **README emoji diet.** User feedback: too many emojis read as
+  unprofessional. Stripped emojis from demo links (🔴 / 🛰️),
+  feature list (🟢 🛰️ 🔁 🔢 🚨 📤 🌍 🐳), and the four
+  collapsible section headers (⚙️ 🛰️ 🏗️ 🔧). Kept only the
+  🧠 in the AI/LLM banner since it's the brand identity beat.
+  No content lost; just the decorative chrome.
+
 ## [0.8.7] - 2026-05-18
 
 README polish pass driven by user feedback. Goal: lower density,
