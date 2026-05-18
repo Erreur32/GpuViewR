@@ -80,17 +80,26 @@ test('persistor: flush moves the buffered metrics into gpu_metrics', () => {
   assert.equal(__testOnly.peekBufferSize(), 0);
 });
 
-test('persistor: local host samples are skipped (avoid double-write)', () => {
-  // gpuCollector persists local samples inline before its bus emit;
-  // re-persisting here would create duplicate rows.
+test('persistor: local host samples ARE persisted (post-v0.8 single path)', () => {
+  // Pre-v0.5 the hub had its own gpuCollector that persisted local
+  // samples inline before re-emitting them on the bus, so this
+  // persistor skipped LOCAL_HOST_ID to avoid double-writes. v0.5+
+  // removed gpuCollector entirely — the local sidecar now pushes via
+  // the same WebSocket path as remote agents. The defensive skip
+  // turned out to be silently dropping every local sample from
+  // gpu_metrics, visible as "master missing from /fleet's 1h/24h
+  // chart" because live charts use the in-memory store while non-
+  // live charts hit the SQLite history that wasn't being written.
+  // Removed in v0.8.
   const before = GpuMetricRepository.history(LOCAL_HOST_ID, 0, 0).length;
   __testOnly.onSample({ host_id: LOCAL_HOST_ID, samples: [makeSample(0)] });
   __testOnly.flush();
   const after = GpuMetricRepository.history(LOCAL_HOST_ID, 0, 0).length;
-  assert.equal(after, before, 'local samples must not be re-persisted');
-  // Device row for LOCAL must not have been touched either.
+  assert.equal(after, before + 1, 'local samples must be persisted in gpu_metrics');
+  // Device row for LOCAL is upserted so the /fleet history chart can
+  // resolve a name + memory_total for the master.
   const localDevices = GpuDeviceRepository.listByHost(LOCAL_HOST_ID);
-  assert.equal(localDevices.length, 0);
+  assert.equal(localDevices.length, 1);
 });
 
 test('persistor: empty sample array is a no-op', () => {

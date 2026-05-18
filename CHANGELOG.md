@@ -5,6 +5,82 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-05-18
+
+Closes two long-standing /fleet bugs the user surfaced after the
+v0.7 marathon: the master never appeared on 1h/24h charts, and the
+multi-host visual was unreadable above 2 hosts. Minor bump because
+local samples now persist (changes what `gpu_metrics` contains).
+
+### Fixed
+
+- **Master host missing from /fleet chart on 1h/24h ranges.**
+  Root cause: `agentMetricsPersistor.ts:38` skipped every sample
+  with `host_id === LOCAL_HOST_ID`. That skip was defensive code
+  from v0.4 where the hub had its own gpuCollector that persisted
+  local samples inline before re-emitting them on the bus — the
+  skip prevented double-writes. v0.5 removed gpuCollector
+  entirely; the local sidecar has been the ONLY producer of local
+  samples since. The skip turned out to be silently dropping
+  every local sample from `gpu_metrics`. Live charts didn't show
+  the symptom (they read from the in-memory store); 1h/24h charts
+  did (they read SQLite history that was being skipped).
+  Removed the skip; updated the unit test that asserted the old
+  behaviour to assert the new one.
+
+### Changed
+
+- **/fleet per-host chart: color = host, not metric × dash.**
+  Pre-v0.8 design painted each curve in the metric's colour
+  (blue=util, orange=temp, blue=power) and distinguished hosts
+  via a dash pattern (solid for host 0, long-dash for host 1,
+  dotted for host 2…). Two issues: above 2 hosts the dashes
+  became hard to track, and the user explicitly called the look
+  "moche". New design uses a 10-color palette indexed by host
+  (host 0 = blue, host 1 = green, host 2 = orange, …), all curves
+  SOLID, and the three metrics for the same host share that
+  host's colour. Metric distinction is now line WIDTH —
+  utilization 2.25px (headline), temperature 1.5px, power 1px.
+  - "Total" mode (aggregated single-curve-per-metric) keeps the
+    metric-coloured behaviour since there's no host distinction
+    to convey.
+  - The metric toggle chips show line-width previews instead of
+    colour dots in per-host mode.
+  - The per-host legend below the chart now uses a solid colour
+    swatch matching the host's chart curve.
+- **Local samples persist to `gpu_metrics`.** Operators upgrading
+  from v0.5+ will see their hub's history table grow with the
+  local sidecar's samples for the first time since v0.5. Retention
+  job continues to enforce `RETENTION_DAYS` (default 7), so
+  long-term DB growth is bounded.
+
+### Internal
+
+- `server/services/agentMetricsPersistor.ts`: removed
+  `LOCAL_HOST_ID` import + skip + comment.
+- `server/services/agentMetricsPersistor.test.ts`: renamed the
+  test from "are skipped" to "ARE persisted", flipped its
+  assertion from "must not be re-persisted" to "+1 row +1
+  device".
+- `src/components/fleet/FleetChart.tsx`: dropped `HOST_DASH`
+  array, added `HOST_PALETTE` (10 colors) + `hostColor(idx)` +
+  `METRIC_WIDTH` (per-metric stroke width). Renamed
+  `HostDashSwatch` → `HostColorSwatch`. Updated header comment
+  block, metric chip rendering, ChartPlot stroke selection,
+  tooltip rendering, legend swatch.
+- `tsc --noEmit` still passes with 0 errors; `npm run build`
+  green; 19/22 tests pass (3 pre-existing migration test
+  failures unchanged).
+
+### Upgrade
+
+- Hub: `docker compose pull && docker compose up -d --force-recreate`
+  (or `curl …/install.sh | bash`).
+- Master row on /fleet's 1h/24h chart starts populating from the
+  moment the new hub takes a sample — older "missing" period
+  before the upgrade stays empty.
+- Visual change is immediate; no operator action.
+
 ## [0.7.7] - 2026-05-18
 
 Closes the loop on Palier 3 — the LLM badge tooltip now shows

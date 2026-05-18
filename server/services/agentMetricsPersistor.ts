@@ -22,7 +22,6 @@ import {
   GpuMetricRepository,
   type GpuMetric,
 } from '../database/models/GpuMetric.js';
-import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import { logger } from '../utils/logger.js';
 
 const FLUSH_INTERVAL_MS = 60_000;
@@ -32,10 +31,17 @@ let flushTimer: NodeJS.Timeout | null = null;
 let listener: ((e: SampleEvent) => void) | null = null;
 
 function onSample(e: SampleEvent): void {
-  // gpuCollector.handleOutput persists local samples inline BEFORE
-  // emitting on the bus, so skipping them here keeps the device row
-  // / metric row write-once.
-  if (e.host_id === LOCAL_HOST_ID) return;
+  // Persist every sample we see on the bus, including the local
+  // sidecar's (host_id='local'). Pre-v0.5 the hub had its own
+  // gpuCollector that wrote local samples inline before emitting on
+  // the bus, so this path skipped LOCAL_HOST_ID to avoid double-
+  // writes. v0.5+ removed gpuCollector — the local sidecar now
+  // pushes via the same WebSocket path as remote agents and is the
+  // ONLY producer of local samples. The previous skip turned out
+  // to be silently dropping every local sample from gpu_metrics —
+  // visible as "master missing on /fleet's 1h/24h chart" because
+  // live charts use the in-memory store while non-live charts hit
+  // the SQLite history that was being skipped. Removed in v0.8.
   if (!e.samples || e.samples.length === 0) return;
 
   for (const s of e.samples) {

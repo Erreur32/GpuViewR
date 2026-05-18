@@ -5,18 +5,25 @@
 //
 // Modes:
 //   - per-host : one curve per (visible metric × visible host).
-//                Colour = metric, stroke pattern (dash) = host so the
-//                three metrics stay visually consistent across the
-//                page (util is always blue, temp always orange, etc.).
+//                Colour = HOST (every metric for the same host shares
+//                its color), line WIDTH distinguishes the metric:
+//                utilization thickest, temperature medium, power
+//                thinnest. Pre-v0.8 used color=metric + dashed
+//                patterns for hosts, which got ugly above 2 hosts.
 //   - total    : one curve per visible metric, aggregated across the
 //                fleet (avg util, max temp, sum power). No host
-//                distinction.
+//                distinction — colour reverts to metric here since
+//                there's only one curve per metric.
 //
 // Chips:
 //   - metric (top right) : show/hide that metric's series — always
-//                          keeps at least one metric visible.
+//                          keeps at least one metric visible. Neutral
+//                          tick swatch (not metric-coloured) so the
+//                          chips don't suggest the curve will be that
+//                          colour.
 //   - host   (below plot, per-host mode only) : show/hide that host's
 //                          curves across every active metric at once.
+//                          Swatch is the host's own colour.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import uPlot, { type AlignedData } from 'uplot';
@@ -65,18 +72,39 @@ const METRIC_AGGREGATION: Record<Metric, 'sum' | 'max' | 'avg'> = {
   utilization: 'avg',
 };
 
-// uPlot dash arrays — one per host index. Above HOST_DASH.length we
-// repeat patterns; in practice nobody runs a >6-host fleet through a
-// single dashboard chart legibly. Solid for host 0 keeps the most
-// common (single-host) case clean-looking.
-const HOST_DASH: number[][] = [
-  [],          // 0: solid
-  [6, 4],      // 1: long-dash
-  [2, 3],      // 2: dotted
-  [8, 4, 2, 4],// 3: dash-dot
-  [4, 2],      // 4: short-dash
-  [10, 4, 2, 4, 2, 4], // 5: dash-dot-dot
+// Per-host palette. Solid colours, picked to be distinguishable on
+// both light and dark themes (no near-pure-yellow, no near-pure-cyan,
+// no >50% luminance). Pre-v0.8 we used a metric × dash-pattern
+// scheme which got unreadable above 2 hosts; user feedback was
+// explicit: "les traits tillés ça fait moche, uniformise couleur par
+// machine". Cycle past 10 hosts — unrealistic on a single dashboard,
+// but keeps the assignment deterministic.
+const HOST_PALETTE: readonly string[] = [
+  '#3b82f6', // blue 500
+  '#22c55e', // green 500
+  '#f97316', // orange 500
+  '#a855f7', // purple 500
+  '#ef4444', // red 500
+  '#14b8a6', // teal 500
+  '#eab308', // yellow 500 (used past index 6 only — lowest contrast)
+  '#ec4899', // pink 500
+  '#6366f1', // indigo 500
+  '#84cc16', // lime 500
 ];
+
+function hostColor(idx: number): string {
+  return HOST_PALETTE[idx % HOST_PALETTE.length];
+}
+
+// Per-metric stroke width. utilization is the headline number so it
+// gets the boldest stroke; power the thinnest. Same width applied
+// across every host of a given metric, so when the user scans
+// vertically through hosts the metric mapping stays consistent.
+const METRIC_WIDTH: Record<Metric, number> = {
+  utilization: 2.25,
+  temperature: 1.5,
+  power: 1.0,
+};
 
 const WINDOW_POINTS = 60;
 
@@ -386,13 +414,20 @@ export default function FleetChart() {
                   ? t('fleet.metric_hide', { metric: t(`dashboard.metrics.${m}`) })
                   : t('fleet.metric_show', { metric: t(`dashboard.metrics.${m}`) })}
               >
-                <span
-                  className="inline-block w-2 h-2 rounded-full"
-                  style={{
-                    background: metrics.has(m) ? METRIC_COLOR[m] : 'transparent',
-                    border: `1px solid ${METRIC_COLOR[m]}`,
-                  }}
-                />
+                {/* Width preview swatch — matches the per-host mode's
+                    stroke-width convention (utilization thickest,
+                    power thinnest). Color is the metric's own color
+                    only in 'total' mode; in 'per-host' mode the
+                    curves use host colors, so we render the swatch
+                    in a neutral foreground. */}
+                <svg width="14" height="6" aria-hidden="true">
+                  <line
+                    x1="0" y1="3" x2="14" y2="3"
+                    stroke={mode === 'total' ? METRIC_COLOR[m] : 'currentColor'}
+                    strokeWidth={metrics.has(m) ? METRIC_WIDTH[m] : 1}
+                    strokeOpacity={metrics.has(m) ? 1 : 0.35}
+                  />
+                </svg>
                 {t(`dashboard.metrics.${m}`)}
               </button>
             ))}
@@ -425,7 +460,7 @@ export default function FleetChart() {
             const hidden = hiddenHosts.has(h.id);
             const dataIdx = hostsWithData.findIndex((x) => x.id === h.id);
             const hasData = dataIdx >= 0;
-            const dash = hasData ? HOST_DASH[dataIdx % HOST_DASH.length] : [];
+            const color = hasData ? hostColor(dataIdx) : 'var(--gv-text-dim)';
             const titleKey = hasData
               ? (hidden ? 'fleet.legend_show' : 'fleet.legend_hide')
               : 'fleet.legend_no_data';
@@ -444,7 +479,7 @@ export default function FleetChart() {
                 }}
                 title={t(titleKey, { label: h.label })}
               >
-                <HostDashSwatch dash={dash} />
+                <HostColorSwatch color={color} hasData={hasData} />
                 {h.label}
                 {!hasData && (
                   <span
@@ -481,22 +516,20 @@ export default function FleetChart() {
   );
 }
 
-// Inline SVG matching the line dash pattern, so each host's swatch in
-// the legend visually matches its curve. 32×4 with stroke-dasharray
-// scaled to roughly look like the uPlot dash at chart resolution.
-function HostDashSwatch({ dash }: Readonly<{ dash: number[] }>) {
-  const dasharray = dash.length === 0 ? undefined : dash.join(',');
+/** Solid-colour line swatch for the per-host legend. `hasData=false`
+ *  hosts get a hollow swatch instead — keeps the legend honest about
+ *  which hosts are actually drawing on the chart. */
+function HostColorSwatch({ color, hasData }: Readonly<{ color: string; hasData: boolean }>) {
+  if (!hasData) {
+    return (
+      <svg width="20" height="4" aria-hidden="true">
+        <line x1="0" y1="2" x2="20" y2="2" stroke={color} strokeWidth="2" strokeDasharray="2,3" />
+      </svg>
+    );
+  }
   return (
     <svg width="20" height="4" aria-hidden="true">
-      <line
-        x1="0"
-        y1="2"
-        x2="20"
-        y2="2"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeDasharray={dasharray}
-      />
+      <line x1="0" y1="2" x2="20" y2="2" stroke={color} strokeWidth="2.5" />
     </svg>
   );
 }
@@ -566,15 +599,18 @@ function ChartPlot({ entries, data, metricColor }: Readonly<ChartPlotProps>) {
 
     const seriesDefs: uPlot.Series[] = [{}];
     for (const e of entries) {
-      const dash = HOST_DASH[e.hostIdx % HOST_DASH.length];
       const metricLabel = t(`dashboard.metrics.${e.metric}`);
       const label = e.host ? `${e.host.label} · ${metricLabel}` : metricLabel;
+      // per-host mode: color = host, width = metric.
+      // total mode: color = metric (single curve per metric, no host
+      // distinction — falling back to the metric colour preserves the
+      // visual association with the metric chip).
+      const stroke = e.host ? hostColor(e.hostIdx) : metricColor[e.metric];
       seriesDefs.push({
         label,
-        stroke: metricColor[e.metric],
-        width: e.host ? 1.5 : 2,
+        stroke,
+        width: e.host ? METRIC_WIDTH[e.metric] : 2,
         scale: METRIC_SCALE[e.metric],
-        dash: dash.length > 0 ? dash : undefined,
         points: { show: false },
       });
     }
@@ -681,22 +717,17 @@ function ChartPlot({ entries, data, metricColor }: Readonly<ChartPlotProps>) {
           </div>
           <div className="flex flex-col gap-0.5">
             {entries.map((e, i) => {
-              const dash = HOST_DASH[e.hostIdx % HOST_DASH.length];
               const metricLabel = t(`dashboard.metrics.${e.metric}`);
               const label = e.host ? `${e.host.label} · ${metricLabel}` : metricLabel;
+              // Match the chart: per-host curves use the host color,
+              // total mode curves use the metric color.
+              const stroke = e.host ? hostColor(e.hostIdx) : metricColor[e.metric];
+              const width = e.host ? METRIC_WIDTH[e.metric] : 2;
               return (
                 <div key={e.key} className="flex items-center justify-between gap-3">
-                  <span
-                    className="inline-flex items-center gap-1.5 truncate"
-                    style={{ color: metricColor[e.metric] }}
-                  >
+                  <span className="inline-flex items-center gap-1.5 truncate" style={{ color: stroke }}>
                     <svg width="14" height="4" aria-hidden="true">
-                      <line
-                        x1="0" y1="2" x2="14" y2="2"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeDasharray={dash.length === 0 ? undefined : dash.join(',')}
-                      />
+                      <line x1="0" y1="2" x2="14" y2="2" stroke="currentColor" strokeWidth={width} />
                     </svg>
                     <span className="truncate" style={{ color: 'var(--gv-text)' }}>{label}</span>
                   </span>
