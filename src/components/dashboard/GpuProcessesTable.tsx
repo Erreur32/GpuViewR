@@ -27,7 +27,20 @@ interface ApiResp {
 
 const REFRESH_MS = 2500;
 
-export default function GpuProcessesTable({ gpuIndex, hostId }: Readonly<{ gpuIndex: number; hostId: string }>) {
+interface Props {
+  gpuIndex: number;
+  hostId: string;
+  /** Latest card-level GPU utilization. Used as a fallback for the
+   *  per-process gpu_pct column when the underlying driver doesn't
+   *  expose per-PID compute share — this is the case on AMD / ROCm
+   *  on many kernels (rocm-smi returns cu_occupancy="unknown") and
+   *  on NVIDIA when nvidia-smi pmon doesn't see the process. We
+   *  paint the value italic+dim and surface a tooltip so the user
+   *  understands it's an approximation, not a per-PID metric. */
+  gpuUtilFallback?: number | null;
+}
+
+export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = null }: Readonly<Props>) {
   const { t } = useTranslation();
   const [data, setData] = useState<GpuProcess[]>([]);
   const [reason, setReason] = useState<string | null>(null);
@@ -130,7 +143,9 @@ export default function GpuProcessesTable({ gpuIndex, hostId }: Readonly<{ gpuIn
                       </div>
                     )}
                   </td>
-                  <td className="py-1.5 pr-3 font-mono tabular-nums text-right">{fmtPct(p.gpu_pct)}</td>
+                  <td className="py-1.5 pr-3 font-mono tabular-nums text-right">
+                    <GpuPctCell value={p.gpu_pct} fallback={gpuUtilFallback} tooltip={t('dashboard.processes_gpu_pct_approx')} />
+                  </td>
                   <td className="py-1.5 pr-3 font-mono tabular-nums text-right">
                     {p.used_memory.toLocaleString()} <span style={{ color: 'var(--gv-text-dim)' }}>MiB</span>
                   </td>
@@ -173,4 +188,32 @@ function TypeBadge({ type }: Readonly<{ type: 'C' | 'G' | 'G+C' | null }>) {
 function fmtPct(v: number | null | undefined): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return '-';
   return `${v.toFixed(v < 10 ? 1 : 0)}%`;
+}
+
+/** Per-process GPU% cell. Falls back to the card-level utilization
+ *  (passed in via `fallback`) when the agent couldn't get a per-PID
+ *  reading from the driver (AMD/ROCm cu_occupancy=unknown, NVIDIA
+ *  pmon non-match). The fallback value is rendered italic + dim with
+ *  a `~` prefix and a tooltip so it's clearly distinguishable from
+ *  an authoritative per-PID number. Returns "-" only when both
+ *  primary AND fallback are unavailable. */
+function GpuPctCell({ value, fallback, tooltip }: Readonly<{
+  value: number | null | undefined;
+  fallback: number | null;
+  tooltip: string;
+}>) {
+  const hasReal = value !== null && value !== undefined && Number.isFinite(value);
+  if (hasReal) return <span>{fmtPct(value)}</span>;
+  if (fallback !== null && Number.isFinite(fallback)) {
+    return (
+      <span
+        className="italic"
+        style={{ color: 'var(--gv-text-dim)' }}
+        title={tooltip}
+      >
+        ~{fmtPct(fallback)}
+      </span>
+    );
+  }
+  return <span>-</span>;
 }

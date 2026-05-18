@@ -199,7 +199,7 @@ export default function Dashboard() {
 
       <PcieBandwidthCard sample={active} />
 
-      <GpuProcessesTable gpuIndex={active.gpu_index} hostId={selectedHostId} />
+      <GpuProcessesTable gpuIndex={active.gpu_index} hostId={selectedHostId} gpuUtilFallback={active.utilization ?? null} />
 
       <h3 className="text-sm font-semibold uppercase tracking-wider pt-2" style={{ color: 'var(--gv-text-muted)' }}>
         {t('dashboard.stats_24h')}

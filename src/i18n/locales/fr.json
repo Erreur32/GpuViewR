@@ -56,6 +56,7 @@
     "processes_vram": "VRAM",
     "processes_cpu_pct": "CPU",
     "processes_gpu_pct": "GPU",
+    "processes_gpu_pct_approx": "Approximation — GPU% par processus non exposé par ce driver. Affichage de l'utilisation globale de la carte.",
     "stats_details": "Tableau détaillé",
     "min": "Min",
     "max": "Max",

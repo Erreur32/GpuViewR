@@ -5,6 +5,33 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-05-18
+
+UX patch around the AMD GPU% gap exposed by v0.7.1 lab testing.
+
+### Added
+
+- **GPU% column fallback for per-process table.** When the driver
+  doesn't expose per-PID compute share (AMD with
+  cu_occupancy="unknown" from the kernel — observed on .210 with
+  ROCm + amdgpu — and NVIDIA when pmon doesn't see the process),
+  the cell now renders the **card's global utilization** prefixed
+  with `~` in italic dim text, with a tooltip explaining the
+  approximation. Previously the column showed a flat `-` and gave
+  no indication GPU was being used. The fallback only fires when
+  the per-PID value is null AND the card-level utilization is
+  known. New i18n keys EN/FR
+  (`dashboard.processes_gpu_pct_approx`).
+
+### Internal
+
+- `GpuProcessesTable` accepts a new optional prop
+  `gpuUtilFallback?: number | null`. Threaded from `Dashboard.tsx`
+  using `active.utilization ?? null` — same value the GPU's
+  primary utilization tile shows.
+- New `<GpuPctCell>` helper renders the three-state column:
+  authoritative number, approximation with tooltip, or `-`.
+
 ## [0.7.1] - 2026-05-18
 
 Patch release fixing two things spotted during v0.7.0 lab validation
