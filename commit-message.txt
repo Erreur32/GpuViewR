@@ -1,52 +1,40 @@
-release: v0.8.6 — install.ps1 stops + kills leaked node before re-register (fixes 4001 after rotate)
+release: v0.8.7 — README polish (vendors+OS icons, collapsible sections, simpler "Where it installs")
 
-Observed live on the .210 lab today after a token rotation against
-the user's Windows agent: agent.log spammed with `code=4001
-Unauthorized` reconnect attempts until the hub's 3-failure giveup
-fired. The new task launched by install.ps1 was actually working
-correctly with the new token — but the OLD node.exe (started by
-the OLD task) had survived Unregister-ScheduledTask and was still
-trying to reconnect with the now-stale token. Both processes
-wrote to the same agent.log, hiding the working one under the
-noise of the broken one.
+Goal: lower density of the README so a first-time visitor sees a
+short, scannable page instead of a 400-line wall.
 
-Root cause: install.ps1 ran `Unregister-ScheduledTask` directly,
-without `Stop-ScheduledTask` first. The SYSTEM-owned child
-processes (powershell.exe launcher → node.exe) survived the
-unregister and kept the old env vars in memory.
+Added
+- 4-column icon block under the AI / LLM banner with NVIDIA + AMD
+  + Linux (Tux) + Windows logos and the per-platform detection
+  method (nvidia-smi+pmon, ROCm/sysfs amdgpu, systemd+Docker,
+  Scheduled Task+PDH). Followed by a "mixed-fleet" paragraph so
+  it's clear one hub aggregates any combination.
+- public/icons/{nvidia,amd,windows,linux}.svg — same SVG paths as
+  the in-app IconRegistry.tsx for vendors + Windows; Linux is a
+  Tux silhouette in Linux yellow (#FCC624). Files referenced from
+  the README via relative <img src="public/icons/...">.
 
-Fix in install.ps1.tpl:
-- Stop-ScheduledTask before Unregister-ScheduledTask.
-- Best-effort Stop-Process -Force on any node.exe / powershell.exe
-  whose ExecutablePath or CommandLine matches $InstallDir —
-  catches leaked children that Stop-ScheduledTask missed.
-- 800 ms sleep so the OS finishes process teardown before
-  Register-ScheduledTask fires.
-- Same dance applied to the -Uninstall branch so
-  `Remove-Item -Recurse $InstallDir` doesn't fail on a locked
-  agent.log.
+Changed
+- Configuration / Add a remote host / Architecture /
+  Troubleshooting now wrapped in <details> blocks. First-time
+  visitor sees only the headers; advanced detail is one click
+  away.
+- "Switch vendor" subsection removed: re-running install.sh
+  auto-detects + updates COMPOSE_PROFILES, the explicit section
+  was redundant with "Update" above.
+- "Where it installs" trimmed from the 3-priority-rules + 3
+  worked-examples block to a one-paragraph "cd first, then run"
+  message with one example. Session-landing-dir fallback and
+  GPUVIEWR_INSTALL_DIR override mentioned in one sentence each.
+- All em-dashes (U+2014) replaced with proper punctuation
+  (mostly commas, one semicolon). Reads more evenly across
+  GitHub web / mobile / raw views.
 
-Existing operators stuck offline after a recent rotate can run
-the same dance manually one time:
-
-  Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
-  Stop-ScheduledTask -TaskName 'GpuViewR Agent'
-  Start-Sleep -Seconds 3
-  Start-ScheduledTask -TaskName 'GpuViewR Agent'
-
-From v0.8.6 onward, the installer handles it automatically on
-every re-run.
-
-Files
-- agent/install.ps1.tpl: the re-install path (~+15 lines) and the
-  uninstall path (~+10 lines).
-
-No code-side changes — agent bundle unchanged from v0.8.5
-(185.5 KB, sorry, 189.4 KB — the resolver landed in v0.7.7).
-
-Verified locally: tsc 0 errors, vite build green.
+Internal
+- No app code changes; only README + SVG asset additions.
+- tsc --noEmit: 0 errors, vite build: green, agent bundle
+  unchanged (189.4 KB).
 
 Upgrade
-- Hub: docker compose pull && up -d --force-recreate.
-- Effect immediate the next time anyone re-runs install.ps1 on
-  a Windows agent.
+- README-only release. No redeploy needed; the README on
+  github.com refreshes once the commit is pushed.

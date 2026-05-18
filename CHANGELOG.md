@@ -5,6 +5,56 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.7] - 2026-05-18
+
+README polish pass driven by user feedback. Goal: lower density,
+more visual, easier to scan for a first-time visitor.
+
+### Added
+
+- **GPU vendors + OS platforms icon block** under the AI / LLM
+  banner: a 4-column table with NVIDIA, AMD, Linux (Tux), and
+  Windows logos plus per-platform detection method (nvidia-smi +
+  pmon / ROCm + sysfs amdgpu / systemd + Docker / Scheduled Task
+  + PDH). Followed by a paragraph emphasising mixed-fleet support
+  (any NVIDIA/AMD mix across Linux/Windows on a single hub).
+- New SVG asset files in `public/icons/`: `nvidia.svg`, `amd.svg`,
+  `windows.svg`, `linux.svg`. Same SVG paths as the in-app
+  `IconRegistry.tsx` for the first three; Linux gets a Tux
+  silhouette in Linux yellow (`#FCC624`).
+
+### Changed
+
+- **README sections "Configuration", "Add a remote host",
+  "Architecture", "Troubleshooting" now collapsible** via
+  `<details>` blocks. First-time visitors see a short scrollable
+  page; advanced details are one click away.
+- **Removed the "Switch vendor" subsection** from "Install":
+  re-running `install.sh` auto-detects and updates
+  `COMPOSE_PROFILES`, so the explicit subsection was redundant
+  with the "Update" subsection above.
+- **"Where it installs" simplified**: the original 3-step
+  priority list + 3 worked examples was overkill. New version:
+  one short paragraph saying "cd to where you want it, then
+  run", one example, one sentence on the session-landing-dir
+  fallback, one sentence on `GPUVIEWR_INSTALL_DIR` override.
+- **All em-dashes (U+2014) replaced with proper punctuation** in
+  the README. Most became commas; one became a semicolon. The
+  em-dash is technically valid English typography but reads
+  unevenly across rendering surfaces (GitHub web vs GitHub
+  mobile vs raw text).
+
+### Internal
+
+- Build verified: `tsc --noEmit` 0 errors, `npm run build` green.
+- No app code changes; only README + SVG asset additions. Bundle
+  unchanged from v0.8.6 (189.4 KB).
+
+### Upgrade
+
+- Pulling v0.8.7 only affects what the README looks like on
+  GitHub. No agent or hub redeploy needed.
+
 ## [0.8.6] - 2026-05-18
 
 ### Fixed
