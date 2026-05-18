@@ -1,3 +1,4 @@
+import { type JSX } from 'react';
 import { CheckCircle2, AlertTriangle, AlertOctagon, Info, X } from 'lucide-react';
 import { useToastStore, type ToastKind } from '../../store/toastStore';
 

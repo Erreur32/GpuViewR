@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LogOut, BellRing, FileText, Settings, LayoutDashboard, Server, FlaskConical } from 'lucide-react';
