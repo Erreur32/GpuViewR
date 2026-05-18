@@ -1,37 +1,57 @@
-release: v0.8.1 — per-metric color shade on top of v0.8.0 host palette
+release: v0.8.2 — fix Windows fsync EPERM, add SYS_PTRACE to agents, drop Tous hôtes toggle
 
-Follow-up to v0.8.0's host-colored chart redesign. User feedback:
-the 3 metrics for the same host all in the exact same hue
-(distinguished only by stroke width) was still hard to read at a
-glance, especially on a single-host display.
+Three independent items shipped together.
 
-v0.8.1 layers an HSL lightness shift on top of the host's base
-palette colour:
-- utilization: base hue (the headline number)
-- temperature: same hue, ~18% lighter
-- power:       same hue, ~18% darker
+Fix — Windows auto-update was failing with fsync EPERM
+- First real agent_update push to a Windows agent (v0.6.9 → v0.8.0
+  from the .210 lab hub) surfaced the bug. agent/src/transport.ts
+  opened the staged agent.mjs.pending file with 'r' (read-only)
+  then called fsyncSync on the fd. POSIX accepts this; Windows
+  FlushFileBuffers needs GENERIC_WRITE.
+- Result: swap aborted before agent.mjs.pending was visible to
+  launcher.ps1, the agent stayed on the old version, and the hub
+  kept seeing the pre-update hub_version on reconnect.
+- Fix: open with 'r+' instead. Works cross-platform; fsync flushes
+  buffers as intended on both Linux and Windows.
 
-Combined with the existing per-metric widths (util 2.25 /
-temp 1.5 / power 1.0), the three metrics for the same host now
-read as a clear color family — same hue, different shade and
-weight. Total mode keeps the metric-colored single-curve
-rendering from v0.8.0.
+Added — SYS_PTRACE on the agent docker sidecars
+- Lets the process collector read /proc/<pid>/{cmdline,comm,stat}
+  for processes owned by other UIDs (e.g. ollama running as the
+  system 'ollama' user while the agent container runs as root).
+- Without it the agent only resolves same-UID processes and falls
+  back to "unknown" + missing CPU%.
+- Applied to master compose (agent-nvidia + agent-amd) and the two
+  standalone composes (docker-compose.agent.{amd,nvidia}.yaml).
 
-Pre-computed once at module scope (10 hosts × 3 metrics = 30
-entries cached in a Map) so there's no per-render color math —
-hostMetricColor(idx, metric) is a Map lookup after first call.
+Changed — /fleet "Tous hôtes" mode toggle removed
+- User feedback: not useful enough to justify the UI real estate.
+- v0.8.1's color-shaded per-metric rendering already conveys per-
+  host detail clearly; the fleet-wide aggregate was rarely
+  consulted in practice.
+- Dropped: the toggle <div>, mode state + setMode, aggregateForTotal
+  helper, METRIC_AGGREGATION table, unused Mode type, the
+  combined_chart_title_total* i18n keys are still in the JSON but
+  unused — left for now in case the feature returns.
 
 Files
-- src/components/fleet/FleetChart.tsx: new
-  METRIC_LIGHTNESS_DELTA table + hexToRgb / rgbToHsl / hslToRgb /
-  rgbToHex helpers + hostMetricColor() with module-scoped cache.
-  Two call sites swapped: ChartPlot seriesDefs stroke +
-  cursor-tooltip stroke.
+- agent/src/transport.ts: openSync 'r' → 'r+' for fsync support
+  on Windows.
+- docker-compose.yaml: cap_add SYS_PTRACE on agent-nvidia +
+  agent-amd.
+- docker-compose.agent.{amd,nvidia}.yaml: cap_add SYS_PTRACE.
+- src/components/fleet/FleetChart.tsx: ~80 LOC dropped, header
+  comment rewritten to reflect the simplified design.
 
-Verified locally: tsc 0 errors, vite build green. No tests
-affected (chart is pure UI, no test harness).
+Verified locally
+- tsc --noEmit: 0 errors.
+- agent typecheck: 0 errors.
+- npm run build: green.
 
 Upgrade
-- Hub: docker compose pull && docker compose up -d
-  --force-recreate (or rerun install.sh).
-- Visual change immediate; no operator action.
+- Hub: curl …/install.sh | bash (or docker compose pull && up -d
+  --force-recreate).
+- Windows agents on v0.6.9 still stuck: click "Maj" again — this
+  time the fsync swap succeeds and launcher.ps1 picks up the new
+  bundle within ~5 seconds.
+- Agent docker users with non-root ollama: the new SYS_PTRACE cap
+  applies on the next recreate. Re-pull the compose via install.sh.

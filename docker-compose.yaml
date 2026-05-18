@@ -85,6 +85,14 @@ services:
     container_name: gpuviewr-hub-agent
     restart: unless-stopped
     profiles: [nvidia]
+    # SYS_PTRACE lets the process collector read /proc/<pid>/{cmdline,
+    # comm, stat} for processes owned by other UIDs (e.g. ollama
+    # running as the 'ollama' user while the agent container runs as
+    # root). Without this, the agent can only resolve same-UID
+    # processes and falls back to "unknown" + missing CPU% for the
+    # rest. Added in v0.8.2.
+    cap_add:
+      - SYS_PTRACE
     depends_on:
       hub:
         condition: service_healthy
@@ -132,6 +140,12 @@ services:
     container_name: gpuviewr-hub-agent
     restart: unless-stopped
     profiles: [amd]
+    # SYS_PTRACE — see the agent-nvidia service block above for the
+    # full reasoning. Same need on AMD: rocm-smi may shell out to ps
+    # for processes the agent container can't otherwise see, and our
+    # resolveProcessName fallback reads /proc directly.
+    cap_add:
+      - SYS_PTRACE
     depends_on:
       hub:
         condition: service_healthy

@@ -5,6 +5,61 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-05-18
+
+Three independent items shipped together:
+
+### Fixed
+
+- **Windows auto-update was failing with `EPERM: operation not
+  permitted, fsync`.** First real `agent_update` push to a Windows
+  agent (v0.6.9 → v0.8.0 from the .210 lab hub) surfaced the bug:
+  `agent/src/transport.ts:347` opened the staged
+  `agent.mjs.pending` file with `'r'` (read-only) then called
+  `fsyncSync` on the fd. On POSIX this works; on Windows the
+  `FlushFileBuffers` Win32 call underlying Node's fsync requires
+  `GENERIC_WRITE` access on the handle. Result: the swap aborted
+  before `agent.mjs.pending` was visible to launcher.ps1, the
+  agent stayed on its old version, and the hub kept seeing the
+  pre-update `hub_version` on reconnect.
+  Fix: open with `'r+'` (read+write) — works cross-platform, fsync
+  flushes the buffers as intended on both Linux and Windows.
+
+### Added
+
+- **`SYS_PTRACE` cap on agent docker sidecars (master + standalone
+  composes).** Lets the agent's process collector read
+  `/proc/<pid>/{cmdline, comm, stat}` for processes owned by other
+  UIDs (e.g. ollama running as the system `ollama` user while the
+  agent container runs as root). Without it the agent only resolves
+  same-UID processes and falls back to "unknown" + missing CPU%.
+  User had asked: "alternative si tu ne veux pas dérooter Ollama,
+  une seule ligne sur l'agent". This is that line, applied to all
+  three agent compose files (master `agent-nvidia`/`agent-amd` and
+  the two standalone `docker-compose.agent.{amd,nvidia}.yaml`).
+
+### Changed (UI cleanup)
+
+- **/fleet "Tous hôtes" mode toggle removed.** User feedback: "le
+  bouton tous hôtes je ne vois pas l'intérêt". The fleet-wide
+  aggregated view (one curve per metric, summed/maxed/averaged
+  across hosts) was rarely consulted; the per-host view with
+  v0.8.1's colour-shaded metrics already conveys per-host detail
+  clearly. Removed the toggle + `aggregateForTotal` helper +
+  `METRIC_AGGREGATION` table + the unused `Mode` type. ~80 LOC
+  out. If anyone asks for it back we restore from git history.
+
+### Upgrade
+
+- Hub: `curl …/install.sh | bash` (or `docker compose pull && up
+  -d --force-recreate`).
+- Windows agents currently on v0.6.9: click "Maj" again in the
+  Hosts settings — this time the fsync swap will succeed and
+  launcher.ps1 will pick up the new bundle within ~5 seconds.
+- Agent docker users with non-root ollama (or any non-root
+  GPU process): the new `SYS_PTRACE` cap is applied on the next
+  recreate. Re-pull the compose via install.sh to pick it up.
+
 ## [0.8.1] - 2026-05-18
 
 ### Changed

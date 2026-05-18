@@ -345,7 +345,13 @@ export function createTransport(config: AgentConfig): Transport {
     const tmp = isWin ? `${target}.pending` : `${target}.new`;
     try {
       writeFileSync(tmp, buf, { mode: 0o755 });
-      const fd = openSync(tmp, 'r');
+      // Open r+ (read+write) so fsyncSync has GENERIC_WRITE access on
+      // Windows. With 'r' the Windows fsync → FlushFileBuffers Win32
+      // call fails with EPERM ("operation not permitted, fsync"),
+      // observed on the v0.6.9 Windows agent receiving v0.8.0 push
+      // 2026-05-18 evening. Posix accepts fsync on any open fd so
+      // 'r+' is also fine on Linux.
+      const fd = openSync(tmp, 'r+');
       try { fsyncSync(fd); } finally { closeSync(fd); }
       if (!isWin) renameSync(tmp, target);
     } catch (err) {

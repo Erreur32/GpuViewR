@@ -47,6 +47,12 @@ services:
     container_name: gpuviewr-agent
     restart: unless-stopped
 
+    # SYS_PTRACE: process collector cross-UID /proc reads. See the
+    # master docker-compose.yaml agent-nvidia block for full
+    # reasoning. Added v0.8.2.
+    cap_add:
+      - SYS_PTRACE
+
     devices:
       - /dev/kfd
       - /dev/dri

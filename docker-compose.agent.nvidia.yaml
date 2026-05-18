@@ -24,6 +24,14 @@ services:
     container_name: gpuviewr-agent
     restart: unless-stopped
 
+    # SYS_PTRACE: process collector cross-UID /proc reads. Lets the
+    # agent see /proc/<pid>/{cmdline,comm,stat} for processes owned
+    # by other UIDs (e.g. user-installed ollama vs root agent
+    # container). Without this, "unknown" appears in the process
+    # table for cross-UID procs. Added v0.8.2.
+    cap_add:
+      - SYS_PTRACE
+
     # NVIDIA Container Toolkit hand-off so nvidia-smi works inside.
     deploy:
       resources:

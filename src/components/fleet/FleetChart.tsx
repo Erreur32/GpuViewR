@@ -3,27 +3,27 @@
 // stacked one sub-chart per metric, which was confusing because the
 // metric chips appeared to *add* graphs instead of toggling series.
 //
-// Modes:
-//   - per-host : one curve per (visible metric × visible host).
-//                Colour = HOST (every metric for the same host shares
-//                its color), line WIDTH distinguishes the metric:
-//                utilization thickest, temperature medium, power
-//                thinnest. Pre-v0.8 used color=metric + dashed
-//                patterns for hosts, which got ugly above 2 hosts.
-//   - total    : one curve per visible metric, aggregated across the
-//                fleet (avg util, max temp, sum power). No host
-//                distinction — colour reverts to metric here since
-//                there's only one curve per metric.
+// One curve per (visible metric × visible host). Colour comes from a
+// per-host palette base, SHADED per metric (utilization on the base
+// hue, temperature ~18% lighter, power ~18% darker) so the three
+// metrics for the same host read as a colour family. Line WIDTH adds
+// a second axis of distinction: utilization thickest, temperature
+// medium, power thinnest.
+//
+// Pre-v0.8 used color=metric + dashed patterns for hosts, which got
+// ugly above 2 hosts. v0.8.0 → host palette + width. v0.8.1 → per-
+// metric lightness shift on top. v0.8.2 dropped the "Tous hôtes"
+// total-mode toggle (user feedback: not useful enough to justify
+// the UI real estate).
 //
 // Chips:
 //   - metric (top right) : show/hide that metric's series — always
-//                          keeps at least one metric visible. Neutral
-//                          tick swatch (not metric-coloured) so the
-//                          chips don't suggest the curve will be that
-//                          colour.
-//   - host   (below plot, per-host mode only) : show/hide that host's
-//                          curves across every active metric at once.
-//                          Swatch is the host's own colour.
+//                          keeps at least one metric visible. Width
+//                          preview swatch in neutral colour (curves
+//                          use host colours, not metric colours).
+//   - host   (below plot) : show/hide that host's curves across
+//                           every active metric at once. Swatch is
+//                           the host's own colour.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import uPlot, { type AlignedData } from 'uplot';
@@ -36,7 +36,6 @@ import { fmtDateTime } from '../../lib/time';
 import RangeSelector from '../dashboard/RangeSelector';
 
 type Metric = 'temperature' | 'utilization' | 'power';
-type Mode = 'per-host' | 'total';
 
 const METRICS: readonly Metric[] = ['utilization', 'temperature', 'power'] as const;
 
@@ -64,12 +63,6 @@ const METRIC_SCALE: Record<Metric, '%' | 'W'> = {
   utilization: '%',
   temperature: '%',
   power: 'W',
-};
-
-const METRIC_AGGREGATION: Record<Metric, 'sum' | 'max' | 'avg'> = {
-  power: 'sum',
-  temperature: 'max',
-  utilization: 'avg',
 };
 
 // Per-host palette. Solid colours, picked to be distinguishable on
@@ -227,30 +220,10 @@ function buildHostSeries(
   return { times, values: sums.map((s, i) => (counts[i] === 0 ? 0 : s / counts[i])) };
 }
 
-function aggregateForTotal(
-  perHost: Array<{ times: number[]; values: number[] }>,
-  metric: Metric,
-): { times: number[]; values: number[] } {
-  const tSet = new Set<number>();
-  for (const p of perHost) for (const t of p.times) tSet.add(t);
-  const sortedT = Array.from(tSet).sort((a, b) => a - b).slice(-WINDOW_POINTS);
-  const values = sortedT.map((t) => {
-    let sum = 0, max = -Infinity, count = 0;
-    for (const p of perHost) {
-      const idx = p.times.indexOf(t);
-      if (idx < 0) continue;
-      const v = p.values[idx];
-      sum += v;
-      if (v > max) max = v;
-      count++;
-    }
-    if (count === 0) return 0;
-    if (metric === 'power') return sum;
-    if (metric === 'temperature') return max;
-    return sum / count;
-  });
-  return { times: sortedT, values };
-}
+// (aggregateForTotal removed in v0.8.2 along with the "Tous hôtes"
+// mode toggle — user feedback: "je ne vois pas l'intérêt". The
+// per-host view with color-shaded metrics already conveys per-host
+// detail; the fleet-wide aggregate was rarely consulted.)
 
 function metricFromHistory(row: HistoryRow, metric: Metric): number | null {
   if (metric === 'temperature') return row.temperature;
@@ -318,7 +291,6 @@ export default function FleetChart() {
   // the multi-axis chart. Users who want a single metric uncheck the
   // other two.
   const [metrics, setMetrics] = useState<Set<Metric>>(() => new Set(METRICS));
-  const [mode, setMode] = useState<Mode>('per-host');
   const [hiddenHosts, setHiddenHosts] = useState<Set<string>>(() => new Set());
 
   // History cache for non-live ranges. Outer key = metric, inner array
@@ -402,16 +374,6 @@ export default function FleetChart() {
               return hb[fullIdx] ?? { times: [], values: [] };
             });
           })();
-      if (mode === 'total') {
-        out.push({
-          key: `total-${m}`,
-          metric: m,
-          host: null,
-          hostIdx: 0,
-          data: aggregateForTotal(perHost, m),
-        });
-        continue;
-      }
       for (const h of visibleHostsWithData) {
         const idx = hostsWithData.findIndex((x) => x.id === h.id);
         out.push({
@@ -425,7 +387,7 @@ export default function FleetChart() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hostsToPlot, hostsWithData, mode, hiddenHosts, activeMetrics, seriesVersion, range, historyByMetric]);
+  }, [hostsToPlot, hostsWithData, hiddenHosts, activeMetrics, seriesVersion, range, historyByMetric]);
 
   const data = useMemo<AlignedData>(() => {
     if (entries.length === 0) return [[]] as AlignedData;
@@ -470,16 +432,7 @@ export default function FleetChart() {
     <section className="card p-4 flex flex-col gap-3">
       <header className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="font-semibold text-sm inline-flex items-center gap-2">
-          {mode === 'total' ? t('fleet.combined_chart_title_total_multi') : t('fleet.combined_chart_title')}
-          {mode === 'total' && hostsToPlot.length > 0 && (
-            <span
-              className="text-[10px] font-normal font-mono px-1.5 py-0.5 rounded-md"
-              style={{ background: 'var(--gv-surface-alt)', color: 'var(--gv-text-dim)' }}
-              title={t('fleet.total_hosts_count_help')}
-            >
-              {t('fleet.total_hosts_count', { n: hostsWithData.length, m: hostsToPlot.length })}
-            </span>
-          )}
+          {t('fleet.combined_chart_title')}
           {loading && (
             <span className="text-[10px] font-normal" style={{ color: 'var(--gv-text-dim)' }}>
               {t('common.loading')}
@@ -499,16 +452,14 @@ export default function FleetChart() {
                   ? t('fleet.metric_hide', { metric: t(`dashboard.metrics.${m}`) })
                   : t('fleet.metric_show', { metric: t(`dashboard.metrics.${m}`) })}
               >
-                {/* Width preview swatch — matches the per-host mode's
+                {/* Width preview swatch — matches the per-host
                     stroke-width convention (utilization thickest,
-                    power thinnest). Color is the metric's own color
-                    only in 'total' mode; in 'per-host' mode the
-                    curves use host colors, so we render the swatch
-                    in a neutral foreground. */}
+                    power thinnest). Neutral colour: per-host curves
+                    use the host palette, not the metric colour. */}
                 <svg width="14" height="6" aria-hidden="true">
                   <line
                     x1="0" y1="3" x2="14" y2="3"
-                    stroke={mode === 'total' ? METRIC_COLOR[m] : 'currentColor'}
+                    stroke="currentColor"
                     strokeWidth={metrics.has(m) ? METRIC_WIDTH[m] : 1}
                     strokeOpacity={metrics.has(m) ? 1 : 0.35}
                   />
@@ -517,86 +468,58 @@ export default function FleetChart() {
               </button>
             ))}
           </div>
-          <div className="seg" role="toolbar" aria-label={t('fleet.mode_label')}>
-            <button type="button" className="seg-btn text-xs" aria-pressed={mode === 'per-host'} onClick={() => setMode('per-host')}>
-              {t('fleet.mode_per_host')}
-            </button>
-            <button type="button" className="seg-btn text-xs" aria-pressed={mode === 'total'} onClick={() => setMode('total')}>
-              {t('fleet.mode_total')}
-            </button>
-          </div>
           <RangeSelector />
         </div>
       </header>
 
       <ChartPlot entries={entries} data={data} metricColor={METRIC_COLOR} />
 
-      {/* Legend: host chips when per-host mode (toggle each host across
-          all visible metrics at once). We render EVERY enrolled host —
-          including those without live samples — so the admin sees at a
-          glance which row is "missing" data. The dash swatch only
-          matches the chart pattern for hosts that actually draw a
-          curve (i.e. are in hostsWithData); empty hosts get a muted
-          "no data" pill so the legend stays honest about what's drawn.
-          Total mode keeps the per-metric aggregation hint per metric. */}
-      {mode === 'per-host' ? (
-        <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
-          {hostsToPlot.map((h) => {
-            const hidden = hiddenHosts.has(h.id);
-            const dataIdx = hostsWithData.findIndex((x) => x.id === h.id);
-            const hasData = dataIdx >= 0;
-            const color = hasData ? hostColor(dataIdx) : 'var(--gv-text-dim)';
-            const titleKey = hasData
-              ? (hidden ? 'fleet.legend_show' : 'fleet.legend_hide')
-              : 'fleet.legend_no_data';
-            return (
-              <button
-                key={h.id}
-                type="button"
-                onClick={() => { if (hasData) toggleHost(h.id); }}
-                disabled={!hasData}
-                className="inline-flex items-center gap-1.5 transition-opacity"
-                style={{
-                  color: 'var(--gv-text-muted)',
-                  opacity: !hasData ? 0.45 : (hidden ? 0.4 : 1),
-                  textDecoration: hidden ? 'line-through' : 'none',
-                  cursor: hasData ? 'pointer' : 'not-allowed',
-                }}
-                title={t(titleKey, { label: h.label })}
-              >
-                <HostColorSwatch color={color} hasData={hasData} />
-                {h.label}
-                {!hasData && (
-                  <span
-                    className="ml-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-mono"
-                    style={{
-                      background: 'var(--gv-surface-alt)',
-                      color: 'var(--gv-text-dim)',
-                    }}
-                  >
-                    {t('fleet.legend_no_data_badge')}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-3 text-xs" style={{ color: 'var(--gv-text-muted)' }}>
-          {activeMetrics.map((m) => (
-            <span key={m} className="inline-flex items-center gap-1.5">
-              <span
-                className="inline-block w-3 h-1 rounded-full"
-                style={{ background: METRIC_COLOR[m] }}
-              />
-              {t(`dashboard.metrics.${m}`)}
-              <span className="font-mono" style={{ color: 'var(--gv-text-dim)' }}>
-                ({METRIC_AGGREGATION[m]})
-              </span>
-            </span>
-          ))}
-        </div>
-      )}
+      {/* Per-host legend. Renders EVERY enrolled host — including
+          those without live samples — so the admin sees at a glance
+          which row is "missing" data. The colour swatch matches the
+          host's chart curve; empty hosts get a muted "no data" pill
+          so the legend stays honest about what's drawn. */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
+        {hostsToPlot.map((h) => {
+          const hidden = hiddenHosts.has(h.id);
+          const dataIdx = hostsWithData.findIndex((x) => x.id === h.id);
+          const hasData = dataIdx >= 0;
+          const color = hasData ? hostColor(dataIdx) : 'var(--gv-text-dim)';
+          const titleKey = hasData
+            ? (hidden ? 'fleet.legend_show' : 'fleet.legend_hide')
+            : 'fleet.legend_no_data';
+          return (
+            <button
+              key={h.id}
+              type="button"
+              onClick={() => { if (hasData) toggleHost(h.id); }}
+              disabled={!hasData}
+              className="inline-flex items-center gap-1.5 transition-opacity"
+              style={{
+                color: 'var(--gv-text-muted)',
+                opacity: !hasData ? 0.45 : (hidden ? 0.4 : 1),
+                textDecoration: hidden ? 'line-through' : 'none',
+                cursor: hasData ? 'pointer' : 'not-allowed',
+              }}
+              title={t(titleKey, { label: h.label })}
+            >
+              <HostColorSwatch color={color} hasData={hasData} />
+              {h.label}
+              {!hasData && (
+                <span
+                  className="ml-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-mono"
+                  style={{
+                    background: 'var(--gv-surface-alt)',
+                    color: 'var(--gv-text-dim)',
+                  }}
+                >
+                  {t('fleet.legend_no_data_badge')}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </section>
   );
 }
