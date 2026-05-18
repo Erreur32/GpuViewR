@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Container, Terminal, Monitor } from 'lucide-react';
 import { useHostsStore } from '../../store/hostsStore';
 import { notify } from '../../store/toastStore';
 import { copyText } from '../../lib/clipboard';
 import { ModalShell, WarningBanner, CopyValueBlock } from './_modalParts';
+import {
+  buildInstallCommands,
+  InstallModePicker,
+  LABEL_KEY_BY_MODE,
+  type InstallMode,
+} from './_installCommands';
 
 type Props = Readonly<{ onClose: () => void }>;
 type Stage = 'form' | 'token';
-type InstallMode = 'docker' | 'curl' | 'windows';
 
 // Returned by POST /api/hosts — copied locally because the modal owns
 // the lifecycle (the store keeps only the hash post-enroll, so we hold
@@ -102,47 +106,16 @@ export default function EnrollHostModal({ onClose }: Props) {
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Docker one-liner that auto-detects vendor (NVIDIA / AMD), pulls
-  // the matching docker-compose.agent.<vendor>.yaml from GitHub,
-  // generates .env from --hub + --token, and runs `docker compose up
-  // -d`. Works on NVIDIA AND AMD hosts — same command on both.
-  const dockerCmd = result
-    ? `curl -fsSL ${result.hubHttp}/install-agent.sh | bash -s -- \\\n  --hub ${result.hubHttp} \\\n  --token ${result.hostId}.${result.token}`
-    : '';
-
-  // Bare-metal one-liner: the install.sh script splits "host_id.secret"
-  // back into HOST_ID + AGENT_TOKEN env vars, so we only need a single
-  // --token flag à la Beszel.
-  const curlCmd = result
-    ? `curl -fsSL ${result.hubHttp}/install.sh | sudo bash -s -- \\\n  --url ${result.hubHttp} \\\n  --token ${result.hostId}.${result.token}`
-    : '';
-
-  // Windows: PowerShell idiom equivalent to `curl | bash -s -- --args`
-  // doesn't exist (iex can't forward args to the iex'd script), so we
-  // pass credentials via env vars that the .ps1 reads as param() defaults.
-  // The user copy-pastes the block; the script registers a SYSTEM-level
-  // scheduled task. Must be run in an elevated PowerShell.
-  const windowsCmd = result
-    ? `Set-ExecutionPolicy Bypass -Scope Process -Force\n$env:GPVR_HUB_URL = '${result.hubHttp}'\n$env:GPVR_TOKEN   = '${result.hostId}.${result.token}'\niex (iwr "$env:GPVR_HUB_URL/install.ps1" -UseBasicParsing).Content`
-    : '';
-
-  // Mode-keyed lookups so the JSX below stays flat (chained `?:` triggers
-  // SonarCloud's "nested ternary" code smell and gets tedious fast as we
-  // add more install methods).
-  const cmdByMode: Record<InstallMode, string> = {
-    curl: curlCmd,
-    docker: dockerCmd,
-    windows: windowsCmd,
-  };
+  // Three install one-liners (Linux bash, Docker, Windows
+  // PowerShell), pre-filled with the composite "host_id.secret"
+  // token. Shared with RotateTokenModal — see _installCommands.tsx.
+  const cmdByMode = result
+    ? buildInstallCommands(result.hubHttp, `${result.hostId}.${result.token}`)
+    : { curl: '', docker: '', windows: '' };
   const hintKeyByMode: Record<InstallMode, string> = {
     curl: 'hosts.install_curl_hint',
     docker: 'hosts.install_docker_hint',
     windows: 'hosts.install_windows_hint',
-  };
-  const labelKeyByMode: Record<InstallMode, string> = {
-    curl: 'hosts.curl_cmd',
-    docker: 'hosts.docker_cmd',
-    windows: 'hosts.windows_cmd',
   };
   const activeCmd = cmdByMode[mode];
 
@@ -207,35 +180,12 @@ export default function EnrollHostModal({ onClose }: Props) {
           />
 
           <div className="flex flex-col gap-2">
-            {/* Mode picker — curl is highlighted as recommended for new
-                installs since it's a single line, no Docker dependency. */}
+            {/* Mode picker — curl is the default since it's a
+                single-line bash one-liner with no Docker dependency.
+                The seg itself lives in ./_installCommands.tsx so the
+                Rotate-token modal can render the same widget. */}
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="seg" role="toolbar" aria-label={t('hosts.install_mode_label')}>
-                <button
-                  type="button"
-                  className="seg-btn inline-flex items-center gap-1.5"
-                  aria-pressed={mode === 'curl'}
-                  onClick={() => setMode('curl')}
-                >
-                  <Terminal size={14} /> {t('hosts.install_mode_curl')}
-                </button>
-                <button
-                  type="button"
-                  className="seg-btn inline-flex items-center gap-1.5"
-                  aria-pressed={mode === 'docker'}
-                  onClick={() => setMode('docker')}
-                >
-                  <Container size={14} /> {t('hosts.install_mode_docker')}
-                </button>
-                <button
-                  type="button"
-                  className="seg-btn inline-flex items-center gap-1.5"
-                  aria-pressed={mode === 'windows'}
-                  onClick={() => setMode('windows')}
-                >
-                  <Monitor size={14} /> {t('hosts.install_mode_windows')}
-                </button>
-              </div>
+              <InstallModePicker mode={mode} onChange={setMode} />
 
               {/* TLS toggle — auto-detected based on whether the hub
                   URL host is an IP literal vs a domain name. Flip it
@@ -261,7 +211,7 @@ export default function EnrollHostModal({ onClose }: Props) {
             </p>
 
             <CopyValueBlock
-              label={t(labelKeyByMode[mode])}
+              label={t(LABEL_KEY_BY_MODE[mode])}
               value={activeCmd}
               onCopy={() => copy(activeCmd, 'cmd')}
               copied={copied === 'cmd'}

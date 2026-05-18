@@ -1,40 +1,52 @@
-release: v0.8.4 — rotate-token modal shows full install one-liner per platform
+release: v0.8.5 — Windows uninstall command in delete modal + dedup install templates
 
-User feedback after the v0.8.2 chicken-and-egg Windows-update saga:
-when you regenerate a token, what the operator actually needs is
-the COMMAND to re-run on the remote host, not just the raw token
-string. The old modal handed back the raw token and left it to the
-user to remember the install one-liner format or look it up in
-docs.
+Added
+- Delete-host modal's command-toggle gains a Windows tab. Pasted
+  in elevated PowerShell, it downloads install.ps1 from the hub
+  and invokes it with -Uninstall — same flow install.ps1's
+  bottom-of-output hint suggests after a successful install.
+  Default tab follows the host's reported install_mode so a
+  Windows agent's deletion modal pre-selects the right command.
 
-v0.8.4 brings the rotate-token modal in line with the Add-host
-modal:
-- After a successful rotate, render a Linux-bash / Docker /
-  Windows-PowerShell toggle.
-- Each option pre-filled with the new `host_id.secret` composite.
-- Default selection follows the host's reported install_mode, so
-  the user sees their own platform's command first
-  (`install_mode='windows'` → Windows tab pre-selected, etc.).
-- Raw token still available behind a <details> block for
-  Ansible / custom installers.
+Internal — SonarCloud dedup
+- Triggered by the 27 % duplicated-lines threshold on
+  HostsSettingsTab.tsx after v0.8.4 added the RotateTokenModal's
+  3-mode install picker that duplicates EnrollHostModal's. The
+  fix extracts the shared bits into a new module
+  src/components/settings/_installCommands.tsx:
+    - InstallMode union type ('curl' | 'docker' | 'windows')
+    - buildInstallCommands(hubHttp, token) → { curl, docker,
+      windows }: the three install one-liner templates
+    - LABEL_KEY_BY_MODE: i18n key map for the CopyValueBlock
+      label
+    - defaultModeFor(installMode): "what mode should the picker
+      open on?" — falls back to 'curl'
+    - <InstallModePicker mode onChange />: the segmented toggle
+      JSX itself
+- Three modals consume the module:
+    - EnrollHostModal (Add host) — switched to
+      buildInstallCommands + <InstallModePicker>; dropped its own
+      Terminal/Container/Monitor icon imports + cmdByMode +
+      labelKeyByMode.
+    - RotateTokenModal (Rotate token, added in v0.8.4) — same.
+    - DeleteHostModal (this release) — same, plus the new
+      Windows uninstall command (3rd mode it didn't have before).
 
-Modal width bumped to max-w-2xl to fit the install command's
-wider mono-spaced layout.
+Net effect: ~90 LOC of duplicated template + JSX consolidated
+into ~110 LOC of single-source module. Adding a future install
+mode is a one-line change in `_installCommands.tsx`.
 
 Files
-- src/components/settings/HostsSettingsTab.tsx:
-    - RotateInstallMode type + defaultRotateModeFor() helper.
-    - RotateTokenModal rebuilt around the same cmdByMode /
-      labelKeyByMode lookup tables EnrollHostModal uses — the
-      two modals are now shape-aligned, easier to maintain.
-- src/i18n/locales/{en,fr}.json:
-    - hosts.rotate_done_hint rewritten ("copy install command +
-      re-run on host").
-    - New key hosts.rotate_show_raw_token for the collapsible
-      raw-token block.
+- src/components/settings/_installCommands.tsx (NEW, ~110 LOC).
+- src/components/settings/EnrollHostModal.tsx: refactored to
+  import from the shared module.
+- src/components/settings/HostsSettingsTab.tsx: RotateTokenModal +
+  DeleteHostModal refactored, plus the Windows uninstall command
+  added.
 
 Verified: tsc 0 errors, vite build green.
 
 Upgrade
 - Hub: docker compose pull && up -d --force-recreate.
-- Effect immediate on next token rotation.
+- Effect immediate the next time Add / Rotate / Delete modals
+  open.

@@ -5,6 +5,40 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.5] - 2026-05-18
+
+### Added
+
+- **Delete-host modal now shows a Windows uninstall command** —
+  third tab next to Linux bash + Docker. Pasted in elevated
+  PowerShell: downloads install.ps1, invokes it with `-Uninstall`,
+  removes the Scheduled Task + `C:\ProgramData\GpuViewR-Agent`.
+  Mirrors the hint install.ps1 prints at the end of a successful
+  install. Mode picker now defaults to the host's reported
+  `install_mode` so the user sees their platform's command first.
+
+### Internal
+
+- **`_installCommands.tsx` extracted** as a shared module for the
+  install-command builders + `<InstallModePicker>` widget. The
+  three modals that show install/uninstall commands (Add-host,
+  Rotate-token, Delete-host) now consume the same source instead
+  of duplicating the `curl`/`docker`/`windows` templates and the
+  3-button SEG toggle JSX. Triggered by SonarCloud's 27 % duplicated-
+  lines threshold on HostsSettingsTab.tsx after the v0.8.4
+  RotateTokenModal added the same install commands EnrollHostModal
+  already had.
+- Exports: `InstallMode` (union type), `InstallCommandSet`
+  (3-string interface), `buildInstallCommands(hubHttp, token)` →
+  `InstallCommandSet`, `LABEL_KEY_BY_MODE` (i18n key map),
+  `defaultModeFor(installMode)` → `InstallMode` (falls back to
+  `'curl'`), `<InstallModePicker mode onChange />` component.
+
+### Upgrade
+
+- Hub: `docker compose pull && up -d --force-recreate`. Effect
+  immediate on the next time a Delete or Rotate modal is opened.
+
 ## [0.8.4] - 2026-05-18
 
 ### Changed

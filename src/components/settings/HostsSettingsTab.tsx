@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, KeyRound, Trash2, Terminal, Container, Server, Monitor, AlertTriangle, RefreshCw, DownloadCloud } from 'lucide-react';
+import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle, RefreshCw, DownloadCloud } from 'lucide-react';
 import Icon from '../ui/icons/IconRegistry';
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
@@ -10,6 +10,13 @@ import { copyText } from '../../lib/clipboard';
 import StatusPill from '../fleet/StatusPill';
 import EnrollHostModal from './EnrollHostModal';
 import { ModalShell, WarningBanner, CopyValueBlock } from './_modalParts';
+import {
+  buildInstallCommands,
+  defaultModeFor,
+  InstallModePicker,
+  LABEL_KEY_BY_MODE,
+  type InstallMode,
+} from './_installCommands';
 
 // Same constant the footer uses — Vite injects the package.json version
 // at build time, so this stays in sync with what the hub actually runs.
@@ -537,24 +544,13 @@ function IconBtn({
   );
 }
 
-type RotateInstallMode = 'curl' | 'docker' | 'windows';
-
-/** Map an agent's reported install_mode to the rotate-modal toggle's
- *  default selection. Falls back to 'curl' (bash binary on Linux,
- *  the most common deployment) when the agent never reported one. */
-function defaultRotateModeFor(installMode: string | null | undefined): RotateInstallMode {
-  if (installMode === 'docker') return 'docker';
-  if (installMode === 'windows') return 'windows';
-  return 'curl';
-}
-
 function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClose: () => void }>) {
   const { t } = useTranslation();
   const rotateToken = useHostsStore((s) => s.rotateToken);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [rotating, setRotating] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [mode, setMode] = useState<RotateInstallMode>(() => defaultRotateModeFor(host.install_mode));
+  const [mode, setMode] = useState<InstallMode>(() => defaultModeFor(host.install_mode));
 
   const doRotate = async () => {
     setRotating(true);
@@ -568,32 +564,15 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
     }
   };
 
-  // Same install-command shape EnrollHostModal builds when a host is
-  // first added — rotate ends up in the same place (operator has a
-  // new token and needs to re-run the installer on the box). Token
-  // returned by the API is already the `host_id.secret` composite
-  // since v0.6.4, so it slots into both `--token` (curl) and
-  // `GPVR_TOKEN` (windows) shapes directly.
+  // Three install one-liners pre-filled with the new composite
+  // token. The hub URL is derived from the current page since the
+  // user clicking Rotate is necessarily looking at the hub UI right
+  // now — no API round-trip needed. See _installCommands.tsx for
+  // the templates (shared with EnrollHostModal).
   const hubHttp = `${globalThis.location.protocol}//${globalThis.location.host}`;
-  const curlCmd = newToken
-    ? `curl -fsSL ${hubHttp}/install.sh | sudo bash -s -- \\\n  --url ${hubHttp} \\\n  --token ${newToken}`
-    : '';
-  const dockerCmd = newToken
-    ? `curl -fsSL ${hubHttp}/install-agent.sh | bash -s -- \\\n  --hub ${hubHttp} \\\n  --token ${newToken}`
-    : '';
-  const windowsCmd = newToken
-    ? `Set-ExecutionPolicy Bypass -Scope Process -Force\n$env:GPVR_HUB_URL = '${hubHttp}'\n$env:GPVR_TOKEN   = '${newToken}'\niex (iwr "$env:GPVR_HUB_URL/install.ps1" -UseBasicParsing).Content`
-    : '';
-  const cmdByMode: Record<RotateInstallMode, string> = {
-    curl: curlCmd,
-    docker: dockerCmd,
-    windows: windowsCmd,
-  };
-  const labelKeyByMode: Record<RotateInstallMode, string> = {
-    curl: 'hosts.curl_cmd',
-    docker: 'hosts.docker_cmd',
-    windows: 'hosts.windows_cmd',
-  };
+  const cmdByMode = newToken
+    ? buildInstallCommands(hubHttp, newToken)
+    : { curl: '', docker: '', windows: '' };
   const activeCmd = cmdByMode[mode];
 
   const copy = async () => {
@@ -627,39 +606,14 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
 
       {newToken && (
         <>
-          {/* Re-install command toggle — same three options as the
-              Add-host modal. Default selection follows the host's
+          {/* Re-install command picker — same widget the Add-host
+              modal uses. Default selection follows the host's
               reported install_mode so the user sees their own
               platform's command first. */}
-          <div className="seg" role="toolbar" aria-label={t('hosts.install_mode_label')}>
-            <button
-              type="button"
-              className="seg-btn inline-flex items-center gap-1.5"
-              aria-pressed={mode === 'curl'}
-              onClick={() => setMode('curl')}
-            >
-              <Terminal size={14} /> {t('hosts.install_mode_curl')}
-            </button>
-            <button
-              type="button"
-              className="seg-btn inline-flex items-center gap-1.5"
-              aria-pressed={mode === 'docker'}
-              onClick={() => setMode('docker')}
-            >
-              <Container size={14} /> {t('hosts.install_mode_docker')}
-            </button>
-            <button
-              type="button"
-              className="seg-btn inline-flex items-center gap-1.5"
-              aria-pressed={mode === 'windows'}
-              onClick={() => setMode('windows')}
-            >
-              <Monitor size={14} /> {t('hosts.install_mode_windows')}
-            </button>
-          </div>
+          <InstallModePicker mode={mode} onChange={setMode} />
 
           <CopyValueBlock
-            label={t(labelKeyByMode[mode])}
+            label={t(LABEL_KEY_BY_MODE[mode])}
             value={activeCmd}
             onCopy={copy}
             copied={copied}
@@ -701,14 +655,22 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
 function DeleteHostModal({ host, onClose }: Readonly<{ host: HostRecord; onClose: () => void }>) {
   const { t } = useTranslation();
   const remove = useHostsStore((s) => s.remove);
-  const [mode, setMode] = useState<'curl' | 'docker'>('curl');
+  const [mode, setMode] = useState<InstallMode>(() => defaultModeFor(host.install_mode));
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Uninstall commands per platform. Linux bash + Docker are
+  // one-liners; Windows needs two lines because `iex` can't forward
+  // the `-Uninstall` flag — we download the script with iwr then
+  // invoke it with the flag, mirroring the hint install.ps1.tpl
+  // prints at the end of a successful install.
   const hubHttp = `${globalThis.location.protocol}//${globalThis.location.host}`;
-  const curlCmd = `curl -fsSL ${hubHttp}/install.sh | sudo bash -s -- --uninstall`;
-  const dockerCmd = `docker rm -f gpuviewr-agent`;
-  const activeCmd = mode === 'curl' ? curlCmd : dockerCmd;
+  const cmdByMode: Record<InstallMode, string> = {
+    curl: `curl -fsSL ${hubHttp}/install.sh | sudo bash -s -- --uninstall`,
+    docker: `docker rm -f gpuviewr-agent`,
+    windows: `iwr ${hubHttp}/install.ps1 -OutFile $env:TEMP\\gpvr-uninstall.ps1 -UseBasicParsing\n& $env:TEMP\\gpvr-uninstall.ps1 -Uninstall`,
+  };
+  const activeCmd = cmdByMode[mode];
 
   const copy = async () => {
     const ok = await copyText(activeCmd);
@@ -744,24 +706,7 @@ function DeleteHostModal({ host, onClose }: Readonly<{ host: HostRecord; onClose
         {t('hosts.delete_uninstall_hint')}
       </p>
 
-      <div className="seg" role="toolbar" aria-label={t('hosts.install_mode_label')}>
-        <button
-          type="button"
-          className="seg-btn inline-flex items-center gap-1.5"
-          aria-pressed={mode === 'curl'}
-          onClick={() => setMode('curl')}
-        >
-          <Terminal size={14} /> {t('hosts.install_mode_curl')}
-        </button>
-        <button
-          type="button"
-          className="seg-btn inline-flex items-center gap-1.5"
-          aria-pressed={mode === 'docker'}
-          onClick={() => setMode('docker')}
-        >
-          <Container size={14} /> {t('hosts.install_mode_docker')}
-        </button>
-      </div>
+      <InstallModePicker mode={mode} onChange={setMode} />
 
       <CopyValueBlock
         label={t('hosts.uninstall_cmd')}
