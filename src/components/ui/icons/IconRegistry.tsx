@@ -69,14 +69,15 @@ const Amd = ({ size = 16, title = 'AMD', style }: IconProps) => (
   </svg>
 );
 
-// "Modern" Windows logo — four quadrants with slight perspective.
-// Color is the official Windows accent (#00ADEF, what the user supplied
-// in the original svg). Could be swapped to the newer fluent blue
-// (#0078D4) but the lighter cyan reads better against dark host cards.
+// Modern Windows logo — four equal squares in Fluent blue (#0078D4,
+// Microsoft's current brand color). The older "asymmetric grid"
+// Win10-era logo (#00ADEF) ages poorly: at 14-16px the perspective
+// trick is invisible and the path data is 3x larger for no visual
+// benefit. Symmetric quadrants stay sharp at any size.
 const Windows = ({ size = 16, title = 'Windows', style }: IconProps) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 32 32"
+    viewBox="0 0 512 512"
     width={size}
     height={size}
     role="img"
@@ -85,8 +86,8 @@ const Windows = ({ size = 16, title = 'Windows', style }: IconProps) => (
   >
     <title>{title}</title>
     <path
-      fill="#00ADEF"
-      d="M30 15H17c-.6 0-1-.4-1-1V3.3c0-.5.4-.9.8-1l13-2.3c.3 0 .6 0 .8.2.3.2.4.5.4.8v13c0 .6-.4 1-1 1zM13 15H1c-.6 0-1-.4-1-1V6c0-.5.4-.9.8-1l12-2c.3 0 .6 0 .8.2.3.2.4.5.4.8v10c0 .6-.4 1-1 1zM30 32c-.1 0-.1 0-.2 0l-13-2.3c-.5-.1-.8-.5-.8-1V18c0-.6.4-1 1-1h13c.6 0 1 .4 1 1v13c0 .3-.1.6-.4.8-.1.1-.4.2-.6.2zM13 29c-.1 0-.1 0-.2 0l-12-2C.4 26.9 0 26.5 0 26v-8c0-.6.4-1 1-1h12c.6 0 1 .4 1 1v10c0 .3-.1.6-.4.8-.1.1-.4.2-.6.2z"
+      fill="#0078D4"
+      d="M0 0h242.7v242.6H0zm269.3 0H512v242.6H269.3zM0 269.3h242.7V512H0zm269.3 0H512V512H269.3"
     />
   </svg>
 );
