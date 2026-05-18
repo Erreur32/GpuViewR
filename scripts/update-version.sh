@@ -147,9 +147,25 @@ else
 fi
 
 # ── 2. package-lock.json (root + packages.""."version") ─────────────────────
+# Bump ONLY the top-level version (line 3) and the packages."" entry
+# (typically line 9). DO NOT do a global `s/old/new/` here — that
+# replaces any nested dependency whose `version` field happens to
+# match the current app version (we got bit on v0.7.0: a nested
+# `node_modules/source-map-support/node_modules/source-map` had its
+# version drift from 0.6.5 → 0.6.6 → … → 0.6.9 across every release,
+# then the v0.7.0 bump pushed it to 0.7.0 which violates the
+# `^0.6.0` semver constraint of its parent and broke `npm ci` on
+# every CI job. Restrict to the first two top-level matches only.
 if [ -f "$PACKAGE_LOCK" ]; then
+  # First match: top-level "version" on the file (root project).
   sedi "$PACKAGE_LOCK" "0,/\"version\": \"$CURRENT_ESC\"/s/\"version\": \"$CURRENT_ESC\"/\"version\": \"$NEW\"/"
-  sedi "$PACKAGE_LOCK" "s/\"version\": \"$CURRENT_ESC\"/\"version\": \"$NEW\"/"
+  # Second match: packages."" entry, a few lines below the first.
+  # We bound the range to the packages section's first ~20 lines so
+  # we don't accidentally walk into a nested dep that happens to
+  # collide on version. The pattern `"packages": {` followed by the
+  # next "version" line is what npm always emits at the top of the
+  # packages map for the root project.
+  sedi "$PACKAGE_LOCK" "/\"packages\": {/,/^    },$/ s/\"version\": \"$CURRENT_ESC\"/\"version\": \"$NEW\"/"
   echo -e "  ${G}✓${R} package-lock.json                  ${C}(root + packages.\"\".version)${R}"
 else
   echo -e "  ${Y}○${R} package-lock.json                  ${Y}(not found, run npm install later)${R}"
