@@ -5,6 +5,45 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-05-18
+
+### Changed
+
+- **Rotate-token modal now shows the full install one-liner for the
+  3 supported platforms** instead of just the raw token. After a
+  successful rotate, the modal renders a Linux-bash / Docker /
+  Windows-PowerShell toggle (same as the Add-host modal) with the
+  ready-to-paste install command pre-filled with the new
+  `host_id.secret` composite. The mode toggle defaults to the
+  host's reported `install_mode` so the user sees their own
+  platform's command first.
+  Use case: rotating a token on an existing agent generally means
+  the operator needs to re-run the installer on the remote box.
+  Pre-v0.8.4 the modal only showed the raw token, leaving the
+  operator to either remember the install one-liner format or look
+  it up in docs. The raw token is still available behind a
+  collapsible `<details>` block for Ansible / custom-installer use.
+
+### Internal
+
+- `src/components/settings/HostsSettingsTab.tsx`:
+    - `RotateInstallMode` type + `defaultRotateModeFor` helper.
+    - `RotateTokenModal` rebuilt around the same `cmdByMode` /
+      `labelKeyByMode` lookup tables the EnrollHostModal uses, so
+      the two modals stay shape-aligned.
+    - Modal grows to `max-w-2xl` (was `max-w-lg`) to fit the
+      install command's wider mono-spaced layout.
+- `src/i18n/locales/{en,fr}.json`:
+    - `hosts.rotate_done_hint` rewritten to point at the new
+      "copy command + re-run on host" flow.
+    - New key `hosts.rotate_show_raw_token` for the collapsible
+      raw-token block.
+
+### Upgrade
+
+- Hub: `docker compose pull && up -d --force-recreate` (or rerun
+  install.sh). Effect immediate on next rotate.
+
 ## [0.8.3] - 2026-05-18
 
 Two /fleet chart polish fixes from real-time testing on the

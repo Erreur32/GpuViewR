@@ -1,42 +1,40 @@
-release: v0.8.3 — /fleet live chart polish (forward-fill + time-axis format + range rebuild)
+release: v0.8.4 — rotate-token modal shows full install one-liner per platform
 
-Two visual issues from the v0.8.2 deploy on /fleet:
+User feedback after the v0.8.2 chicken-and-egg Windows-update saga:
+when you regenerate a token, what the operator actually needs is
+the COMMAND to re-run on the remote host, not just the raw token
+string. The old modal handed back the raw token and left it to the
+user to remember the install one-liner format or look it up in
+docs.
 
-Fix 1 — "graph advances, new trait shows 1 s later" on live mode
-- Cause: when multiple hosts pushed samples at slightly different
-  sub-second offsets (host A at t=10.0, host B at t=10.3, …), the
-  unified sortedT had positions where each individual host had no
-  sample. We wrote null at those positions and uPlot broke the
-  line — each host's curve only re-drew its segment when its own
-  next sample landed on the unified timeline (~1 s behind any
-  other host's push).
-- Fix: forward-fill per-host across the unioned timeline. Each
-  host's value is held until its next sample. Lines scroll
-  smoothly together. Leading positions before a host has any data
-  stay null (honest "no data yet" — not a regression).
+v0.8.4 brings the rotate-token modal in line with the Add-host
+modal:
+- After a successful rotate, render a Linux-bash / Docker /
+  Windows-PowerShell toggle.
+- Each option pre-filled with the new `host_id.secret` composite.
+- Default selection follows the host's reported install_mode, so
+  the user sees their own platform's command first
+  (`install_mode='windows'` → Windows tab pre-selected, etc.).
+- Raw token still available behind a <details> block for
+  Ansible / custom installers.
 
-Fix 2 — X-axis showed coarse HH:MM ticks on live mode
-- Cause: uPlot's default time-axis formatter chose a granularity
-  based on the visible range. With 60 s of live data and a 24h
-  timeFormat preference, it sometimes settled on HH:MM, showing
-  the same minute label across every tick.
-- Fix: explicit axes[0].values formatter — HH:MM:SS in live mode,
-  HH:MM in longer ranges. Honors 12h/24h user pref via
-  toLocaleTimeString({hour12}).
-- Additional: range + timeFormat now baked into the seriesShape
-  rebuild key so a range switch (live ↔ 1h ↔ 24h) triggers a
-  uPlot destroy+recreate. Without this the X-axis formatter
-  closure stayed stale on the initial range.
+Modal width bumped to max-w-2xl to fit the install command's
+wider mono-spaced layout.
 
 Files
-- src/components/fleet/FleetChart.tsx:
-    - data useMemo: forward-fill loop (held-last-value).
-    - ChartPlot gains range prop, threaded from parent.
-    - axes[0] formatter for sub-minute / minute granularity.
-    - seriesShape rebuild key includes range + timeFormat.
+- src/components/settings/HostsSettingsTab.tsx:
+    - RotateInstallMode type + defaultRotateModeFor() helper.
+    - RotateTokenModal rebuilt around the same cmdByMode /
+      labelKeyByMode lookup tables EnrollHostModal uses — the
+      two modals are now shape-aligned, easier to maintain.
+- src/i18n/locales/{en,fr}.json:
+    - hosts.rotate_done_hint rewritten ("copy install command +
+      re-run on host").
+    - New key hosts.rotate_show_raw_token for the collapsible
+      raw-token block.
 
-No agent-side changes. Bundle unchanged from v0.8.2.
+Verified: tsc 0 errors, vite build green.
 
 Upgrade
-- Hub: docker compose pull && up -d --force-recreate (or rerun
-  install.sh). Effect immediate on /fleet.
+- Hub: docker compose pull && up -d --force-recreate.
+- Effect immediate on next token rotation.

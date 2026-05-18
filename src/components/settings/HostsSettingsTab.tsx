@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle, RefreshCw, DownloadCloud } from 'lucide-react';
+import { Plus, KeyRound, Trash2, Terminal, Container, Server, Monitor, AlertTriangle, RefreshCw, DownloadCloud } from 'lucide-react';
 import Icon from '../ui/icons/IconRegistry';
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
@@ -537,12 +537,24 @@ function IconBtn({
   );
 }
 
+type RotateInstallMode = 'curl' | 'docker' | 'windows';
+
+/** Map an agent's reported install_mode to the rotate-modal toggle's
+ *  default selection. Falls back to 'curl' (bash binary on Linux,
+ *  the most common deployment) when the agent never reported one. */
+function defaultRotateModeFor(installMode: string | null | undefined): RotateInstallMode {
+  if (installMode === 'docker') return 'docker';
+  if (installMode === 'windows') return 'windows';
+  return 'curl';
+}
+
 function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClose: () => void }>) {
   const { t } = useTranslation();
   const rotateToken = useHostsStore((s) => s.rotateToken);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [rotating, setRotating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [mode, setMode] = useState<RotateInstallMode>(() => defaultRotateModeFor(host.install_mode));
 
   const doRotate = async () => {
     setRotating(true);
@@ -556,9 +568,37 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
     }
   };
 
+  // Same install-command shape EnrollHostModal builds when a host is
+  // first added — rotate ends up in the same place (operator has a
+  // new token and needs to re-run the installer on the box). Token
+  // returned by the API is already the `host_id.secret` composite
+  // since v0.6.4, so it slots into both `--token` (curl) and
+  // `GPVR_TOKEN` (windows) shapes directly.
+  const hubHttp = `${globalThis.location.protocol}//${globalThis.location.host}`;
+  const curlCmd = newToken
+    ? `curl -fsSL ${hubHttp}/install.sh | sudo bash -s -- \\\n  --url ${hubHttp} \\\n  --token ${newToken}`
+    : '';
+  const dockerCmd = newToken
+    ? `curl -fsSL ${hubHttp}/install-agent.sh | bash -s -- \\\n  --hub ${hubHttp} \\\n  --token ${newToken}`
+    : '';
+  const windowsCmd = newToken
+    ? `Set-ExecutionPolicy Bypass -Scope Process -Force\n$env:GPVR_HUB_URL = '${hubHttp}'\n$env:GPVR_TOKEN   = '${newToken}'\niex (iwr "$env:GPVR_HUB_URL/install.ps1" -UseBasicParsing).Content`
+    : '';
+  const cmdByMode: Record<RotateInstallMode, string> = {
+    curl: curlCmd,
+    docker: dockerCmd,
+    windows: windowsCmd,
+  };
+  const labelKeyByMode: Record<RotateInstallMode, string> = {
+    curl: 'hosts.curl_cmd',
+    docker: 'hosts.docker_cmd',
+    windows: 'hosts.windows_cmd',
+  };
+  const activeCmd = cmdByMode[mode];
+
   const copy = async () => {
-    if (!newToken) return;
-    const ok = await copyText(newToken);
+    if (!activeCmd) return;
+    const ok = await copyText(activeCmd);
     if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -572,7 +612,7 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
       title={t('hosts.rotate_title', { label: host.label })}
       hint={newToken ? t('hosts.rotate_done_hint') : t('hosts.rotate_intro')}
       onClose={onClose}
-      maxWidth="max-w-lg"
+      maxWidth="max-w-2xl"
     >
       <WarningBanner>{t('hosts.rotate_warning')}</WarningBanner>
 
@@ -587,14 +627,64 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
 
       {newToken && (
         <>
+          {/* Re-install command toggle — same three options as the
+              Add-host modal. Default selection follows the host's
+              reported install_mode so the user sees their own
+              platform's command first. */}
+          <div className="seg" role="toolbar" aria-label={t('hosts.install_mode_label')}>
+            <button
+              type="button"
+              className="seg-btn inline-flex items-center gap-1.5"
+              aria-pressed={mode === 'curl'}
+              onClick={() => setMode('curl')}
+            >
+              <Terminal size={14} /> {t('hosts.install_mode_curl')}
+            </button>
+            <button
+              type="button"
+              className="seg-btn inline-flex items-center gap-1.5"
+              aria-pressed={mode === 'docker'}
+              onClick={() => setMode('docker')}
+            >
+              <Container size={14} /> {t('hosts.install_mode_docker')}
+            </button>
+            <button
+              type="button"
+              className="seg-btn inline-flex items-center gap-1.5"
+              aria-pressed={mode === 'windows'}
+              onClick={() => setMode('windows')}
+            >
+              <Monitor size={14} /> {t('hosts.install_mode_windows')}
+            </button>
+          </div>
+
           <CopyValueBlock
-            label={t('hosts.new_token')}
-            value={newToken}
+            label={t(labelKeyByMode[mode])}
+            value={activeCmd}
             onCopy={copy}
             copied={copied}
             kind="monoWrap"
             sensitive
           />
+
+          {/* Plain token for advanced users who want to wire it
+              themselves into custom installers / Ansible / etc. */}
+          <details className="text-xs">
+            <summary className="cursor-pointer" style={{ color: 'var(--gv-text-muted)' }}>
+              {t('hosts.rotate_show_raw_token')}
+            </summary>
+            <div className="mt-2">
+              <CopyValueBlock
+                label={t('hosts.new_token')}
+                value={newToken}
+                onCopy={async () => { await copyText(newToken); }}
+                copied={false}
+                kind="monoWrap"
+                sensitive
+              />
+            </div>
+          </details>
+
           <div className="flex justify-end">
             <button type="button" onClick={onClose} className="btn-primary">{t('common.done')}</button>
           </div>
