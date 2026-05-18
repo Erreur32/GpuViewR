@@ -21,6 +21,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { parseRocmInfo, parseRocmPids, rocmUuidFromBus } from '../../../server/services/parsers/rocm.js';
 import type { AgentGpuProcess, ProcessCollectorHandle, ProcessCollectorOptions, ProcessSnapshot } from './processes.js';
 import { createCpuSampler, readCmdline, resolveProcessName } from './_procTicks.js';
+import { classifyLLM } from './llmClassifier.js';
 import { logger } from '../logger.js';
 
 export type { ProcessSnapshot };
@@ -95,6 +96,7 @@ export function createRocmProcessCollector(opts: RocmProcessCollectorOptions): P
         if (!name || name.toLowerCase() === 'unknown' || name === '[Not Found]' || name === '-' || name.toLowerCase() === 'n/a') {
           name = resolveProcessName(p.pid, opts.hostProc) ?? '';
         }
+        const llm = classifyLLM(command);
         return {
           pid: p.pid,
           process_name: name || 'unknown',
@@ -109,6 +111,8 @@ export function createRocmProcessCollector(opts: RocmProcessCollectorOptions): P
           // permanent "—". cu_occupancy is null when the driver reports
           // "unknown" (some kernels / non-root callers).
           gpu_pct: p.cu_occupancy,
+          llm_runtime: llm.runtime,
+          llm_model: llm.model,
         };
       });
       cpuSampler.retain(new Set(procs.map((p) => p.pid)));

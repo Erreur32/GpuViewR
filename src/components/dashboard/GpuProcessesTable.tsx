@@ -15,6 +15,8 @@ interface GpuProcess {
   command?: string | null;
   cpu_pct?: number | null;
   gpu_pct?: number | null;
+  llm_runtime?: string | null;
+  llm_model?: string | null;
 }
 
 interface ApiResp {
@@ -126,12 +128,15 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
                   <td className="py-1.5 pr-3 font-mono tabular-nums">{p.pid}</td>
                   <td className="py-1.5 pr-3"><TypeBadge type={p.type ?? null} /></td>
                   <td className="py-1.5 pr-3 max-w-[480px]">
-                    <div
-                      className="font-semibold truncate"
-                      style={{ color: 'var(--gv-warn)' }}
-                      title={p.command ?? p.process_name}
-                    >
-                      {p.process_name}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className="font-semibold truncate"
+                        style={{ color: 'var(--gv-warn)' }}
+                        title={p.command ?? p.process_name}
+                      >
+                        {p.process_name}
+                      </span>
+                      {p.llm_runtime && <LlmBadge runtime={p.llm_runtime} model={p.llm_model ?? null} />}
                     </div>
                     {p.command && p.command !== p.process_name && (
                       <div
@@ -189,6 +194,47 @@ function fmtPct(v: number | null | undefined): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return '-';
   return `${v.toFixed(v < 10 ? 1 : 0)}%`;
 }
+
+/** Small badge rendered next to the process name when the agent's
+ *  classifier (agent/src/collectors/llmClassifier.ts) recognises the
+ *  command line as a known local-inference stack — Ollama, llama.cpp,
+ *  vLLM, ComfyUI, KoboldCpp, oobabooga, etc. The label is the runtime
+ *  key (lowercase short id); the tooltip carries the resolved model
+ *  identifier when present. Color comes from var(--gv-info) so it
+ *  reads as informational, not warning. */
+function LlmBadge({ runtime, model }: Readonly<{ runtime: string; model: string | null }>) {
+  const label = LLM_LABELS[runtime] ?? runtime;
+  const tooltip = model ? `${label} — ${model}` : label;
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider"
+      style={{
+        color: 'var(--gv-info)',
+        background: 'color-mix(in srgb, var(--gv-info) 14%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--gv-info) 30%, transparent)',
+      }}
+      title={tooltip}
+    >
+      {label}
+    </span>
+  );
+}
+
+/** Display labels for the runtime keys the agent's classifier emits.
+ *  Keeping the mapping in the UI lets us show vendor-correct casing
+ *  ("vLLM" not "vllm", "ComfyUI" not "comfyui") without coupling the
+ *  agent code to display formatting. Unknown keys fall back to the
+ *  raw id so adding a runtime in the classifier is non-breaking. */
+const LLM_LABELS: Record<string, string> = {
+  ollama: 'Ollama',
+  vllm: 'vLLM',
+  llamacpp: 'llama.cpp',
+  koboldcpp: 'KoboldCpp',
+  oobabooga: 'oobabooga',
+  comfyui: 'ComfyUI',
+  sdwebui: 'SD WebUI',
+  lmstudio: 'LM Studio',
+};
 
 /** Per-process GPU% cell. Falls back to the card-level utilization
  *  (passed in via `fallback`) when the agent couldn't get a per-PID

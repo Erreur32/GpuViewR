@@ -342,7 +342,7 @@ See [`Docs/V0_5_PLAN.md`](Docs/V0_5_PLAN.md) for the detailed architecture ratio
 
 ```bash
 docker compose logs gpuviewr-hub | grep -iE 'vendor|agent'
-docker compose logs gpuviewr-agent-local | tail -20
+docker compose logs gpuviewr-hub-agent | tail -20
 ```
 
 Common cases:

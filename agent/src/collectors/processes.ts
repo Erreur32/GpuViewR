@@ -12,6 +12,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { logger } from '../logger.js';
 import { createCpuSampler, readCmdline, resolveProcessName } from './_procTicks.js';
+import { classifyLLM } from './llmClassifier.js';
 
 export type GpuProcessType = 'C' | 'G' | 'G+C' | null;
 
@@ -24,6 +25,12 @@ export interface AgentGpuProcess {
   command: string | null;     // full /proc/<pid>/cmdline, NULs → spaces
   cpu_pct: number | null;     // % of a single core, sampled between ticks
   gpu_pct: number | null;     // GPU SM utilization for this pid (from pmon)
+  // LLM-aware fields (v0.7.3+, palier 3). Best-effort classification
+  // of the process command line against known local-inference stacks
+  // (Ollama, llama.cpp, vLLM, ComfyUI, KoboldCpp, oobabooga, …).
+  // Both null when the cmdline doesn't match any known pattern.
+  llm_runtime?: string | null;
+  llm_model?: string | null;
 }
 
 export interface ProcessSnapshot {
@@ -112,12 +119,15 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
       const enriched: AgentGpuProcess[] = procs.map((p) => {
         const pmon = pmonByPid.get(p.pid);
         const command = readCmdline(p.pid, opts.hostProc);
+        const llm = classifyLLM(command);
         return {
           ...p,
           type: pmon?.type ?? (command ? 'C' : null),
           command,
           cpu_pct: cpuSampler.sample(p.pid),
           gpu_pct: pmon?.gpuPct ?? null,
+          llm_runtime: llm.runtime,
+          llm_model: llm.model,
         };
       });
       cpuSampler.retain(new Set(procs.map((p) => p.pid)));

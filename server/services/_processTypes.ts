@@ -14,4 +14,11 @@ export interface GpuProcess {
   command: string | null;
   cpu_pct: number | null;
   gpu_pct: number | null;
+  // LLM-aware classification (v0.7.3+). Both fields are populated by
+  // the agent on a best-effort basis from the process command line —
+  // see agent/src/collectors/llmClassifier.ts. The hub passes them
+  // through unchanged; the UI renders a small runtime badge + model
+  // tooltip when present.
+  llm_runtime?: string | null;   // 'ollama' | 'llamacpp' | 'vllm' | …
+  llm_model?: string | null;     // best-effort model id (path basename or sha256:prefix)
 }

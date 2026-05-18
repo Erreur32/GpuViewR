@@ -82,7 +82,7 @@ services:
   # `runtime: nvidia` line below doesn't trip the daemon.
   agent-nvidia:
     image: ghcr.io/erreur32/gpuviewr-agent:latest
-    container_name: gpuviewr-agent-local
+    container_name: gpuviewr-hub-agent
     restart: unless-stopped
     profiles: [nvidia]
     depends_on:
@@ -118,7 +118,7 @@ services:
   # exists at runtime, no conflict.
   agent-amd:
     image: ghcr.io/erreur32/gpuviewr-agent:latest
-    container_name: gpuviewr-agent-local
+    container_name: gpuviewr-hub-agent
     restart: unless-stopped
     profiles: [amd]
     depends_on:

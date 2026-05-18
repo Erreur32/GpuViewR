@@ -184,7 +184,7 @@ services:
   # NVIDIA sidecar — démarré quand COMPOSE_PROFILES inclut "nvidia"
   agent-nvidia:
     image: ghcr.io/erreur32/gpuviewr-agent:latest
-    container_name: gpuviewr-agent-local
+    container_name: gpuviewr-hub-agent
     restart: unless-stopped
     profiles: [nvidia]
     depends_on:
@@ -210,7 +210,7 @@ services:
   # AMD sidecar — démarré quand COMPOSE_PROFILES inclut "amd"
   agent-amd:
     image: ghcr.io/erreur32/gpuviewr-agent:latest
-    container_name: gpuviewr-agent-local
+    container_name: gpuviewr-hub-agent
     restart: unless-stopped
     profiles: [amd]
     depends_on:
@@ -268,7 +268,7 @@ COMPOSE_PROFILES=amd     # ou: nvidia
 
 - `runtime: nvidia` n'existe **que dans `agent-nvidia`**, qui n'est jamais activé en mode AMD → pas d'erreur "nvidia runtime not installed" sur un host AMD.
 - `devices: /dev/kfd` n'existe **que dans `agent-amd`**, qui n'est jamais activé en mode NVIDIA → pas d'erreur "no such device" sur un host NVIDIA.
-- Le container_name `gpuviewr-agent-local` est partagé entre les 2 services mais Docker ne crée que celui actif → pas de conflit.
+- Le container_name `gpuviewr-hub-agent` est partagé entre les 2 services mais Docker ne crée que celui actif → pas de conflit.
 
 ### Bénéfices
 

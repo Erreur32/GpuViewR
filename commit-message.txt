@@ -1,37 +1,55 @@
-release: v0.7.2 — GPU% per-process fallback to card global util (AMD/UX)
+release: v0.7.3 — LLM-aware process classification + hub-agent rename
 
-Patch release. Closes the cosmetic gap left by v0.7.1 on the AMD
-side: even with procps installed and /proc mounted, the GPU%
-column for AMD processes still showed `-` because the driver
-returns cu_occupancy="unknown" from /sys/class/kfd. That's a real
-kernel-level limitation we can't fix from the agent, but a `-` is
-a poor signal — the user sees 11 GB of VRAM in use and no
-indication of compute activity.
+Palier 3 lands: the agent now identifies which inference stack each
+GPU process belongs to and surfaces it as a small badge in the UI.
+The README banner shipped in v0.7.0 finally pays off visibly.
 
-This release falls back to the card's global utilization (the same
-number the primary util tile shows) when the per-PID gpu_pct is
-null. The fallback value renders italic + dim with a `~` prefix
-and a tooltip explaining the approximation, so it's visually
-distinct from authoritative per-PID readings and the user knows
-not to interpret it as a precise per-process metric.
+Coverage at v0.7.3 (8 runtimes, regex-only classification, ~50
+lines):
+  - Ollama (CLI + internal runner with sha256 blob path)
+  - llama.cpp (llama-server, llama-cli, llamafile, main/server)
+  - vLLM (python -m vllm.*)
+  - KoboldCpp (koboldcpp.py / .exe)
+  - oobabooga / text-generation-webui (server.py --model)
+  - ComfyUI (directory-based match)
+  - Stable Diffusion WebUI (Automatic1111)
+  - LM Studio (lms server, Electron helper)
 
-Same fallback fires on NVIDIA when nvidia-smi pmon doesn't see the
-pid — same logic, same UI treatment.
+Wire frame extension is backwards-compatible — two optional fields
+(llm_runtime, llm_model) on AgentGpuProcess and the hub's GpuProcess
+type. Older agents stay silent; older hubs pass the fields through
+without knowing about them. UI shows badges only when llm_runtime
+is set.
 
-Changes
-- src/components/dashboard/GpuProcessesTable.tsx:
-    - New optional prop `gpuUtilFallback?: number | null`.
-    - New <GpuPctCell> helper: authoritative number | approximation
-      with tooltip | `-`.
-- src/components/dashboard/Dashboard.tsx:
-    - Pass `active.utilization ?? null` to the table.
-- src/i18n/locales/{en,fr}.json:
-    - New `dashboard.processes_gpu_pct_approx` tooltip string.
+Bundled with the badge work: a small but breaking docker container
+rename. `gpuviewr-agent-local` was always ambiguous on multi-host
+setups ("local to what?"). Renamed to `gpuviewr-hub-agent` to make
+it explicit that this is the agent shipped with the hub stack, as
+opposed to standalone `gpuviewr-agent` containers running on remote
+boxes.
 
-No agent-side changes; bundle unchanged from v0.7.1 (181 KB).
+Files
+- agent/src/collectors/llmClassifier.ts (NEW, ~165 lines incl.
+  comments + 8 pattern entries)
+- agent/src/collectors/processes.ts: classifier wired in tick()
+- agent/src/collectors/processesRocm.ts: classifier wired in tick()
+- server/services/_processTypes.ts: GpuProcess fields added
+- src/components/dashboard/GpuProcessesTable.tsx: <LlmBadge> +
+  label map (Ollama / vLLM / llama.cpp / …)
+- docker-compose.yaml: container_name on both nvidia + amd sidecars
+- README.md, Docs/V0_5_PLAN.md: container name references updated
+
+Bundle: agent.mjs 181 KB -> 185.5 KB (+4.5 KB for the classifier).
+
+Operator action — IF you have scripts referencing the old container
+name (`docker exec gpuviewr-agent-local …`), update them. After
+`docker compose up -d --force-recreate` the new name is in effect.
 
 Upgrade
-- Hub: docker compose pull && docker compose up -d --force-recreate
-  (only the hub image needs the new bundle — agent is the same).
-- AMD users see the GPU column populated with ~card_util% in
-  italic; hover for the explanation.
+- Hub: cd ~/gpuviewr && docker compose pull && docker compose up -d
+  --force-recreate
+- The old gpuviewr-agent-local container is removed by compose
+  during recreate; the new gpuviewr-hub-agent comes up in its
+  place.
+- LLM badges appear automatically on the next collector tick for
+  any GPU process whose cmdline matches a known runtime.

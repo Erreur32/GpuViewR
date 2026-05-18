@@ -5,6 +5,76 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-05-18
+
+Palier 3 — LLM-aware process classification (the AI/LLM banner in
+the README finally pays off in the UI). Plus a small but breaking
+container rename for clarity.
+
+### Added
+
+- **LLM runtime classification on GPU processes.** New
+  `agent/src/collectors/llmClassifier.ts` runs over every GPU
+  process command line and identifies the inference stack it
+  belongs to:
+  - **Ollama** — both the user CLI (`ollama run llama3:8b`) and
+    the internal runner (`/usr/bin/ollama runner --model
+    <blob-path>`). For runner processes we surface the blob's
+    sha256 prefix as a model id (resolving the friendly name
+    requires reading `~/.ollama/manifests/`, deferred to a
+    later release).
+  - **llama.cpp** — `llama-server`, `llama-cli`, `llamafile`,
+    plus `main`/`server` binaries that take `-m *.gguf`.
+  - **vLLM** — `python -m vllm.…`, model from `--model`.
+  - **KoboldCpp** — `koboldcpp.py` / `koboldcpp_*.exe`.
+  - **oobabooga** (text-generation-webui) — `server.py
+    --model`.
+  - **ComfyUI** — directory-based detection.
+  - **Stable Diffusion WebUI** (Automatic1111) — `webui.py`
+    inside a `stable-diffusion-webui` checkout.
+  - **LM Studio** — `lms server` and the Electron helper.
+  Wire frame: two new optional fields on `AgentGpuProcess` and
+  on the hub-side `GpuProcess` type — `llm_runtime?: string |
+  null` and `llm_model?: string | null`. Backwards-compatible
+  with older agents (fields stay null).
+- **LLM badge in the process table.** New `<LlmBadge>` next to
+  the process name shows the runtime in info-blue (e.g.
+  "Ollama", "vLLM", "llama.cpp"). Hover for the model id when
+  known (e.g. `Ollama — sha256:a3de86cd1c13`). Vendor-correct
+  casing comes from a UI-side label map so adding a new runtime
+  in the agent's classifier is non-breaking.
+
+### Changed (breaking for local scripts)
+
+- **`gpuviewr-agent-local` renamed to `gpuviewr-hub-agent`.**
+  The old name was ambiguous on multi-host setups: "local to
+  what?". The new name is explicit — this is the agent that
+  ships with the hub stack, distinct from `gpuviewr-agent`
+  containers spun up on remote machines via the standalone
+  composes. **Operator action required**: any script that does
+  `docker exec gpuviewr-agent-local …` or `docker logs
+  gpuviewr-agent-local` must be updated. After
+  `docker compose up -d --force-recreate` the new name is in
+  effect immediately; the old container is automatically removed.
+
+### Internal
+
+- Agent bundle: 181 KB → 185.5 KB (+4.5 KB for the classifier).
+- Hub `GpuProcess` type extended in `server/services/
+  _processTypes.ts`. Hub passes the fields through unchanged;
+  no DB schema change (processes aren't persisted, only live).
+- `docker-compose.yaml`, `README.md`, `Docs/V0_5_PLAN.md`
+  swept for the container-name rename.
+
+### Upgrade
+
+- Hub: `cd ~/gpuviewr && docker compose pull && docker compose
+  up -d --force-recreate`. The old `gpuviewr-agent-local`
+  container is removed by compose during recreate.
+- LLM badges appear automatically on the next collector tick
+  for processes that match a known runtime. Other GPU processes
+  render as before (no badge).
+
 ## [0.7.2] - 2026-05-18
 
 UX patch around the AMD GPU% gap exposed by v0.7.1 lab testing.
