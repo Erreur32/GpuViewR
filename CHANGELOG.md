@@ -5,6 +5,21 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.5] - 2026-05-18
+
+### Fixed
+
+- **"Update now" button + auto-update toggle now enabled for Windows
+  hosts.** v0.6.9 plumbed `install_mode='windows'` through the
+  backend's `forceAgentUpdate` and `maybePushAutoUpdate` paths but
+  the UI checks in `HostsSettingsTab.tsx` were still hardcoded to
+  `host.install_mode === 'systemd'`, so both controls stayed grey
+  on Windows host rows. Replaced both call sites with a new
+  `isAgentSelfUpdatable()` helper that mirrors the backend check
+  (`'systemd' || 'windows'`). Windows agents installed via
+  `install.ps1` now show the same green toggle + clickable update
+  button as systemd agents.
+
 ## [0.7.4] - 2026-05-18
 
 Makes `install.sh` safe to re-run on existing installs — necessary

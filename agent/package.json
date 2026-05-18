@@ -1,6 +1,6 @@
 {
   "name": "gpuviewr-agent",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "private": true,
   "description": "Remote GpuViewR agent — collects nvidia-smi locally and pushes to a central hub via WebSocket",
   "type": "module",

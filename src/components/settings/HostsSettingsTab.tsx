@@ -382,6 +382,16 @@ function HubBadge({ t }: Readonly<{ t: (key: string) => string }>) {
  *  self-replace their bundled binary, and an 'unknown' agent is too
  *  old (pre-v0.5.3) to even handle the agent_update frame. The tooltip
  *  explains the state so admins don't wonder why it's greyed out. */
+/** Whether the agent's install_mode supports hub-pushed auto-update.
+ *  systemd: renameSync + RestartSec=5 — Linux atomic swap.
+ *  windows: agent.mjs.pending + launcher.ps1 supervisor loop swap.
+ *  Anything else (docker, unknown) cannot self-replace its bundle.
+ *  Mirrors the check in server/services/agentIngestWS.ts so the UI
+ *  state matches what the backend will actually accept. */
+function isAgentSelfUpdatable(installMode: string | null | undefined): boolean {
+  return installMode === 'systemd' || installMode === 'windows';
+}
+
 function AutoUpdateToggle({
   host, t,
 }: Readonly<{
@@ -389,7 +399,7 @@ function AutoUpdateToggle({
   t: (key: string, opts?: Record<string, unknown>) => string;
 }>) {
   const setAutoUpdate = useHostsStore((s) => s.setAutoUpdate);
-  const supported = host.install_mode === 'systemd';
+  const supported = isAgentSelfUpdatable(host.install_mode);
   const enabled = host.auto_update === 1;
   const titleKey = supported
     ? (enabled ? 'hosts.auto_update_on' : 'hosts.auto_update_off')
@@ -465,7 +475,7 @@ function ForceUpdateButton({
 }>) {
   const forceUpdate = useHostsStore((s) => s.forceUpdate);
   const [busy, setBusy] = useState(false);
-  const supported = host.install_mode === 'systemd';
+  const supported = isAgentSelfUpdatable(host.install_mode);
   const online = host.status === 'online';
   const canPush = supported && online && !busy;
   const titleKey = (() => {
