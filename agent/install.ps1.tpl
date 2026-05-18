@@ -89,18 +89,61 @@ if (-not $HostId -or -not $Secret) {
 }
 
 # ──────────────────────────────────────────────────────────────────────
-# Node 22+ check
+# Node 22+ — auto-install via winget when missing or too old.
+#
+# Mirrors install.sh.tpl's NodeSource auto-install: the user should not
+# have to manually grab Node before re-running the installer. winget is
+# built-in on Win10 1809+ and Win11 (App Installer); older SKUs fall
+# back to the "go to nodejs.org" error.
+#
+# After install, the new node.exe path isn't in $env:Path of the current
+# session yet — refresh from the registry so subsequent Get-Command
+# calls (and the `node -v` exec) find it without requiring a logoff.
 # ──────────────────────────────────────────────────────────────────────
-$node = Get-Command node -ErrorAction SilentlyContinue
-if (-not $node) {
-  Die "Node.js 22+ not found. Install it from https://nodejs.org (LTS .msi) then re-run this installer."
+function Refresh-Path {
+  $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+              [System.Environment]::GetEnvironmentVariable('Path', 'User')
 }
-$nodeVer = (& node -v) -replace '^v',''
-$nodeMajor = [int]($nodeVer.Split('.')[0])
-if ($nodeMajor -lt 22) {
-  Die "Node.js $nodeVer detected; need 22+. Upgrade from https://nodejs.org then re-run."
+
+function Get-NodeMajor {
+  $cmd = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $cmd) { return $null }
+  try {
+    $ver = (& node -v 2>$null) -replace '^v',''
+    return @{ Command = $cmd; Version = $ver; Major = [int]($ver.Split('.')[0]) }
+  } catch { return $null }
 }
-Ok "Node.js v$nodeVer at $($node.Path)"
+
+$node = Get-NodeMajor
+if (-not $node -or $node.Major -lt 22) {
+  $reason = if (-not $node) { 'not found' } else { "v$($node.Version) is too old (need 22+)" }
+  Say "Node.js $reason — attempting auto-install via winget..."
+
+  $winget = Get-Command winget -ErrorAction SilentlyContinue
+  if (-not $winget) {
+    Die "Node.js 22+ not found and winget is not available on this system. Install Node.js LTS from https://nodejs.org/en/download (the .msi installer) then re-run this script."
+  }
+
+  # `winget install` exits 0 on success, non-zero on failure. Source +
+  # package agreements are auto-accepted so the install is non-interactive.
+  # OpenJS.NodeJS.LTS pulls the current Node LTS major (22.x as of writing,
+  # bumps automatically when winget's repo advances).
+  & winget install --id OpenJS.NodeJS.LTS --silent `
+    --accept-source-agreements --accept-package-agreements
+  $wingetExit = $LASTEXITCODE
+  if ($wingetExit -ne 0) {
+    Die "winget install OpenJS.NodeJS.LTS failed (exit $wingetExit). Install Node.js 22+ manually from https://nodejs.org/en/download then re-run this script."
+  }
+
+  Refresh-Path
+  $node = Get-NodeMajor
+  if (-not $node -or $node.Major -lt 22) {
+    Die "winget reported success but node.exe is still missing from PATH. Reopen PowerShell as Administrator and re-run this script."
+  }
+  Ok "Node.js v$($node.Version) installed via winget at $($node.Command.Path)"
+} else {
+  Ok "Node.js v$($node.Version) at $($node.Command.Path)"
+}
 
 # ──────────────────────────────────────────────────────────────────────
 # nvidia-smi check — warn but don't fail. The agent will boot and the
@@ -210,7 +253,7 @@ $LogPath = Join-Path $InstallDir 'agent.log'
 `$bin     = '$BinPath'
 `$pending = `"`$bin.pending`"
 `$envFile = '$EnvPath'
-`$node    = '$($node.Path)'
+`$node    = '$($node.Command.Path)'
 `$logFile = '$LogPath'
 
 # Helper: timestamped append to the log file. The scheduled task runs
