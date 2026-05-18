@@ -520,6 +520,8 @@
     "type_docker_help": "Agent installed via docker compose. Update: docker compose pull && up -d.",
     "type_binary": "Binary",
     "type_binary_help": "Agent installed bare-metal (binary + systemd service). Update: curl agent.mjs && systemctl restart.",
+    "type_windows": "Windows",
+    "type_windows_help": "Agent installed via install.ps1 (Windows Scheduled Task + launcher.ps1 supervisor). Auto-update stages agent.mjs.pending and the launcher swaps it on next iteration.",
     "type_unknown": "—",
     "type_unknown_help": "Install mode not reported (agent older than v0.5.3). Upgrade the agent to see it surface here.",
     "force_update": "Force update now (push the hub bundle over the live WS)",

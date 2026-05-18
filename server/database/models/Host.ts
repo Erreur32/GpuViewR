@@ -20,7 +20,7 @@ export type HostStatus = 'pending' | 'online' | 'offline' | 'disabled';
  *  'systemd' (bare-metal). Drives which update command the UI shows
  *  per host — picking the wrong one creates a "double agent" install.
  *  'unknown' = pre-v0.5.3 agent or a developer running `node` by hand. */
-export type InstallMode = 'docker' | 'systemd' | 'unknown';
+export type InstallMode = 'docker' | 'systemd' | 'windows' | 'unknown';
 
 export interface HostRecord {
   id: string;

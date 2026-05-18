@@ -14,7 +14,7 @@ import { api } from '../lib/api';
 
 export type HostKind = 'local' | 'agent' | 'prometheus';
 export type HostStatus = 'pending' | 'online' | 'lagging' | 'offline' | 'disabled';
-export type InstallMode = 'docker' | 'systemd' | 'unknown';
+export type InstallMode = 'docker' | 'systemd' | 'windows' | 'unknown';
 
 export interface HostRecord {
   id: string;

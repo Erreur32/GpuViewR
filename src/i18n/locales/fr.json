@@ -520,6 +520,8 @@
     "type_docker_help": "Agent installé via docker compose. Mise à jour : docker compose pull && up -d.",
     "type_binary": "Binaire",
     "type_binary_help": "Agent installé en bare-metal (binaire + service systemd). Mise à jour : curl agent.mjs && systemctl restart.",
+    "type_windows": "Windows",
+    "type_windows_help": "Agent installé via install.ps1 (tâche planifiée Windows + superviseur launcher.ps1). L'auto-update dépose agent.mjs.pending et le launcher fait le swap à l'itération suivante.",
     "type_unknown": "—",
     "type_unknown_help": "Mode d'installation non rapporté (agent antérieur à v0.5.3). Mettez à jour l'agent pour le voir s'afficher ici.",
     "force_update": "Forcer la mise à jour maintenant (pousse le bundle du hub via WS)",

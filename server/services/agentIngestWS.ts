@@ -51,7 +51,7 @@ interface HelloFrame {
   agent_version?: string;
   protocol_ver?: number;
   hostname?: string;
-  install_mode?: 'docker' | 'systemd' | 'unknown';
+  install_mode?: 'docker' | 'systemd' | 'windows' | 'unknown';
   capabilities?: { gpu?: boolean; system?: boolean; temps?: boolean; processes?: boolean };
 }
 
@@ -265,8 +265,11 @@ export function forceAgentUpdate(
   const host = HostsRepo.findById(hostId);
   if (!host) return { ok: false, reason: 'host not found', status: 404 };
   if (host.kind !== 'agent') return { ok: false, reason: 'not an agent host', status: 400 };
-  if (host.install_mode !== 'systemd') {
-    return { ok: false, reason: `force-update only supported on systemd hosts (install_mode=${host.install_mode ?? 'unknown'})`, status: 400 };
+  // Auto-update works on systemd (Linux) and windows (launcher.ps1
+  // supervisor swaps .pending into place on next iteration). Docker
+  // can't rewrite a baked-in bundle; 'unknown' is legacy / dev runs.
+  if (host.install_mode !== 'systemd' && host.install_mode !== 'windows') {
+    return { ok: false, reason: `force-update only supported on systemd/windows hosts (install_mode=${host.install_mode ?? 'unknown'})`, status: 400 };
   }
   const ws = liveAgentSockets.get(hostId);
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -307,8 +310,11 @@ export function maybePushAutoUpdate(ws: WebSocket, host: HostRecord, hubVersion:
   // Gate 2: bare-metal only — Docker agents can't rewrite a baked-in
   // bundle. The 'unknown' bucket (legacy agents, dev runs) is also
   // skipped: better to surface the manual pill than push to something
-  // we can't reliably restart.
-  if (host.install_mode !== 'systemd') return;
+  // we can't reliably restart. 'windows' is allowed: launcher.ps1
+  // supervises node + atomically swaps agent.mjs.pending on the next
+  // iteration of its while-loop (same effective semantics as systemd's
+  // ExecStart restart, ~5 s downtime).
+  if (host.install_mode !== 'systemd' && host.install_mode !== 'windows') return;
   // Gate 3: outdated.
   if (!isOlder(host.agent_version, hubVersion)) return;
   // Gate 4: cooldown — protect against crash-loop amplification.

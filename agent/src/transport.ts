@@ -31,7 +31,7 @@ import type { GpuSample } from '../../server/services/parsers/nvidia.js';
 import type { AgentGpuProcess } from './collectors/processes.js';
 import type { AgentConfig, HubTarget } from './config.js';
 
-export type InstallMode = 'docker' | 'systemd' | 'unknown';
+export type InstallMode = 'docker' | 'systemd' | 'windows' | 'unknown';
 
 // Detected once at module load — the runtime context doesn't change
 // over the life of the agent process. Result is included in every
@@ -40,6 +40,11 @@ export type InstallMode = 'docker' | 'systemd' | 'unknown';
 export const INSTALL_MODE: InstallMode = detectInstallMode();
 
 function detectInstallMode(): InstallMode {
+  // Windows always reports 'windows'. The install.ps1 installer
+  // registers a Scheduled Task + launcher.ps1 supervisor — distinct
+  // enough from 'systemd' (different update mechanism: .pending file
+  // swap vs systemd unit restart) that the hub needs to know.
+  if (process.platform === 'win32') return 'windows';
   // Strongest signal — Docker mounts an empty marker file.
   if (existsSync('/.dockerenv')) return 'docker';
   // Fallback: cgroup v1 paths usually contain /docker/ or /containerd/.

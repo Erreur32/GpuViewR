@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle, RefreshCw, DownloadCloud } from 'lucide-react';
+import Icon from '../ui/icons/IconRegistry';
 import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
@@ -178,7 +179,7 @@ function InstallTypeCell({
   isLocal, installMode, t,
 }: Readonly<{
   isLocal: boolean;
-  installMode: 'docker' | 'systemd' | 'unknown' | null;
+  installMode: 'docker' | 'systemd' | 'windows' | 'unknown' | null;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }>) {
   if (isLocal) {
@@ -206,6 +207,14 @@ function InstallTypeCell({
       </span>
     );
   }
+  if (installMode === 'windows') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs"
+            title={t('hosts.type_windows_help')}>
+        <Icon name="platform.windows" size={14} /> {t('hosts.type_windows')}
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs"
           style={{ color: 'var(--gv-text-dim)' }}
@@ -228,7 +237,7 @@ function VersionCell({
 }: Readonly<{
   isLocal: boolean;
   agentVersion: string | null;
-  installMode: 'docker' | 'systemd' | 'unknown' | null;
+  installMode: 'docker' | 'systemd' | 'windows' | 'unknown' | null;
   kind: string;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }>) {
@@ -260,15 +269,22 @@ function VersionCell({
  *  copied as a sensible default. Running the bare-metal recipe on a
  *  Docker host creates a "double agent" install — that's exactly
  *  what this per-host selection avoids. */
-function pickUpdateCmd(installMode: 'docker' | 'systemd' | 'unknown' | null, hubOrigin: string): {
+function pickUpdateCmd(installMode: 'docker' | 'systemd' | 'windows' | 'unknown' | null, hubOrigin: string): {
   primary: string;
   /** Non-null when we are guessing — UI shows both recipes in the tooltip. */
   secondary: string | null;
 } {
   const systemdCmd = `sudo curl -fsSL ${hubOrigin}/agent.mjs -o /opt/gpuviewr-agent/agent.mjs && sudo systemctl restart gpuviewr-agent`;
   const dockerCmd = 'cd ~/gpuviewr-agent-* && docker compose pull && docker compose up -d';
+  // Windows: hub-pushed auto-update is the path of least friction (the
+  // launcher.ps1 supervisor swaps agent.mjs.pending → agent.mjs on the
+  // next iteration). If the admin doesn't have auto_update on, the
+  // copy-paste form is to re-run the install.ps1 one-liner from the
+  // Add Host modal, which re-downloads the bundle.
+  const windowsCmd = `iwr ${hubOrigin}/agent.mjs -OutFile $env:ProgramData\\GpuViewR-Agent\\agent.mjs.pending -UseBasicParsing`;
   if (installMode === 'systemd') return { primary: systemdCmd, secondary: null };
   if (installMode === 'docker') return { primary: dockerCmd, secondary: null };
+  if (installMode === 'windows') return { primary: windowsCmd, secondary: null };
   return { primary: systemdCmd, secondary: dockerCmd };
 }
 
@@ -277,7 +293,7 @@ function AgentUpdateButton({
 }: Readonly<{
   t: (key: string, opts?: Record<string, unknown>) => string;
   agentVersion: string;
-  installMode: 'docker' | 'systemd' | 'unknown' | null;
+  installMode: 'docker' | 'systemd' | 'windows' | 'unknown' | null;
 }>) {
   const hubOrigin = typeof globalThis.window === 'object' ? globalThis.location.origin : '';
   const { primary, secondary } = pickUpdateCmd(installMode, hubOrigin);
