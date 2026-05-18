@@ -158,16 +158,40 @@ Ok "Bundle saved to $BinPath"
 "@ | Set-Content -Path $EnvPath -Encoding UTF8
 
 # ACL: only SYSTEM + Administrators can read the env file (it contains
-# the agent token). Removes Users/Authenticated Users from the default
-# inherited ACL.
-$acl = Get-Acl $EnvPath
-$acl.SetAccessRuleProtection($true, $false)  # disable inheritance
-$acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
-$acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
-  'NT AUTHORITY\SYSTEM','FullControl','Allow')))
-$acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
-  'BUILTIN\Administrators','FullControl','Allow')))
-Set-Acl -Path $EnvPath -AclObject $acl
+# the agent token). Defense in depth — ProgramData's default ACL
+# already keeps the file out of non-admin Users, but stripping
+# inheritance makes the intent explicit and protects against weird
+# domain policies inheriting wider ACLs.
+#
+# Identity references are SIDs, not name strings. Resolving
+# 'NT AUTHORITY\SYSTEM' / 'BUILTIN\Administrators' via LSA fails on
+# some Windows installs — observed on VPN'd / domain-joined /
+# localized hosts with "Impossible de traduire certaines ou toutes
+# les références d'identité." SIDs are language-independent and need
+# no name resolution. Hardcoded well-known SIDs:
+#   S-1-5-18      = LocalSystem
+#   S-1-5-32-544  = BuiltinAdministrators
+#
+# Wrapped in try/catch so a future ACL surprise downgrades to a warn
+# instead of aborting the whole install — the bundle and Scheduled
+# Task are more important than the strict ACL.
+try {
+  $acl = Get-Acl $EnvPath
+  $acl.SetAccessRuleProtection($true, $false)  # disable inheritance
+  $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
+  $systemSid = New-Object Security.Principal.SecurityIdentifier('S-1-5-18')
+  $adminSid  = New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')
+  $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+    $systemSid, 'FullControl', 'Allow')))
+  $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+    $adminSid,  'FullControl', 'Allow')))
+  Set-Acl -Path $EnvPath -AclObject $acl
+  Ok "Env file ACL: SYSTEM + Administrators only."
+} catch {
+  Say "WARNING: failed to tighten ACL on $EnvPath ($($_.Exception.Message))."
+  Say "         Falling back to the default ProgramData ACL (SYSTEM + Administrators full,"
+  Say "         Users read-only). The agent token is still not world-readable."
+}
 
 # ──────────────────────────────────────────────────────────────────────
 # Launcher — sources the env file then supervises node in a while-loop.
