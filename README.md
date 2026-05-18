@@ -31,22 +31,16 @@
 
 <table>
 <tr>
-<td align="center" width="25%">
-  <img src="public/icons/nvidia.svg" width="48" alt="NVIDIA" /><br/>
-  <sub><b>NVIDIA</b><br/>nvidia-smi + pmon</sub>
-</td>
-<td align="center" width="25%">
-  <img src="public/icons/amd.svg" width="48" alt="AMD" /><br/>
-  <sub><b>AMD</b><br/>ROCm / sysfs amdgpu</sub>
-</td>
-<td align="center" width="25%">
-  <img src="public/icons/linux.svg" width="48" alt="Linux" /><br/>
-  <sub><b>Linux</b><br/>systemd · Docker</sub>
-</td>
-<td align="center" width="25%">
-  <img src="public/icons/windows.svg" width="48" alt="Windows" /><br/>
-  <sub><b>Windows 10/11</b><br/>Scheduled Task · PDH</sub>
-</td>
+<td align="center" width="25%" height="64"><img src="public/icons/nvidia.svg" height="48" alt="NVIDIA" /></td>
+<td align="center" width="25%" height="64"><img src="public/icons/amd.svg" height="48" alt="AMD" /></td>
+<td align="center" width="25%" height="64"><img src="public/icons/linux.svg" height="48" alt="Linux" /></td>
+<td align="center" width="25%" height="64"><img src="public/icons/windows.svg" height="48" alt="Windows" /></td>
+</tr>
+<tr>
+<td align="center" valign="top"><b>NVIDIA</b><br/><sub>nvidia-smi + pmon</sub></td>
+<td align="center" valign="top"><b>AMD</b><br/><sub>ROCm / sysfs amdgpu</sub></td>
+<td align="center" valign="top"><b>Linux</b><br/><sub>systemd · Docker</sub></td>
+<td align="center" valign="top"><b>Windows 10/11</b><br/><sub>Scheduled Task · PDH</sub></td>
 </tr>
 </table>
 
