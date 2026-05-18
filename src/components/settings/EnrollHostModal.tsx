@@ -126,10 +126,25 @@ export default function EnrollHostModal({ onClose }: Props) {
     ? `Set-ExecutionPolicy Bypass -Scope Process -Force\n$env:GPVR_HUB_URL = '${result.hubHttp}'\n$env:GPVR_TOKEN   = '${result.hostId}.${result.token}'\niex (iwr "$env:GPVR_HUB_URL/install.ps1" -UseBasicParsing).Content`
     : '';
 
-  const activeCmd =
-    mode === 'curl' ? curlCmd :
-    mode === 'docker' ? dockerCmd :
-    windowsCmd;
+  // Mode-keyed lookups so the JSX below stays flat (chained `?:` triggers
+  // SonarCloud's "nested ternary" code smell and gets tedious fast as we
+  // add more install methods).
+  const cmdByMode: Record<InstallMode, string> = {
+    curl: curlCmd,
+    docker: dockerCmd,
+    windows: windowsCmd,
+  };
+  const hintKeyByMode: Record<InstallMode, string> = {
+    curl: 'hosts.install_curl_hint',
+    docker: 'hosts.install_docker_hint',
+    windows: 'hosts.install_windows_hint',
+  };
+  const labelKeyByMode: Record<InstallMode, string> = {
+    curl: 'hosts.curl_cmd',
+    docker: 'hosts.docker_cmd',
+    windows: 'hosts.windows_cmd',
+  };
+  const activeCmd = cmdByMode[mode];
 
   return (
     <ModalShell
@@ -242,17 +257,11 @@ export default function EnrollHostModal({ onClose }: Props) {
             </div>
 
             <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
-              {mode === 'curl' ? t('hosts.install_curl_hint') :
-               mode === 'docker' ? t('hosts.install_docker_hint') :
-               t('hosts.install_windows_hint')}
+              {t(hintKeyByMode[mode])}
             </p>
 
             <CopyValueBlock
-              label={
-                mode === 'curl' ? t('hosts.curl_cmd') :
-                mode === 'docker' ? t('hosts.docker_cmd') :
-                t('hosts.windows_cmd')
-              }
+              label={t(labelKeyByMode[mode])}
               value={activeCmd}
               onCopy={() => copy(activeCmd, 'cmd')}
               copied={copied === 'cmd'}
