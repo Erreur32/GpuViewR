@@ -1,55 +1,57 @@
-release: v0.7.3 — LLM-aware process classification + hub-agent rename
+release: v0.7.4 — install.sh respects customisations, warns before destructive ops
 
-Palier 3 lands: the agent now identifies which inference stack each
-GPU process belongs to and surfaces it as a small badge in the UI.
-The README banner shipped in v0.7.0 finally pays off visibly.
+Hotfix following v0.7.3 with operator-friendliness improvements.
 
-Coverage at v0.7.3 (8 runtimes, regex-only classification, ~50
-lines):
-  - Ollama (CLI + internal runner with sha256 blob path)
-  - llama.cpp (llama-server, llama-cli, llamafile, main/server)
-  - vLLM (python -m vllm.*)
-  - KoboldCpp (koboldcpp.py / .exe)
-  - oobabooga / text-generation-webui (server.py --model)
-  - ComfyUI (directory-based match)
-  - Stable Diffusion WebUI (Automatic1111)
-  - LM Studio (lms server, Electron helper)
+Two operator concerns prompted this:
+1. v0.7.3's container_name rename (gpuviewr-agent-local →
+   gpuviewr-hub-agent) means operators re-running install.sh
+   would have ended up with a stale orphan container.
+2. install.sh was silently overwriting docker-compose.yaml on
+   every re-run, blowing away any customisations operators had
+   added (port remaps, extra env vars, extra volumes).
 
-Wire frame extension is backwards-compatible — two optional fields
-(llm_runtime, llm_model) on AgentGpuProcess and the hub's GpuProcess
-type. Older agents stay silent; older hubs pass the fields through
-without knowing about them. UI shows badges only when llm_runtime
-is set.
+Both fixed in this release.
 
-Bundled with the badge work: a small but breaking docker container
-rename. `gpuviewr-agent-local` was always ambiguous on multi-host
-setups ("local to what?"). Renamed to `gpuviewr-hub-agent` to make
-it explicit that this is the agent shipped with the hub stack, as
-opposed to standalone `gpuviewr-agent` containers running on remote
-boxes.
+Compose file handling
+- If docker-compose.yaml already exists, fetch upstream into a
+  temp file, compare with `cmp`.
+  - Identical → "already up to date", no prompt, move on.
+  - Different → print `diff -u | head -40`, prompt Y/n. On Y,
+    back up to docker-compose.yaml.bak.<timestamp> and replace.
+    On N, keep existing + print upstream URL for manual merge.
+  - No TTY (CI / pure curl|bash without /dev/tty) → default N,
+    print URL, keep existing.
+
+Stack-recreate handling
+- If `docker compose ps -q` returns any container, list them in
+  a table (Service / Name / Status), warn the operator that
+  --force-recreate will replace them (5-10 s downtime, ./data
+  preserved, orphans removed), prompt Y/n.
+  - Y → docker compose pull && up -d --force-recreate --remove-orphans
+  - N → exit cleanly with the manual command printed for later
+- Fresh install (no containers yet) → no warning, proceed.
+
+The `prompt_yn` helper reads from /dev/tty so the prompt works
+even under `curl … | bash` invocations (where stdin is the pipe).
+Without /dev/tty (truly headless CI), it defaults to N — the
+safer choice for a destructive op.
 
 Files
-- agent/src/collectors/llmClassifier.ts (NEW, ~165 lines incl.
-  comments + 8 pattern entries)
-- agent/src/collectors/processes.ts: classifier wired in tick()
-- agent/src/collectors/processesRocm.ts: classifier wired in tick()
-- server/services/_processTypes.ts: GpuProcess fields added
-- src/components/dashboard/GpuProcessesTable.tsx: <LlmBadge> +
-  label map (Ollama / vLLM / llama.cpp / …)
-- docker-compose.yaml: container_name on both nvidia + amd sidecars
-- README.md, Docs/V0_5_PLAN.md: container name references updated
+- install.sh: ~60 lines of new logic around the compose fetch and
+  the up -d step. The `docker compose up -d` line itself now uses
+  --force-recreate --remove-orphans, but is only reached after
+  the operator confirms (or on a fresh install).
 
-Bundle: agent.mjs 181 KB -> 185.5 KB (+4.5 KB for the classifier).
-
-Operator action — IF you have scripts referencing the old container
-name (`docker exec gpuviewr-agent-local …`), update them. After
-`docker compose up -d --force-recreate` the new name is in effect.
+No code changes elsewhere. Agent bundle unchanged from v0.7.3.
+Image rebuild fires because of the package.json version bump.
 
 Upgrade
-- Hub: cd ~/gpuviewr && docker compose pull && docker compose up -d
-  --force-recreate
-- The old gpuviewr-agent-local container is removed by compose
-  during recreate; the new gpuviewr-hub-agent comes up in its
-  place.
-- LLM badges appear automatically on the next collector tick for
-  any GPU process whose cmdline matches a known runtime.
+- Existing operators on any v0.6 or v0.7 release:
+    curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
+  The installer will prompt twice (compose overwrite, stack
+  recreate). Answer Y to both for the standard upgrade.
+- Operators with customised docker-compose.yaml: answer N at the
+  compose-overwrite prompt to keep your file; the recreate at the
+  next step will use it.
+- New operators: same one-liner. No prompts fire (no existing
+  install to protect).

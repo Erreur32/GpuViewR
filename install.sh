@@ -187,8 +187,89 @@ set -a
 set +a
 
 # ── Pull docker-compose.yaml ────────────────────────────────────────
-echo -e "  ${B}→${R} Pulling docker-compose.yaml from branch ${C}${BRANCH}${R}..."
-curl -fsSL -o docker-compose.yaml "${RAW_URL}/docker-compose.yaml"
+# Behaviour matrix:
+#   - No existing file       → fetch silently.
+#   - Existing file == remote → "already up to date", no prompt.
+#   - Existing file ≠ remote  → show diff (first 40 lines), prompt
+#                                Y/n before overwriting, back up the
+#                                old file. If no TTY is reachable
+#                                (CI, true `curl | bash` without
+#                                /dev/tty) we keep the existing file
+#                                and print the URL so the operator
+#                                can merge manually. Reason: users
+#                                regularly customise the compose
+#                                (env additions, port remaps, extra
+#                                volumes). Silent overwrite — what
+#                                this script did pre-v0.7.4 — wiped
+#                                those edits on every re-run.
+COMPOSE_URL="${RAW_URL}/docker-compose.yaml"
+prompt_yn() {
+  local msg="$1"
+  local yn=""
+  if [ -e /dev/tty ]; then
+    read -r -p "$msg [y/N] " yn </dev/tty
+  fi
+  case "$yn" in
+    [yY]*) return 0 ;;
+    *)     return 1 ;;
+  esac
+}
+
+if [ -f docker-compose.yaml ]; then
+  TMP_COMPOSE=$(mktemp)
+  if ! curl -fsSL -o "$TMP_COMPOSE" "$COMPOSE_URL"; then
+    rm -f "$TMP_COMPOSE"
+    echo -e "  ${Y}!${R} Failed to fetch the latest docker-compose.yaml from $COMPOSE_URL — keeping existing file."
+  elif cmp -s docker-compose.yaml "$TMP_COMPOSE"; then
+    echo -e "  ${G}✓${R} docker-compose.yaml already up to date"
+    rm -f "$TMP_COMPOSE"
+  else
+    echo -e "  ${Y}!${R} Existing docker-compose.yaml differs from branch ${C}${BRANCH}${R}. Diff (first 40 lines):"
+    echo -e "${Y}---${R}"
+    diff -u docker-compose.yaml "$TMP_COMPOSE" | head -40 || true
+    echo -e "${Y}---${R}"
+    if prompt_yn "Overwrite docker-compose.yaml with the version from main? Your file will be backed up first."; then
+      BACKUP="docker-compose.yaml.bak.$(date +%Y%m%d-%H%M%S)"
+      cp docker-compose.yaml "$BACKUP"
+      mv "$TMP_COMPOSE" docker-compose.yaml
+      echo -e "  ${G}→${R} docker-compose.yaml updated. Old version saved as ${C}${BACKUP}${R}"
+    else
+      rm -f "$TMP_COMPOSE"
+      echo -e "  ${B}→${R} Keeping your existing docker-compose.yaml."
+      echo -e "    If you want to merge upstream changes manually later, fetch ${C}${COMPOSE_URL}${R}"
+      echo -e "    and diff against your file."
+    fi
+  fi
+else
+  echo -e "  ${B}→${R} Fetching docker-compose.yaml from branch ${C}${BRANCH}${R}..."
+  curl -fsSL -o docker-compose.yaml "$COMPOSE_URL"
+fi
+
+# ── Detect existing stack & warn before destructive recreate ─────────────────
+# We're about to run `docker compose up -d --force-recreate
+# --remove-orphans`, which stops, removes, and replaces every
+# container in the compose project. That's a ~5-10 s downtime on
+# the dashboard plus a brief sample gap on every connected agent.
+# For a fresh install (no existing containers) there's nothing to
+# warn about — just proceed. For an upgrade, list what's going to
+# be replaced/removed and prompt.
+EXISTING=$(docker compose ps --all -q 2>/dev/null || true)
+if [ -n "$EXISTING" ]; then
+  NCONT=$(echo "$EXISTING" | wc -l | tr -d ' ')
+  echo ""
+  echo -e "  ${Y}!${R} Existing GpuViewR stack detected — ${B}${NCONT}${R} container(s) in this project:"
+  docker compose ps --format 'table {{.Service}}\t{{.Name}}\t{{.Status}}' 2>/dev/null | sed 's/^/      /' || true
+  echo ""
+  echo -e "    The next step recreates these with ${C}--force-recreate --remove-orphans${R}:"
+  echo -e "      • brief downtime (~5-10 s) on the dashboard"
+  echo -e "      • any orphan container (e.g. pre-v0.7.3 ${C}gpuviewr-agent-local${R}) will be removed"
+  echo -e "      • your data volume (${C}./data${R}) is preserved"
+  if ! prompt_yn "Proceed with pull + force-recreate?"; then
+    echo -e "  ${B}→${R} Aborted by user. To finish manually when ready:"
+    echo -e "    ${C}cd ${INSTALL_DIR} && docker compose pull && docker compose up -d --force-recreate --remove-orphans${R}"
+    exit 0
+  fi
+fi
 
 # ── Up ───────────────────────────────────────────────────────────────────────
 echo ""
@@ -199,7 +280,13 @@ echo -e "  ${B}→${R} Pulling images..."
 docker compose pull || true
 
 echo -e "  ${B}→${R} Starting stack..."
-docker compose up -d
+# --force-recreate so reruns pick up compose-level changes (volume
+# adds, env additions, container_name changes — the last one bit us
+# on v0.7.3 when the sidecar was renamed gpuviewr-agent-local →
+# gpuviewr-hub-agent and rerunning the installer without
+# --force-recreate left the old container orphaned).
+# --remove-orphans cleans up renamed-out containers cleanly.
+docker compose up -d --force-recreate --remove-orphans
 
 # ── Final hint ───────────────────────────────────────────────────────────────
 IP="$(grep '^HOST_IP=' .env | cut -d= -f2-)"

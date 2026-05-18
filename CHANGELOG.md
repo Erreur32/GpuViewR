@@ -5,6 +5,59 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-05-18
+
+Makes `install.sh` safe to re-run on existing installs — necessary
+fallout from v0.7.3's container rename. Now respects operator
+customisations and asks before doing anything destructive.
+
+### Added
+
+- **`install.sh` is now polite on re-runs.** Pre-v0.7.4 the
+  installer silently overwrote `docker-compose.yaml` and silently
+  recreated all containers. Now:
+  - **Compose file:** if `docker-compose.yaml` already exists, the
+    script fetches main's version into a temp file, compares them
+    with `cmp`, and:
+    - identical → "already up to date", no prompt
+    - different → prints a `diff -u | head -40` then prompts. On
+      Y, backs up the current file to
+      `docker-compose.yaml.bak.<timestamp>` before replacing.
+      On N, keeps the existing file and prints the upstream URL
+      so the operator can merge manually.
+    - non-interactive (no `/dev/tty`) → defaults to N, prints the
+      URL for manual fetch.
+  - **Stack recreate:** if any container in the project is
+    detected (`docker compose ps -q`), the script lists them and
+    warns before running `up -d --force-recreate --remove-orphans`
+    — the user sees what will be replaced, the ~5-10 s downtime
+    expectation, and that the `./data` volume is preserved. On N,
+    aborts cleanly and prints the manual command. On a fresh
+    install (no containers yet) no warning fires.
+- **`docker compose up -d --force-recreate --remove-orphans`** as
+  the actual recreate command (when accepted). `--force-recreate`
+  picks up compose-level changes the image hash alone wouldn't
+  trigger (container renames, volume adds, env-var adds);
+  `--remove-orphans` cleans up containers whose names no longer
+  match the current compose (e.g. pre-v0.7.3
+  `gpuviewr-agent-local`).
+
+### Upgrade path for v0.7.3 and earlier
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
+```
+The installer:
+1. Detects existing install dir + .env.
+2. Diffs your `docker-compose.yaml` against main, prompts to
+   overwrite (backup made if you accept).
+3. Detects running stack, prompts to force-recreate.
+4. Pulls images, recreates, removes orphans.
+
+If you have a custom `docker-compose.yaml` you want to keep,
+answer N at step 2 — the installer will keep your file and the
+recreate at step 3 will use it.
+
 ## [0.7.3] - 2026-05-18
 
 Palier 3 — LLM-aware process classification (the AI/LLM banner in
