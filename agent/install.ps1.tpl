@@ -282,11 +282,13 @@ while (`$true) {
     }
 
     . `$envFile
-    # `*>>` redirects ALL streams (stdout, stderr, warning, verbose) to
-    # the log file in append mode. Without this the user has no way to
-    # diagnose a node crash in production — `Get-ScheduledTaskInfo`
-    # only shows the wrapper's exit code, never the inner error.
-    & `$node `$bin *>> `$logFile
+    # Pipe node's combined stdout+stderr to Out-File. `2>&1` merges
+    # the streams BEFORE PowerShell's NativeCommandError handler sees
+    # stderr — without that merge, every non-empty stderr line on a
+    # non-zero exit triggers a "Au caractère launcher.ps1:NN" wrapper
+    # error that pollutes the log. With the merge, node's own
+    # formatted log lines are the only thing that lands in agent.log.
+    & `$node `$bin 2>&1 | Out-File -Append -FilePath `$logFile -Encoding utf8
     `$exitCode = `$LASTEXITCODE
     Write-Log "node exited with code `$exitCode; respawning in 5s"
 

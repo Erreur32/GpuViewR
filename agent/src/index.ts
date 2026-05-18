@@ -55,10 +55,28 @@ if (config.features.gpu) {
     gpuHandle = await buildGpuCollector(vendor, config);
     if (!gpuHandle.available()) {
       const bin = vendor === 'amd' ? config.rocmSmiPath : config.nvidiaSmiPath;
-      logger.error('boot', `${vendor} smi not found at ${bin} — exiting (set MOCK_GPU=1 for dev)`);
-      process.exit(1);
+      // Windows soft-fail: the install.ps1 explicitly warns "the agent
+      // will start but won't collect GPU samples" when nvidia-smi.exe
+      // is missing — exit(1) here would contradict that promise and
+      // leave the host stuck in 'En attente' on the hub. The agent
+      // still connects, sends its hello frame, and shows up in the
+      // fleet view as online-but-no-samples. On Linux we keep the
+      // hard exit since the install.sh.tpl bails earlier if smi is
+      // missing — getting here on Linux really is a misconfiguration
+      // worth crashing about.
+      if (process.platform === 'win32') {
+        logger.warn(
+          'boot',
+          `${vendor} smi not found at ${bin} — agent will run without a GPU collector (Windows soft-fail). The host will show online on the hub but emit no GPU samples.`,
+        );
+        gpuHandle = null;
+      } else {
+        logger.error('boot', `${vendor} smi not found at ${bin} — exiting (set MOCK_GPU=1 for dev)`);
+        process.exit(1);
+      }
+    } else {
+      gpuHandle.start();
     }
-    gpuHandle.start();
   }
 }
 
