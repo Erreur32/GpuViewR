@@ -20,7 +20,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { parseRocmInfo, parseRocmPids, rocmUuidFromBus } from '../../../server/services/parsers/rocm.js';
 import type { AgentGpuProcess, ProcessCollectorHandle, ProcessCollectorOptions, ProcessSnapshot } from './processes.js';
-import { createCpuSampler, readCmdline } from './_procTicks.js';
+import { createCpuSampler, readCmdline, resolveProcessName } from './_procTicks.js';
 import { logger } from '../logger.js';
 
 export type { ProcessSnapshot };
@@ -86,15 +86,29 @@ export function createRocmProcessCollector(opts: RocmProcessCollectorOptions): P
       const enriched: AgentGpuProcess[] = procs.map((p) => {
         const command = readCmdline(p.pid, opts.hostProc);
         const usedMiB = Math.floor(p.vram_used_bytes / 1048576);
+        // rocm-smi --showpids regularly returns an empty process_name
+        // field (driver build / permissions dependent — most visible
+        // when the hub runs in a container without CAP_SYS_PTRACE).
+        // Fall back to argv[0] basename, then /proc/<pid>/comm — same
+        // ladder the nvidia collector uses for [Not Found] / N/A rows.
+        let name = p.process_name;
+        if (!name || name.toLowerCase() === 'unknown' || name === '[Not Found]' || name === '-' || name.toLowerCase() === 'n/a') {
+          name = resolveProcessName(p.pid, opts.hostProc) ?? '';
+        }
         return {
           pid: p.pid,
-          process_name: p.process_name || 'unknown',
+          process_name: name || 'unknown',
           gpu_uuid: defaultUuid,
           used_memory: usedMiB,
           type: 'C',
           command,
           cpu_pct: cpuSampler.sample(p.pid),
-          gpu_pct: null,
+          // CU occupancy is the AMD equivalent of nvidia-smi's pmon SM%:
+          // share of compute units this pid is using. Surface it as
+          // gpu_pct so the UI can render a real number instead of a
+          // permanent "—". cu_occupancy is null when the driver reports
+          // "unknown" (some kernels / non-root callers).
+          gpu_pct: p.cu_occupancy,
         };
       });
       cpuSampler.retain(new Set(procs.map((p) => p.pid)));

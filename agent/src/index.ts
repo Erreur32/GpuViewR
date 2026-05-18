@@ -10,6 +10,7 @@ import { AGENT_VERSION, createTransport, INSTALL_MODE } from './transport.js';
 import { createGpuCollector, type GpuCollectorHandle } from './collectors/gpu.js';
 import { createRocmGpuCollector } from './collectors/gpuRocm.js';
 import { createAmdgpuSysfsCollector } from './collectors/gpuAmdgpuSysfs.js';
+import { createPdhGpuCollector } from './collectors/gpuWindowsPdh.js';
 import { createProcessCollector, type ProcessCollectorHandle } from './collectors/processes.js';
 import { createRocmProcessCollector } from './collectors/processesRocm.js';
 import { buildMockSamples } from './mock.js';
@@ -17,13 +18,12 @@ import { buildMockSamples } from './mock.js';
 const config = loadConfig();
 const vendor = resolveVendor(config);
 
-// Windows support is GPU-only (NVIDIA). AMD on Windows has no rocm-smi
-// equivalent, and the process collector reads /proc which doesn't exist.
-// Fail fast on AMD; soft-skip processes further down.
-if (process.platform === 'win32' && vendor === 'amd') {
-  logger.error('boot', 'AMD GPU monitoring is not supported on Windows (no rocm-smi). Only NVIDIA is supported on this platform.');
-  process.exit(1);
-}
+// AMD on Windows used to fail-fast (no rocm-smi exists on Windows).
+// As of palier 2, AMD/Intel GPUs on Windows are supported through the
+// PDH counter collector (gpuWindowsPdh.ts) — the same Performance
+// Counters Task Manager surfaces. Limited telemetry (util + VRAM only,
+// no temp/power/freq) but enough for the host to show up green on the
+// hub with live numbers. NVIDIA on Windows still prefers nvidia-smi.exe.
 
 // Banner line first: version + install mode are what people grep for in
 // `systemctl status` / `docker logs` when figuring out which agent is
@@ -55,21 +55,29 @@ if (config.features.gpu) {
     gpuHandle = await buildGpuCollector(vendor, config);
     if (!gpuHandle.available()) {
       const bin = vendor === 'amd' ? config.rocmSmiPath : config.nvidiaSmiPath;
-      // Windows soft-fail: the install.ps1 explicitly warns "the agent
-      // will start but won't collect GPU samples" when nvidia-smi.exe
-      // is missing — exit(1) here would contradict that promise and
-      // leave the host stuck in 'En attente' on the hub. The agent
-      // still connects, sends its hello frame, and shows up in the
-      // fleet view as online-but-no-samples. On Linux we keep the
-      // hard exit since the install.sh.tpl bails earlier if smi is
-      // missing — getting here on Linux really is a misconfiguration
-      // worth crashing about.
+      // Windows fallback: vendor-specific tool unavailable (e.g.
+      // nvidia-smi.exe missing on an AMD/Intel box that resolveVendor
+      // initially guessed as nvidia). Try the PDH collector — it works
+      // for AMD, Intel, and even NVIDIA without driver tools. Replaces
+      // the v0.6.9 soft-fail-and-emit-nothing path. On Linux a missing
+      // smi is still a hard misconfiguration; the install.sh.tpl checks
+      // earlier so reaching here implies the binary was uninstalled
+      // after enrollment.
       if (process.platform === 'win32') {
         logger.warn(
           'boot',
-          `${vendor} smi not found at ${bin} — agent will run without a GPU collector (Windows soft-fail). The host will show online on the hub but emit no GPU samples.`,
+          `${vendor} GPU tool unavailable at ${bin} — falling back to Windows PDH counters (util + VRAM only, no temp/power/freq)`,
         );
-        gpuHandle = null;
+        gpuHandle = createPdhGpuCollector({
+          tickMs: config.tickMs,
+          onSample: (samples) => transport.enqueueSample(samples),
+        });
+        if (gpuHandle.available()) {
+          gpuHandle.start();
+        } else {
+          logger.warn('boot', 'PDH collector unavailable too — agent will run without GPU samples');
+          gpuHandle = null;
+        }
       } else {
         logger.error('boot', `${vendor} smi not found at ${bin} — exiting (set MOCK_GPU=1 for dev)`);
         process.exit(1);
@@ -137,13 +145,25 @@ function resolveVendor(cfg: AgentConfig): 'nvidia' | 'amd' {
   if (nvidia) return 'nvidia';
   const amd = smiResponds(cfg.rocmSmiPath);
   if (amd) return 'amd';
-  // Neither found — leave it as nvidia so the existing error path
-  // (`nvidia-smi not found … exiting`) fires with its familiar
+  // Neither found. On Windows, returning 'amd' routes the agent to the
+  // PDH collector — universal (works for AMD/Intel iGPU/NVIDIA without
+  // driver tools). On Linux, leave it as nvidia so the existing error
+  // path (`nvidia-smi not found … exiting`) fires with its familiar
   // message rather than a confusing "no vendor".
-  return 'nvidia';
+  return process.platform === 'win32' ? 'amd' : 'nvidia';
 }
 
 async function buildGpuCollector(v: GpuVendor, cfg: AgentConfig): Promise<GpuCollectorHandle> {
+  // On Windows, the "amd" branch is a misnomer — there is no rocm-smi
+  // for Windows. We route it (and any non-NVIDIA Windows case) through
+  // the PDH collector, which surfaces the same numbers Task Manager
+  // shows. Works for AMD, Intel iGPU, even NVIDIA-without-smi.
+  if (process.platform === 'win32' && v === 'amd') {
+    return createPdhGpuCollector({
+      tickMs: cfg.tickMs,
+      onSample: (samples) => transport.enqueueSample(samples),
+    });
+  }
   if (v === 'amd') return buildAmdGpuCollector(cfg);
   return createGpuCollector({
     nvidiaSmiPath: cfg.nvidiaSmiPath,

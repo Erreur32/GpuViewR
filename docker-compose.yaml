@@ -94,8 +94,15 @@ services:
       HOST_ID: local
       AGENT_LABEL: ${HUB_HOSTNAME:-master}
       GPU_VENDOR: nvidia
+      # /host/proc is read by the process collector to attach CPU% +
+      # full /proc/<pid>/cmdline to each GPU pid that nvidia-smi reports.
+      # Without it the table still shows names + VRAM (driver provides
+      # those), but the CPU% column stays empty.
+      HOST_PROC: /host/proc
       TZ: ${TZ:-Europe/Paris}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - /proc:/host/proc:ro
     networks: [gpuviewr]
     deploy:
       resources:
@@ -129,6 +136,14 @@ services:
       # no-data symptom. /etc/ld.so.conf.d/rocm.conf isn't in the
       # container so we point the loader at the bind-mounted lib dirs.
       LD_LIBRARY_PATH: /opt/rocm/lib:/opt/rocm/lib64
+      # /host/proc lets the process collector fill in:
+      #   - process_name (rocm-smi --showpids returns it empty on many
+      #     kernel/driver combos; we fall back to /proc/<pid>/comm)
+      #   - command (/proc/<pid>/cmdline, full argv)
+      #   - cpu_pct (delta on /proc/<pid>/stat between ticks)
+      # Without this mount the AMD process table shows VRAM only, with
+      # "unknown" names and empty CPU/GPU columns.
+      HOST_PROC: /host/proc
       TZ: ${TZ:-Europe/Paris}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     devices:
@@ -142,6 +157,7 @@ services:
       - "${RENDER_GID:-109}"
     volumes:
       - /opt/rocm:/opt/rocm:ro
+      - /proc:/host/proc:ro
     networks: [gpuviewr]
 
 networks:

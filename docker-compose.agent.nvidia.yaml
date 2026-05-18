@@ -33,6 +33,13 @@ services:
               count: all
               capabilities: [gpu]
 
+    # /host/proc lets the process collector enrich each pid that
+    # nvidia-smi reports with CPU% (delta on /proc/<pid>/stat) and full
+    # cmdline. Without it the table still shows names + VRAM (the driver
+    # surfaces those), but CPU% stays empty.
+    volumes:
+      - /proc:/host/proc:ro
+
     environment:
       # Required — get these from the hub UI at enrollment time.
       HUB_URL: ${HUB_URL}              # e.g. wss://gpu.example.com/agent
@@ -44,6 +51,7 @@ services:
       FEATURES: ${FEATURES:-gpu,system,temps,processes}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       RECONNECT_MAX_MS: ${RECONNECT_MAX_MS:-30000}
+      HOST_PROC: ${HOST_PROC:-/host/proc}
       # AGENT_BUFFER_PERSIST: 0       # ring-only by default
       # NVIDIA_SMI_PATH: nvidia-smi
       # TLS_INSECURE: 0               # 1 only in dev against self-signed

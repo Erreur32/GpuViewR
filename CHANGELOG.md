@@ -5,6 +5,96 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-05-18
+
+Minor release — first Windows-stable build (real test green on a home
+RTX 3090 Ti box), AMD / Intel coverage on Windows via PDH counters,
+AMD process-table fixes, and README positioning around AI / LLM
+workloads.
+
+### Added
+
+- **AMD / Intel GPUs supported on Windows via PDH counters.** New
+  `agent/src/collectors/gpuWindowsPdh.ts` taps the same
+  `Win32_PerfFormattedData_GPUPerformanceCounters_{GPUEngine,
+  GPUAdapterMemory}` WMI classes Task Manager uses. Language-
+  independent (works on French / German / non-en-US Windows out of
+  the box, unlike localized typeperf counter paths). One long-running
+  `powershell.exe -NoProfile` polls the counters and emits one JSON
+  snapshot per tick to stdout — paid the spawn cost once at boot
+  instead of every tick. Surfaces utilization (highest engine util
+  per adapter, matches Task Manager) and dedicated VRAM. Temp / power
+  / freq / PCIe stay null — PDH doesn't expose them; NVIDIA users
+  still get the full picture via `nvidia-smi.exe`.
+- **`resolveVendor` win32 fallback now routes to PDH.** Previously a
+  Windows box without `nvidia-smi.exe` resolved to `vendor=nvidia`
+  and exited at boot with "smi not found". With v0.6.9 it instead
+  ran with `gpuHandle = null` (host stayed online, emitted no
+  samples). v0.7.0 lets it fall through to the PDH collector — same
+  numbers Task Manager shows, no driver tool needed.
+- **`install.ps1` messaging updated.** No longer says "AMD GPUs on
+  Windows are not supported"; instead announces the PDH fallback and
+  lists what it covers (util + VRAM) vs what it doesn't (temp /
+  power / freq).
+- **README positioned around AI / LLM workloads.** New top-of-README
+  callout names the actual inference runtimes the dashboard is
+  designed to surface — Ollama, llama.cpp, vLLM, ComfyUI, Stable
+  Diffusion, KoboldCpp, text-generation-webui, LM Studio — instead
+  of leaving the use case abstract.
+
+### Fixed
+
+- **AMD process table no longer shows "unknown" + empty CPU%/GPU%.**
+  Three bugs in the same path:
+  1. `processesRocm.ts` fell back to the literal string `'unknown'`
+     when `rocm-smi --showpids` returned an empty `process_name`
+     field (common with non-root callers and older ROCm builds).
+     Now falls back to `resolveProcessName(pid, hostProc)` — argv[0]
+     basename, then `/proc/<pid>/comm` — same ladder the nvidia
+     collector already uses for `[Not Found]` / N/A rows.
+  2. `gpu_pct` was hardcoded to `null`. We were already parsing
+     `cu_occupancy` (the AMD equivalent of nvidia-smi pmon's SM%:
+     share of compute units the process is using) but discarding
+     it. Now surfaced as `gpu_pct` so the UI renders a real number.
+  3. The master `docker-compose.yaml` agent sidecars (both `agent-
+     nvidia` and `agent-amd`) were missing the `/proc:/host/proc:ro`
+     mount and `HOST_PROC=/host/proc` env. The CPU sampler couldn't
+     read `/proc/<pid>/stat`, so CPU% was permanently null even for
+     pids the collector knew about. Added on both sidecars +
+     standalone `docker-compose.agent.nvidia.yaml` (the standalone
+     AMD compose was already correct).
+- **Launcher log redirection from `*>>` to `2>&1 | Out-File`.**
+  Shipped late in v0.6.9 as commit 7bc3829 — folding into the
+  release notes here for completeness. The `*>>` form triggered
+  `NativeCommandError` noise in `agent.log` on every node stderr
+  line; merging stderr→stdout before PowerShell sees it as native
+  stderr silences the spam.
+- **Soft-fail on missing `nvidia-smi.exe` on Windows.** Same commit
+  7bc3829 — agent now logs a warning and falls back (to PDH as of
+  v0.7.0) instead of `process.exit(1)`, so the WS hello frame
+  reaches the hub and the host shows online.
+
+### Internal
+
+- New file: `agent/src/collectors/gpuWindowsPdh.ts` (~5 KB minified
+  in the agent bundle, total bundle size 181 KB).
+- `agent/src/index.ts` win32+amd fail-fast removed (was a guard from
+  v0.6.7 when AMD-on-Windows was deliberately out of scope).
+
+### Upgrade
+
+- Hub: `cd ~/gpuviewr && docker compose pull && docker compose up -d`.
+  Pulls the new image with the PDH collector in `agent.mjs`, plus the
+  `/proc` mount on the master compose sidecars. **AMD master boxes
+  need a full `up -d` (not just `restart`) for the new volume to
+  take effect.**
+- Linux agents: hub auto-update picks up the new bundle.
+- Windows agents (installed via v0.6.7+ `install.ps1`): the
+  `launcher.ps1` supervisor swaps in the new bundle on the next
+  `agent_update` push.
+- AMD-on-Windows / Intel-on-Windows users: re-run the install.ps1
+  one-liner from the Add Host modal to validate the PDH path locally.
+
 ## [0.6.9] - 2026-05-18
 
 Iteration release driven by the first real Windows agent install

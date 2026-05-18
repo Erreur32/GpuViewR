@@ -1,4 +1,4 @@
-# GpuViewR Agent installer — Windows (NVIDIA only, GPU stats)
+# GpuViewR Agent installer — Windows (NVIDIA + AMD/Intel via PDH)
 #
 # Hub URL is substituted at the time the hub serves this script,
 # so the version you fetched with iwr already knows where to call
@@ -18,9 +18,12 @@
 # Uninstall:
 #   .\install.ps1 -Uninstall
 #
-# Requirements: Windows 10/11, Node.js 22+, NVIDIA driver (nvidia-smi.exe
-# resolvable in PATH or at C:\Windows\System32\nvidia-smi.exe).
-# AMD on Windows is not supported (no rocm-smi).
+# Requirements: Windows 10 1709+ / Win11, Node.js 22+.
+#   - NVIDIA: nvidia-smi.exe in PATH (ships with the driver). Full
+#     telemetry (util, VRAM, temp, power, freq, PCIe RX/TX).
+#   - AMD / Intel iGPU / Arc: no vendor CLI needed. The agent falls back
+#     to Windows Performance Data Helper (PDH) counters — same source
+#     Task Manager uses. Limited telemetry (util + VRAM only).
 
 param(
   [string]$Url     = $env:GPVR_HUB_URL,
@@ -146,19 +149,20 @@ if (-not $node -or $node.Major -lt 22) {
 }
 
 # ──────────────────────────────────────────────────────────────────────
-# nvidia-smi check — warn but don't fail. The agent will boot and the
-# hub will mark the host as online; the failure mode (no GPU samples
-# arriving) is much easier to diagnose from the hub UI than a hard
-# install-time exit, and AMD-on-Windows users who paste this script
-# get a clear runtime signal instead of a cryptic install abort.
+# GPU backend detection — informational only, the agent's resolveVendor
+# does the real probing at boot.
+#   - nvidia-smi.exe found → NVIDIA collector (full telemetry).
+#   - nvidia-smi.exe missing → PDH counter collector (works for AMD,
+#     Intel iGPU/Arc, and even NVIDIA boxes without the driver tools).
+#     Util % + VRAM only — no temp/power/freq/PCIe.
 # ──────────────────────────────────────────────────────────────────────
 $smi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
 if ($smi) {
   $gpuName = (& nvidia-smi --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1)
-  Ok "nvidia-smi.exe at $($smi.Path) — $gpuName"
+  Ok "nvidia-smi.exe at $($smi.Path) — $gpuName (full telemetry)"
 } else {
-  Say "WARNING: nvidia-smi.exe not found in PATH. The agent will start but won't collect GPU samples."
-  Say "         AMD GPUs on Windows are not supported (no rocm-smi equivalent)."
+  Say "No nvidia-smi.exe in PATH — the agent will use Windows PDH counters."
+  Say "Works for AMD / Intel / NVIDIA-without-tools. Reports util % + VRAM (no temp/power)."
 }
 
 # ──────────────────────────────────────────────────────────────────────

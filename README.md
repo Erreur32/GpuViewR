@@ -17,6 +17,18 @@
 
 **Real-time GPU monitoring dashboard — NVIDIA + AMD, single Docker image.**
 
+</div>
+
+> 🧠 **Built for AI / LLM workloads.** GpuViewR is designed first for
+> boxes running local language models and AI inference — **Ollama**,
+> **llama.cpp**, **vLLM**, **ComfyUI**, **Stable Diffusion**, **KoboldCpp**,
+> **text-generation-webui**, **LM Studio**, etc. See VRAM, utilization,
+> temperature and per-process compute across your whole fleet, in real
+> time. Works just as well for gaming/render boxes — the LLM focus is
+> the design driver, not a hard limit.
+
+<div align="center">
+
 [**🔴 Live demo**](https://erreur32.github.io/GpuViewR/) · [**🛰️ Multi-host demo**](https://erreur32.github.io/GpuViewR/fleet?fleet=1) — synthetic data, runs entirely in the browser
 
 [Install](#install) · [Configuration](#configuration) · [Add a remote host](#add-a-remote-host) · [Architecture](#architecture) · [Contributing](Docs/CONTRIBUTING.md)
