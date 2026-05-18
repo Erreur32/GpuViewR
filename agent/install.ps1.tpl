@@ -67,6 +67,16 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 # ──────────────────────────────────────────────────────────────────────
 if ($Uninstall) {
   Say "Uninstalling GpuViewR Agent..."
+  # Same Stop-then-kill-leaked-children dance as the re-install
+  # path below — without it the agent.log file under $InstallDir
+  # may be locked by a leaked node.exe and Remove-Item fails.
+  try { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue } catch {}
+  try {
+    Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='powershell.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.ExecutablePath -like "*$InstallDir*" -or $_.CommandLine -like "*$InstallDir*" } |
+      ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {} }
+  } catch {}
+  Start-Sleep -Milliseconds 800
   try { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue } catch {}
   if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
   Ok "Removed."
@@ -330,7 +340,30 @@ $principal = New-ScheduledTaskPrincipal `
   -LogonType ServiceAccount `
   -RunLevel Highest
 
-# Unregister first to allow re-install with a different config.
+# Stop + wait + unregister so the running launcher.ps1 + its child
+# node.exe actually terminate before we re-create the task. Without
+# the explicit Stop, Unregister leaves a leaked SYSTEM-owned
+# powershell.exe + node.exe holding the OLD env/agent in memory.
+# Symptom (observed v0.8.5 with rotated token): the new task starts
+# a fresh node with the new token, but the leaked OLD node keeps
+# trying to reconnect with the now-invalidated old token and spams
+# `code=4001 Unauthorized` until the hub gives up on the host.
+#
+# Best-effort: Stop-ScheduledTask only signals; the child process
+# may take a moment to exit. We also kill any node/powershell whose
+# image lives in $InstallDir to cover the case where the task
+# leaked its children before this rerun.
+try {
+  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+} catch {}
+try {
+  Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='powershell.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ExecutablePath -like "*$InstallDir*" -or $_.CommandLine -like "*$InstallDir*" } |
+    ForEach-Object {
+      try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+    }
+} catch {}
+Start-Sleep -Milliseconds 800
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 
 Register-ScheduledTask `

@@ -1,52 +1,52 @@
-release: v0.8.5 — Windows uninstall command in delete modal + dedup install templates
+release: v0.8.6 — install.ps1 stops + kills leaked node before re-register (fixes 4001 after rotate)
 
-Added
-- Delete-host modal's command-toggle gains a Windows tab. Pasted
-  in elevated PowerShell, it downloads install.ps1 from the hub
-  and invokes it with -Uninstall — same flow install.ps1's
-  bottom-of-output hint suggests after a successful install.
-  Default tab follows the host's reported install_mode so a
-  Windows agent's deletion modal pre-selects the right command.
+Observed live on the .210 lab today after a token rotation against
+the user's Windows agent: agent.log spammed with `code=4001
+Unauthorized` reconnect attempts until the hub's 3-failure giveup
+fired. The new task launched by install.ps1 was actually working
+correctly with the new token — but the OLD node.exe (started by
+the OLD task) had survived Unregister-ScheduledTask and was still
+trying to reconnect with the now-stale token. Both processes
+wrote to the same agent.log, hiding the working one under the
+noise of the broken one.
 
-Internal — SonarCloud dedup
-- Triggered by the 27 % duplicated-lines threshold on
-  HostsSettingsTab.tsx after v0.8.4 added the RotateTokenModal's
-  3-mode install picker that duplicates EnrollHostModal's. The
-  fix extracts the shared bits into a new module
-  src/components/settings/_installCommands.tsx:
-    - InstallMode union type ('curl' | 'docker' | 'windows')
-    - buildInstallCommands(hubHttp, token) → { curl, docker,
-      windows }: the three install one-liner templates
-    - LABEL_KEY_BY_MODE: i18n key map for the CopyValueBlock
-      label
-    - defaultModeFor(installMode): "what mode should the picker
-      open on?" — falls back to 'curl'
-    - <InstallModePicker mode onChange />: the segmented toggle
-      JSX itself
-- Three modals consume the module:
-    - EnrollHostModal (Add host) — switched to
-      buildInstallCommands + <InstallModePicker>; dropped its own
-      Terminal/Container/Monitor icon imports + cmdByMode +
-      labelKeyByMode.
-    - RotateTokenModal (Rotate token, added in v0.8.4) — same.
-    - DeleteHostModal (this release) — same, plus the new
-      Windows uninstall command (3rd mode it didn't have before).
+Root cause: install.ps1 ran `Unregister-ScheduledTask` directly,
+without `Stop-ScheduledTask` first. The SYSTEM-owned child
+processes (powershell.exe launcher → node.exe) survived the
+unregister and kept the old env vars in memory.
 
-Net effect: ~90 LOC of duplicated template + JSX consolidated
-into ~110 LOC of single-source module. Adding a future install
-mode is a one-line change in `_installCommands.tsx`.
+Fix in install.ps1.tpl:
+- Stop-ScheduledTask before Unregister-ScheduledTask.
+- Best-effort Stop-Process -Force on any node.exe / powershell.exe
+  whose ExecutablePath or CommandLine matches $InstallDir —
+  catches leaked children that Stop-ScheduledTask missed.
+- 800 ms sleep so the OS finishes process teardown before
+  Register-ScheduledTask fires.
+- Same dance applied to the -Uninstall branch so
+  `Remove-Item -Recurse $InstallDir` doesn't fail on a locked
+  agent.log.
+
+Existing operators stuck offline after a recent rotate can run
+the same dance manually one time:
+
+  Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
+  Stop-ScheduledTask -TaskName 'GpuViewR Agent'
+  Start-Sleep -Seconds 3
+  Start-ScheduledTask -TaskName 'GpuViewR Agent'
+
+From v0.8.6 onward, the installer handles it automatically on
+every re-run.
 
 Files
-- src/components/settings/_installCommands.tsx (NEW, ~110 LOC).
-- src/components/settings/EnrollHostModal.tsx: refactored to
-  import from the shared module.
-- src/components/settings/HostsSettingsTab.tsx: RotateTokenModal +
-  DeleteHostModal refactored, plus the Windows uninstall command
-  added.
+- agent/install.ps1.tpl: the re-install path (~+15 lines) and the
+  uninstall path (~+10 lines).
 
-Verified: tsc 0 errors, vite build green.
+No code-side changes — agent bundle unchanged from v0.8.5
+(185.5 KB, sorry, 189.4 KB — the resolver landed in v0.7.7).
+
+Verified locally: tsc 0 errors, vite build green.
 
 Upgrade
 - Hub: docker compose pull && up -d --force-recreate.
-- Effect immediate the next time Add / Rotate / Delete modals
-  open.
+- Effect immediate the next time anyone re-runs install.ps1 on
+  a Windows agent.

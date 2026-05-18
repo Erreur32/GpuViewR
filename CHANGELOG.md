@@ -5,6 +5,53 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.6] - 2026-05-18
+
+### Fixed
+
+- **Windows installer was leaking the old node.exe + launcher.ps1
+  on re-install.** `install.ps1` ran `Unregister-ScheduledTask`
+  without stopping the task first. Effect: the SYSTEM-owned
+  child processes (powershell.exe → node.exe) survived the
+  unregister, kept the old env vars in memory, and continued
+  reconnecting to the hub with the now-invalidated token after
+  a rotate. Symptom: agent.log spammed with `code=4001
+  Unauthorized` errors until the hub's "3 consecutive auth
+  failures" giveup fired, host stayed offline even though the
+  NEW node.exe started by the freshly-registered task was
+  working fine.
+  Fix in `install.ps1.tpl`:
+  - `Stop-ScheduledTask` before `Unregister-ScheduledTask`.
+  - Best-effort `Stop-Process -Force` on any node.exe /
+    powershell.exe whose ExecutablePath or CommandLine matches
+    the install dir — covers cases where Unregister or
+    Stop-ScheduledTask leaked a child that wasn't reaped.
+  - 800 ms sleep so the OS finishes process teardown before
+    Register fires.
+  - Same dance applied to the `-Uninstall` branch — keeps
+    `Remove-Item -Recurse $InstallDir` from failing on a
+    locked agent.log.
+
+### Internal
+
+- Verified locally: tsc 0 errors, vite build green, agent
+  bundle 189.4 KB unchanged (no source code changes — only the
+  install template).
+
+### Upgrade
+
+- Hub: `docker compose pull && up -d --force-recreate`.
+- Existing Windows agents stuck offline after a token rotate
+  (4001 Unauthorized in agent.log): one-time manual fix is
+  ```powershell
+  Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
+  Stop-ScheduledTask -TaskName 'GpuViewR Agent'
+  Start-Sleep -Seconds 3
+  Start-ScheduledTask -TaskName 'GpuViewR Agent'
+  ```
+  From v0.8.6 onward, the installer handles this automatically
+  on every re-run.
+
 ## [0.8.5] - 2026-05-18
 
 ### Added
