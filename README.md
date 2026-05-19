@@ -39,8 +39,8 @@
 <tr>
 <td align="center" valign="top"><b>NVIDIA</b><br/><sub>nvidia-smi + pmon</sub></td>
 <td align="center" valign="top"><b>AMD</b><br/><sub>ROCm / sysfs amdgpu</sub></td>
-<td align="center" valign="top"><b>Linux</b><br/><sub>systemd · Docker</sub></td>
-<td align="center" valign="top"><b>Windows 10/11</b><br/><sub>Scheduled Task · PDH</sub></td>
+<td align="center" valign="top"><b>Linux</b><br/><sub>systemd / Docker</sub></td>
+<td align="center" valign="top"><b>Windows</b><br/><sub> Scheduled Task - PDH</sub></td>
 </tr>
 </table>
 
