@@ -6,7 +6,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { applySchema, runMigrations } from './connection.js';
-import { LOCAL_HOST_ID } from './models/Host.js';
+
+// Note: since v0.5 the local 'hosts' row is no longer seeded by runMigrations.
+// It is upserted on the sidecar agent's first WS handshake (upsertLocalSidecarHost
+// in agentIngestWS.ts). In aggregator-only mode the row legitimately stays absent.
+// These tests therefore assert schema shape and data preservation, not host seeding.
 
 function buildV025Schema(db: Database.Database): void {
   // Snapshot of the schema as it was BEFORE the multi-host migration —
@@ -87,17 +91,16 @@ function seedV025Data(db: Database.Database): void {
   `);
 }
 
-test('migration: fresh install (no legacy tables) creates schema + seeds local host', () => {
+test('migration: fresh install (no legacy tables) creates multi-host schema', () => {
   const db = new Database(':memory:');
   try {
     applySchema(db);
     runMigrations(db);
 
-    const hostsRows = db.prepare('SELECT id, label, kind, status FROM hosts').all() as Array<{ id: string; label: string; kind: string; status: string }>;
-    assert.equal(hostsRows.length, 1);
-    assert.equal(hostsRows[0].id, LOCAL_HOST_ID);
-    assert.equal(hostsRows[0].kind, 'local');
-    assert.equal(hostsRows[0].status, 'online');
+    // hosts table exists and is empty on a fresh aggregator-only install
+    // (the sidecar handshake is what creates the local row, see header note)
+    const hostsRows = db.prepare('SELECT id FROM hosts').all() as Array<{ id: string }>;
+    assert.equal(hostsRows.length, 0, 'hosts should be empty on fresh install without sidecar handshake');
 
     // gpu_metrics has host_id column
     const cols = db.prepare("PRAGMA table_info(gpu_metrics)").all() as Array<{ name: string }>;
@@ -140,10 +143,6 @@ test('migration: v0.2.5 schema preserves row count and backfills host_id=local',
     assert.equal(orphanDevices, 0, 'gpu_devices has rows with host_id != local');
     assert.equal(orphanEvents, 0, 'alert_events has rows with host_id != local');
 
-    // hosts table has the local row
-    const localHost = db.prepare("SELECT id FROM hosts WHERE id = 'local'").get();
-    assert.ok(localHost, 'local host row missing post-migration');
-
     // alert_rules.host_id added nullable (NULL = global default)
     const ruleCols = db.prepare("PRAGMA table_info(alert_rules)").all() as Array<{ name: string; notnull: number }>;
     const hostIdCol = ruleCols.find((c) => c.name === 'host_id');
@@ -162,15 +161,11 @@ test('migration: idempotent — running twice yields the same state', () => {
 
     runMigrations(db);
     const afterFirst = db.prepare('SELECT COUNT(*) as n FROM gpu_metrics').get() as { n: number };
-    const hostsAfterFirst = db.prepare('SELECT COUNT(*) as n FROM hosts').get() as { n: number };
 
     runMigrations(db);
     const afterSecond = db.prepare('SELECT COUNT(*) as n FROM gpu_metrics').get() as { n: number };
-    const hostsAfterSecond = db.prepare('SELECT COUNT(*) as n FROM hosts').get() as { n: number };
 
-    assert.equal(afterFirst.n, afterSecond.n);
-    assert.equal(hostsAfterFirst.n, hostsAfterSecond.n);
-    assert.equal(hostsAfterFirst.n, 1, 'local host should be seeded exactly once');
+    assert.equal(afterFirst.n, afterSecond.n, 'row count must stay stable across repeated runMigrations calls');
   } finally {
     db.close();
   }
