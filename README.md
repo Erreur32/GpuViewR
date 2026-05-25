@@ -160,6 +160,46 @@ docker compose pull && docker compose up -d
 - **NVIDIA**: [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
 - **AMD**: amdgpu kernel driver loaded. ROCm at `/opt/rocm` is only needed if you enable `FEATURES=processes` (the sysfs GPU backend reads `/sys/class/drm/` directly, no `rocm-smi` spawn per tick)
 
+### Running the hub on macOS (Docker Desktop)
+
+The hub image is multi-arch (`linux/amd64` + `linux/arm64`) and ships zero GPU code, so it runs cleanly on Docker Desktop for Mac (Intel and Apple Silicon) in **aggregator-only mode**.
+
+**Local GPU monitoring is not possible on macOS**, because Docker Desktop does not expose:
+
+- the NVIDIA Container Toolkit runtime (no `--gpus all` on Mac)
+- the AMD device nodes `/dev/kfd` and `/dev/dri` (no kernel passthrough)
+- the Apple Silicon GPU itself (Metal-only, not surfaced as a device)
+
+So a Mac is suitable as a **central dashboard** that aggregates one or more remote Linux machines running NVIDIA or AMD agents.
+
+The `install.sh` quickstart is Linux-only (it uses `hostname -I` which does not exist on macOS). Setup is manual:
+
+```bash
+mkdir -p ~/gpuviewr && cd ~/gpuviewr
+curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/docker-compose.yaml -o docker-compose.yaml
+
+cat > .env <<'EOF'
+JWT_SECRET=
+LOCAL_AGENT_BOOTSTRAP=
+HOST_IP=
+HUB_HOSTNAME=
+DASHBOARD_PORT=7510
+TZ=Europe/Paris
+COMPOSE_PROFILES=
+EOF
+
+# Fill the dynamic values
+sed -i '' "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -base64 32)|" .env
+sed -i '' "s|^HOST_IP=.*|HOST_IP=$(ipconfig getifaddr en0)|" .env
+sed -i '' "s|^HUB_HOSTNAME=.*|HUB_HOSTNAME=$(hostname -s)|" .env
+
+docker compose up -d
+```
+
+Then open `http://localhost:7510` and enroll your remote Linux hosts from **Settings → Hosts → Add host**.
+
+> Note: `COMPOSE_PROFILES=` is intentionally left empty. Setting it to `nvidia` or `amd` would start a local sidecar agent that cannot reach any GPU on macOS.
+
 ---
 
 ## First login
