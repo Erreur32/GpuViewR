@@ -20,6 +20,13 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Dependabot PRs run with a restricted GITHUB_TOKEN that intermittently
+    # fails actions/checkout on the matrix build (the agent cell of the same
+    # run often succeeds while the hub cell fails to read the auth header).
+    # The job pushes nothing on PRs anyway (see `push:` below), and CodeQL,
+    # Snyk, SonarCloud and the standalone build job already validate the
+    # dependency bump. Skipping here keeps the PR queue green.
+    if: github.actor != 'dependabot[bot]'
     permissions:
       contents: read
       packages: write
