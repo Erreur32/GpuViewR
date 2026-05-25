@@ -404,7 +404,7 @@ Common cases:
 ## Roadmap
 
 - v0.6: filesystem handshake to replace the bootstrap shared-secret (one-shot token file, no secret in `.env`)
-- v0.6: Windows / macOS install script
+- v0.6: macOS install script
 - v0.7: ARM agent native binary (no Docker on the remote side)
 - v0.7: Multi-card AMD process attribution via `--showpidgpus`
 - Later: RBAC, organisation scoping
