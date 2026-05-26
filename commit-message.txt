@@ -1,54 +1,79 @@
-release: v0.8.10 dashboard N/A states
+release: v0.8.11 stats N/A polish + PCIe collapse + outline buttons
 
-Fixes a real UX inconsistency raised by user on .210 (AMD card
-with no fan exposed): the "Live" dot in the green corner of each
-GaugeCard kept blinking at 1 Hz on the Fan card even though the
-displayed value was "N/A". The dot's intent is "this metric is
-live"; in practice it was flashing on every WS sample arrival
-regardless of whether the metric field was null.
+Three dashboard/UI polish items landed together because they're all
+the same kind of small visual cleanup; bundling them into one tag
+avoids a v0.8.11 / v0.8.12 / v0.8.13 release-spam burst.
+
+1. StatsSection N/A in gray (continuation of v0.8.10's fix)
+-----------------------------------------------------------
+
+The "Statistiques sur la période" cards just above the LiveChart
+had the same UX bug as v0.8.10's GaugeCards: their statusFor()
+returned 'ok' (green) when avg was null on a metric the host
+doesn't expose, so the Fan card tinted green even on a passive iGPU.
 
 What changed
-- src/components/dashboard/GaugeCard.tsx: new optional prop
-  `available?: boolean` (default true). When false:
-  * the live-tick `useEffect` early-returns (no flash)
-  * the resolved colorVar short-circuits to var(--gv-text-dim)
-    so the arc fill, central value, AND the dot all go gray
-  * the dot opacity drops to 0.3 and the tooltip becomes "N/A on
-    this host" instead of "Live"
-- src/components/dashboard/Dashboard.tsx: every GaugeCard call
-  site (util / mem / fan / temp / power) now passes
-  `available={active.X != null}` for its metric. As a side bonus,
-  temperature and power got the same `?? 0` + displayValue='N/A'
-  treatment as the others, which prevents a TypeError on hosts
-  where those fields can be null (Windows PDH, some embedded
-  iGPUs). Memory's available also gates on `memory_total` being
-  set, since the % needs both.
-- src/components/fleet/HostCard.tsx: drop the relative-time
-  "il y a Xs" label from the status pill on /fleet cards. The
-  cards now read just `● En ligne`. Achieved by passing
-  `lastSeenEpoch={null}` to StatusPill (HostsSettingsTab was
-  already doing this). User feedback: the seconds counter was
-  visual noise on a dense grid where dot color and sparkline
-  freshness already cover the staleness signal.
+- src/components/dashboard/StatsSection.tsx: each row now derives
+  an `available` flag from "any of min/avg/max is a finite
+  number". When false, color resolves to var(--gv-text-dim) so:
+  * the card background tints from the muted palette
+  * the card border drops the green halo
+  * the icon and metric label render in dim gray
+- The detail table at the bottom: <tr> sets
+  color: var(--gv-text-dim) when row.available is false (covers
+  min/avg/max cells via inheritance), the metric name <span>
+  overrides to dim too, and the row drops to 0.7 opacity so it
+  visually recedes from the live rows.
 
-User-visible effect
-- AMD passive iGPU (no fan): the Fan card now shows "N/A" in gray
-  and its dot stays still. Previously the dot blinked green at
-  1 Hz, suggesting a measurement that didn't exist.
-- Windows PDH host (no temp/power): same treatment on those two
-  cards. They were also crashing rendering before this fix on
-  null values; now they degrade cleanly.
+2. PCIe Link card is now collapsible
+------------------------------------
+
+User asked for the PCIe card to behave like "Statistiques
+détaillées" below it: foldable via the same <details>/<summary>
+pattern.
+
+What changed
+- src/components/dashboard/Dashboard.tsx: the PcieLinkCard now
+  renders as <details open> + <summary> containing the title + the
+  degraded/bus-id badges. Body holds the 4 tiles + the help text,
+  which moved to px-4 pb-3 to fit the new container.
+- Default state is `open` so the at-a-glance view is unchanged on
+  first load; users can collapse it with one click.
+
+3. Button outline style app-wide, except in Settings
+-----------------------------------------------------
+
+User: "tous les boutons bleu background, enleve le et met en
+bordure". Filled-blue active states felt heavy across the app.
+Solid blue persists in Settings (Save/Apply CTAs and the tab
+strip) where a loud confirmation visual is still wanted.
+
+What changed
+- src/styles/index.css:
+  * .btn-primary: background transparent, color accent,
+    box-shadow inset 0 0 0 1px var(--gv-accent). Hover gives a
+    10 % accent tint instead of the previous brightness filter.
+  * .seg-btn[aria-pressed="true"]: same pattern.
+  * .nav-link.active: same pattern (was a 20 % background +
+    35 % border-shadow; now a clean 100 % border, no fill).
+  * New scope override `.settings-area .btn-primary`,
+    `.settings-area .seg-btn[aria-pressed="true"]`: reverts to
+    legacy filled blue (var(--gv-accent) background + accent-fg
+    text + no box-shadow) so Save buttons and the settings tab
+    strip stay visually loud.
+- src/components/settings/SettingsPage.tsx: wrapper div now
+  carries `settings-area` class so the scoped overrides match.
 
 Internal
 - Typecheck (root + agent): 0 errors.
 - Tests: 22 root + 8 agent, all green.
-- Build: vite (root) + esbuild (agent) clean.
+- Build: vite + esbuild both clean.
 - Hub bundle only. Agents do not need to be redeployed.
 
 Upgrade
-- Pull the new hub image: `docker compose pull && docker compose up -d`.
-- No DB migration, no agent restart required.
+- `docker compose pull && docker compose up -d` on the hub host.
+- No DB migration.
 
 Workflow note
-- Branch push only. Tag v0.8.10 deferred until SonarCloud + CodeQL
-  green on this commit, per the project's release rule.
+- Branch push only. Tag v0.8.11 only after SonarCloud + CodeQL
+  green, per the project's release rule.

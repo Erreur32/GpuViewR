@@ -1,5 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-@import 'uplot/dist/uPlot.min.css';
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+@import "uplot/dist/uPlot.min.css";
 
 @tailwind base;
 @tailwind components;
@@ -30,15 +30,31 @@
   color-scheme: dark;
 }
 
-html, body, #root { height: 100%; }
-html { background: var(--gv-bg); color: var(--gv-text); }
+html,
+body,
+#root {
+  height: 100%;
+}
+html {
+  background: var(--gv-bg);
+  color: var(--gv-text);
+}
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background:
-    radial-gradient(1200px 600px at 80% -10%, color-mix(in srgb, var(--gv-accent) 14%, transparent) 0%, transparent 60%),
+    radial-gradient(
+      1200px 600px at 80% -10%,
+      color-mix(in srgb, var(--gv-accent) 14%, transparent) 0%,
+      transparent 60%
+    ),
     linear-gradient(135deg, var(--gv-bg) 0%, var(--gv-bg2) 100%);
   background-attachment: fixed;
   color: var(--gv-text);
@@ -57,7 +73,8 @@ body {
   }
   .card-hover:hover {
     border-color: color-mix(in srgb, var(--gv-accent) 35%, var(--gv-border));
-    box-shadow: 0 12px 40px -8px color-mix(in srgb, var(--gv-accent) 22%, transparent);
+    box-shadow: 0 12px 40px -8px
+      color-mix(in srgb, var(--gv-accent) 22%, transparent);
   }
 
   .btn {
@@ -68,10 +85,18 @@ body {
   }
   .btn-primary {
     @apply btn;
-    background: var(--gv-accent);
-    color: var(--gv-accent-fg);
+    background: transparent;
+    color: var(--gv-accent);
+    /* Outline-only primary: inset 1px accent ring instead of a
+       solid blue fill. Keeps layout stable (no border-width
+       toggle), matches the same idiom we use on seg-btn and
+       nav-link.active so the active state language is uniform
+       across the app. */
+    box-shadow: inset 0 0 0 1px var(--gv-accent);
   }
-  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:hover {
+    background: color-mix(in srgb, var(--gv-accent) 10%, transparent);
+  }
   .btn-ghost {
     @apply btn;
     color: var(--gv-text-muted);
@@ -87,16 +112,21 @@ body {
     color: white;
   }
 
-  .input, .select, textarea.input {
+  .input,
+  .select,
+  textarea.input {
     background: var(--gv-surface-alt);
     border: 1px solid var(--gv-border);
     color: var(--gv-text);
     @apply w-full rounded-xl px-3 py-2 text-sm focus:outline-none transition-colors;
   }
-  .input::placeholder, textarea.input::placeholder {
+  .input::placeholder,
+  textarea.input::placeholder {
     color: var(--gv-text-dim);
   }
-  .input:focus, .select:focus, textarea.input:focus {
+  .input:focus,
+  .select:focus,
+  textarea.input:focus {
     border-color: color-mix(in srgb, var(--gv-accent) 50%, var(--gv-border));
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--gv-accent) 25%, transparent);
   }
@@ -122,67 +152,139 @@ body {
     @apply px-3 py-1.5 text-xs font-medium rounded-lg transition-colors;
     color: var(--gv-text-muted);
   }
-  .seg-btn:hover { color: var(--gv-text); }
+  .seg-btn:hover {
+    color: var(--gv-text);
+  }
   .seg-btn[aria-pressed="true"] {
-    background: var(--gv-accent);
-    color: var(--gv-accent-fg);
+    background: transparent;
+    color: var(--gv-accent);
+    /* inset border so the layout doesn't shift between the
+       unpressed (no border) and pressed states. 1px accent ring
+       reads as "active" without the heavy filled-blue background. */
+    box-shadow: inset 0 0 0 1px var(--gv-accent);
   }
 
   .nav-link {
     @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors;
     color: var(--gv-text-muted);
   }
-  .nav-link:hover { color: var(--gv-text); background: color-mix(in srgb, var(--gv-text) 4%, transparent); }
+  .nav-link:hover {
+    color: var(--gv-text);
+    background: color-mix(in srgb, var(--gv-text) 4%, transparent);
+  }
   .nav-link.active {
     color: var(--gv-accent);
-    background: color-mix(in srgb, var(--gv-accent) 20%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gv-accent) 35%, transparent);
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--gv-accent);
+  }
+
+  /* Scope override: the Settings page keeps the legacy filled-blue
+     active state for both `.btn-primary` (Save/Apply CTAs) and
+     `.seg-btn[aria-pressed]` (the tab strip + language/format
+     toggles inside settings). User explicit ask: "sauf dans
+     reglage ne touche pas" — outline style applies app-wide
+     except inside `.settings-area`. */
+  .settings-area .btn-primary {
+    background: var(--gv-accent);
+    color: var(--gv-accent-fg);
+    box-shadow: none;
+  }
+  .settings-area .btn-primary:hover {
+    background: var(--gv-accent);
+    filter: brightness(1.08);
+  }
+  .settings-area .seg-btn[aria-pressed="true"] {
+    background: var(--gv-accent);
+    color: var(--gv-accent-fg);
+    box-shadow: none;
   }
 }
 
 /* Live indicator pulse */
 @keyframes live-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.45; transform: scale(1.5); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(1.5);
+  }
 }
-.live-dot { animation: live-pulse 1.5s ease-in-out infinite; }
+.live-dot {
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
 
 /* Gauge in danger zone (≥85 %): subtle heartbeat pulse via opacity so the
    eye is drawn to the metric without making the page busy. */
 @keyframes gauge-pulse-kf {
-  0%, 100% { filter: drop-shadow(0 0 0 transparent); }
-  50%      { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--gv-danger) 55%, transparent)); }
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  50% {
+    filter: drop-shadow(
+      0 0 6px color-mix(in srgb, var(--gv-danger) 55%, transparent)
+    );
+  }
 }
 .gauge-pulse {
   animation: gauge-pulse-kf 1.6s ease-in-out infinite;
   transform-origin: center;
 }
 @media (prefers-reduced-motion: reduce) {
-  .gauge-pulse { animation: none; }
+  .gauge-pulse {
+    animation: none;
+  }
 }
 
 /* Hot temperature sensor — slow breathing glow for the System page hero
    readout when the hottest reading crosses 75 °C. */
 @keyframes temp-hot-pulse-kf {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.65; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
 }
 .temp-hot-pulse {
   animation: temp-hot-pulse-kf 1.8s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .temp-hot-pulse { animation: none; }
+  .temp-hot-pulse {
+    animation: none;
+  }
 }
 
 /* Toast slide-in */
 @keyframes toast-in {
-  from { opacity: 0; transform: translateY(-12px) scale(0.96); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
-.toast-enter { animation: toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.toast-enter {
+  animation: toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
 
 /* uPlot tweaks */
-.uplot { font-family: 'Inter', sans-serif; }
-.u-axis { color: var(--gv-text-muted); }
-.u-legend { color: var(--gv-text); font-size: 12px; }
-.u-legend th { font-weight: 500; }
+.uplot {
+  font-family: "Inter", sans-serif;
+}
+.u-axis {
+  color: var(--gv-text-muted);
+}
+.u-legend {
+  color: var(--gv-text);
+  font-size: 12px;
+}
+.u-legend th {
+  font-weight: 500;
+}

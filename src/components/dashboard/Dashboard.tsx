@@ -315,12 +315,12 @@ function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
     sample.pcie_width_current < sample.pcie_width_max;
 
   return (
-    <div className="card p-4">
-      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-        <h3
-          className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2"
-          style={{ color: "var(--gv-text-muted)" }}
-        >
+    <details open className="card p-0 overflow-hidden">
+      <summary
+        className="cursor-pointer select-none px-4 py-3 flex items-center justify-between flex-wrap gap-2"
+        style={{ color: "var(--gv-text-muted)" }}
+      >
+        <h3 className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2">
           <Cable className="w-4 h-4" />
           {t("dashboard.pcie_title")}
         </h3>
@@ -352,9 +352,9 @@ function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
             {sample.pci_bus_id ?? "-"}
           </span>
         </div>
-      </div>
+      </summary>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="px-4 pb-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
         <PcieThroughputTile
           icon={<ArrowDownToLine className="w-4 h-4" />}
           label={t("dashboard.pcie_rx")}
@@ -393,10 +393,13 @@ function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
           </div>
         </div>
       </div>
-      <p className="text-[10px] mt-2" style={{ color: "var(--gv-text-dim)" }}>
+      <p
+        className="text-[10px] px-4 pb-3"
+        style={{ color: "var(--gv-text-dim)" }}
+      >
         {t("dashboard.pcie_help")}
       </p>
-    </div>
+    </details>
   );
 }
 

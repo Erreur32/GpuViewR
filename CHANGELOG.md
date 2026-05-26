@@ -5,6 +5,54 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.11] - 2026-05-26
+
+### Fixed
+
+- **Dashboard "Statistiques sur la période": N/A rows now render
+  in muted gray** instead of the default green "ok" tint. Same
+  visual bug as v0.8.10's GaugeCards: `statusFor(null/undefined)`
+  returned `'ok'` which painted the fan card green on hosts
+  without a fan sensor, suggesting a healthy reading where there
+  was none.
+- **Detail table at the bottom of the Stats section gets the
+  same treatment**: when the metric is N/A, the entire `<tr>`
+  switches to `var(--gv-text-dim)` (covers min/avg/max cells via
+  inheritance), the metric name `<span>` overrides to dim too,
+  and the row drops to 0.7 opacity so it visually recedes from
+  the live rows above it.
+
+### Changed
+
+- `StatsSection.tsx`: rows now expose an `available` flag (true
+  when at least one of min/avg/max is a finite number). The
+  `color` is computed against `available`, falling back to
+  `var(--gv-text-dim)` when not. Card background/border use the
+  same color, so a N/A card is a uniform muted block instead of a
+  card with a green halo.
+- **Dashboard PCIe card is now collapsible.** Wrapped the
+  `PcieLinkCard` section in a `<details open>` element matching
+  the pattern of the "Statistiques détaillées" table below. Title
+  - status badges stay in `<summary>`, the 4 tiles + help line
+    move into the body. Default state is open so the at-a-glance
+    view is unchanged on first load; one click folds the card for
+    users who don't need the PCIe panel.
+- **Button styling: outline-only active state app-wide, except
+  in the Settings page.** Replaced the filled-blue
+  `background: var(--gv-accent)` on `.btn-primary`,
+  `.seg-btn[aria-pressed]`, and `.nav-link.active` with a
+  transparent fill + a 1 px inset accent ring
+  (`box-shadow: inset 0 0 0 1px var(--gv-accent)`). The inset
+  shadow avoids any layout shift between unpressed and pressed
+  states. Settings page keeps the legacy filled-blue style
+  (Save/Apply CTAs + tab strip) via a scoped override on
+  `.settings-area` so save actions there stay loud and
+  unambiguous.
+
+### Internal
+
+- Hub bundle only. No agent changes. No DB migration.
+
 ## [0.8.10] - 2026-05-26
 
 ### Fixed
