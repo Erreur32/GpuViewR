@@ -96,12 +96,11 @@ export default function StatsSection({ gpuIndex }: Props) {
     if (avg >= warn) return "warn";
     return "ok";
   };
-  const colorForStatus = (st: Status): string =>
-    st === "danger"
-      ? "var(--gv-danger)"
-      : st === "warn"
-        ? "var(--gv-warn)"
-        : "var(--gv-ok)";
+  const colorForStatus = (st: Status): string => {
+    if (st === "danger") return "var(--gv-danger)";
+    if (st === "warn") return "var(--gv-warn)";
+    return "var(--gv-ok)";
+  };
 
   // Convert memory MiB avg to pct so the same warn/danger thresholds (% of total)
   // can drive the state color of the memory card.
@@ -166,9 +165,7 @@ export default function StatsSection({ gpuIndex }: Props) {
       (r.avg != null && Number.isFinite(r.avg)) ||
       (r.min != null && Number.isFinite(r.min)) ||
       (r.max != null && Number.isFinite(r.max));
-    const color = available
-      ? colorForStatus(r.status as Status)
-      : "var(--gv-text-dim)";
+    const color = available ? colorForStatus(r.status) : "var(--gv-text-dim)";
     return { ...r, available, color };
   });
 
@@ -296,12 +293,12 @@ function Cell({
   value,
   unit,
   bold,
-}: {
+}: Readonly<{
   label: string;
   value: number | undefined | null;
   unit: string;
   bold?: boolean;
-}) {
+}>) {
   return (
     <div className="text-center">
       <div
