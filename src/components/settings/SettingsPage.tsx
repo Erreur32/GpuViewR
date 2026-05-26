@@ -24,6 +24,7 @@ import { useUiStore, DEFAULT_THRESHOLDS } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
 import { useHostsStore } from "../../store/hostsStore";
 import { THEMES } from "../../lib/themes";
+import { CHART_PRESETS, type ChartPreset } from "../../lib/chartPresets";
 import UpdateSettings from "./UpdateSettings";
 import DatabaseSettings from "./DatabaseSettings";
 import ExportsSettings from "./ExportsSettings";
@@ -38,74 +39,6 @@ type TabId =
   | "database"
   | "updates"
   | "about";
-
-interface ChartPreset {
-  id: string;
-  label: string;
-  colors: { util: string; temp: string; pow: string; mem: string; fan: string };
-}
-
-// Curated, well-balanced palettes. Each preset maps the 5 dashboard
-// metrics (utilization / temperature / power / memory / fan) to a coherent
-// color scheme that plays well with both dark and light themes and
-// the gradient area fill underneath the lines.
-const CHART_PRESETS: ChartPreset[] = [
-  {
-    id: "cyber",
-    label: "Cyber",
-    colors: {
-      util: "#22d3ee",
-      temp: "#f472b6",
-      pow: "#a3e635",
-      mem: "#a78bfa",
-      fan: "#fbbf24",
-    },
-  },
-  {
-    id: "sunset",
-    label: "Sunset",
-    colors: {
-      util: "#fb7185",
-      temp: "#fbbf24",
-      pow: "#ec4899",
-      mem: "#f97316",
-      fan: "#22d3ee",
-    },
-  },
-  {
-    id: "aurora",
-    label: "Aurora",
-    colors: {
-      util: "#34d399",
-      temp: "#06b6d4",
-      pow: "#a78bfa",
-      mem: "#f472b6",
-      fan: "#fbbf24",
-    },
-  },
-  {
-    id: "royal",
-    label: "Royal",
-    colors: {
-      util: "#6366f1",
-      temp: "#a855f7",
-      pow: "#3b82f6",
-      mem: "#06b6d4",
-      fan: "#14b8a6",
-    },
-  },
-  {
-    id: "mono",
-    label: "Graphite",
-    colors: {
-      util: "#9ca3af",
-      temp: "#e5e7eb",
-      pow: "#64748b",
-      mem: "#475569",
-      fan: "#94a3b8",
-    },
-  },
-];
 
 const LANGUAGES = [
   { code: "en", label: "English" },
