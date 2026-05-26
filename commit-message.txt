@@ -1,100 +1,54 @@
-release: v0.8.9 agent perf + Docker healthcheck
+release: v0.8.10 dashboard N/A states
 
-Two changes that landed together because they both touched the
-agent and both stem from the same observation pass on .209 lab
-box: the agent container was the top CPU consumer in beszel
-(1.18% ahead of clickhouse and cadvisor), and it had no Health
-column (`None` instead of `Healthy`).
-
-1. Decouple nvidia-smi -q from the main tick
----------------------------------------------
-
-The agent's PCIe RX/TX refresh was riding on the 1 Hz GPU collector
-tick, spawning `nvidia-smi -q` (the heaviest mode, ~150 KB
-full-driver dump, ~50-80 ms CPU per call) every single second. On
-the .209 lab box (3 d uptime) this pushed the systemd unit's cgroup
-CPU to ~9.6% sustained. PCIe values move slowly enough that 5 s is
-plenty.
+Fixes a real UX inconsistency raised by user on .210 (AMD card
+with no fan exposed): the "Live" dot in the green corner of each
+GaugeCard kept blinking at 1 Hz on the Fan card even though the
+displayed value was "N/A". The dot's intent is "this metric is
+live"; in practice it was flashing on every WS sample arrival
+regardless of whether the metric field was null.
 
 What changed
-- agent/src/collectors/gpu.ts: refreshPcieThroughput() now runs on
-  its own setInterval at pcieTickMs (default 5000 ms), primed once
-  at start() so the first GPU sample already has data. tick() reuses
-  the most recent lastPcieThroughput snapshot.
-- agent/src/config.ts: new pcieTickMs field, parsed from env
-  `PCIE_TICK_MS` (default 5000). Optional in GpuCollectorOptions
-  with a 5000 ms fallback so embedders and tests keep compiling
-  without code changes.
-- agent/src/index.ts: passes cfg.pcieTickMs into createGpuCollector.
-- Boot log: `Collector started (tick=Xms, pcie=Yms, bin=nvidia-smi)`
-  so the override is visible in journalctl without inspecting env.
-- agent/README.md: PCIE_TICK_MS documented in the optional env
-  table next to TICK_MS.
+- src/components/dashboard/GaugeCard.tsx: new optional prop
+  `available?: boolean` (default true). When false:
+  * the live-tick `useEffect` early-returns (no flash)
+  * the resolved colorVar short-circuits to var(--gv-text-dim)
+    so the arc fill, central value, AND the dot all go gray
+  * the dot opacity drops to 0.3 and the tooltip becomes "N/A on
+    this host" instead of "Live"
+- src/components/dashboard/Dashboard.tsx: every GaugeCard call
+  site (util / mem / fan / temp / power) now passes
+  `available={active.X != null}` for its metric. As a side bonus,
+  temperature and power got the same `?? 0` + displayValue='N/A'
+  treatment as the others, which prevents a TypeError on hosts
+  where those fields can be null (Windows PDH, some embedded
+  iGPUs). Memory's available also gates on `memory_total` being
+  set, since the % needs both.
+- src/components/fleet/HostCard.tsx: drop the relative-time
+  "il y a Xs" label from the status pill on /fleet cards. The
+  cards now read just `● En ligne`. Achieved by passing
+  `lastSeenEpoch={null}` to StatusPill (HostsSettingsTab was
+  already doing this). User feedback: the seconds counter was
+  visual noise on a dense grid where dot color and sparkline
+  freshness already cover the staleness signal.
 
-Code-review hardening (caught by /code-review pre-commit pass)
-- gpu.ts:45: use `&& > 0 ? : 5_000` instead of `?? 5_000` so an
-  accidental pcieTickMs=0 falls back to the default instead of
-  becoming a zero-delay interval.
-- gpu.ts: reset pcieDiagLogged in stop() so a subsequent start()
-  re-reports persistent PCIe spawn failures (would otherwise stay
-  silent forever after the first session).
-
-Expected impact
-- nvidia-smi spawns/s drops from 2 (cheap + -q) to 1.2 on average.
-- Agent container CPU% expected to drop to roughly a third of its
-  current value on the same hardware, to be confirmed in beszel
-  over 24 h on .209 after deploy.
-
-2. Docker healthcheck (semantic, heartbeat-based)
---------------------------------------------------
-
-Operators monitoring the agent container in beszel / Dozzle /
-Portainer were stuck with `health: none` because the agent doesn't
-bind a port. The hub already has `/api/health` and reports
-`healthy`, the agent did not.
-
-What changed
-- agent/src/transport.ts: new touchHeartbeat() helper bumps the
-  mtime of /tmp/.gpuviewr-agent-alive (utimesSync fast path,
-  writeFileSync lazy create) inside sendRaw() after a successful
-  ws.send. Errors are swallowed so a misconfigured /tmp can never
-  crash the agent.
-- docker-compose.yaml: healthcheck block added to both
-  agent-nvidia and agent-amd sidecars.
-- docker-compose.agent.nvidia.yaml +
-  docker-compose.agent.amd.yaml: same healthcheck block for the
-  remote-host deployment path.
-- All three blocks use `node -e` with a 60 s mtime threshold,
-  30 s interval, 5 s timeout, 3 retries, 30 s start_period.
-- agent/README.md: new HEARTBEAT_FILE env var documented (default
-  /tmp/.gpuviewr-agent-alive). Override must stay in sync with the
-  path baked into compose.
-
-Semantic
-- `healthy` means: agent is alive, has at least one WS up to a hub,
-  and sent at least one frame in the last 60 s.
-- `unhealthy` means: no successful send for 60 s+ (process stalled,
-  all hubs down past the reconnect window, or filesystem broken).
+User-visible effect
+- AMD passive iGPU (no fan): the Fan card now shows "N/A" in gray
+  and its dot stays still. Previously the dot blinked green at
+  1 Hz, suggesting a measurement that didn't exist.
+- Windows PDH host (no temp/power): same treatment on those two
+  cards. They were also crashing rendering before this fix on
+  null values; now they degrade cleanly.
 
 Internal
 - Typecheck (root + agent): 0 errors.
 - Tests: 22 root + 8 agent, all green.
-- Build: vite (root, 1.06 MB bundle, 271 KB gzipped) + esbuild
-  (agent, 193.3 KB dist) both clean.
-- npm ci clean on both packages (no lockfile drift).
-- Compose files validated with `docker compose config --quiet` (3/3
-  parse cleanly).
+- Build: vite (root) + esbuild (agent) clean.
+- Hub bundle only. Agents do not need to be redeployed.
 
 Upgrade
-- Agents: redeploy via your usual path (`install.sh` for systemd
-  binaries, `docker compose pull && docker compose up -d` for
-  containers). For the healthcheck to take effect on existing
-  docker installs, operators must refresh the compose file too
-  (not just the image), since `docker compose pull` does NOT
-  update YAML on disk. Re-run install.sh on remote hosts.
-- Hub: no behavior change on the hub itself; the bump is for
-  version-string alignment with the agents it serves.
+- Pull the new hub image: `docker compose pull && docker compose up -d`.
+- No DB migration, no agent restart required.
 
 Workflow note
-- This commit is the branch push. Tag v0.8.9 only after SonarCloud
-  + CodeQL green on this push, never before.
+- Branch push only. Tag v0.8.10 deferred until SonarCloud + CodeQL
+  green on this commit, per the project's release rule.

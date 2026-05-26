@@ -5,6 +5,48 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.10] - 2026-05-26
+
+### Fixed
+
+- **Dashboard: stop blinking the "Live" dot on N/A metrics.** The
+  five GaugeCard tiles (util, mem, fan, temp, power) all received
+  `ts={active.timestamp_epoch}` unconditionally, so the green dot
+  flashed at 1 Hz even on cards whose value was `null` (typical:
+  fan_speed on a passive iGPU, temperature/power on Windows PDH).
+  User feedback: "pas logique, ça donne l'impression d'une mesure
+  qui n'existe pas". The dot now stays dim on those cards.
+- **N/A cards rendered in muted gray instead of status color.**
+  When a metric is unavailable, the arc fill, central value text,
+  and the live dot all switch to `var(--gv-text-dim)` so the card
+  visually fades into a "no data" state rather than displaying
+  "N/A" in green (which read as "everything is fine, value is 0").
+- **/fleet host cards: drop the "il y a Xs" relative time** next
+  to the status dot. The label was duplicating signal already
+  present elsewhere (the dot color, the live sparkline below it),
+  adding visual noise in a dense grid. The cards now show just
+  `● En ligne` (dot + label). Settings → Hosts was unaffected; it
+  already passed `lastSeenEpoch={null}` to `StatusPill`.
+
+### Changed
+
+- `GaugeCard` gains an optional `available?: boolean` prop
+  (default `true`). When `false`, the flash `useEffect` early-
+  returns and the color resolver short-circuits to the muted text
+  color. Back-compat: callers that don't pass `available` behave
+  exactly as before.
+- `Dashboard.tsx`: every GaugeCard call site now passes
+  `available={active.X != null}` for its metric. Temperature and
+  power got the same null guards as util/fan/mem (previously they
+  blindly dereferenced `active.temperature.toFixed()` which would
+  crash on hosts where the field can be null, e.g. Windows PDH).
+  Memory's available also requires `memory_total` to be set.
+
+### Internal
+
+- No agent changes. Hub bundle only. Operators do not need to
+  redeploy the agents to get the dashboard fix.
+
 ## [0.8.9] - 2026-05-26
 
 ### Performance

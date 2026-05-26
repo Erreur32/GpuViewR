@@ -1,13 +1,17 @@
-import { Activity, MemoryStick, Thermometer, Zap, Cpu } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import { useGpuStore, liveLastSeenFor, type GpuSample } from '../../store/gpuStore';
-import { effectiveStatus, type HostRecord } from '../../store/hostsStore';
-import { statusFor, colorFor } from '../../lib/status';
-import StatusPill from './StatusPill';
-import GpuMiniTile from './GpuMiniTile';
-import MetricRow from '../ui/MetricRow';
-import Sparkline from '../dashboard/Sparkline';
-import VendorIcon, { detectVendor } from '../ui/VendorIcon';
+import { Activity, MemoryStick, Thermometer, Zap, Cpu } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  useGpuStore,
+  liveLastSeenFor,
+  type GpuSample,
+} from "../../store/gpuStore";
+import { effectiveStatus, type HostRecord } from "../../store/hostsStore";
+import { statusFor, colorFor } from "../../lib/status";
+import StatusPill from "./StatusPill";
+import GpuMiniTile from "./GpuMiniTile";
+import MetricRow from "../ui/MetricRow";
+import Sparkline from "../dashboard/Sparkline";
+import VendorIcon, { detectVendor } from "../ui/VendorIcon";
 
 type Props = Readonly<{
   host: HostRecord;
@@ -27,12 +31,14 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
   // Fleet view needs every host's latest at once.
   const samplesByHost = useGpuStore((s) => s.latestByHost);
   const seriesByHost = useGpuStore((s) => s.seriesByHost);
-  const hostSamples: GpuSample[] = Array.from(samplesByHost.get(host.id)?.values() ?? [])
-    .sort((a, b) => a.gpu_index - b.gpu_index);
+  const hostSamples: GpuSample[] = Array.from(
+    samplesByHost.get(host.id)?.values() ?? [],
+  ).sort((a, b) => a.gpu_index - b.gpu_index);
 
   const liveLastSeen = liveLastSeenFor(samplesByHost, host.id);
   const status = effectiveStatus(host, undefined, liveLastSeen);
-  const isOffline = status === 'offline' || status === 'disabled' || status === 'pending';
+  const isOffline =
+    status === "offline" || status === "disabled" || status === "pending";
 
   const stats = aggregateHostStats(hostSamples);
   const sparklineValues = buildHostSparkline(seriesByHost, host.id);
@@ -48,36 +54,55 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
     >
       <header className="flex items-start justify-between gap-2 min-w-0">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <VendorIcon vendor={vendor} size={18} title={vendor ? vendor.toUpperCase() : host.label} />
+          <VendorIcon
+            vendor={vendor}
+            size={18}
+            title={vendor ? vendor.toUpperCase() : host.label}
+          />
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold leading-tight truncate" style={{ color: 'var(--gv-text)' }} title={host.label}>
+            <h3
+              className="text-sm font-semibold leading-tight truncate"
+              style={{ color: "var(--gv-text)" }}
+              title={host.label}
+            >
               {host.label}
             </h3>
             {/* Skip the secondary line when it'd just repeat the label
                 — happens on the local row where label = hostname after
                 seedLocalIfMissing's hostname backfill (v0.4.0+). */}
             {host.hostname && host.hostname !== host.label && (
-              <p className="text-[11px] mt-0.5 font-mono truncate" style={{ color: 'var(--gv-text-dim)' }}>
+              <p
+                className="text-[11px] mt-0.5 font-mono truncate"
+                style={{ color: "var(--gv-text-dim)" }}
+              >
                 {host.hostname}
               </p>
             )}
             {!host.hostname && (
-              <p className="text-[11px] mt-0.5 font-mono truncate" style={{ color: 'var(--gv-text-dim)' }}>
+              <p
+                className="text-[11px] mt-0.5 font-mono truncate"
+                style={{ color: "var(--gv-text-dim)" }}
+              >
                 {host.id.slice(0, 13)}
               </p>
             )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <StatusPill status={status} lastSeenEpoch={liveLastSeen ?? host.last_seen} />
+          {/* lastSeenEpoch=null hides the "il y a Xs" relative time after
+              the dot+label. /fleet cards are dense enough already, and the
+              dot color + sparkline below carry the freshness signal. */}
+          <StatusPill status={status} lastSeenEpoch={null} />
           {!isOffline && sparklineValues.length > 1 && (
             <div
               className="flex items-center gap-1.5"
-              title={t('fleet.sparkline_util_title', { defaultValue: 'Average GPU utilization over the last 60s' })}
+              title={t("fleet.sparkline_util_title", {
+                defaultValue: "Average GPU utilization over the last 60s",
+              })}
             >
               <span
                 className="text-[9px] uppercase tracking-wider font-mono leading-none"
-                style={{ color: 'var(--gv-text-dim)' }}
+                style={{ color: "var(--gv-text-dim)" }}
               >
                 60s util
               </span>
@@ -109,28 +134,37 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
         <div
           className="rounded-xl p-3 text-center text-xs"
           style={{
-            background: 'var(--gv-surface-alt)',
-            color: 'var(--gv-text-dim)',
+            background: "var(--gv-surface-alt)",
+            color: "var(--gv-text-dim)",
           }}
         >
-          {isOffline ? t('fleet.host_offline') : t('fleet.no_samples_yet')}
+          {isOffline ? t("fleet.host_offline") : t("fleet.no_samples_yet")}
         </div>
       )}
 
       <footer
         className="flex items-center justify-between text-[11px] pt-1.5 border-t flex-wrap gap-2"
-        style={{ borderColor: 'var(--gv-border)', color: 'var(--gv-text-muted)' }}
+        style={{
+          borderColor: "var(--gv-border)",
+          color: "var(--gv-text-muted)",
+        }}
       >
         <span className="inline-flex items-center gap-1.5">
-          <Cpu className="w-3.5 h-3.5" style={{ color: 'var(--gv-info)' }} />
-          <span className="font-mono">{t('fleet.stat_gpus')}: {hostSamples.length}</span>
+          <Cpu className="w-3.5 h-3.5" style={{ color: "var(--gv-info)" }} />
+          <span className="font-mono">
+            {t("fleet.stat_gpus")}: {hostSamples.length}
+          </span>
           {stats.pcieKbps > 0 && (
-            <span style={{ color: 'var(--gv-text-dim)' }}>· PCIe {formatPcie(stats.pcieKbps)}</span>
+            <span style={{ color: "var(--gv-text-dim)" }}>
+              · PCIe {formatPcie(stats.pcieKbps)}
+            </span>
           )}
         </span>
         <span className="font-mono">
           {host.agent_version ? `agent v${host.agent_version}` : host.kind}
-          <span className="ml-2" style={{ color: 'var(--gv-text-dim)' }}>{host.id.slice(0, 8)}…</span>
+          <span className="ml-2" style={{ color: "var(--gv-text-dim)" }}>
+            {host.id.slice(0, 8)}…
+          </span>
         </span>
       </footer>
     </button>
@@ -150,8 +184,13 @@ interface HostStats {
 function aggregateHostStats(samples: GpuSample[]): HostStats {
   if (samples.length === 0) {
     return {
-      avgUtil: null, hottestTemp: null, totalPower: 0, powerMax: 0,
-      vramUsed: 0, vramTotal: 0, pcieKbps: 0,
+      avgUtil: null,
+      hottestTemp: null,
+      totalPower: 0,
+      powerMax: 0,
+      vramUsed: 0,
+      vramTotal: 0,
+      pcieKbps: 0,
     };
   }
   let utilSum = 0;
@@ -162,7 +201,10 @@ function aggregateHostStats(samples: GpuSample[]): HostStats {
   let vramTotal = 0;
   let pcieKbps = 0;
   for (const g of samples) {
-    if (g.utilization !== null) { utilSum += g.utilization; utilCount++; }
+    if (g.utilization !== null) {
+      utilSum += g.utilization;
+      utilCount++;
+    }
     if (g.temperature > hottest) hottest = g.temperature;
     power += g.power;
     vramUsed += g.memory_used;
@@ -210,7 +252,9 @@ function buildHostSparkline(
 }
 
 function HostMetricRows({
-  isOffline, stats, t,
+  isOffline,
+  stats,
+  t,
 }: Readonly<{
   isOffline: boolean;
   stats: HostStats;
@@ -220,20 +264,24 @@ function HostMetricRows({
     return (
       <div
         className="rounded-lg px-3 py-4 text-center text-xs"
-        style={{ background: 'var(--gv-surface-alt)', color: 'var(--gv-text-dim)' }}
+        style={{
+          background: "var(--gv-surface-alt)",
+          color: "var(--gv-text-dim)",
+        }}
       >
-        {t('fleet.host_offline')}
+        {t("fleet.host_offline")}
       </div>
     );
   }
-  const vramPct = stats.vramTotal > 0 ? (stats.vramUsed / stats.vramTotal) * 100 : 0;
+  const vramPct =
+    stats.vramTotal > 0 ? (stats.vramUsed / stats.vramTotal) * 100 : 0;
   return (
     <div className="grid grid-cols-1 gap-1.5">
       <MetricRow
         icon={<Activity className="w-3.5 h-3.5" />}
-        label={t('dashboard.metrics.utilization')}
+        label={t("dashboard.metrics.utilization")}
         value={stats.avgUtil ?? 0}
-        displayValue={stats.avgUtil === null ? 'N/A' : undefined}
+        displayValue={stats.avgUtil === null ? "N/A" : undefined}
         max={100}
         warn={85}
         danger={95}
@@ -241,11 +289,13 @@ function HostMetricRows({
       />
       <MetricRow
         icon={<MemoryStick className="w-3.5 h-3.5" />}
-        label={t('dashboard.metrics.memory')}
+        label={t("dashboard.metrics.memory")}
         value={vramPct}
-        displayValue={stats.vramTotal === 0
-          ? 'N/A'
-          : `${(stats.vramUsed / 1024).toFixed(1)} / ${(stats.vramTotal / 1024).toFixed(0)} GiB`}
+        displayValue={
+          stats.vramTotal === 0
+            ? "N/A"
+            : `${(stats.vramUsed / 1024).toFixed(1)} / ${(stats.vramTotal / 1024).toFixed(0)} GiB`
+        }
         max={100}
         warn={80}
         danger={92}
@@ -253,9 +303,9 @@ function HostMetricRows({
       />
       <MetricRow
         icon={<Thermometer className="w-3.5 h-3.5" />}
-        label={t('dashboard.metrics.temperature')}
+        label={t("dashboard.metrics.temperature")}
         value={stats.hottestTemp ?? 0}
-        displayValue={stats.hottestTemp === null ? 'N/A' : undefined}
+        displayValue={stats.hottestTemp === null ? "N/A" : undefined}
         max={100}
         warn={75}
         danger={85}
@@ -263,7 +313,7 @@ function HostMetricRows({
       />
       <MetricRow
         icon={<Zap className="w-3.5 h-3.5" />}
-        label={t('dashboard.metrics.power')}
+        label={t("dashboard.metrics.power")}
         value={stats.totalPower}
         max={stats.powerMax}
         warn={Math.round(stats.powerMax * 0.7)}
@@ -282,4 +332,3 @@ function formatPcie(kbps: number): string {
   if (mibps < 1024) return `${mibps.toFixed(1)} MiB/s`;
   return `${(mibps / 1024).toFixed(2)} GiB/s`;
 }
-
