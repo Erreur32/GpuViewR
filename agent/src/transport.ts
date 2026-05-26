@@ -22,16 +22,27 @@
 //    kill the agent — other hubs keep going. A repeated 4001 on the
 //    SAME hub still exits because the token is permanently bad.
 
-import { readFileSync, existsSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync, accessSync, constants as fsConstants } from 'node:fs';
-import { dirname } from 'node:path';
-import { createHash } from 'node:crypto';
-import { WebSocket } from 'ws';
-import { logger } from './logger.js';
-import type { GpuSample } from '../../server/services/parsers/nvidia.js';
-import type { AgentGpuProcess } from './collectors/processes.js';
-import type { AgentConfig, HubTarget } from './config.js';
+import {
+  readFileSync,
+  existsSync,
+  writeFileSync,
+  renameSync,
+  openSync,
+  fsyncSync,
+  closeSync,
+  accessSync,
+  utimesSync,
+  constants as fsConstants,
+} from "node:fs";
+import { dirname } from "node:path";
+import { createHash } from "node:crypto";
+import { WebSocket } from "ws";
+import { logger } from "./logger.js";
+import type { GpuSample } from "../../server/services/parsers/nvidia.js";
+import type { AgentGpuProcess } from "./collectors/processes.js";
+import type { AgentConfig, HubTarget } from "./config.js";
 
-export type InstallMode = 'docker' | 'systemd' | 'windows' | 'unknown';
+export type InstallMode = "docker" | "systemd" | "windows" | "unknown";
 
 // Detected once at module load — the runtime context doesn't change
 // over the life of the agent process. Result is included in every
@@ -44,22 +55,24 @@ function detectInstallMode(): InstallMode {
   // registers a Scheduled Task + launcher.ps1 supervisor — distinct
   // enough from 'systemd' (different update mechanism: .pending file
   // swap vs systemd unit restart) that the hub needs to know.
-  if (process.platform === 'win32') return 'windows';
+  if (process.platform === "win32") return "windows";
   // Strongest signal — Docker mounts an empty marker file.
-  if (existsSync('/.dockerenv')) return 'docker';
+  if (existsSync("/.dockerenv")) return "docker";
   // Fallback: cgroup v1 paths usually contain /docker/ or /containerd/.
   try {
-    const cg = readFileSync('/proc/self/cgroup', 'utf8');
-    if (/docker|containerd|kubepods/i.test(cg)) return 'docker';
-  } catch { /* /proc not readable — happens on non-Linux */ }
+    const cg = readFileSync("/proc/self/cgroup", "utf8");
+    if (/docker|containerd|kubepods/i.test(cg)) return "docker";
+  } catch {
+    /* /proc not readable — happens on non-Linux */
+  }
   // systemd-launched agents have INVOCATION_ID set, but absence
   // doesn't prove bare-metal (could be a launched-by-hand binary).
   // We bucket every non-Docker run as 'systemd' since the update
   // command is the same: curl + systemctl restart.
-  if (process.env.INVOCATION_ID || process.env.JOURNAL_STREAM) return 'systemd';
+  if (process.env.INVOCATION_ID || process.env.JOURNAL_STREAM) return "systemd";
   // If we got here we're outside Docker but not under systemd —
   // most likely a developer running `node agent.mjs` by hand.
-  return 'unknown';
+  return "unknown";
 }
 
 const BUFFER_MAX = 3600;
@@ -80,27 +93,41 @@ let agentUpdateRoWarned = false;
 // substituted, `typeof __AGENT_VERSION__` evaluates to 'undefined'
 // without throwing, and we fall back to a clearly tagged dev marker.
 export const AGENT_VERSION: string =
-  typeof __AGENT_VERSION__ !== 'undefined' ? __AGENT_VERSION__ : '0.0.0-dev';
+  typeof __AGENT_VERSION__ !== "undefined" ? __AGENT_VERSION__ : "0.0.0-dev";
 const PROTOCOL_VER = 1;
 // Number of consecutive auth failures before we give up on a hub
 // entirely. One 4001 might be a transient race during hub restart;
 // three in a row means the token is genuinely wrong.
 const AUTH_FAILURE_LIMIT = 3;
 
+// Heartbeat file touched on every successful WS frame send. Docker
+// healthcheck compares its mtime against now (60 s threshold) to gate
+// the container's "healthy" status. Stays in /tmp because:
+//   - Docker containers always have /tmp writable (no extra mount).
+//   - systemd unit uses PrivateTmp=true so the file is namespaced
+//     per-service; no risk of cross-collisions on a shared host.
+// HEARTBEAT_FILE env override is supported for non-default rootfs
+// layouts but the default is what compose/healthcheck command both
+// hard-code, so changing it requires updating both sides.
+const HEARTBEAT_FILE =
+  process.env.HEARTBEAT_FILE || "/tmp/.gpuviewr-agent-alive";
+
 interface SampleFrame {
-  type: 'sample';
+  type: "sample";
   ts_epoch: number;
   samples: GpuSample[];
 }
 
 interface ProcessFrame {
-  type: 'processes';
+  type: "processes";
   ts_epoch: number;
   processes: AgentGpuProcess[];
 }
 
 type BufferableFrame = SampleFrame | ProcessFrame;
-type OutboundFrame = BufferableFrame | { type: 'hello' | 'ping'; [k: string]: unknown };
+type OutboundFrame =
+  | BufferableFrame
+  | { type: "hello" | "ping"; [k: string]: unknown };
 
 interface IncomingFrame {
   type: string;
@@ -149,7 +176,7 @@ export function createTransport(config: AgentConfig): Transport {
     buffer: [],
     authFailures: 0,
     replaying: false,
-    tag: config.hubs.length > 1 ? `hub${i + 1}` : 'ws',
+    tag: config.hubs.length > 1 ? `hub${i + 1}` : "ws",
   }));
 
   // ── Per-hub helpers (closure over `conn`) ─────────────────────────────────
@@ -159,20 +186,40 @@ export function createTransport(config: AgentConfig): Transport {
     while (conn.buffer.length > BUFFER_MAX) conn.buffer.shift();
   }
 
+  // Bump the healthcheck heartbeat file's mtime. utimesSync is the
+  // cheapest path (a single utimensat syscall); fallback to a tiny
+  // writeFileSync handles the first call when the file doesn't exist
+  // yet. Any error is swallowed: the agent must never crash on a
+  // healthcheck plumbing issue (e.g. read-only /tmp on a weirdly
+  // restricted host).
+  function touchHeartbeat(): void {
+    try {
+      const now = new Date();
+      utimesSync(HEARTBEAT_FILE, now, now);
+    } catch {
+      try {
+        writeFileSync(HEARTBEAT_FILE, "");
+      } catch {
+        /* swallow: no healthcheck signal but agent must keep running */
+      }
+    }
+  }
+
   function sendRaw(conn: HubConnection, frame: OutboundFrame): void {
     if (!conn.ws || conn.ws.readyState !== WebSocket.OPEN) return;
     try {
       conn.ws.send(JSON.stringify(frame));
+      touchHeartbeat();
     } catch (err) {
-      logger.warn(conn.tag, 'send failed:', (err as Error).message);
+      logger.warn(conn.tag, "send failed:", (err as Error).message);
     }
   }
 
   function buildUrl(target: HubTarget): string {
     const u = new URL(target.url);
-    if (!u.pathname || u.pathname === '/') u.pathname = '/agent';
-    u.searchParams.set('token', target.token);
-    u.searchParams.set('host_id', target.hostId);
+    if (!u.pathname || u.pathname === "/") u.pathname = "/agent";
+    u.searchParams.set("token", target.token);
+    u.searchParams.set("host_id", target.hostId);
     return u.toString();
   }
 
@@ -191,26 +238,40 @@ export function createTransport(config: AgentConfig): Transport {
     }
     let drained = totalDrained;
     let n = 0;
-    while (n < REPLAY_CHUNK && conn.buffer.length > 0 && conn.ws.readyState === WebSocket.OPEN) {
+    while (
+      n < REPLAY_CHUNK &&
+      conn.buffer.length > 0 &&
+      conn.ws.readyState === WebSocket.OPEN
+    ) {
       const frame = conn.buffer.shift()!;
       sendRaw(conn, frame);
       n++;
       drained++;
     }
     if (conn.buffer.length === 0) {
-      if (drained > 0) logger.info(conn.tag, `Replayed ${drained} buffered frame(s) after reconnect`);
+      if (drained > 0)
+        logger.info(
+          conn.tag,
+          `Replayed ${drained} buffered frame(s) after reconnect`,
+        );
       conn.replayTimer = null;
       conn.replaying = false;
       return;
     }
-    conn.replayTimer = setTimeout(() => drainChunk(conn, drained), REPLAY_DELAY_MS);
+    conn.replayTimer = setTimeout(
+      () => drainChunk(conn, drained),
+      REPLAY_DELAY_MS,
+    );
   }
 
   function startPing(conn: HubConnection): void {
     if (conn.pingTimer) clearInterval(conn.pingTimer);
     conn.pingTimer = setInterval(() => {
       if (conn.ws?.readyState === WebSocket.OPEN) {
-        sendRaw(conn, { type: 'ping', ts_epoch: Math.floor(Date.now() / 1000) });
+        sendRaw(conn, {
+          type: "ping",
+          ts_epoch: Math.floor(Date.now() / 1000),
+        });
       }
     }, PING_INTERVAL_MS);
   }
@@ -222,7 +283,7 @@ export function createTransport(config: AgentConfig): Transport {
 
   function sendHello(conn: HubConnection): void {
     sendRaw(conn, {
-      type: 'hello',
+      type: "hello",
       host_id: conn.target.hostId,
       agent_version: AGENT_VERSION,
       protocol_ver: PROTOCOL_VER,
@@ -242,15 +303,21 @@ export function createTransport(config: AgentConfig): Transport {
     try {
       frame = JSON.parse(raw);
     } catch {
-      logger.warn(conn.tag, 'Bad JSON from hub');
+      logger.warn(conn.tag, "Bad JSON from hub");
       return;
     }
     switch (frame.type) {
-      case 'welcome': {
-        logger.success(conn.tag, `Hub welcomed us (hub_version=${frame.hub_version}, protocol_ver=${frame.protocol_ver})`);
+      case "welcome": {
+        logger.success(
+          conn.tag,
+          `Hub welcomed us (hub_version=${frame.hub_version}, protocol_ver=${frame.protocol_ver})`,
+        );
         const hubProto = frame.protocol_ver as number | undefined;
         if (hubProto !== undefined && hubProto > PROTOCOL_VER) {
-          logger.error(conn.tag, `Hub speaks protocol_ver=${hubProto} > agent's ${PROTOCOL_VER}. Upgrade agent.`);
+          logger.error(
+            conn.tag,
+            `Hub speaks protocol_ver=${hubProto} > agent's ${PROTOCOL_VER}. Upgrade agent.`,
+          );
           process.exit(1);
         }
         conn.authFailures = 0;
@@ -258,12 +325,12 @@ export function createTransport(config: AgentConfig): Transport {
         flushBuffer(conn);
         break;
       }
-      case 'pong':
+      case "pong":
         break;
-      case 'config':
+      case "config":
         // Reserved for future hub-driven tick rate changes.
         break;
-      case 'agent_update':
+      case "agent_update":
         // Self-replace + exit. systemd / Docker restart-policy picks
         // up the new binary on the next launch. Failures (bad
         // checksum, write error) are logged and the agent keeps
@@ -276,28 +343,40 @@ export function createTransport(config: AgentConfig): Transport {
   }
 
   function applyAgentUpdate(conn: HubConnection, frame: IncomingFrame): void {
-    const targetVersion = String(frame.target_version ?? '?');
-    const sha256 = String(frame.sha256 ?? '');
+    const targetVersion = String(frame.target_version ?? "?");
+    const sha256 = String(frame.sha256 ?? "");
     const sizeClaim = Number(frame.size ?? 0);
-    const b64 = String(frame.bundle_b64 ?? '');
+    const b64 = String(frame.bundle_b64 ?? "");
     if (!sha256 || !b64) {
-      logger.warn(conn.tag, 'agent_update: missing sha256 or bundle_b64; ignoring');
+      logger.warn(
+        conn.tag,
+        "agent_update: missing sha256 or bundle_b64; ignoring",
+      );
       return;
     }
     let buf: Buffer;
     try {
-      buf = Buffer.from(b64, 'base64');
+      buf = Buffer.from(b64, "base64");
     } catch (err) {
-      logger.warn(conn.tag, `agent_update: base64 decode failed: ${(err as Error).message}`);
+      logger.warn(
+        conn.tag,
+        `agent_update: base64 decode failed: ${(err as Error).message}`,
+      );
       return;
     }
     if (sizeClaim && buf.length !== sizeClaim) {
-      logger.warn(conn.tag, `agent_update: size mismatch (got ${buf.length}, expected ${sizeClaim})`);
+      logger.warn(
+        conn.tag,
+        `agent_update: size mismatch (got ${buf.length}, expected ${sizeClaim})`,
+      );
       return;
     }
-    const computed = createHash('sha256').update(buf).digest('hex');
+    const computed = createHash("sha256").update(buf).digest("hex");
     if (computed !== sha256) {
-      logger.warn(conn.tag, `agent_update: sha256 mismatch (got ${computed.slice(0, 12)}…, expected ${sha256.slice(0, 12)}…)`);
+      logger.warn(
+        conn.tag,
+        `agent_update: sha256 mismatch (got ${computed.slice(0, 12)}…, expected ${sha256.slice(0, 12)}…)`,
+      );
       return;
     }
     // process.argv[1] is the path of the launched script — for the
@@ -307,7 +386,10 @@ export function createTransport(config: AgentConfig): Transport {
     // be picked up as agent.mjs on next boot.
     const target = process.argv[1];
     if (!target || !existsSync(target)) {
-      logger.warn(conn.tag, `agent_update: can't resolve own binary path (argv[1]=${target}); skipping`);
+      logger.warn(
+        conn.tag,
+        `agent_update: can't resolve own binary path (argv[1]=${target}); skipping`,
+      );
       return;
     }
     // systemd install ships with ProtectSystem=strict + ReadWritePaths=
@@ -341,7 +423,7 @@ export function createTransport(config: AgentConfig): Transport {
     //   `agent.mjs.pending`, exit, and let launcher.ps1's while-loop
     //   atomically swap it on the next iteration (when node is no longer
     //   running, so no lock contention).
-    const isWin = process.platform === 'win32';
+    const isWin = process.platform === "win32";
     const tmp = isWin ? `${target}.pending` : `${target}.new`;
     try {
       writeFileSync(tmp, buf, { mode: 0o755 });
@@ -351,11 +433,18 @@ export function createTransport(config: AgentConfig): Transport {
       // observed on the v0.6.9 Windows agent receiving v0.8.0 push
       // 2026-05-18 evening. Posix accepts fsync on any open fd so
       // 'r+' is also fine on Linux.
-      const fd = openSync(tmp, 'r+');
-      try { fsyncSync(fd); } finally { closeSync(fd); }
+      const fd = openSync(tmp, "r+");
+      try {
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
       if (!isWin) renameSync(tmp, target);
     } catch (err) {
-      logger.error(conn.tag, `agent_update: filesystem swap failed: ${(err as Error).message}`);
+      logger.error(
+        conn.tag,
+        `agent_update: filesystem swap failed: ${(err as Error).message}`,
+      );
       return;
     }
     logger.success(
@@ -373,24 +462,36 @@ export function createTransport(config: AgentConfig): Transport {
     if (stopped) return;
     if (conn.reconnectTimer) return;
     const jitter = 1 + (Math.random() * 0.4 - 0.2); // ±20%
-    const delay = Math.min(conn.reconnectDelayMs * jitter, config.reconnectMaxMs);
-    logger.info(conn.tag, `Reconnecting in ${Math.round(delay)}ms (buffered=${conn.buffer.length})`);
+    const delay = Math.min(
+      conn.reconnectDelayMs * jitter,
+      config.reconnectMaxMs,
+    );
+    logger.info(
+      conn.tag,
+      `Reconnecting in ${Math.round(delay)}ms (buffered=${conn.buffer.length})`,
+    );
     conn.reconnectTimer = setTimeout(() => {
       conn.reconnectTimer = null;
       connect(conn);
     }, delay);
-    conn.reconnectDelayMs = Math.min(conn.reconnectDelayMs * 2, config.reconnectMaxMs);
+    conn.reconnectDelayMs = Math.min(
+      conn.reconnectDelayMs * 2,
+      config.reconnectMaxMs,
+    );
   }
 
   function connect(conn: HubConnection): void {
     if (stopped) return;
     const url = buildUrl(conn.target);
-    logger.info(conn.tag, `Connecting to ${url.replace(/token=[^&]+/, 'token=***')}`);
+    logger.info(
+      conn.tag,
+      `Connecting to ${url.replace(/token=[^&]+/, "token=***")}`,
+    );
     const opts = config.tlsInsecure ? { rejectUnauthorized: false } : {};
     const ws = new WebSocket(url, opts);
     conn.ws = ws;
-    ws.on('open', () => {
-      logger.success(conn.tag, 'Connection open');
+    ws.on("open", () => {
+      logger.success(conn.tag, "Connection open");
       // Don't reset backoff on `open` alone — a hub that accepts the
       // WS then closes 1008 right after welcome would loop at 1s.
       // Only reset after the connection has held for STABLE_RESET_MS.
@@ -401,8 +502,8 @@ export function createTransport(config: AgentConfig): Transport {
       }, STABLE_RESET_MS);
       startPing(conn);
     });
-    ws.on('message', (data) => handleIncoming(conn, data.toString()));
-    ws.on('close', (code, reason) => {
+    ws.on("message", (data) => handleIncoming(conn, data.toString()));
+    ws.on("close", (code, reason) => {
       stopPing(conn);
       if (conn.stableTimer) {
         clearTimeout(conn.stableTimer);
@@ -412,8 +513,11 @@ export function createTransport(config: AgentConfig): Transport {
       // can start a fresh drain (drainChunk also resets this on its
       // own NOT-OPEN exit, but it only runs between chunks).
       conn.replaying = false;
-      const r = reason?.toString() || '';
-      logger.warn(conn.tag, `Connection closed (code=${code}${r ? `, reason=${r}` : ''})`);
+      const r = reason?.toString() || "";
+      logger.warn(
+        conn.tag,
+        `Connection closed (code=${code}${r ? `, reason=${r}` : ""})`,
+      );
       conn.ws = null;
       // 4001/1008 = auth or policy violations. With multi-hub, one bad
       // hub doesn't kill the agent — other hubs keep working. But three
@@ -421,7 +525,10 @@ export function createTransport(config: AgentConfig): Transport {
       if (code === 4001 || code === 1008) {
         conn.authFailures++;
         if (conn.authFailures >= AUTH_FAILURE_LIMIT) {
-          logger.error(conn.tag, `${conn.authFailures} consecutive auth failures — giving up on this hub. Check its HOST_ID/AGENT_TOKEN.`);
+          logger.error(
+            conn.tag,
+            `${conn.authFailures} consecutive auth failures — giving up on this hub. Check its HOST_ID/AGENT_TOKEN.`,
+          );
           // Don't schedule another reconnect for this hub. Other hubs
           // (if any) continue. Single-hub config → agent effectively
           // stops sending samples but keeps the process alive so
@@ -431,7 +538,7 @@ export function createTransport(config: AgentConfig): Transport {
       }
       scheduleReconnect(conn);
     });
-    ws.on('error', (err) => {
+    ws.on("error", (err) => {
       logger.warn(conn.tag, `Socket error: ${err.message}`);
     });
   }
@@ -475,7 +582,11 @@ export function createTransport(config: AgentConfig): Transport {
         }
         conn.replaying = false;
         if (conn.ws) {
-          try { conn.ws.close(1000); } catch { /* ignore */ }
+          try {
+            conn.ws.close(1000);
+          } catch {
+            /* ignore */
+          }
           conn.ws = null;
         }
       }
@@ -483,7 +594,7 @@ export function createTransport(config: AgentConfig): Transport {
     enqueueSample(samples: GpuSample[]): void {
       if (samples.length === 0) return;
       broadcast({
-        type: 'sample',
+        type: "sample",
         ts_epoch: Math.floor(Date.now() / 1000),
         samples,
       });
@@ -492,7 +603,7 @@ export function createTransport(config: AgentConfig): Transport {
       // Empty snapshots are meaningful — they signal "no procs right
       // now" so a stale list clears. Don't drop them.
       broadcast({
-        type: 'processes',
+        type: "processes",
         ts_epoch: Math.floor(Date.now() / 1000),
         processes,
       });

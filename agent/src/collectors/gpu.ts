@@ -4,7 +4,7 @@
 // what to do with each tick. Shares the parser with the hub so any
 // future driver-format quirk fix lands in one place.
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from "node:child_process";
 import {
   QUERY_FIELDS,
   num,
@@ -14,12 +14,17 @@ import {
   parsePciThroughput,
   type GpuSample,
   type PcieThroughput,
-} from '../../../server/services/parsers/nvidia.js';
-import { logger } from '../logger.js';
+} from "../../../server/services/parsers/nvidia.js";
+import { logger } from "../logger.js";
 
 export type GpuCollectorOptions = Readonly<{
   nvidiaSmiPath: string;
   tickMs: number;
+  /** Refresh cadence for `nvidia-smi -q` (PCIe RX/TX). The full-driver
+   *  query is ~5x more expensive than the main `--query-gpu` call, and
+   *  PCIe throughput moves slowly enough that 5 s is plenty. Optional
+   *  for back-compat; defaults to 5000 ms when omitted. */
+  pcieTickMs?: number;
   onSample: (samples: GpuSample[]) => void;
 }>;
 
@@ -29,16 +34,27 @@ export interface GpuCollectorHandle {
   available(): boolean;
 }
 
-export function createGpuCollector(opts: GpuCollectorOptions): GpuCollectorHandle {
+export function createGpuCollector(
+  opts: GpuCollectorOptions,
+): GpuCollectorHandle {
   let timer: NodeJS.Timeout | null = null;
+  let pcieTimer: NodeJS.Timeout | null = null;
   let nvidiaSmiAvailable: boolean | null = null;
   let lastPcieThroughput: Map<string, PcieThroughput> = new Map();
   let pcieDiagLogged = false;
+  // `||` (not `??`) on purpose: pcieTickMs must be > 0 to be valid; an
+  // explicit 0 would yield a zero-delay interval that pegs the event loop.
+  // `parseInt10` already rejects 0/negative env values, but the collector
+  // API is exported so direct callers can't accidentally pass 0 either.
+  const pcieTickMs =
+    opts.pcieTickMs && opts.pcieTickMs > 0 ? opts.pcieTickMs : 5_000;
 
   function checkNvidiaSmi(): boolean {
     if (nvidiaSmiAvailable !== null) return nvidiaSmiAvailable;
     try {
-      const r = spawnSync(opts.nvidiaSmiPath, ['--version'], { timeout: 3_000 });
+      const r = spawnSync(opts.nvidiaSmiPath, ["--version"], {
+        timeout: 3_000,
+      });
       nvidiaSmiAvailable = r.status === 0;
     } catch {
       nvidiaSmiAvailable = false;
@@ -47,22 +63,28 @@ export function createGpuCollector(opts: GpuCollectorOptions): GpuCollectorHandl
   }
 
   function refreshPcieThroughput(): void {
-    const child = spawn(opts.nvidiaSmiPath, ['-q']);
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (d) => (stdout += d.toString()));
-    child.stderr.on('data', (d) => (stderr += d.toString()));
-    child.on('error', (err) => {
+    const child = spawn(opts.nvidiaSmiPath, ["-q"]);
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d.toString()));
+    child.stderr.on("data", (d) => (stderr += d.toString()));
+    child.on("error", (err) => {
       if (!pcieDiagLogged) {
         pcieDiagLogged = true;
-        logger.warn('gpu', `nvidia-smi -q spawn failed (PCIe RX/TX disabled): ${err.message}`);
+        logger.warn(
+          "gpu",
+          `nvidia-smi -q spawn failed (PCIe RX/TX disabled): ${err.message}`,
+        );
       }
     });
-    child.on('close', (code) => {
+    child.on("close", (code) => {
       if (code !== 0) {
         if (!pcieDiagLogged) {
           pcieDiagLogged = true;
-          logger.warn('gpu', `nvidia-smi -q exited ${code} (PCIe RX/TX disabled): ${stderr.trim() || '(no stderr)'}`);
+          logger.warn(
+            "gpu",
+            `nvidia-smi -q exited ${code} (PCIe RX/TX disabled): ${stderr.trim() || "(no stderr)"}`,
+          );
         }
         return;
       }
@@ -71,20 +93,23 @@ export function createGpuCollector(opts: GpuCollectorOptions): GpuCollectorHandl
   }
 
   function tick(): void {
-    refreshPcieThroughput();
-
+    // PCIe throughput refresh runs on its own slower interval (see start()).
+    // Each tick re-uses the most recent lastPcieThroughput snapshot so we
+    // don't fork the expensive `nvidia-smi -q` at the main GPU cadence.
     const child = spawn(opts.nvidiaSmiPath, [
-      `--query-gpu=${QUERY_FIELDS.join(',')}`,
-      '--format=csv,noheader,nounits',
+      `--query-gpu=${QUERY_FIELDS.join(",")}`,
+      "--format=csv,noheader,nounits",
     ]);
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (d) => (stdout += d.toString()));
-    child.stderr.on('data', (d) => (stderr += d.toString()));
-    child.on('error', (err) => logger.error('gpu', 'nvidia-smi spawn failed:', err.message));
-    child.on('close', (code) => {
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d.toString()));
+    child.stderr.on("data", (d) => (stderr += d.toString()));
+    child.on("error", (err) =>
+      logger.error("gpu", "nvidia-smi spawn failed:", err.message),
+    );
+    child.on("close", (code) => {
       if (code !== 0) {
-        logger.warn('gpu', `nvidia-smi exited ${code}: ${stderr.trim()}`);
+        logger.warn("gpu", `nvidia-smi exited ${code}: ${stderr.trim()}`);
         return;
       }
       const samples = parseOutput(stdout, lastPcieThroughput);
@@ -99,27 +124,46 @@ export function createGpuCollector(opts: GpuCollectorOptions): GpuCollectorHandl
     start(): void {
       if (timer) return;
       if (!checkNvidiaSmi()) {
-        logger.error('gpu', `nvidia-smi not available at ${opts.nvidiaSmiPath} — collector disabled`);
+        logger.error(
+          "gpu",
+          `nvidia-smi not available at ${opts.nvidiaSmiPath} — collector disabled`,
+        );
         return;
       }
-      logger.success('gpu', `Collector started (tick=${opts.tickMs}ms, bin=${opts.nvidiaSmiPath})`);
+      logger.success(
+        "gpu",
+        `Collector started (tick=${opts.tickMs}ms, pcie=${pcieTickMs}ms, bin=${opts.nvidiaSmiPath})`,
+      );
+      // Prime the PCIe map once so the first tick already has data, then
+      // refresh on its own slower cadence.
+      refreshPcieThroughput();
+      pcieTimer = setInterval(refreshPcieThroughput, pcieTickMs);
       tick();
       timer = setInterval(tick, opts.tickMs);
     },
     stop(): void {
       if (timer) clearInterval(timer);
+      if (pcieTimer) clearInterval(pcieTimer);
       timer = null;
+      pcieTimer = null;
+      // Reset the once-flag so a subsequent start() re-reports persistent
+      // PCIe spawn failures (otherwise the operator sees a single warning
+      // for the very first session and silence forever after a restart).
+      pcieDiagLogged = false;
     },
   };
 }
 
-function parseOutput(out: string, throughputMap: Map<string, PcieThroughput>): GpuSample[] {
+function parseOutput(
+  out: string,
+  throughputMap: Map<string, PcieThroughput>,
+): GpuSample[] {
   const { iso, epoch } = nowTimestamp();
   const samples: GpuSample[] = [];
-  for (const line of out.split('\n')) {
+  for (const line of out.split("\n")) {
     const row = line.trim();
     if (!row) continue;
-    const parts = row.split(',').map((p) => p.trim());
+    const parts = row.split(",").map((p) => p.trim());
     if (parts.length < QUERY_FIELDS.length) continue;
     const busId = parts[12] || null;
     const gpuIdx = num(parts[0]);
@@ -131,7 +175,7 @@ function parseOutput(out: string, throughputMap: Map<string, PcieThroughput>): G
     if (!throughput) throughput = throughputMap.get(`idx:${gpuIdx}`);
     samples.push({
       gpu_index: gpuIdx,
-      name: parts[1] || 'GPU',
+      name: parts[1] || "GPU",
       uuid: parts[2] || null,
       driver_version: parts[3] || null,
       temperature: num(parts[4]),

@@ -16,6 +16,7 @@ curl -fsSL https://gpu.example.com/install.sh | sudo bash -s -- \
 ```
 
 The script:
+
 - detects distro (Debian 11+/Ubuntu 22+/Rocky/Alma/RHEL 9+/Fedora),
 - installs Node 22 via NodeSource if missing,
 - creates a `gpuviewr-agent` system user and `/opt/gpuviewr-agent/`,
@@ -120,32 +121,34 @@ $env:AGENT_TOKEN = "<secret from the hub>"
 node agent.mjs
 ```
 
-To run on boot, register it as a Scheduled Task with trigger *At startup*, action `node.exe`, argument `C:\ProgramData\GpuViewR-Agent\agent.mjs`, and the three env vars baked into the task definition (Task Scheduler GUI → Actions → New → Environment).
+To run on boot, register it as a Scheduled Task with trigger _At startup_, action `node.exe`, argument `C:\ProgramData\GpuViewR-Agent\agent.mjs`, and the three env vars baked into the task definition (Task Scheduler GUI → Actions → New → Environment).
 
 ## Configuration — environment variables
 
 ### Required
 
-| Var | Description |
-|---|---|
-| `HUB_URL` | Full WS URL, e.g. `wss://gpu.example.com/agent`. `ws://` is allowed only against loopback / RFC1918 private ranges; against a public host it warns. |
-| `HOST_ID` | UUID issued by the hub at enrollment. **Never** put `local` here — that ID is reserved for the hub's own collector. |
-| `AGENT_TOKEN` | Opaque secret issued by the hub at enrollment. Stored as a bcrypt hash on the hub. Shown to you exactly once. |
+| Var           | Description                                                                                                                                         |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HUB_URL`     | Full WS URL, e.g. `wss://gpu.example.com/agent`. `ws://` is allowed only against loopback / RFC1918 private ranges; against a public host it warns. |
+| `HOST_ID`     | UUID issued by the hub at enrollment. **Never** put `local` here — that ID is reserved for the hub's own collector.                                 |
+| `AGENT_TOKEN` | Opaque secret issued by the hub at enrollment. Stored as a bcrypt hash on the hub. Shown to you exactly once.                                       |
 
 ### Optional
 
-| Var | Default | Description |
-|---|---|---|
-| `TICK_MS` | `1000` | nvidia-smi sample interval. |
-| `FEATURES` | `gpu,system,temps,processes` | CSV of collectors to advertise in the hello frame. In v0.3.0 only `gpu` actually publishes; the others are reserved. |
-| `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`. |
-| `NVIDIA_SMI_PATH` | `nvidia-smi` | Override if the binary lives elsewhere (WSL2, exotic packaging). |
-| `RECONNECT_MAX_MS` | `30000` | Cap on the exponential reconnect backoff. |
-| `AGENT_BUFFER_PERSIST` | `0` | Reserved for v0.3.1 (disk-mirrored ring buffer). |
-| `AGENT_LABEL` | _(none)_ | Optional hostname hint sent in the hello frame. The hub-assigned label wins if both are set. |
-| `TLS_INSECURE` | `0` | Disable cert verification. Dev only. |
-| `MOCK_GPU` | `0` | Emit synthetic samples instead of calling `nvidia-smi`. Useful for hub-side end-to-end testing without a real GPU. |
-| `HOSTNAME` | _(none)_ | Standard; whatever Docker / systemd / the OS sets. Sent informationally in hello. |
+| Var                    | Default                      | Description                                                                                                                                                                                                                                                              |
+| ---------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TICK_MS`              | `1000`                       | nvidia-smi sample interval (the cheap `--query-gpu` call).                                                                                                                                                                                                               |
+| `PCIE_TICK_MS`         | `5000`                       | Refresh cadence for the expensive `nvidia-smi -q` (PCIe RX/TX). Decoupled from `TICK_MS` because the full-driver dump is ~5x more costly to spawn and PCIe throughput moves slowly. Raise to lower CPU further; lower toward `TICK_MS` if you need 1 Hz PCIe sparklines. |
+| `FEATURES`             | `gpu,system,temps,processes` | CSV of collectors to advertise in the hello frame. In v0.3.0 only `gpu` actually publishes; the others are reserved.                                                                                                                                                     |
+| `LOG_LEVEL`            | `info`                       | `debug` / `info` / `warn` / `error`.                                                                                                                                                                                                                                     |
+| `NVIDIA_SMI_PATH`      | `nvidia-smi`                 | Override if the binary lives elsewhere (WSL2, exotic packaging).                                                                                                                                                                                                         |
+| `RECONNECT_MAX_MS`     | `30000`                      | Cap on the exponential reconnect backoff.                                                                                                                                                                                                                                |
+| `AGENT_BUFFER_PERSIST` | `0`                          | Reserved for v0.3.1 (disk-mirrored ring buffer).                                                                                                                                                                                                                         |
+| `AGENT_LABEL`          | _(none)_                     | Optional hostname hint sent in the hello frame. The hub-assigned label wins if both are set.                                                                                                                                                                             |
+| `TLS_INSECURE`         | `0`                          | Disable cert verification. Dev only.                                                                                                                                                                                                                                     |
+| `MOCK_GPU`             | `0`                          | Emit synthetic samples instead of calling `nvidia-smi`. Useful for hub-side end-to-end testing without a real GPU.                                                                                                                                                       |
+| `HOSTNAME`             | _(none)_                     | Standard; whatever Docker / systemd / the OS sets. Sent informationally in hello.                                                                                                                                                                                        |
+| `HEARTBEAT_FILE`       | `/tmp/.gpuviewr-agent-alive` | Path touched on every successful WS frame send. The compose `healthcheck:` block reads this file's mtime via `node -e`. Override only if you also update the matching path in the compose healthcheck command, the two must stay in sync.                                |
 
 ## Verifying the connection
 
@@ -159,13 +162,13 @@ Look for your `HOST_ID` with `status: "online"` and a recent `last_seen`.
 
 ## Troubleshooting
 
-| Symptom | Likely cause |
-|---|---|
-| `Fatal close code 4001` repeated then exit | `HOST_ID` or `AGENT_TOKEN` wrong, or the host was deleted on the hub. Re-enroll. |
-| `nvidia-smi not found at nvidia-smi — exiting` | NVIDIA Container Toolkit missing or the binary is at a non-standard path. Test with `docker exec gpuviewr-agent nvidia-smi`. |
-| Stuck reconnecting, no welcome | `HUB_URL` typo, or the hub's `/agent` endpoint isn't proxied through your reverse proxy. WS upgrade headers must pass through. |
-| Hub shows `lagging` then `offline` while the agent is up | Clock drift > 30s; install NTP. The watchdog is keyed off `last_seen` reported by the hub. |
-| `1008 Policy Violation` close | Hub's rate limit (100 msg/s/session) tripped. Don't spam frames — `TICK_MS` should stay ≥ 100. |
+| Symptom                                                  | Likely cause                                                                                                                   |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `Fatal close code 4001` repeated then exit               | `HOST_ID` or `AGENT_TOKEN` wrong, or the host was deleted on the hub. Re-enroll.                                               |
+| `nvidia-smi not found at nvidia-smi — exiting`           | NVIDIA Container Toolkit missing or the binary is at a non-standard path. Test with `docker exec gpuviewr-agent nvidia-smi`.   |
+| Stuck reconnecting, no welcome                           | `HUB_URL` typo, or the hub's `/agent` endpoint isn't proxied through your reverse proxy. WS upgrade headers must pass through. |
+| Hub shows `lagging` then `offline` while the agent is up | Clock drift > 30s; install NTP. The watchdog is keyed off `last_seen` reported by the hub.                                     |
+| `1008 Policy Violation` close                            | Hub's rate limit (100 msg/s/session) tripped. Don't spam frames — `TICK_MS` should stay ≥ 100.                                 |
 
 ## Building the Docker image yourself
 

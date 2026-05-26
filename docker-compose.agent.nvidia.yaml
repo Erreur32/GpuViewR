@@ -24,6 +24,24 @@ services:
     container_name: gpuviewr-agent
     restart: unless-stopped
 
+    # Healthcheck: the agent touches /tmp/.gpuviewr-agent-alive on every
+    # successful WS frame send (cf. agent/src/transport.ts touchHeartbeat).
+    # A 60 s threshold tolerates one reconnect cycle without flapping.
+    # Containers show `healthy` in `docker ps` and any external monitor
+    # (beszel, dozzle, Portainer, etc.). Added v0.8.9.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "process.exit(Date.now()-require('fs').statSync('/tmp/.gpuviewr-agent-alive').mtimeMs<60000?0:1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
     # SYS_PTRACE: process collector cross-UID /proc reads. Lets the
     # agent see /proc/<pid>/{cmdline,comm,stat} for processes owned
     # by other UIDs (e.g. user-installed ollama vs root agent
@@ -50,9 +68,9 @@ services:
 
     environment:
       # Required — get these from the hub UI at enrollment time.
-      HUB_URL: ${HUB_URL}              # e.g. wss://gpu.example.com/agent
-      HOST_ID: ${HOST_ID}              # UUID printed once by the hub
-      AGENT_TOKEN: ${AGENT_TOKEN}      # opaque secret, also one-shot
+      HUB_URL: ${HUB_URL} # e.g. wss://gpu.example.com/agent
+      HOST_ID: ${HOST_ID} # UUID printed once by the hub
+      AGENT_TOKEN: ${AGENT_TOKEN} # opaque secret, also one-shot
 
       # Optional — sensible defaults.
       TICK_MS: ${TICK_MS:-1000}

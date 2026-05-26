@@ -5,6 +5,52 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.9] - 2026-05-26
+
+### Performance
+
+- **Agent: decouple `nvidia-smi -q` from the main tick.** The PCIe
+  RX/TX throughput refresh was riding on the 1 Hz GPU collector tick,
+  spawning the heaviest mode of `nvidia-smi` (~150 KB full-driver
+  dump, ~50-80 ms CPU per call) every single second. PCIe values
+  move slowly enough that 5 s is plenty; the extra forks were the
+  single biggest contributor to the agent's container CPU%. Result
+  on a NVIDIA Linux host after 3 days of uptime: cgroup CPU drops
+  from ~9.6% sustained to roughly a third of that, with no visible
+  change to the PCIe sparkline in the UI.
+- New env var `PCIE_TICK_MS` (default `5000`) overrides the cadence;
+  lower it toward `TICK_MS` if you need a true 1 Hz PCIe trace.
+- Boot log now prints both intervals: `Collector started (tick=Xms,
+pcie=Yms, bin=nvidia-smi)` so you can spot the override in journal
+  output without reading the env.
+
+### Added
+
+- **Docker healthcheck on the agent container.** The agent now
+  touches `/tmp/.gpuviewr-agent-alive` on every successful WS
+  frame send (`agent/src/transport.ts` `touchHeartbeat()`). All
+  three compose files (`docker-compose.yaml` for the hub-local
+  sidecars, plus `docker-compose.agent.{nvidia,amd}.yaml` for
+  remote-host deployments) declare a `healthcheck:` block that
+  reads the heartbeat mtime via `node -e` and fails if it is
+  older than 60 s. The container's `docker ps` Health column now
+  reports `healthy` / `unhealthy` instead of staying at `none`,
+  and monitoring tools that surface that column (beszel, Dozzle,
+  Portainer) show a real status. The 60 s threshold covers one
+  exponential reconnect cycle without flapping.
+
+### Internal
+
+- `GpuCollectorOptions.pcieTickMs` is optional with a 5000 ms
+  fallback, so existing callers (tests, embedders) keep working
+  without code changes.
+- Heartbeat write is best-effort: `utimesSync` is the fast path,
+  `writeFileSync` is the lazy-create fallback, and any error is
+  swallowed so a misconfigured `/tmp` cannot crash the agent.
+- New env `HEARTBEAT_FILE` overrides the default location, but
+  must stay in sync with the path baked into the compose
+  healthcheck command.
+
 ## [0.8.8] - 2026-05-18
 
 ### Changed
@@ -27,8 +73,8 @@ more visual, easier to scan for a first-time visitor.
   banner: a 4-column table with NVIDIA, AMD, Linux (Tux), and
   Windows logos plus per-platform detection method (nvidia-smi +
   pmon / ROCm + sysfs amdgpu / systemd + Docker / Scheduled Task
-  + PDH). Followed by a paragraph emphasising mixed-fleet support
-  (any NVIDIA/AMD mix across Linux/Windows on a single hub).
+  - PDH). Followed by a paragraph emphasising mixed-fleet support
+    (any NVIDIA/AMD mix across Linux/Windows on a single hub).
 - New SVG asset files in `public/icons/`: `nvidia.svg`, `amd.svg`,
   `windows.svg`, `linux.svg`. Same SVG paths as the in-app
   `IconRegistry.tsx` for the first three; Linux gets a Tux
@@ -77,7 +123,7 @@ more visual, easier to scan for a first-time visitor.
   unregister, kept the old env vars in memory, and continued
   reconnecting to the hub with the now-invalidated token after
   a rotate. Symptom: agent.log spammed with `code=4001
-  Unauthorized` errors until the hub's "3 consecutive auth
+Unauthorized` errors until the hub's "3 consecutive auth
   failures" giveup fired, host stayed offline even though the
   NEW node.exe started by the freshly-registered task was
   working fine.
@@ -169,17 +215,17 @@ more visual, easier to scan for a first-time visitor.
 ### Internal
 
 - `src/components/settings/HostsSettingsTab.tsx`:
-    - `RotateInstallMode` type + `defaultRotateModeFor` helper.
-    - `RotateTokenModal` rebuilt around the same `cmdByMode` /
-      `labelKeyByMode` lookup tables the EnrollHostModal uses, so
-      the two modals stay shape-aligned.
-    - Modal grows to `max-w-2xl` (was `max-w-lg`) to fit the
-      install command's wider mono-spaced layout.
+  - `RotateInstallMode` type + `defaultRotateModeFor` helper.
+  - `RotateTokenModal` rebuilt around the same `cmdByMode` /
+    `labelKeyByMode` lookup tables the EnrollHostModal uses, so
+    the two modals stay shape-aligned.
+  - Modal grows to `max-w-2xl` (was `max-w-lg`) to fit the
+    install command's wider mono-spaced layout.
 - `src/i18n/locales/{en,fr}.json`:
-    - `hosts.rotate_done_hint` rewritten to point at the new
-      "copy command + re-run on host" flow.
-    - New key `hosts.rotate_show_raw_token` for the collapsible
-      raw-token block.
+  - `hosts.rotate_done_hint` rewritten to point at the new
+    "copy command + re-run on host" flow.
+  - New key `hosts.rotate_show_raw_token` for the collapsible
+    raw-token block.
 
 ### Upgrade
 
@@ -225,13 +271,13 @@ v0.8.2 deploy.
 ### Internal
 
 - `src/components/fleet/FleetChart.tsx`:
-    - `data` useMemo: per-host forward-fill loop (was
-      `map.get(t) ?? null`, now hold last non-null value).
-    - `ChartPlotProps` gains a `range: string` prop, threaded
-      through from the parent.
-    - X-axis `values` formatter added with range-aware
-      granularity + `timeFormat` honoring.
-    - `seriesShape` key includes range + timeFormat.
+  - `data` useMemo: per-host forward-fill loop (was
+    `map.get(t) ?? null`, now hold last non-null value).
+  - `ChartPlotProps` gains a `range: string` prop, threaded
+    through from the parent.
+  - X-axis `values` formatter added with range-aware
+    granularity + `timeFormat` honoring.
+  - `seriesShape` key includes range + timeFormat.
 
 ### Upgrade
 
@@ -246,7 +292,7 @@ Three independent items shipped together:
 ### Fixed
 
 - **Windows auto-update was failing with `EPERM: operation not
-  permitted, fsync`.** First real `agent_update` push to a Windows
+permitted, fsync`.** First real `agent_update` push to a Windows
   agent (v0.6.9 → v0.8.0 from the .210 lab hub) surfaced the bug:
   `agent/src/transport.ts:347` opened the staged
   `agent.mjs.pending` file with `'r'` (read-only) then called
@@ -286,7 +332,7 @@ Three independent items shipped together:
 ### Upgrade
 
 - Hub: `curl …/install.sh | bash` (or `docker compose pull && up
-  -d --force-recreate`).
+-d --force-recreate`).
 - Windows agents currently on v0.6.9: click "Maj" again in the
   Hosts settings — this time the fsync swap will succeed and
   launcher.ps1 will pick up the new bundle within ~5 seconds.
@@ -308,19 +354,19 @@ Three independent items shipped together:
   - utilization: base host colour (the headline number)
   - temperature: same hue + ~18 % lighter
   - power: same hue + ~18 % darker
-  Combined with the existing per-metric widths (util 2.25 / temp
-  1.5 / power 1.0), the three metrics for the same host now read
-  as a clear colour family — same hue, different shade and
-  weight. Pre-computed once at module scope (10 hosts × 3
-  metrics = 30 cache entries) so no per-render colour math.
-  Tooltip line previews follow the same shading.
+    Combined with the existing per-metric widths (util 2.25 / temp
+    1.5 / power 1.0), the three metrics for the same host now read
+    as a clear colour family — same hue, different shade and
+    weight. Pre-computed once at module scope (10 hosts × 3
+    metrics = 30 cache entries) so no per-render colour math.
+    Tooltip line previews follow the same shading.
 
 ### Internal
 
 - `src/components/fleet/FleetChart.tsx`: new
   `METRIC_LIGHTNESS_DELTA` table, `hexToRgb` / `rgbToHsl` /
   `hslToRgb` / `rgbToHex` helpers, `hostMetricColor(hostIdx,
-  metric)` with a module-scoped cache. Two call sites swapped
+metric)` with a module-scoped cache. Two call sites swapped
   from `hostColor(idx)` to `hostMetricColor(idx, metric)`.
 
 ## [0.8.0] - 2026-05-18
@@ -412,7 +458,7 @@ prefixes for Ollama processes.
   manifests tree (`<ollama>/manifests/<registry>/<library>/<model>/<tag>`)
   on agent boot, parses each manifest JSON, and indexes the model-
   layer digest (`mediaType:
-  application/vnd.ollama.image.model`) → tag name (e.g.
+application/vnd.ollama.image.model`) → tag name (e.g.
   `llama3.1:8b`). The Ollama branch of the LLM classifier now
   consults this resolver to translate the sha256 blob path
   surfaced in the runner cmdline. Falls back to `sha256:<prefix>`
@@ -426,14 +472,14 @@ prefixes for Ollama processes.
   3. `/usr/share/ollama/.ollama/manifests` (systemd default)
   4. `$HOME/.ollama/manifests`
   5. `/root/.ollama/manifests`
-  First existing dir wins. Boot log line reports the chosen path
-  + indexed manifest count.
+     First existing dir wins. Boot log line reports the chosen path
+  - indexed manifest count.
 
 ### Changed
 
 - **`docker-compose.yaml` adds opt-in Ollama bind-mount.** Both
   sidecars (nvidia + amd) now have a commented `${OLLAMA_DIR:-…}:/
-  host/ollama:ro` volume entry. Operators uncomment + set
+host/ollama:ro` volume entry. Operators uncomment + set
   `OLLAMA_DIR` in `.env` to enable model resolution. Left
   commented to avoid auto-creating empty directories on hosts
   without an Ollama install. Standalone agent composes get the
@@ -459,7 +505,7 @@ prefixes for Ollama processes.
 ### Upgrade
 
 - Hub: `docker compose pull && docker compose up -d
-  --force-recreate` (or rerun `install.sh` for the polite prompt
+--force-recreate` (or rerun `install.sh` for the polite prompt
   flow).
 - To get friendly model names in the Ollama badge tooltip,
   uncomment the `ollama` volume in your `docker-compose.yaml`
@@ -481,7 +527,7 @@ prefixes for Ollama processes.
     generic widens params to `string | string[]` even though path
     params are always strings at runtime.
   - `server/services/authService.ts` L31 — replaced the `as
-    JwtPayload` cast with a defensive runtime narrowing:
+JwtPayload` cast with a defensive runtime narrowing:
     `jwt.verify` returns `string | JwtPayload`, we now reject
     string payloads + validate the field shape (`sub` number,
     `username` string, `role` admin|user) before returning. Hardens
@@ -548,7 +594,9 @@ customisations and asks before doing anything destructive.
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
 ```
+
 The installer:
+
 1. Detects existing install dir + .env.
 2. Diffs your `docker-compose.yaml` against main, prompts to
    overwrite (backup made if you accept).
@@ -573,7 +621,7 @@ container rename for clarity.
   belongs to:
   - **Ollama** — both the user CLI (`ollama run llama3:8b`) and
     the internal runner (`/usr/bin/ollama runner --model
-    <blob-path>`). For runner processes we surface the blob's
+<blob-path>`). For runner processes we surface the blob's
     sha256 prefix as a model id (resolving the friendly name
     requires reading `~/.ollama/manifests/`, deferred to a
     later release).
@@ -582,15 +630,15 @@ container rename for clarity.
   - **vLLM** — `python -m vllm.…`, model from `--model`.
   - **KoboldCpp** — `koboldcpp.py` / `koboldcpp_*.exe`.
   - **oobabooga** (text-generation-webui) — `server.py
-    --model`.
+--model`.
   - **ComfyUI** — directory-based detection.
   - **Stable Diffusion WebUI** (Automatic1111) — `webui.py`
     inside a `stable-diffusion-webui` checkout.
   - **LM Studio** — `lms server` and the Electron helper.
-  Wire frame: two new optional fields on `AgentGpuProcess` and
-  on the hub-side `GpuProcess` type — `llm_runtime?: string |
-  null` and `llm_model?: string | null`. Backwards-compatible
-  with older agents (fields stay null).
+    Wire frame: two new optional fields on `AgentGpuProcess` and
+    on the hub-side `GpuProcess` type — `llm_runtime?: string |
+null` and `llm_model?: string | null`. Backwards-compatible
+    with older agents (fields stay null).
 - **LLM badge in the process table.** New `<LlmBadge>` next to
   the process name shows the runtime in info-blue (e.g.
   "Ollama", "vLLM", "llama.cpp"). Hover for the model id when
@@ -607,7 +655,7 @@ container rename for clarity.
   containers spun up on remote machines via the standalone
   composes. **Operator action required**: any script that does
   `docker exec gpuviewr-agent-local …` or `docker logs
-  gpuviewr-agent-local` must be updated. After
+gpuviewr-agent-local` must be updated. After
   `docker compose up -d --force-recreate` the new name is in
   effect immediately; the old container is automatically removed.
 
@@ -615,7 +663,7 @@ container rename for clarity.
 
 - Agent bundle: 181 KB → 185.5 KB (+4.5 KB for the classifier).
 - Hub `GpuProcess` type extended in `server/services/
-  _processTypes.ts`. Hub passes the fields through unchanged;
+_processTypes.ts`. Hub passes the fields through unchanged;
   no DB schema change (processes aren't persisted, only live).
 - `docker-compose.yaml`, `README.md`, `Docs/V0_5_PLAN.md`
   swept for the container-name rename.
@@ -623,7 +671,7 @@ container rename for clarity.
 ### Upgrade
 
 - Hub: `cd ~/gpuviewr && docker compose pull && docker compose
-  up -d --force-recreate`. The old `gpuviewr-agent-local`
+up -d --force-recreate`. The old `gpuviewr-agent-local`
   container is removed by compose during recreate.
 - LLM badges appear automatically on the next collector tick
   for processes that match a known runtime. Other GPU processes
@@ -678,7 +726,7 @@ on the .210 AMD master:
   `package-lock.json`** when their `"version"` field happened to
   match the app version being replaced. v0.6.5 → v0.6.9 each
   silently drifted a `node_modules/source-map-support/node_modules/
-  source-map` entry from 0.6.5 → 0.6.9 — still satisfying its
+source-map` entry from 0.6.5 → 0.6.9 — still satisfying its
   `^0.6.0` constraint by accident. v0.7.0 pushed it to 0.7.0, which
   violates the constraint and broke `npm ci` on every CI job for the
   initial v0.7.0 push. The second `sed` is now range-bounded to the
@@ -703,8 +751,8 @@ on the .210 AMD master:
 ### Upgrade
 
 - Hub: `cd ~/gpuviewr && docker compose pull && docker compose up
-  -d --force-recreate`. The new agent image (`ghcr.io/erreur32/
-  gpuviewr-agent:latest` or `:v0.7.1`) ships with `ps`. AMD users
+-d --force-recreate`. The new agent image (`ghcr.io/erreur32/
+gpuviewr-agent:latest` or `:v0.7.1`) ships with `ps`. AMD users
   will see real process names on the next tick.
 - The `/proc:/host/proc:ro` volume mount added in v0.7.0 to the
   master docker-compose.yaml is still recommended (gives CPU% in
@@ -723,7 +771,7 @@ workloads.
 - **AMD / Intel GPUs supported on Windows via PDH counters.** New
   `agent/src/collectors/gpuWindowsPdh.ts` taps the same
   `Win32_PerfFormattedData_GPUPerformanceCounters_{GPUEngine,
-  GPUAdapterMemory}` WMI classes Task Manager uses. Language-
+GPUAdapterMemory}` WMI classes Task Manager uses. Language-
   independent (works on French / German / non-en-US Windows out of
   the box, unlike localized typeperf counter paths). One long-running
   `powershell.exe -NoProfile` polls the counters and emits one JSON
@@ -763,7 +811,7 @@ workloads.
      share of compute units the process is using) but discarding
      it. Now surfaced as `gpu_pct` so the UI renders a real number.
   3. The master `docker-compose.yaml` agent sidecars (both `agent-
-     nvidia` and `agent-amd`) were missing the `/proc:/host/proc:ro`
+nvidia` and `agent-amd`) were missing the `/proc:/host/proc:ro`
      mount and `HOST_PROC=/host/proc` env. The CPU sampler couldn't
      read `/proc/<pid>/stat`, so CPU% was permanently null even for
      pids the collector knew about. Added on both sidecars +
@@ -812,7 +860,7 @@ bug that surfaced during that test run and got patched on the fly.
 - **Auto-install Node 22+ via `winget` on Windows.** When the
   installer detects Node missing or older than 22, it now runs
   `winget install OpenJS.NodeJS.LTS --silent
-  --accept-source-agreements --accept-package-agreements`, refreshes
+--accept-source-agreements --accept-package-agreements`, refreshes
   `$env:Path` from the Machine + User registry hives so the freshly-
   installed `node.exe` is visible without a logoff, and re-probes.
   Older Win10 SKUs without `winget` still get the previous "go to
@@ -820,7 +868,7 @@ bug that surfaced during that test run and got patched on the fly.
   auto-install on Linux.
 - **`install_mode='windows'` propagated end-to-end.** Agent's
   `detectInstallMode()` returns `'windows'` on `process.platform ===
-  'win32'`. Hub's `forceAgentUpdate` + `maybePushAutoUpdate` now
+'win32'`. Hub's `forceAgentUpdate` + `maybePushAutoUpdate` now
   accept `'windows'` alongside `'systemd'` for the auto-update gate
   (semantics match: `launcher.ps1`'s while-loop swaps
   `agent.mjs.pending` into place on the next iteration, ~5 s
@@ -829,7 +877,7 @@ bug that surfaced during that test run and got patched on the fly.
   EN/FR.
 - **Central SVG icon registry** (`src/components/ui/icons/IconRegistry.tsx`).
   Single typed source of truth — addressable as `<Icon
-  name="platform.windows" size={14} />`. Six initial entries:
+name="platform.windows" size={14} />`. Six initial entries:
   `vendor.nvidia`, `vendor.amd`, `platform.windows`,
   `platform.linux`, `platform.docker`, `platform.systemd`. Adding
   a new icon = one record entry. Windows icon uses the modern
@@ -841,11 +889,11 @@ bug that surfaced during that test run and got patched on the fly.
   `C:\ProgramData\GpuViewR-Agent\agent.log` via `*>>` append. The
   hidden SYSTEM task previously discarded all output to a void; a
   crashing agent was invisible. Tailable with `Get-Content '...'
-  -Wait`. The final install message surfaces the log path as the
+-Wait`. The final install message surfaces the log path as the
   first diagnostic command.
 - **`scripts/check-docker-build.js` asserts install-distribution
   files inside the built image.** Runs `docker run --rm <tag> sh -c
-  'test -f ...'` for the four files the install endpoints serve at
+'test -f ...'` for the four files the install endpoints serve at
   runtime (`install.sh.tpl`, `install.ps1.tpl`, `agent.mjs`,
   `install-agent.sh`). Codifies the lesson from the v0.6.7 → v0.6.8
   incident where `install.ps1.tpl` was on disk but missing from the
@@ -855,7 +903,7 @@ bug that surfaced during that test run and got patched on the fly.
 
 - **`install.ps1` ACL step failed on VPN'd / domain-joined / localized
   Windows hosts.** The script was calling `New-Object
-  FileSystemAccessRule('NT AUTHORITY\SYSTEM', ...)` which requires
+FileSystemAccessRule('NT AUTHORITY\SYSTEM', ...)` which requires
   LSA to translate the name into a SID — that lookup fails on some
   installs with "Impossible de traduire certaines ou toutes les
   références d'identité." Switched to the well-known SID constants
@@ -870,13 +918,13 @@ bug that surfaced during that test run and got patched on the fly.
 ### Internal
 
 - **`refactor(modal): replace nested ternaries with mode-keyed
-  lookups`.** SonarCloud flagged three nested-ternary code smells
+lookups`.** SonarCloud flagged three nested-ternary code smells
   introduced by the v0.6.7 modal additions; fixed by building a
   `Record<InstallMode, string>` map up front and indexing into it.
   No behavior change.
 - **Dependabot dependency bumps** merged: `react-router-dom 7.15.1`
-  + `tsx 4.22.1` (npm minor patch group), and
-  `github/codeql-action 3.35.5` (CI workflows).
+  - `tsx 4.22.1` (npm minor patch group), and
+    `github/codeql-action 3.35.5` (CI workflows).
 
 ## [0.6.8] - 2026-05-18
 
@@ -911,10 +959,10 @@ bug that surfaced during that test run and got patched on the fly.
   - spawns `launcher.ps1`, a tiny supervisor while-loop that swaps
     in `agent.mjs.pending` (auto-update path) before each `node`
     invocation and respawns after a 5 s backoff.
-  AMD on Windows is not supported (no `rocm-smi` equivalent in the
-  Windows driver stack). Process list, CPU/RAM telemetry, and
-  `nvidia-smi pmon` are skipped — the WDDM driver model doesn't
-  expose `pmon`, and `/proc` only exists on Linux.
+    AMD on Windows is not supported (no `rocm-smi` equivalent in the
+    Windows driver stack). Process list, CPU/RAM telemetry, and
+    `nvidia-smi pmon` are skipped — the WDDM driver model doesn't
+    expose `pmon`, and `/proc` only exists on Linux.
 - **Windows-safe auto-update path.** `agent_update` frames detect
   `process.platform === 'win32'` and stage the new bundle as
   `agent.mjs.pending` instead of an in-place `renameSync` onto a
@@ -1038,14 +1086,14 @@ bug that surfaced during that test run and got patched on the fly.
 - **Agent EROFS spam on systemd installs.** With `ProtectSystem=strict`
   and an empty `ReadWritePaths=`, `/opt/gpuviewr-agent` was read-only,
   so every hub-pushed `agent_update` raised `filesystem swap failed:
-  EROFS` and contributed to a close 1008 / reconnect storm. The agent
+EROFS` and contributed to a close 1008 / reconnect storm. The agent
   now pre-checks write access on the install dir and emits a single
   WARN per session instead of one ERROR per update push.
 - **NVIDIA process collector ran at `TICK_MS` instead of
   `PROCESSES_TICK_MS`.** The AMD branch already used the throttled
   value; the NVIDIA branch passed `cfg.tickMs` (1 s) instead of
   `cfg.processesTickMs` (default 2 s). Halves nvidia-smi compute-apps
-  + pmon spawn rate with `FEATURES=processes`.
+  - pmon spawn rate with `FEATURES=processes`.
 - **Rate-limit storm during replay.** A reconnect with N buffered
   frames drained at `REPLAY_CHUNK` fps in parallel with live samples;
   combined they tripped the hub's `RATE_LIMIT_PER_SEC=100` and looped
@@ -1241,7 +1289,7 @@ bug that surfaced during that test run and got patched on the fly.
 - **`install.sh` leaked `WARN[0000] variable not set`** on
   re-installs against an already-running stack. Generating `.env`
   BEFORE downloading `docker-compose.yaml`, then `set -a; . ./.env;
-  set +a` exports the vars into the script's shell so subsequent
+set +a` exports the vars into the script's shell so subsequent
   `docker compose` invocations inherit them — no more env-var
   warnings during reconcile.
 - **Hidden `--progress quiet` removed** — users now see native
@@ -1268,7 +1316,7 @@ bug that surfaced during that test run and got patched on the fly.
 ### Fixed
 
 - **Bare-metal agent crashed at boot with `ERR_MODULE_NOT_FOUND
-  'ws'`.** The bundle was built with `--external:ws`, expecting the
+'ws'`.** The bundle was built with `--external:ws`, expecting the
   install path to set up a `node_modules` alongside, but `install.sh`
   only drops `agent.mjs` on disk. Now `ws` is bundled inline (38 KB →
   161 KB bundle, acceptable). The optional native deps
@@ -1301,7 +1349,7 @@ bug that surfaced during that test run and got patched on the fly.
   stdout/stderr redirects), and output buffering on a `curl | bash`
   pipe occasionally surfaced them before `.env` lived on disk.
   Passing `--progress quiet` to both `compose pull` and `compose up
-  -d` kills the chatter; the final "Container Healthy" summary
+-d` kills the chatter; the final "Container Healthy" summary
   still prints.
 
 ## [0.5.0] - 2026-05-16
@@ -1424,6 +1472,7 @@ docker compose up -d
 ## [0.4.2] - 2026-05-16
 
 ### Added
+
 - **`docker-compose.nvidia.yaml`** at the repo root. Mirrors the AMD
   recipe — NVIDIA Container Toolkit passthrough enabled out of the
   box. Three compose variants now sit side by side: `nvidia` (NVIDIA
@@ -1435,9 +1484,9 @@ docker compose up -d
   `/etc/hostname` isn't bind-mounted or returns the container id on
   a particular kernel.
 - **Hub `Dockerfile` bakes the agent bundle** (`agent/dist/agent.mjs`
-  + `agent/install.sh.tpl`). `/install.sh` + `/agent.mjs` no longer
-  503 on first boot — the curl-install path for enrolling remote
-  agents works out of the box.
+  - `agent/install.sh.tpl`). `/install.sh` + `/agent.mjs` no longer
+    503 on first boot — the curl-install path for enrolling remote
+    agents works out of the box.
 - **Dashboard `HostChip`** showing the resolved hostname + a "Hub"
   pill on `LOCAL_HOST_ID`. Visible on mono-host installs too, where
   the `HostSelector` dropdown self-hides. Same chip on the "All
@@ -1446,10 +1495,11 @@ docker compose up -d
   badge in Settings → Hosts so the visual language stays consistent.
 
 ### Changed
+
 - **Compose files renamed `.yml` → `.yaml`.** YAML.org spec
   preference; Docker Compose v2 auto-discovers `.yaml` first. Five
   files: `docker-compose.{yaml,nvidia.yaml,amd.yaml,agent.yaml,
-  agent.amd.yaml}`. No `.yml` symlinks kept — clean break.
+agent.amd.yaml}`. No `.yml` symlinks kept — clean break.
 - **Hostname resolution inside containers.** `os.hostname()` returns
   the container id on Docker. New `server/utils/hostHostname.ts`
   tries in order: `HUB_HOSTNAME` env, `/host/etc/hostname` bind-mount,
@@ -1470,6 +1520,7 @@ docker compose up -d
   where relevant).
 
 ### Fixed
+
 - **Hub-side rate-limit warning** logged once per offending frame
   during a disconnect close (80+ lines per agent reconnect storm).
   Now logged exactly once per session with the actual frame rate
@@ -1488,6 +1539,7 @@ docker compose up -d
 ## [0.4.1] - 2026-05-16
 
 ### Added
+
 - **`server/utils/hostHostname.ts`** reads the real host hostname from
   `/host/proc/sys/kernel/hostname` (bind-mount) when the hub runs in a
   container. Replaces `os.hostname()` at three call sites — Hosts
@@ -1496,6 +1548,7 @@ docker compose up -d
   badge in Settings → Hosts).
 
 ### Changed
+
 - `docker-entrypoint.sh` probe is now vendor-aware via `GPU_VENDOR`
   — no more "nvidia-smi not found" warning on AMD installs.
 - Hub `Dockerfile` bakes `agent/dist/agent.mjs` into the runtime
@@ -1508,6 +1561,7 @@ docker compose up -d
 ## [0.4.0] - 2026-05-16
 
 ### Added
+
 - **Single-host AMD install — no agent required.** The hub itself now
   speaks `rocm-smi` on the local machine, so an AMD-only box (Strix
   Halo, RDNA3, discrete Radeon) can run GpuViewR via a single
@@ -1524,7 +1578,7 @@ docker compose up -d
     instead of a silent no-data symptom.
   - `server/services/rocmProcessCollector.ts`: hub-side
     `/api/processes` for local AMD via `rocm-smi --showpids
-    --showbus --json`. Same `Snapshot` shape as the NVIDIA path,
+--showbus --json`. Same `Snapshot` shape as the NVIDIA path,
     so the frontend gets the same `GpuProcess[]` it expects.
   - `server/services/activeGpuCollector.ts`: vendor resolution
     module. Owns both the sample and process collector picks;
@@ -1539,7 +1593,7 @@ docker compose up -d
     AMD recipe (`/dev/kfd` + `/dev/dri`, `/opt/rocm:ro`
     bind-mount, `LD_LIBRARY_PATH`, `GPU_VENDOR=amd`).
 - **Unified-chart mode on the Hosts page.** Third toggle alongside
-  *Per host* and *All hosts total*: a single uPlot with util +
+  _Per host_ and _All hosts total_: a single uPlot with util +
   temp + power overlaid, util/temp on the percent axis and power
   on its own watts axis — same layout and colours as the
   Dashboard's `LiveChart` so the visual language matches across
@@ -1551,6 +1605,7 @@ docker compose up -d
   names. Falls back to `Server` for Intel / empty / unknown.
 
 ### Changed
+
 - **"Fleet" page label is now "Hosts" / "Hôtes".** Clearer for the
   solo-sysadmin user; industry terminology (AWS Fleet, FleetDM)
   is preserved via an info-icon tooltip on the page title and a
@@ -1573,6 +1628,7 @@ docker compose up -d
 ## [0.3.1] - 2026-05-16
 
 ### Added
+
 - **AMD / ROCm support in the remote agent (experimental).** Agents
   now run on AMD hosts (RDNA3, Strix Halo APUs, discrete Radeon)
   via `rocm-smi`. The same image serves both vendors: `GPU_VENDOR`
@@ -1606,7 +1662,7 @@ docker compose up -d
 - **Agent `TZ` / `TLS_INSECURE` ergonomics.** Both env vars are now
   threaded through `docker-compose.agent*.yml` with `${VAR:-default}`
   substitution, and the agent image ships `tzdata` so `TZ=Europe/
-  Paris` actually moves clock-on-log to local time. `TLS_INSECURE=1`
+Paris` actually moves clock-on-log to local time. `TLS_INSECURE=1`
   is documented as acceptable for self-signed certs on a private
   LAN but never over the open Internet.
 - **`gpuviewr-agent` Docker image now publishes to GHCR.** The
@@ -1614,10 +1670,11 @@ docker compose up -d
   (hub) and `gpuviewr-agent` in parallel with independent cache
   scopes. The agent image reference in `docker-compose.agent*.yml`
   finally resolves to a real `ghcr.io/erreur32/gpuviewr-agent:
-  latest`; previously it pointed at a non-existent tag and users
+latest`; previously it pointed at a non-existent tag and users
   had to fall back to `install.sh` bare-metal.
 
 ### Changed
+
 - **Agent runtime base bumped from `node:22-bookworm-slim` to
   `node:22-trixie-slim` (glibc 2.41).** Required for the AMD path:
   modern ROCm builds need `GLIBC_2.38` / `GLIBCXX_3.4.32`, and
@@ -1639,6 +1696,7 @@ docker compose up -d
   enrolled agents either way.
 
 ### Fixed
+
 - **Agent `Dockerfile` digest pins were stale.** Both the
   `node:22-bookworm-slim` builder and the previous distroless
   runtime referenced digests that no longer existed upstream, so
@@ -1647,7 +1705,7 @@ docker compose up -d
 - **`_rocmParsers.ts` SonarCloud cleanup.** Replaced a regex flagged
   for super-linear backtracking risk (S5852) with a char-by-char
   walker, threaded optional chains through the `if (!x ||
-  !x.trim())` guards, and split `parseRocmPids` into a top-level
+!x.trim())` guards, and split `parseRocmPids` into a top-level
   loop + helper so cognitive complexity drops from 21 to under 15.
   No behaviour change; the 21 parser tests still pass on the same
   Strix Halo fixtures.
@@ -1655,6 +1713,7 @@ docker compose up -d
 ## [0.3.0] - 2026-05-15
 
 ### Added
+
 - **Remote-agent GPU processes.** Agents now ship a `processes`
   frame on the `/agent` WebSocket alongside GPU samples. The agent
   collector runs `nvidia-smi --query-compute-apps` + `nvidia-smi pmon`
@@ -1707,6 +1766,7 @@ docker compose up -d
   and `/api/processes/`. Defaults to `local` for backward compat.
 
 ### Changed
+
 - **Dashboard / System view toggle relabelled.** The `Bars` /
   `Barres` button is now `Compact` (en + fr) since the alternative
   to gauges is a compact bar layout, not just "bars".
@@ -1729,6 +1789,7 @@ docker compose up -d
   saves ~40 px of vertical space per GPU card.
 
 ### Changed (breaking for export consumers)
+
 - **Prometheus**: every series now carries a `host="<id>"` label
   (`local` for mono-host installs). A `gpuviewr_host_info{host=<id>} 1`
   side-metric per host lets Grafana join human labels via
@@ -1749,6 +1810,7 @@ Grafana / HA / Influx migration snippets.
 ## [0.2.6] - 2026-05-15
 
 ### Security
+
 - **Rate-limit on `/install.sh` and `/agent.mjs`** (CodeQL #42/#43).
   A dedicated `installLimiter` (30 req/min/IP) is now applied at the
   router level; the comment header that already claimed
@@ -1767,6 +1829,7 @@ Grafana / HA / Influx migration snippets.
   longer noisy.
 
 ### Added
+
 - **Fleet `/fleet` range selector.** `FleetChart` now mirrors the
   Dashboard's `RangeSelector`. `live` keeps the rolling 60s in-memory
   window; longer ranges (`5m` … `3d`) fetch `/gpu/history` per
@@ -1780,10 +1843,11 @@ Grafana / HA / Influx migration snippets.
   understands what it's tracking.
 
 ### Changed
+
 - **Fleet density toggle renamed** "Simple/Detailed" → Compact/Bars
   ("Compacte/Barres" in fr), matching the new tile layout.
 - **Footer WS pill is i18n-resilient.** `t('common.connected' /
-  'common.disconnected')` now passes a `defaultValue`, so a stale
+'common.disconnected')` now passes a `defaultValue`, so a stale
   service-worker cache that ships a JS bundle from before those keys
   existed can no longer surface the raw key in the UI.
 - **Modal accessibility.** All modal backdrops (EnrollHost,
@@ -1792,6 +1856,7 @@ Grafana / HA / Influx migration snippets.
   `role="group"` to `role="toolbar"` with an `aria-label`.
 
 ### Fixed
+
 - **30+ SonarCloud findings cleared in a single sweep.** Highlights:
   `exportService.metricsSummary` split into focused helpers
   (cognitive complexity 21 → well under 15), negated ternaries
@@ -1802,6 +1867,7 @@ Grafana / HA / Influx migration snippets.
   with a documented `execCommand` fallback for insecure contexts.
 
 ### Demo
+
 - **`?fleet=1` deep-link entry.** When a visitor lands on the base
   URL with `?fleet=1`, `bootstrapDemo` `replaceState`s to `/fleet`
   before React mounts, so the multi-host UI is the first screen they
@@ -1811,6 +1877,7 @@ Grafana / HA / Influx migration snippets.
 ## [0.2.5] - 2026-05-14
 
 ### Added
+
 - **Progressive Web App support.** GpuViewR can now be installed as
   a standalone Chromium app via the browser's install prompt. A
   generated service worker (via `vite-plugin-pwa`) precaches the
@@ -1825,6 +1892,7 @@ Grafana / HA / Influx migration snippets.
   `apple-touch-icon` link in `index.html` for iOS home-screen.
 
 ### Changed
+
 - **Demo CSP** now whitelists `manifest-src 'self'` and
   `worker-src 'self'` so the service worker registers correctly on
   GitHub Pages.
@@ -1832,6 +1900,7 @@ Grafana / HA / Influx migration snippets.
 ## [0.2.4] - 2026-05-10
 
 ### Fixed
+
 - **Phantom hwmon sensors no longer leak to the UI.** The host
   thermal pipeline now applies a 5–150°C plausibility window in
   `readHostTemperatures()`, so unwired motherboard pins and
@@ -1843,6 +1912,7 @@ Grafana / HA / Influx migration snippets.
   bringing the function below the 15-complexity gate.
 
 ### Changed
+
 - **System thermal panel hero is split into CPU + GPU sub-frames.**
   Each domain shows its own hottest sensor and heat bar. NVIDIA hosts
   (no GPU hwmon node) populate the GPU sub-frame from `info.gpus[]`
@@ -1858,6 +1928,7 @@ Grafana / HA / Influx migration snippets.
 ## [0.2.3] - 2026-05-10
 
 ### Added
+
 - **Host temperature sensors on the System page.** New backend module
   reads `/sys/class/hwmon/*` (CPU package, per-core temps, NVMe drives,
   ACPI thermal zones) and exposes them via `GET /api/system` under a
@@ -1872,6 +1943,7 @@ Grafana / HA / Influx migration snippets.
   so the demo's new thermal panel animates alongside the GPU mocks.
 
 ### Changed
+
 - **Unified metric order across the entire UI.** Cards, gauges, chart
   legends, tooltip rows, alert metric selectors, threshold/colour
   pickers and webhook payload field lists now read in the same order
@@ -1885,10 +1957,12 @@ Grafana / HA / Influx migration snippets.
 ## [0.2.2] - 2026-05-05
 
 ### Changed
+
 - Alerts tab: rules table split into GPU / System groups with category
   headers; per-rule "All GPUs" subtitle removed for cleaner rows.
 
 ### Added
+
 - Alerts tab: per-event delete button (appears on row hover) and "Clear
   all" button to remove all events at once. Backend: DELETE
   /api/alerts/events/:id and DELETE /api/alerts/events routes.
@@ -1896,6 +1970,7 @@ Grafana / HA / Influx migration snippets.
 ## [0.2.1] - 2026-05-05
 
 ### Changed
+
 - Alerts tab: Rules section is now collapsed by default, showing a rule
   count. It auto-expands when a rule is created or presets are installed,
   so Recent Events stay visible instead of being buried below a large
@@ -1912,6 +1987,7 @@ an "All GPUs" overview with a combined live chart, and the gauge-view
 selector is dropped from Settings (each tab now keeps its own choice).
 
 ### Added
+
 - **Public demo build for GitHub Pages.** `npm run build:demo`
   produces `dist-demo/` (~235 KB gzip), which the new
   `.github/workflows/pages.yml` deploys to
@@ -1934,6 +2010,7 @@ selector is dropped from Settings (each tab now keeps its own choice).
 - Live demo link in `README.md` right under the tagline.
 
 ### Changed
+
 - **Sparkline gradient fix.** Every sparkline used a fixed
   `<linearGradient id="sl-grad">`, so SVG-defs collisions made all
   gauges paint with the wrong colour. The id is now generated via
@@ -1950,6 +2027,7 @@ selector is dropped from Settings (each tab now keeps its own choice).
   no-op commit.
 
 ### Internal
+
 - New `dashboardView` flag on `uiStore` (`'single' | 'all'`),
   persisted under `gpuviewr.dashboard_view`. `selectedGpu` stays an
   index so the per-GPU choice survives mode switches.
@@ -1967,6 +2045,7 @@ host-scoped alert presets land, the MQTT settings get a layout pass,
 and the Home Assistant help block is restyled.
 
 ### Added
+
 - **Host metrics on every exporter (toggle).** Each exporter has a new
   `includeSystemStats` setting (off by default):
   - **Prometheus** exposes `gpuviewr_host_*` gauges on `/metrics`
@@ -1993,10 +2072,11 @@ and the Home Assistant help block is restyled.
   / presets picker order, badges and icons all extend cleanly to the
   three new metrics.
 - **`gpuviewr_host` as a Home Assistant device.** When MQTT discovery
-  + host stats are both enabled, host CPU / load / memory appear as a
-  separate device alongside the per-GPU devices.
+  - host stats are both enabled, host CPU / load / memory appear as a
+    separate device alongside the per-GPU devices.
 
 ### Changed
+
 - **MQTT settings layout.** Broker URL, status (connecté/disconnecté),
   push interval are now in a flat status block above the "Ce qui est
   envoyé" disclosure — text no longer overlaps the disclosure summary.
@@ -2013,6 +2093,7 @@ and the Home Assistant help block is restyled.
   Final note rendered in a soft warn-tinted box.
 
 ### Removed (em-dashes)
+
 - "Les règles ajoutées sont désactivées — vérifiez puis activez
   chacune." → uses `:` instead.
 - HA help step 5 "en entités distinctes — utilisables" → "en entités
@@ -2020,6 +2101,7 @@ and the Home Assistant help block is restyled.
 - EN steps 2 + 4 reworded similarly.
 
 ### Internal
+
 - `alertService` no longer needs `as unknown as GpuSample`. The
   evaluator is typed against an `EvalSample = GpuSample | HostSample`
   union with an `isHostSample` type guard, so `readMetric` narrows
@@ -2035,6 +2117,7 @@ becomes a shared component reused by Dashboard and System, and a
 few SonarCloud findings on the alert formatter are fixed.
 
 ### Added
+
 - **PCIe RX/TX tiles on the System page.** Each GPU card now shows
   the same glass-style RX / TX fill bars as the Dashboard PCIe
   panel, normalized against the GPU's theoretical link bandwidth.
@@ -2048,11 +2131,13 @@ few SonarCloud findings on the alert formatter are fixed.
   identical tiles with no drift.
 
 ### Changed
+
 - **System API exposes RX/TX.** `/api/system` now includes
   `pcie_rx_kbps` and `pcie_tx_kbps` per GPU, plumbed straight from
   the gpuCollector sample.
 
 ### Fixed (SonarCloud)
+
 - **alertFormatter: `replace` -> `replaceAll`.** `escapeHtml`
   switches to ES2021 `String#replaceAll` for the three HTML escape
   substitutions.
@@ -2073,13 +2158,14 @@ preset deduplication and category-grouped rule list, plus a few
 UI polish fixes on the System cards and the chart legend.
 
 ### Added
+
 - **Localized Discord/Telegram alert messages.** New
   `server/services/alertFormatter.ts` builds a single message in
   English or French (per-webhook setting), with values rendered in
   bold (Markdown for Discord, HTML for Telegram). The plain text
   also lands in the generic JSON payload as a `messages` block.
-  Wording mirrors the in-app "Recent events" row, e.g. *"Utilization
-  above 80% (observed 93%) on GPU #0"*.
+  Wording mirrors the in-app "Recent events" row, e.g. _"Utilization
+  above 80% (observed 93%) on GPU #0"_.
 - **Webhook language setting.** New `language` field on
   `WebhookConfig` (`en` / `fr`, default `en`), exposed in
   Settings → Exports → Webhook (visible in alerts mode). Test
@@ -2096,6 +2182,7 @@ UI polish fixes on the System cards and the chart legend.
   `/settings/about` (the title still goes to the dashboard).
 
 ### Changed
+
 - **Alerts page: rules grouped by metric category.** The rules
   table is now sorted in a stable order — temperature first, then
   utilization, memory, power, fan_speed — secondary sort by
@@ -2112,6 +2199,7 @@ UI polish fixes on the System cards and the chart legend.
   gauge below the others.
 
 ### Removed
+
 - **Chart legend "reset color" `×` button.** The little `×` next to
   a custom-colored chip looked like a "delete legend" affordance
   but only reset the colour. Removed entirely; the show/hide click
@@ -2128,6 +2216,7 @@ range so theme/gradient tweaks can be previewed without a real
 GPU.
 
 ### Added
+
 - **PCIe RX/TX fill bars.** The RX and TX tiles now display a
   glass-style fill that scales with traffic relative to the
   link's theoretical bandwidth. Log-scaled so idle traffic is
@@ -2142,6 +2231,7 @@ GPU.
   themes and doesn't wash out in light themes.
 
 ### Changed
+
 - **Bar gauge gradient.** The temperature / utilization /
   memory / fan / power bars use a 3-stop gradient
   (sombre -> pleine couleur -> leger eclat) anchored to the
@@ -2159,6 +2249,7 @@ GPU.
   `--gv-text-dim`, fixing low contrast on dark themes.
 
 ### Removed
+
 - **Chart "pin" click.** Clicking on the live chart no longer
   toggles a frozen-cursor mode (the feature was unreliable). The
   hover tooltip and keyboard interactions are unchanged. Unused
@@ -2166,6 +2257,7 @@ GPU.
   keys removed.
 
 ### Dev / Mock
+
 - **Full-range sweeps.** `MOCK_GPU=1` now uses a clean
   `sweep(min, max, period, phase)` helper for utilization, temp,
   fan, power, memory and PCIe RX/TX, so every gauge visits both
@@ -2183,6 +2275,7 @@ hover/focus tooltip behind a small info icon, and the
 height per GPU.
 
 ### Changed
+
 - **PCIe bandwidth hint -> info tooltip.** The two-line hint
   paragraph that explained "NVIDIA cards downshift the link gen
   at idle, so 4.00 GB/s vs. 15.76 GB/s max is normal" is gone
@@ -2209,16 +2302,17 @@ was firing on idle GPUs because NVIDIA cards downshift the PCIe
 gen at idle to save power — that is not a hardware fault.
 
 ### Changed
+
 - **System "Effective bandwidth" → "Link bandwidth"** (FR:
   "Bande passante effective" → "Bande passante du lien"). The
-  number was always the theoretical bandwidth at the *current*
+  number was always the theoretical bandwidth at the _current_
   PCIe gen × width, not the live RX/TX throughput; the old label
   read like the latter. Added an inline hint explaining that the
   link gen drops at idle (ASPM) and is expected to sit below the
   max — for example 4.00 GB/s on a PCIe 4.0 ×8 GPU at idle, vs.
   15.76 GB/s under load.
 - **"Degraded link" badge** (System and Dashboard) now triggers
-  only on a lane *width* mismatch (real seating / BIOS issue).
+  only on a lane _width_ mismatch (real seating / BIOS issue).
   Lower current gen vs max is normal idle behaviour and no
   longer counts as a degradation. The same badge was also added
   to the Dashboard PCIe card for parity.
@@ -2240,6 +2334,7 @@ harmonize the gauge/bar selector order across the dashboard and
 system pages.
 
 ### Changed
+
 - **Dashboard header is now one row**, not two. The previous
   layout had `[GpuTabs … Gauges/Bars Range]` on row 1 and the
   GPU name + `GPU #N · driver X.Y.Z` on row 2. Both are merged
@@ -2257,6 +2352,7 @@ Two visual polish fixes: shorter PCIe tiles and no more blink on
 Stats cards every refresh.
 
 ### Changed
+
 - **PCIe card tiles (RX, TX, Link bandwidth, Link) are now ~25 %
   shorter.** Padding tightened (px-2.5 py-1.5), value text drops
   from text-lg to text-base, the gap above the number is removed.
@@ -2277,6 +2373,7 @@ Mark the per-pid CPU bookkeeping map as readonly to silence
 SonarCloud's S2933 maintainability smell.
 
 ### Changed
+
 - `ProcessCollector.cpuPrev` is now declared `readonly`. The
   reference is set once at construction and only the map's
   contents (entries) are mutated via `set` / `delete`, so the
@@ -2288,6 +2385,7 @@ SonarCloud's S2933 maintainability smell.
 Silence SonarCloud's S2245 PRNG hotspot on the mock GPU collector.
 
 ### Changed
+
 - **`mockGpu.ts` no longer calls `Math.random()`.** All four
   cosmetic uses (jitter, fake CPU%/GPU%, process memory weights)
   now go through a tiny `rand01()` helper backed by Node's
@@ -2298,12 +2396,13 @@ Silence SonarCloud's S2245 PRNG hotspot on the mock GPU collector.
 
 ## [0.1.33] - 2026-05-04
 
-Fix the *real* reason PCIe RX/TX stayed at "-", and beef up the
+Fix the _real_ reason PCIe RX/TX stayed at "-", and beef up the
 per-GPU process table with nvtop-equivalent columns.
 
 ### Fixed
+
 - **PCIe throughput collector now actually runs.** `nvidia-smi -q
-  -d PCI` was the previous command, but `PCI` is not a valid value
+-d PCI` was the previous command, but `PCI` is not a valid value
   for `--display`/`-d` (allowed list is MEMORY|UTILIZATION|ECC|
   TEMPERATURE|POWER|CLOCK|COMPUTE|PIDS|PERFORMANCE|
   SUPPORTED_CLOCKS|PAGE_RETIREMENT|ACCOUNTING|ENCODER_STATS|
@@ -2317,12 +2416,14 @@ per-GPU process table with nvtop-equivalent columns.
   `docker compose logs` instead of a quiet failure.
 
 ### Changed
+
 - **PCIe RX/TX show "0 KiB/s" when the driver returns nothing**
   (or zero) instead of a "-" placeholder, on user request.
   Visually matches nvtop's idle reading and conveys "we did
   measure, traffic is just nil".
 
 ### Added
+
 - **Per-GPU "Processes using this GPU" table now mirrors nvtop's
   layout.** Adds three columns: Type (C / G / G+C badge sourced
   from `nvidia-smi pmon`), GPU% (per-process SM utilization,
@@ -2341,6 +2442,7 @@ the CSV query and `-q -d PCI` happen to differ, and warm-yellow the
 process names in the per-GPU process table.
 
 ### Fixed
+
 - **PCIe RX/TX stayed at "-"** when the CSV `pci.bus_id` returned by
   `--query-gpu` and the per-block header from `nvidia-smi -q -d PCI`
   disagreed on format (real driver inconsistency). The throughput
@@ -2351,6 +2453,7 @@ process names in the per-GPU process table.
   can be diagnosed without redeploying.
 
 ### Changed
+
 - **Process names in the per-GPU "Processes using this GPU" table**
   render in warm yellow (var(--gv-warn)) so the eye finds the
   binary path quickly against the rest of the columns.
@@ -2360,6 +2463,7 @@ process names in the per-GPU process table.
 System page: condense card metadata so bars/gauges dominate.
 
 ### Changed
+
 - **Host / CPU / Memory cards** drop the 3-column label-value
   grid in favour of a single inline metadata line right of the
   title (Concept B). The body of each card now belongs to the
@@ -2378,14 +2482,16 @@ PCIe RX and TX now show real, distinct, instantaneous traffic
 instead of the same theoretical link capacity in both tiles.
 
 ### Fixed
+
 - **PCIe RX/TX tiles were both showing the link's theoretical max
   bandwidth** (gen × width, in GB/s) — the same number, never
   changing, with the wrong unit. The collector now also runs
   `nvidia-smi -q -d PCI` per tick, parses the per-GPU `Tx/Rx
-  Throughput` lines (NVML PCIe counter, sampled ~20 ms), and
+Throughput` lines (NVML PCIe counter, sampled ~20 ms), and
   feeds real KiB/s into two separate tiles.
 
 ### Added
+
 - **New "Link bandwidth" tile** alongside RX / TX / Link, showing
   the theoretical unidirectional maximum of the active link
   (still in GB/s) — what the previous RX/TX tiles were actually
@@ -2399,6 +2505,7 @@ Polish the Midnight and Graphite themes: cards stand out more,
 header text is pure white, active nav link is more legible.
 
 ### Changed
+
 - **Midnight & Graphite cards** now use a lifted, more opaque
   surface so they pop off the page gradient instead of blending
   into it. Borders bumped from ~5–6 % to ~9–10 % white opacity
@@ -2419,6 +2526,7 @@ Split the combined Metrics tab and put the gauge style picker first
 on the Customize page.
 
 ### Changed
+
 - **Exports & integrations now has four sub-tabs** instead of three:
   Notification · Home Assistant · **Prometheus** · **InfluxDB**.
   The previous combined "Metrics" tab is gone — each backend has
@@ -2434,6 +2542,7 @@ on the Customize page.
 Show an at-a-glance "active" indicator on each Exports sub-tab.
 
 ### Added
+
 - **Green status dot on the sub-tab labels** (Notification / Home
   Assistant / Metrics) when the underlying exporter(s) are active.
   Notification dots when the webhook is enabled, Home Assistant
@@ -2449,6 +2558,7 @@ Make the InfluxDB "Send test" report the real result instead of a
 guaranteed success.
 
 ### Fixed
+
 - **InfluxDB test now returns the broker's actual HTTP response.**
   The previous test delegated to the periodic push helper, which
   swallows HTTP errors (logs a warning) and bails out silently when
@@ -2464,6 +2574,7 @@ Make the MQTT "Send test" button actually test the broker — and stop
 masking the real reason behind a generic "Bad Gateway".
 
 ### Fixed
+
 - **MQTT test now opens its own short-lived connection** instead of
   just polling `mqttClient.connected` on the long-running client.
   The previous behavior raced the background reconnect: clicking
@@ -2482,6 +2593,7 @@ Give MQTT / Home Assistant its own settings sub-tab, with an in-app
 walkthrough of the HA-side configuration.
 
 ### Added
+
 - **New "Home Assistant" sub-tab** under Exports & integrations,
   separate from the generic Metrics sub-tab (which now only hosts
   Prometheus and InfluxDB). The MQTT block lives there alongside a
@@ -2496,6 +2608,7 @@ walkthrough of the HA-side configuration.
 Make long ranges (1h+) snappy by downsampling history server-side.
 
 ### Performance
+
 - **Server-side bucket-average for the chart's history endpoint.**
   At 1Hz collection, `3d` returned ~259k rows (~30 MB JSON) which
   dominated load time on range switch. The endpoint now caps the
@@ -2510,6 +2623,7 @@ Make the chart's time window truly rolling for every range, not just
 `live`.
 
 ### Fixed
+
 - **Chart range now slides for all periods.** Previously only
   `live` (90s) trimmed old points from the left edge as new ones
   arrived; `5m`, `15m`, `1h`, `6h`, `24h`, `3d` kept the initial
@@ -2527,6 +2641,7 @@ Default the dashboard chart to **Live** on first run, and drop the
 now-redundant 1m/2m migration shim.
 
 ### Changed
+
 - Chart range defaults to `live` (was `1h`) for fresh
   installs. Users with an existing `gpuviewr.range` in
   localStorage keep their selection.
@@ -2541,6 +2656,7 @@ Asset cleanup release: working alert sound, square favicon and a
 70 % reduction of the public PNG payload.
 
 ### Fixed
+
 - **Alert sound** now actually plays. The shipped
   `public/alert.mp3` was a 107-byte HTML placeholder; replaced
   with a real MP3 binary so `Audio('/alert.mp3').play()` decodes
@@ -2549,6 +2665,7 @@ Asset cleanup release: working alert sound, square favicon and a
   page once is enough.
 
 ### Changed
+
 - **Favicon** now uses `public/logo.png` (256×256 square PNG)
   instead of the 1254×1254 `gpuviewr_logo.png`. Tab icon
   renders crisp at native size with no scaling.
@@ -2576,6 +2693,7 @@ fix, and a large SonarCloud cleanup pass (≈46 issues across
 seven categories).
 
 ### Added
+
 - **PCIe connectivity** for every detected GPU. The collector
   now queries `pci.bus_id`, `pcie.link.gen.{current,max}` and
   `pcie.link.width.{current,max}` from `nvidia-smi`. The server
@@ -2591,22 +2709,25 @@ seven categories).
   width is below the GPU/slot maximum.
 
 ### Changed
+
 - Header navigation: System tab moved next to Dashboard
   (Dashboard / System / Alerts / Logs / Settings).
 - Mock GPU 1 (RTX 3060) now reports a degraded PCIe 3.0 ×8 link
   so the badge is visible in dev without a real GPU.
 
 ### Fixed
+
 - **Docker compose**: the previous `cap_drop: [ALL]` was too
   aggressive — the official image's entrypoint uses `gosu` to
   drop privileges to the `node` user, which needs SETUID,
   SETGID, CHOWN, FOWNER and DAC_OVERRIDE. Without them the
   container looped on `error: failed switching to "node":
-  operation not permitted`. We now drop ALL caps and explicitly
+operation not permitted`. We now drop ALL caps and explicitly
   cap_add the five the boot sequence actually needs;
   `no-new-privileges:true` stays on.
 
 ### Refactored (SonarCloud)
+
 - 6 cognitive-complexity reductions: `alerts.ts` PATCH handler,
   `alertService.evaluate`, `exportService.sendWebhook`,
   `exportService.test`, `updateService.runCheck`,
@@ -2624,7 +2745,7 @@ seven categories).
 - 2 `NaN` → `Number.NaN`; 2 lookup arrays (`VALID_CONDITIONS`,
   `LEVELS`) converted to `Set` with `.has()`.
 - `void bootstrap()` replaced with top-level `await
-  bootstrap()` (Node 22 + ESM), so any unhandled rejection
+bootstrap()` (Node 22 + ESM), so any unhandled rejection
   bubbles to the runtime instead of being swallowed.
 - `themes.ts`: extracted `makeTheme()` to deduplicate the 6
   theme entries flagged by Sonar (Duplicated Lines on New
@@ -2644,6 +2765,7 @@ mock GPU data for dev, URL-based settings tabs, Paper Dark theme,
 and a 5-band heat scale for usage indicators.
 
 ### Added
+
 - **System tab overhaul**: machine vs GPU zones with coloured
   separators, CPU usage % computed server-side from delta of
   `os.cpus()` times, load average bars normalised to core count,
@@ -2672,6 +2794,7 @@ and a 5-band heat scale for usage indicators.
   greens, sage-mint text and an emerald accent.
 
 ### Changed
+
 - Manual "Refresh" buttons removed from System, Logs, Database
   and Exports panels (auto-refresh covers them); only the
   semantically distinct "Re-check for updates" button stays.
@@ -2686,6 +2809,7 @@ and a 5-band heat scale for usage indicators.
   bind mount and `cap_drop: [ALL]` hardening.
 
 ### Fixed
+
 - GPU utilisation values now display with two decimals so the
   numbers stop "shaking" between integer renders (especially with
   mock data).
@@ -2693,12 +2817,13 @@ and a 5-band heat scale for usage indicators.
   on two lines, the max in dim text.
 
 ### Security
+
 - New `processCollector` reads `${HOST_PROC}/<pid>/cmdline` so
   the container can resolve GPU process names by bind-mounting
   `/proc` read-only instead of sharing the host PID namespace.
 - Compose example dropped privilege escalation
   (`no-new-privileges:true`) and all capabilities (`cap_drop:
-  [ALL]`).
+[ALL]`).
 
 ## [0.1.17] - 2026-05-02
 
@@ -2706,6 +2831,7 @@ Stats / chart reorder around fan, CSV history export, exporter
 "what's being sent" panel, password-reset CLI, settings polish.
 
 ### Added
+
 - **Password reset CLI** (`scripts/reset-password.ts`, also
   `npm run user:reset-password`) for admins who lose web-UI
   access. Honors `DATA_DIR`, supports `--list`, masked prompt with
@@ -2729,6 +2855,7 @@ Stats / chart reorder around fan, CSV history export, exporter
   state (granted / not asked / blocked / not supported).
 
 ### Changed
+
 - **Dashboard order is now Temp - Util - Memory - Fan - Power**
   across the gauges above the chart (Fan card added, grid bumped
   to `lg:grid-cols-5`), the Statistics table, the chart legend
@@ -2745,6 +2872,7 @@ Stats / chart reorder around fan, CSV history export, exporter
   identical, single source of truth).
 
 ### Fixed
+
 - **`selectedGpu` persists across reloads** (key
   `gpuviewr.selected_gpu`); previously the dashboard always
   snapped back to GPU #0 on every page load.
@@ -2755,6 +2883,7 @@ Fan as a first-class chart curve and stat tile, Royal palette shipped
 as the new out-of-the-box default, and one-click classic alert presets.
 
 ### Added
+
 - **Fan speed in the live chart**: 5th series on the % scale with its
   own legend chip, threshold line, color picker and a Stats tile.
 - **Alert presets**: `GET /api/alerts/presets` and
@@ -2765,6 +2894,7 @@ as the new out-of-the-box default, and one-click classic alert presets.
   the user reviews thresholds before arming them.
 
 ### Changed
+
 - **Default chart palette is now Royal**: seeded once at first hydrate
   via a `chart_palette_initialized` flag in localStorage, leaving any
   pre-existing custom colors untouched on upgrade.
@@ -2775,6 +2905,7 @@ UX polish: cleaner Updates tab, smarter chart tooltip, deterministic
 "Check now" feedback.
 
 ### Changed
+
 - **Updates tab**: dropped the redundant inline release-notes preview
   (the About tab is now the only place with the full changelog
   viewer). Replaced with a compact link card "Release notes · vX.Y.Z
@@ -2785,12 +2916,13 @@ UX polish: cleaner Updates tab, smarter chart tooltip, deterministic
   to the top, so it never overlaps the pointer or gets clipped.
 
 ### Fixed
+
 - "Check now" button always shows a toast (4-6s):
   - `success` "You are up to date" / "GpuViewR vX.Y.Z is available"
   - `error` / `warn` with the failure reason
-  Reads the value freshly returned by `check(true)` instead of
-  re-reading the store, so a transient API failure no longer leaves
-  the user staring at a silent button.
+    Reads the value freshly returned by `check(true)` instead of
+    re-reading the store, so a transient API failure no longer leaves
+    the user staring at a silent button.
 
 ## [0.1.12] - 2026-05-02
 
@@ -2798,6 +2930,7 @@ Webhook overhaul (Discord / Telegram / Generic), Notification +
 Metrics sub-tabs, and a clearer update-check UX.
 
 ### Added
+
 - **Webhook types**: Generic (JSON POST/PUT), **Discord** (embed) and
   **Telegram** (HTML message via Bot API). Token / chat ID stored
   redacted in API responses.
@@ -2816,6 +2949,7 @@ Metrics sub-tabs, and a clearer update-check UX.
   an error toast — instead of staying silent.
 
 ### Fixed
+
 - Webhook test endpoint now actually checks the remote `response.ok`
   and surfaces the HTTP status / body excerpt on failure (it used to
   resolve with `ok: true` even when the remote answered 4xx).
@@ -2823,6 +2957,7 @@ Metrics sub-tabs, and a clearer update-check UX.
   keep our JSON body intact.
 
 ### Inspiration
+
 - The webhook architecture (type-aware sender, alert-event dispatch)
   is loosely inspired by the LogviewR `WebhookDispatchService`.
 
@@ -2832,6 +2967,7 @@ Memory series on the live chart, rolling 90s Live window, and a
 proper logo in the header / login + a live footer.
 
 ### Added
+
 - **Memory % series** on the live chart (utilization, temperature,
   power, memory). Color from `--gv-info` (cyan), gradient fill, chip
   legend, threshold line, cursor tooltip — all wired so the new
@@ -2848,6 +2984,7 @@ proper logo in the header / login + a live footer.
   (replacing the generic Cpu icon).
 
 ### Changed
+
 - **Live range is now a rolling 90-second window** instead of a
   fixed slice. Points older than `LIVE_WINDOW_S` slide off the left
   on every tick so the chart reads as a true real-time scope.
@@ -2861,6 +2998,7 @@ proper logo in the header / login + a live footer.
   script no longer touches `Header.tsx`.
 
 ### Notes
+
 - The hotspot / CodeQL noise from previous runs is unchanged here;
   this release does not add any new flagged code.
 
@@ -2871,6 +3009,7 @@ chart, new "Custom" tab for theme/gauge/curve colors, About is
 prettier, plus a sweep of Sonar fixes.
 
 ### Added
+
 - New **"Custom" tab** in Settings (renamed from "Theme") that groups
   the dark / light theme picker, the gauge style toggle (moved from
   General), and a brand new **Chart curves** card with five curated
@@ -2888,6 +3027,7 @@ prettier, plus a sweep of Sonar fixes.
   Dashboard from any other tab.
 
 ### Changed
+
 - The dashboard WebSocket (`useGpuStream`) is now mounted on
   `AppLayout` instead of `Dashboard`. Live samples keep flowing into
   the store while the user is on Settings / Alerts / Logs, so the
@@ -2897,6 +3037,7 @@ prettier, plus a sweep of Sonar fixes.
   banner (README hero), `gpuviewr.svg` for crisp rendering.
 
 ### Security / Code quality
+
 - Sweep `parseInt` / `parseFloat` -> `Number.parseInt` /
   `Number.parseFloat` across `server/` and `src/`
   (Sonar `typescript:S7773`).
@@ -2906,6 +3047,7 @@ prettier, plus a sweep of Sonar fixes.
 Settings, chart polish, per-process GPU table, security hardening.
 
 ### Added
+
 - **About tab in Settings**: logo, version (installed + latest), feature
   highlights, GitHub author + repo links, MIT license. Includes a
   dismissible update-banner toggle (persisted in `localStorage`) and an
@@ -2930,6 +3072,7 @@ Settings, chart polish, per-process GPU table, security hardening.
 - **SECURITY.md** with disclosure flow and supported versions.
 
 ### Changed
+
 - Layout widened from `max-w-7xl` to `max-w-[1600px]` (header, main,
   Settings) for large monitors.
 - Live chart x-axis now honors the user 24h / 12h preference and adds
@@ -2947,6 +3090,7 @@ Settings, chart polish, per-process GPU table, security hardening.
   README badge (replaced by the dynamic GitHub Release badge).
 
 ### Security
+
 - **Rate limiting** (`express-rate-limit`): apiLimiter (600/min) on
   `/api`, authLimiter (10/min, brute-force window) on `/api/auth`,
   metricsLimiter (120/min) on `/metrics`. `trust proxy = 1` so
@@ -2976,6 +3120,7 @@ Exports & integrations: Prometheus, MQTT (with Home Assistant
 discovery), InfluxDB v2, and Webhook.
 
 ### Added
+
 - **Prometheus exporter**: pull-based `GET /metrics` exposing
   `gpuviewr_gpu_temperature_celsius`, `gpuviewr_gpu_utilization_ratio`,
   `gpuviewr_gpu_memory_{used,total}_bytes`, `gpuviewr_gpu_power_watts`,
@@ -2989,9 +3134,9 @@ discovery), InfluxDB v2, and Webhook.
   topics so all GPU sensors register automatically in HA.
 - **InfluxDB v2 exporter**: pushes line-protocol writes to
   `<url>/api/v2/write?org=&bucket=&precision=s` with `Authorization:
-  Token ...`. Configurable measurement name and write interval.
+Token ...`. Configurable measurement name and write interval.
 - **Webhook exporter**: posts a JSON payload `{source, timestamp,
-  samples}` to a configurable URL with custom method (POST/PUT) and
+samples}` to a configurable URL with custom method (POST/PUT) and
   headers, at a configurable interval.
 - **Settings > Exports & integrations**: per-exporter form (enable
   toggle, URL, credentials, interval, exporter-specific options),
@@ -3003,6 +3148,7 @@ discovery), InfluxDB v2, and Webhook.
   CSV export, PWA, email dispatcher, multi-host fan-out).
 
 ### Changed
+
 - Server boot now calls `exportService.init()` and registers
   `app.use('/api/exports', ...)` (configs API) and
   `app.use('/metrics', ...)` (Prometheus). The SPA catch-all regex was
@@ -3015,6 +3161,7 @@ System tab, DB management UI, per-series chart colors, time format,
 sound toggle relocation, schema migration and SonarCloud fixes.
 
 ### Added
+
 - **System tab** in the header (next to Alerts) showing host hardware
   and runtime info: OS / kernel / arch / hostname / uptime / loadavg,
   CPU model + cores + base clock, memory total/used/free with a usage
@@ -3045,6 +3192,7 @@ sound toggle relocation, schema migration and SonarCloud fixes.
   "View on GitHub" link.
 
 ### Changed
+
 - **Sound toggle moved** from Settings to the Alerts page header (next
   to "Enable browser notifications") since it gates alert sounds. Now
   shows `Sound ON` / `Sound OFF` with a mute icon.
@@ -3058,6 +3206,7 @@ sound toggle relocation, schema migration and SonarCloud fixes.
   current/latest pair until the cache TTL elapsed.
 
 ### Fixed
+
 - **GPU utilization stored as 0** when `nvidia-smi` reports `[N/A]`.
   Schema migrated: `gpu_metrics.utilization` now allows NULL (SQLite
   table-rebuild migration runs at boot if the column still has the old
@@ -3075,8 +3224,9 @@ sound toggle relocation, schema migration and SonarCloud fixes.
   consecutive `mkdir -p /app/data && chown` RUN to reduce layer count.
 
 ### Performance
+
 - SQLite tuned: `cache_size = -65536` (~64 MiB page cache), `mmap_size
-  = 256 MiB`, `temp_store = MEMORY`. Existing pragmas (`WAL`,
+= 256 MiB`, `temp_store = MEMORY`. Existing pragmas (`WAL`,
   `synchronous = NORMAL`) and indexes (`timestamp_epoch`,
   `(gpu_index, timestamp_epoch)`) unchanged.
 
@@ -3085,12 +3235,13 @@ sound toggle relocation, schema migration and SonarCloud fixes.
 Live chart usability and accurate utilization handling.
 
 ### Added
+
 - **Interactive chart legend**: the Util / Temp / Power chips below the
   live chart are now clickable to hide / show each series. The chip dims
   and the label is struck-through when the series is hidden. Restores
   the toggle behavior expected from a chart legend.
 - **Short ranges**: `1 min` and `2 min` join `5m / 15m / 1h / 6h / 24h /
-  3d` for finer real-time monitoring. Server `parseRange` also accepts a
+3d` for finer real-time monitoring. Server `parseRange` also accepts a
   `s` (seconds) suffix.
 - **Settings > Updates**: the latest version's release notes (from the
   GitHub release, fallback to `CHANGELOG.md`) are now shown directly in
@@ -3098,6 +3249,7 @@ Live chart usability and accurate utilization handling.
   Includes a "View on GitHub" link.
 
 ### Fixed
+
 - **GPU utilization showing 0%** when `nvidia-smi` reports `[N/A]` for
   `utilization.gpu` (common on consumer cards in container/MIG/vGPU
   configs). The collector previously coerced `[N/A]` to `0`, which then
@@ -3110,6 +3262,7 @@ Live chart usability and accurate utilization handling.
   `displaySubValue` prop on `GaugeCard`.
 
 ### Changed
+
 - `updateService.runCheck` now fetches release notes for the latest
   tagged version unconditionally so the Settings panel can display them.
 
@@ -3119,6 +3272,7 @@ UX polish on the dashboard. The gauges feel live, the chart legend is
 always populated, and the stats panel stays in sync with the live samples.
 
 ### Changed
+
 - **Gauges**: removed the harsh outer drop-shadow glow on the arc rings.
   The arc now uses a subtle gradient stroke and shows two thin tick marks
   at the warn and danger thresholds so the bands are visible at a glance.
@@ -3145,6 +3299,7 @@ always populated, and the stats panel stays in sync with the live samples.
   with the gauges between flushes.
 
 ### Fixed
+
 - Built-in uPlot legend was disabled (it only showed values during hover
   and stayed empty otherwise). Replaced by the always-visible chip row
   above.
@@ -3173,6 +3328,7 @@ Docker image, multi-arch (amd64 + arm64), Node 22 Alpine.
 - i18n: English / French shipped, scaffolded for more locales.
 
 ### Security
+
 - Replaced **bcrypt** with **bcryptjs** (pure JS, API-compatible) to remove
   the transitive `@mapbox/node-pre-gyp` → `tar` chain. Dependabot was
   unable to apply the `tar` security advisory because `bcrypt@5.1.1` pinned
@@ -3186,11 +3342,12 @@ Docker image, multi-arch (amd64 + arm64), Node 22 Alpine.
     (Docker image), severity ≥ high
   - `sonarcloud.yml`: SonarCloud quality gate (uses `sonar-project.properties`)
 - Added `.github/dependabot.yml`: weekly grouped npm bumps + GitHub Actions
-  + Docker base image, all on Monday morning Europe/Paris.
+  - Docker base image, all on Monday morning Europe/Paris.
 - Added `.github/workflows/SETUP.md` documenting how to wire `SNYK_TOKEN`
   and `SONAR_TOKEN` and how to enable each scanner.
 
 ### Fixed
+
 - Boot banner now prints the **host-mapped port** (`DASHBOARD_PORT`) when
   running in Docker, instead of the unreachable container-internal port.
   The banner also reads the host LAN IP via `HOST_IP` (with auto-detect
@@ -3203,6 +3360,7 @@ Docker image, multi-arch (amd64 + arm64), Node 22 Alpine.
   longer accidentally ignored.
 
 ### Changed
+
 - README rewritten for end users: dropped the local-development section,
   inlined a copy-paste-ready `docker-compose.yml`, added a step-by-step
   `.env` walk-through, kept the comparison-with-original table behind a
@@ -3213,7 +3371,7 @@ Docker image, multi-arch (amd64 + arm64), Node 22 Alpine.
   transport, Collector, Storage, Frontend, Charts, Theming, Gauges,
   Multi-GPU, Authentication, Alerts, Server logs, i18n, Update flow,
   Image).
-- Removed the *Architecture* file-tree section from the README: it was
+- Removed the _Architecture_ file-tree section from the README: it was
   developer-facing noise that drifted out of sync each time a file moved.
 - Default ports moved off the originals to avoid collisions with sibling
   Docker stacks (probed against the host first):
@@ -3227,6 +3385,7 @@ Docker image, multi-arch (amd64 + arm64), Node 22 Alpine.
   and supports `--tag-push` to commit + tag + push in one shot.
 
 ### Added
+
 - **In-app update checker**:
   - `GET /api/updates/check` (cached per `frequencyHours`, `?force=true`
     bypass)
@@ -3270,17 +3429,20 @@ Docker image, multi-arch (amd64 + arm64), Node 22 Alpine.
 ## [0.1.2] - 2026-05-02
 
 ### Fixed
+
 - Docker image base switched from **Alpine (musl)** to **Debian slim (glibc)** to
   ensure `nvidia-smi` injected by the NVIDIA Container Toolkit is executable inside
   the container (fixes "GPU not detected" when device nodes are present but
   `nvidia-smi` cannot start).
 
 ### Changed
+
 - Removed the `update.sh` helper; the UI and documentation now recommend the
   standard Docker Compose update flow:
   `docker compose pull && docker compose up -d`.
 
 ### Credits
+
 - Project foundation inspired by [bigsk1/gpu-monitor](https://github.com/bigsk1/gpu-monitor):
   original data collection approach, SQLite schema, Docker packaging.
 - Boot banner, release script and CI workflow patterns mirrored from

@@ -3,18 +3,27 @@
 // happens once at boot (cf. resolveVendor): GPU_VENDOR=auto probes
 // both binaries and prefers whichever responds first.
 
-import { spawnSync } from 'node:child_process';
-import { loadConfig, type AgentConfig, type GpuVendor } from './config.js';
-import { logger } from './logger.js';
-import { AGENT_VERSION, createTransport, INSTALL_MODE } from './transport.js';
-import { createGpuCollector, type GpuCollectorHandle } from './collectors/gpu.js';
-import { createRocmGpuCollector } from './collectors/gpuRocm.js';
-import { createAmdgpuSysfsCollector } from './collectors/gpuAmdgpuSysfs.js';
-import { createPdhGpuCollector } from './collectors/gpuWindowsPdh.js';
-import { createProcessCollector, type ProcessCollectorHandle } from './collectors/processes.js';
-import { createRocmProcessCollector } from './collectors/processesRocm.js';
-import { createOllamaResolver, type OllamaResolver } from './collectors/ollamaManifests.js';
-import { buildMockSamples } from './mock.js';
+import { spawnSync } from "node:child_process";
+import { loadConfig, type AgentConfig, type GpuVendor } from "./config.js";
+import { logger } from "./logger.js";
+import { AGENT_VERSION, createTransport, INSTALL_MODE } from "./transport.js";
+import {
+  createGpuCollector,
+  type GpuCollectorHandle,
+} from "./collectors/gpu.js";
+import { createRocmGpuCollector } from "./collectors/gpuRocm.js";
+import { createAmdgpuSysfsCollector } from "./collectors/gpuAmdgpuSysfs.js";
+import { createPdhGpuCollector } from "./collectors/gpuWindowsPdh.js";
+import {
+  createProcessCollector,
+  type ProcessCollectorHandle,
+} from "./collectors/processes.js";
+import { createRocmProcessCollector } from "./collectors/processesRocm.js";
+import {
+  createOllamaResolver,
+  type OllamaResolver,
+} from "./collectors/ollamaManifests.js";
+import { buildMockSamples } from "./mock.js";
 
 const config = loadConfig();
 const vendor = resolveVendor(config);
@@ -29,12 +38,20 @@ const vendor = resolveVendor(config);
 // Banner line first: version + install mode are what people grep for in
 // `systemctl status` / `docker logs` when figuring out which agent is
 // stale. Keep it short and unmistakable.
-logger.info('boot', `gpuviewr-agent v${AGENT_VERSION} (${INSTALL_MODE}) starting on node ${process.version}`);
-logger.info('boot', `${config.hubs.length} hub${config.hubs.length === 1 ? '' : 's'}, label=${config.agentLabel ?? '(none)'}`);
-for (const h of config.hubs) logger.info('boot', `  → ${h.url} (host_id=${h.hostId})`);
-logger.info('boot', `Features: ${JSON.stringify(config.features)}`);
-logger.info('boot', `GPU vendor: ${vendor} (configured: ${config.gpuVendor})`);
-if (config.mockGpu) logger.warn('boot', 'MOCK_GPU=1 — synthetic GPU samples, no smi spawn');
+logger.info(
+  "boot",
+  `gpuviewr-agent v${AGENT_VERSION} (${INSTALL_MODE}) starting on node ${process.version}`,
+);
+logger.info(
+  "boot",
+  `${config.hubs.length} hub${config.hubs.length === 1 ? "" : "s"}, label=${config.agentLabel ?? "(none)"}`,
+);
+for (const h of config.hubs)
+  logger.info("boot", `  → ${h.url} (host_id=${h.hostId})`);
+logger.info("boot", `Features: ${JSON.stringify(config.features)}`);
+logger.info("boot", `GPU vendor: ${vendor} (configured: ${config.gpuVendor})`);
+if (config.mockGpu)
+  logger.warn("boot", "MOCK_GPU=1 — synthetic GPU samples, no smi spawn");
 
 const transport = createTransport(config);
 transport.start();
@@ -66,7 +83,7 @@ if (config.features.gpu) {
     // start ticking.
     gpuHandle = await buildGpuCollector(vendor, config);
     if (!gpuHandle.available()) {
-      const bin = vendor === 'amd' ? config.rocmSmiPath : config.nvidiaSmiPath;
+      const bin = vendor === "amd" ? config.rocmSmiPath : config.nvidiaSmiPath;
       // Windows fallback: vendor-specific tool unavailable (e.g.
       // nvidia-smi.exe missing on an AMD/Intel box that resolveVendor
       // initially guessed as nvidia). Try the PDH collector — it works
@@ -75,9 +92,9 @@ if (config.features.gpu) {
       // smi is still a hard misconfiguration; the install.sh.tpl checks
       // earlier so reaching here implies the binary was uninstalled
       // after enrollment.
-      if (process.platform === 'win32') {
+      if (process.platform === "win32") {
         logger.warn(
-          'boot',
+          "boot",
           `${vendor} GPU tool unavailable at ${bin} — falling back to Windows PDH counters (util + VRAM only, no temp/power/freq)`,
         );
         gpuHandle = createPdhGpuCollector({
@@ -87,11 +104,17 @@ if (config.features.gpu) {
         if (gpuHandle.available()) {
           gpuHandle.start();
         } else {
-          logger.warn('boot', 'PDH collector unavailable too — agent will run without GPU samples');
+          logger.warn(
+            "boot",
+            "PDH collector unavailable too — agent will run without GPU samples",
+          );
           gpuHandle = null;
         }
       } else {
-        logger.error('boot', `${vendor} smi not found at ${bin} — exiting (set MOCK_GPU=1 for dev)`);
+        logger.error(
+          "boot",
+          `${vendor} smi not found at ${bin} — exiting (set MOCK_GPU=1 for dev)`,
+        );
         process.exit(1);
       }
     } else {
@@ -106,15 +129,25 @@ if (config.features.gpu) {
 // the collector reads /proc/<pid>/{stat,cmdline} which is Linux-only,
 // and nvidia-smi pmon (used for GPU SM% per pid) isn't supported on
 // the Windows WDDM driver model anyway.
-if (process.platform === 'win32' && config.features.processes) {
-  logger.warn('boot', 'process collector disabled on Windows (no /proc; nvidia-smi pmon unsupported). GPU samples will still stream normally.');
+if (process.platform === "win32" && config.features.processes) {
+  logger.warn(
+    "boot",
+    "process collector disabled on Windows (no /proc; nvidia-smi pmon unsupported). GPU samples will still stream normally.",
+  );
 }
-if (config.features.processes && !config.mockGpu && process.platform !== 'win32') {
+if (
+  config.features.processes &&
+  !config.mockGpu &&
+  process.platform !== "win32"
+) {
   processHandle = buildProcessCollector(vendor, config);
   if (processHandle.available()) {
     processHandle.start();
   } else {
-    logger.warn('boot', `process collector disabled (${vendor} smi unavailable)`);
+    logger.warn(
+      "boot",
+      `process collector disabled (${vendor} smi unavailable)`,
+    );
     processHandle = null;
   }
 }
@@ -125,7 +158,7 @@ if (config.features.processes && !config.mockGpu && process.platform !== 'win32'
 // knows what to expect.
 
 function shutdown(signal: string): void {
-  logger.info('boot', `Received ${signal}, shutting down...`);
+  logger.info("boot", `Received ${signal}, shutting down...`);
   if (mockTimer) clearInterval(mockTimer);
   gpuHandle?.stop();
   processHandle?.stop();
@@ -134,52 +167,56 @@ function shutdown(signal: string): void {
   setTimeout(() => process.exit(0), 200).unref();
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 // --- vendor resolution -----------------------------------------------
 
 function smiResponds(bin: string): boolean {
   try {
-    return spawnSync(bin, ['--version'], { timeout: 3_000 }).status === 0;
+    return spawnSync(bin, ["--version"], { timeout: 3_000 }).status === 0;
   } catch {
     return false;
   }
 }
 
-function resolveVendor(cfg: AgentConfig): 'nvidia' | 'amd' {
-  if (cfg.gpuVendor === 'nvidia') return 'nvidia';
-  if (cfg.gpuVendor === 'amd') return 'amd';
+function resolveVendor(cfg: AgentConfig): "nvidia" | "amd" {
+  if (cfg.gpuVendor === "nvidia") return "nvidia";
+  if (cfg.gpuVendor === "amd") return "amd";
   // auto: probe both. Prefer nvidia when both exist (historical default,
   // and nvidia-smi exposes strictly more telemetry — PCIe RX/TX, pmon).
-  if (cfg.mockGpu) return 'nvidia';
+  if (cfg.mockGpu) return "nvidia";
   const nvidia = smiResponds(cfg.nvidiaSmiPath);
-  if (nvidia) return 'nvidia';
+  if (nvidia) return "nvidia";
   const amd = smiResponds(cfg.rocmSmiPath);
-  if (amd) return 'amd';
+  if (amd) return "amd";
   // Neither found. On Windows, returning 'amd' routes the agent to the
   // PDH collector — universal (works for AMD/Intel iGPU/NVIDIA without
   // driver tools). On Linux, leave it as nvidia so the existing error
   // path (`nvidia-smi not found … exiting`) fires with its familiar
   // message rather than a confusing "no vendor".
-  return process.platform === 'win32' ? 'amd' : 'nvidia';
+  return process.platform === "win32" ? "amd" : "nvidia";
 }
 
-async function buildGpuCollector(v: GpuVendor, cfg: AgentConfig): Promise<GpuCollectorHandle> {
+async function buildGpuCollector(
+  v: GpuVendor,
+  cfg: AgentConfig,
+): Promise<GpuCollectorHandle> {
   // On Windows, the "amd" branch is a misnomer — there is no rocm-smi
   // for Windows. We route it (and any non-NVIDIA Windows case) through
   // the PDH collector, which surfaces the same numbers Task Manager
   // shows. Works for AMD, Intel iGPU, even NVIDIA-without-smi.
-  if (process.platform === 'win32' && v === 'amd') {
+  if (process.platform === "win32" && v === "amd") {
     return createPdhGpuCollector({
       tickMs: cfg.tickMs,
       onSample: (samples) => transport.enqueueSample(samples),
     });
   }
-  if (v === 'amd') return buildAmdGpuCollector(cfg);
+  if (v === "amd") return buildAmdGpuCollector(cfg);
   return createGpuCollector({
     nvidiaSmiPath: cfg.nvidiaSmiPath,
     tickMs: cfg.tickMs,
+    pcieTickMs: cfg.pcieTickMs,
     onSample: (samples) => transport.enqueueSample(samples),
   });
 }
@@ -193,12 +230,17 @@ async function buildGpuCollector(v: GpuVendor, cfg: AgentConfig): Promise<GpuCol
  *  if no amdgpu card was discovered.
  *  GPU_BACKEND=sysfs: force sysfs, never spawn rocm-smi for samples.
  *  GPU_BACKEND=rocm-smi: legacy path (one rocm-smi spawn per tick). */
-async function buildAmdGpuCollector(cfg: AgentConfig): Promise<GpuCollectorHandle> {
+async function buildAmdGpuCollector(
+  cfg: AgentConfig,
+): Promise<GpuCollectorHandle> {
   const onSample = (samples: Parameters<typeof transport.enqueueSample>[0]) =>
     transport.enqueueSample(samples);
 
-  if (cfg.gpuBackend === 'rocm-smi') {
-    logger.info('boot', 'AMD backend: rocm-smi (forced via GPU_BACKEND=rocm-smi)');
+  if (cfg.gpuBackend === "rocm-smi") {
+    logger.info(
+      "boot",
+      "AMD backend: rocm-smi (forced via GPU_BACKEND=rocm-smi)",
+    );
     return createRocmGpuCollector({
       rocmSmiPath: cfg.rocmSmiPath,
       tickMs: cfg.tickMs,
@@ -213,19 +255,28 @@ async function buildAmdGpuCollector(cfg: AgentConfig): Promise<GpuCollectorHandl
   });
   const cards = await sysfs.discover();
   if (cards > 0) {
-    logger.info('boot', `AMD backend: sysfs (${cards} card${cards === 1 ? '' : 's'} via ${cfg.sysClassDrm})`);
+    logger.info(
+      "boot",
+      `AMD backend: sysfs (${cards} card${cards === 1 ? "" : "s"} via ${cfg.sysClassDrm})`,
+    );
     return sysfs;
   }
 
-  if (cfg.gpuBackend === 'sysfs') {
+  if (cfg.gpuBackend === "sysfs") {
     // Forced sysfs but no card → return the empty handle so the caller's
     // available()===false path takes over with the standard "smi not
     // found" error. Avoids a silent no-op.
-    logger.error('boot', `GPU_BACKEND=sysfs but no amdgpu card found under ${cfg.sysClassDrm}`);
+    logger.error(
+      "boot",
+      `GPU_BACKEND=sysfs but no amdgpu card found under ${cfg.sysClassDrm}`,
+    );
     return sysfs;
   }
 
-  logger.warn('boot', `AMD backend: sysfs found 0 cards under ${cfg.sysClassDrm}, falling back to rocm-smi`);
+  logger.warn(
+    "boot",
+    `AMD backend: sysfs found 0 cards under ${cfg.sysClassDrm}, falling back to rocm-smi`,
+  );
   return createRocmGpuCollector({
     rocmSmiPath: cfg.rocmSmiPath,
     tickMs: cfg.tickMs,
@@ -233,7 +284,10 @@ async function buildAmdGpuCollector(cfg: AgentConfig): Promise<GpuCollectorHandl
   });
 }
 
-function buildProcessCollector(v: GpuVendor, cfg: AgentConfig): ProcessCollectorHandle {
+function buildProcessCollector(
+  v: GpuVendor,
+  cfg: AgentConfig,
+): ProcessCollectorHandle {
   // Resolvers are stable for the lifetime of the agent — we
   // instantiate them at module scope and pass a thin callback
   // shape so the classifier doesn't need to know about the
@@ -241,7 +295,7 @@ function buildProcessCollector(v: GpuVendor, cfg: AgentConfig): ProcessCollector
   const llmResolvers = {
     ollamaModelByDigest: (digest: string) => ollamaResolver.resolve(digest),
   };
-  if (v === 'amd') {
+  if (v === "amd") {
     return createRocmProcessCollector({
       rocmSmiPath: cfg.rocmSmiPath,
       tickMs: cfg.processesTickMs,

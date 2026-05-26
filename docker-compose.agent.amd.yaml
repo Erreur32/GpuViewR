@@ -47,6 +47,23 @@ services:
     container_name: gpuviewr-agent
     restart: unless-stopped
 
+    # Healthcheck: the agent touches /tmp/.gpuviewr-agent-alive on every
+    # successful WS frame send (cf. agent/src/transport.ts touchHeartbeat).
+    # Same probe as the NVIDIA agent; both share the transport layer so
+    # the heartbeat logic is vendor-independent. Added v0.8.9.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "process.exit(Date.now()-require('fs').statSync('/tmp/.gpuviewr-agent-alive').mtimeMs<60000?0:1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
     # SYS_PTRACE: process collector cross-UID /proc reads. See the
     # master docker-compose.yaml agent-nvidia block for full
     # reasoning. Added v0.8.2.
@@ -75,9 +92,9 @@ services:
 
     environment:
       # Required — get these from the hub UI at enrollment time.
-      HUB_URL: ${HUB_URL}              # e.g. wss://gpu.example.com/agent
-      HOST_ID: ${HOST_ID}              # UUID printed once by the hub
-      AGENT_TOKEN: ${AGENT_TOKEN}      # opaque secret, also one-shot
+      HUB_URL: ${HUB_URL} # e.g. wss://gpu.example.com/agent
+      HOST_ID: ${HOST_ID} # UUID printed once by the hub
+      AGENT_TOKEN: ${AGENT_TOKEN} # opaque secret, also one-shot
 
       # Vendor pinning: 'amd' forces the rocm-smi collector path even
       # if nvidia-smi happened to be present. Set to 'auto' to let the
