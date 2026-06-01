@@ -48,11 +48,11 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-i18next": "^16.5.4",
-    "react-router-dom": "^7.15.1",
-    "tsx": "^4.22.3",
+    "react-router-dom": "^7.16.0",
+    "tsx": "^4.22.4",
     "uplot": "^1.6.32",
     "ws": "^8.21.0",
-    "zustand": "^5.0.13"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
