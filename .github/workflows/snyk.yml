@@ -20,7 +20,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Run Snyk Code (SAST)
         uses: snyk/actions/node@9adf32b1121593767fc3c057af55b55db032dc04 # master
@@ -32,7 +32,7 @@ jobs:
           args: --sarif-file-output=snyk-code.sarif
 
       - name: Upload Snyk Code results to GitHub
-        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/upload-sarif@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
         if: always() && hashFiles('snyk-code.sarif') != ''
         with:
           sarif_file: snyk-code.sarif
@@ -45,7 +45,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Run Snyk Open Source (dependencies)
         uses: snyk/actions/node@9adf32b1121593767fc3c057af55b55db032dc04 # master
@@ -56,7 +56,7 @@ jobs:
           args: --severity-threshold=high --sarif-file-output=snyk-deps.sarif
 
       - name: Upload Snyk dependency results to GitHub
-        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/upload-sarif@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
         if: always() && hashFiles('snyk-deps.sarif') != ''
         with:
           sarif_file: snyk-deps.sarif
@@ -69,7 +69,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build Docker image for scanning
         run: docker build -t gpuviewr:scan .
@@ -84,7 +84,7 @@ jobs:
           args: --severity-threshold=high --exclude-base-image-vulns --sarif-file-output=snyk-docker.sarif
 
       - name: Upload Snyk Docker results to GitHub
-        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/upload-sarif@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
         if: always() && hashFiles('snyk-docker.sarif') != ''
         with:
           sarif_file: snyk-docker.sarif
