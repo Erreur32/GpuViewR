@@ -1,79 +1,53 @@
-release: v0.8.11 stats N/A polish + PCIe collapse + outline buttons
+release: v0.8.12 security cleanup (deps + Docker base image)
 
-Three dashboard/UI polish items landed together because they're all
-the same kind of small visual cleanup; bundling them into one tag
-avoids a v0.8.11 / v0.8.12 / v0.8.13 release-spam burst.
+Batch of Dependabot security fixes merged today, bundled into one
+release with a Docker-side fix that couldn't come from a PR alone.
 
-1. StatsSection N/A in gray (continuation of v0.8.10's fix)
------------------------------------------------------------
+Dependency CVE fixes
+---------------------
+- react-router-dom -> 7.18.2 (5 advisories: CSRF bypass, open
+  redirect, arbitrary constructor injection, DoS via inefficient
+  route matching, XSS via missing protocol validation)
+- ip-address -> 10.5.0 (3 advisories: SSRF/trust-boundary bypasses
+  via octal/CIDR/IPv6 address confusion)
+- fast-uri -> 3.1.5 (3 advisories: host confusion via
+  backslash/IDN authority parsing)
+- postcss -> 8.5.25 (path traversal / arbitrary .map file
+  disclosure via sourceMappingURL)
+- body-parser -> 2.3.0 (DoS via silently disabled size limit)
+- brace-expansion (exponential-time DoS)
+- esbuild/vite (arbitrary file read on Windows dev server)
+- ws -> 8.21.0 in the agent bundle (memory exhaustion DoS via tiny
+  WS fragments)
 
-The "Statistiques sur la période" cards just above the LiveChart
-had the same UX bug as v0.8.10's GaugeCards: their statusFor()
-returned 'ok' (green) when avg was null on a metric the host
-doesn't expose, so the Fan card tinted green even on a passive iGPU.
+Docker base image
+------------------
+- node:22-trixie-slim digest bump (e637ac9 -> 8cd0ffd), both
+  builder and runtime stages.
+- Runtime stage now self-updates npm (npm install -g npm@latest)
+  so the vendored pacote moves past 19.0.2, which is vulnerable to
+  SNYK-JS-PACOTE-8225084 (CPU-exhaustion DoS via addGitSha), to a
+  patched version. The base image tag itself still ships the old
+  npm/pacote pair, so this couldn't wait on a future image release.
 
-What changed
-- src/components/dashboard/StatsSection.tsx: each row now derives
-  an `available` flag from "any of min/avg/max is a finite
-  number". When false, color resolves to var(--gv-text-dim) so:
-  * the card background tints from the muted palette
-  * the card border drops the green halo
-  * the icon and metric label render in dim gray
-- The detail table at the bottom: <tr> sets
-  color: var(--gv-text-dim) when row.available is false (covers
-  min/avg/max cells via inheritance), the metric name <span>
-  overrides to dim too, and the row drops to 0.7 opacity so it
-  visually recedes from the live rows.
-
-2. PCIe Link card is now collapsible
-------------------------------------
-
-User asked for the PCIe card to behave like "Statistiques
-détaillées" below it: foldable via the same <details>/<summary>
-pattern.
-
-What changed
-- src/components/dashboard/Dashboard.tsx: the PcieLinkCard now
-  renders as <details open> + <summary> containing the title + the
-  degraded/bus-id badges. Body holds the 4 tiles + the help text,
-  which moved to px-4 pb-3 to fit the new container.
-- Default state is `open` so the at-a-glance view is unchanged on
-  first load; users can collapse it with one click.
-
-3. Button outline style app-wide, except in Settings
------------------------------------------------------
-
-User: "tous les boutons bleu background, enleve le et met en
-bordure". Filled-blue active states felt heavy across the app.
-Solid blue persists in Settings (Save/Apply CTAs and the tab
-strip) where a loud confirmation visual is still wanted.
-
-What changed
-- src/styles/index.css:
-  * .btn-primary: background transparent, color accent,
-    box-shadow inset 0 0 0 1px var(--gv-accent). Hover gives a
-    10 % accent tint instead of the previous brightness filter.
-  * .seg-btn[aria-pressed="true"]: same pattern.
-  * .nav-link.active: same pattern (was a 20 % background +
-    35 % border-shadow; now a clean 100 % border, no fill).
-  * New scope override `.settings-area .btn-primary`,
-    `.settings-area .seg-btn[aria-pressed="true"]`: reverts to
-    legacy filled blue (var(--gv-accent) background + accent-fg
-    text + no box-shadow) so Save buttons and the settings tab
-    strip stay visually loud.
-- src/components/settings/SettingsPage.tsx: wrapper div now
-  carries `settings-area` class so the scoped overrides match.
+CI
+---
+- Bumped 11 GitHub Actions across workflows (ci-minor-patch
+  Dependabot group), digest-pinned refresh, no behavior change.
 
 Internal
-- Typecheck (root + agent): 0 errors.
-- Tests: 22 root + 8 agent, all green.
-- Build: vite + esbuild both clean.
-- Hub bundle only. Agents do not need to be redeployed.
+--------
+- 34 Dependabot alerts fixed, 1 auto-dismissed, 0 open PRs.
+- Snyk Container pacote alert addressed via the Dockerfile change
+  above. Scorecard Vulnerabilities alert will clear on its next
+  scheduled scan now that the underlying CVEs are fixed.
 
 Upgrade
+-------
 - `docker compose pull && docker compose up -d` on the hub host.
 - No DB migration.
 
 Workflow note
-- Branch push only. Tag v0.8.11 only after SonarCloud + CodeQL
+-------------
+- Branch push only. Tag v0.8.12 only after SonarCloud is confirmed
   green, per the project's release rule.

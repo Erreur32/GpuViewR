@@ -5,6 +5,33 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.12] - 2026-08-15
+
+### Security
+
+- **Dependency CVE cleanup**: bumped `react-router-dom` to 7.18.2
+  (fixes 5 advisories: CSRF bypass, open redirect, arbitrary
+  constructor injection, DoS via inefficient route matching, XSS
+  via missing protocol validation), `ip-address` to 10.5.0 (3
+  advisories: SSRF/trust-boundary bypasses via octal/CIDR/IPv6
+  address confusion), `fast-uri` to 3.1.5 (3 advisories: host
+  confusion via backslash/IDN authority parsing), `postcss` to
+  8.5.25 (path traversal / arbitrary `.map` file disclosure via
+  `sourceMappingURL`), `body-parser` to 2.3.0 (DoS via silently
+  disabled size limit), `brace-expansion` (exponential-time DoS),
+  `esbuild`/`vite` (arbitrary file read on Windows dev server), and
+  `ws` to 8.21.0 in the agent bundle (memory exhaustion DoS via
+  tiny WS fragments).
+- **Docker base image**: `node:22-trixie-slim` digest bump
+  (`e637ac9` → `8cd0ffd`), plus a self-update of the bundled `npm`
+  (`RUN npm install -g npm@latest`) in the runtime stage so the
+  vendored `pacote` moves past 19.0.2 (vulnerable to
+  SNYK-JS-PACOTE-8225084, CPU-exhaustion DoS via `addGitSha`) to a
+  patched version (the base image still ships the older npm/pacote
+  pair as of this release, so this can't wait on a future tag).
+- CI: bumped 11 GitHub Actions across workflows (`ci-minor-patch`
+  Dependabot group), no behavior change, digest-pinned refresh.
+
 ## [0.8.11] - 2026-05-26
 
 ### Fixed
