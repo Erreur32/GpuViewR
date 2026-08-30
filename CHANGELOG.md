@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.13] - 2026-08-30
+
+### Fixed
+
+- **AMD "Processes using this GPU" tab could stay empty during real GPU load**: `rocm-smi --showpids` only sees processes that opened `/dev/kfd` (ROCm/HIP compute). A Vulkan or OpenGL workload, such as llama.cpp built against the Vulkan backend, talks to the GPU through `/dev/dri` instead and never touches KFD, making it structurally invisible to rocm-smi regardless of permissions or container setup.
+  - Added an additive DRM fdinfo scan (`/proc/<pid>/fdinfo/<fd>`, vendor-neutral kernel interface standardized since Linux 5.19) that catches any process holding an open amdgpu DRM fd, independent of backend.
+  - rocm-smi remains the source of truth for pids it already reports (keeps `cu_occupancy`-based GPU%); the fdinfo scan only fills in pids rocm-smi misses.
+  - No new configuration: the merge is unconditional and degrades to today's exact behavior on older kernels or when no amdgpu fd is open.
+
+### Internal
+
+- Agent bundle only. No hub/frontend changes. No DB migration.
+- New file `agent/src/collectors/processesAmdgpuFdinfo.ts` with dedicated unit tests.
+
 ## [0.8.12] - 2026-08-15
 
 ### Security

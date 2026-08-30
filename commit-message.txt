@@ -1,53 +1,24 @@
-release: v0.8.12 security cleanup (deps + Docker base image)
+release: v0.8.13 fix AMD process detection for Vulkan/non-KFD workloads
 
-Batch of Dependabot security fixes merged today, bundled into one
-release with a Docker-side fix that couldn't come from a PR alone.
+The "Processes using this GPU" tab could stay empty on AMD boxes even
+while the GPU was clearly under load. rocm-smi --showpids only sees
+processes that opened /dev/kfd (ROCm/HIP compute), so a Vulkan or
+OpenGL workload such as llama.cpp built against the Vulkan backend is
+structurally invisible to it: it talks to the GPU through /dev/dri
+instead and never touches KFD.
 
-Dependency CVE fixes
----------------------
-- react-router-dom -> 7.18.2 (5 advisories: CSRF bypass, open
-  redirect, arbitrary constructor injection, DoS via inefficient
-  route matching, XSS via missing protocol validation)
-- ip-address -> 10.5.0 (3 advisories: SSRF/trust-boundary bypasses
-  via octal/CIDR/IPv6 address confusion)
-- fast-uri -> 3.1.5 (3 advisories: host confusion via
-  backslash/IDN authority parsing)
-- postcss -> 8.5.25 (path traversal / arbitrary .map file
-  disclosure via sourceMappingURL)
-- body-parser -> 2.3.0 (DoS via silently disabled size limit)
-- brace-expansion (exponential-time DoS)
-- esbuild/vite (arbitrary file read on Windows dev server)
-- ws -> 8.21.0 in the agent bundle (memory exhaustion DoS via tiny
-  WS fragments)
-
-Docker base image
-------------------
-- node:22-trixie-slim digest bump (e637ac9 -> 8cd0ffd), both
-  builder and runtime stages.
-- Runtime stage now self-updates npm (npm install -g npm@latest)
-  so the vendored pacote moves past 19.0.2, which is vulnerable to
-  SNYK-JS-PACOTE-8225084 (CPU-exhaustion DoS via addGitSha), to a
-  patched version. The base image tag itself still ships the old
-  npm/pacote pair, so this couldn't wait on a future image release.
-
-CI
+Fix
 ---
-- Bumped 11 GitHub Actions across workflows (ci-minor-patch
-  Dependabot group), digest-pinned refresh, no behavior change.
+- Added agent/src/collectors/processesAmdgpuFdinfo.ts: a DRM fdinfo
+  scanner (/proc/<pid>/fdinfo/<fd>, vendor-neutral kernel interface
+  standardized since Linux 5.19) that picks up any process holding an
+  open amdgpu DRM fd, independent of backend.
+- Merged additively into processesRocm.ts: rocm-smi stays the source
+  of truth for pids it already reports (keeps cu_occupancy-based
+  GPU%), the fdinfo scan only fills in pids rocm-smi misses.
+- No new config or env toggle. Degrades to today's exact behavior on
+  older kernels or when no amdgpu fd is open.
 
-Internal
---------
-- 34 Dependabot alerts fixed, 1 auto-dismissed, 0 open PRs.
-- Snyk Container pacote alert addressed via the Dockerfile change
-  above. Scorecard Vulnerabilities alert will clear on its next
-  scheduled scan now that the underlying CVEs are fixed.
-
-Upgrade
--------
-- `docker compose pull && docker compose up -d` on the hub host.
-- No DB migration.
-
-Workflow note
--------------
-- Branch push only. Tag v0.8.12 only after SonarCloud is confirmed
-  green, per the project's release rule.
+Scope
+-----
+Agent bundle only. No hub/frontend changes. No DB migration.
