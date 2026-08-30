@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.15] - 2026-08-30
+
+### Security
+
+- **nanoid DoS (GHSA-2v37-7h3g-55p8 / CVE-2026-67213)**: pinned the transitive `nanoid` dependency (pulled in by `postcss`) to `^3.3.18` via a root `overrides` entry. Versions before 3.3.18 hang indefinitely if `customAlphabet`/`customRandom` are ever called with `size: 0`. Build-time only (postcss runs during `vite build`, never shipped in the runtime bundle), but the fix is one line and clears the alert properly instead of just risk-accepting it.
+- **pacote DoS alert (SNYK-JS-PACOTE-8225084) re-verified, not re-fixed**: this was already patched in v0.8.12 (`npm install -g npm@latest` in the hub Dockerfile's runtime stage). Rebuilt the hub image locally and confirmed the bundled `pacote` is now `22.0.0` (fix landed in `21.5.1`), well past the vulnerable range. The still-open GitHub alert is stale from before that fix and is being dismissed as already resolved, not left open.
+
+### Internal
+
+- Dismissed Scorecard alert `Pinned-Dependencies` (`npmCommand not pinned by hash` in the Dockerfile): a known false positive for `npm ci`, which already pins exact versions and integrity hashes via `package-lock.json` — Scorecard's heuristic just doesn't recognize that form of pinning.
+
 ## [0.8.14] - 2026-08-30
 
 ### Fixed
