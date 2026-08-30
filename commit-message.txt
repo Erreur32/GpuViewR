@@ -1,24 +1,30 @@
-release: v0.8.13 fix AMD process detection for Vulkan/non-KFD workloads
+release: v0.8.14 fix CAP_SYS_PTRACE never reaching non-root agent process
 
-The "Processes using this GPU" tab could stay empty on AMD boxes even
-while the GPU was clearly under load. rocm-smi --showpids only sees
-processes that opened /dev/kfd (ROCm/HIP compute), so a Vulkan or
-OpenGL workload such as llama.cpp built against the Vulkan backend is
-structurally invisible to it: it talks to the GPU through /dev/dri
-instead and never touches KFD.
+v0.8.13 added a DRM fdinfo scan to catch AMD Vulkan/OpenGL processes
+that rocm-smi misses, but it silently found nothing on a real
+deployment (Jarvis): the fdinfo scan requires ptrace-equivalent
+permission to read another user's /proc/<pid>/fdinfo/<fd>, and while
+the agent container does add SYS_PTRACE via cap_add, that only lands
+the capability in the container's bounding set. A process that execs
+directly as a non-root UID (USER node) never gets it promoted to its
+effective/permitted set without ambient capabilities or a file
+capability, so every fdinfo read failed with EACCES despite `docker
+inspect` showing the capability granted.
 
 Fix
 ---
-- Added agent/src/collectors/processesAmdgpuFdinfo.ts: a DRM fdinfo
-  scanner (/proc/<pid>/fdinfo/<fd>, vendor-neutral kernel interface
-  standardized since Linux 5.19) that picks up any process holding an
-  open amdgpu DRM fd, independent of backend.
-- Merged additively into processesRocm.ts: rocm-smi stays the source
-  of truth for pids it already reports (keeps cu_occupancy-based
-  GPU%), the fdinfo scan only fills in pids rocm-smi misses.
-- No new config or env toggle. Degrades to today's exact behavior on
-  older kernels or when no amdgpu fd is open.
+- agent/Dockerfile: run `setcap cap_sys_ptrace=+eip /usr/local/bin/node`
+  as root, before switching to USER node. File capabilities are
+  promoted from the bounding set into the effective set at exec time
+  regardless of the calling UID, so node keeps CAP_SYS_PTRACE without
+  the container running as root.
+- Verified locally: a non-root node process shows CapEff=0 without the
+  fix, and CapEff including cap_sys_ptrace with it.
+- No docker-compose.yaml changes needed: neither agent-amd nor
+  agent-nvidia sets security_opt: no-new-privileges, which would
+  otherwise block file-capability promotion at exec.
 
 Scope
 -----
-Agent bundle only. No hub/frontend changes. No DB migration.
+Agent Docker image only. No agent source changes, no hub/frontend
+changes, no DB migration.

@@ -78,9 +78,10 @@ WORKDIR /app
 # fallback covers the gap when /proc is mounted, but installing procps
 # fixes the issue at its source and the user sees real names even when
 # the /host/proc bind-mount is missing.
+# libcap2-bin gives us setcap, used right below.
 RUN apt-get update \
   && apt-get upgrade -y \
-  && apt-get install -y --no-install-recommends python3 tzdata libdrm-amdgpu1 procps \
+  && apt-get install -y --no-install-recommends python3 tzdata libdrm-amdgpu1 procps libcap2-bin \
   && rm -rf /var/lib/apt/lists/* \
   && chown -R node:node /app
 
@@ -88,6 +89,19 @@ COPY --chown=node:node --from=builder /build/agent/dist/agent.mjs ./agent.mjs
 COPY --chown=node:node --from=builder /build/agent/node_modules ./node_modules
 
 ENV NODE_ENV=production
+
+# `cap_add: [SYS_PTRACE]` in compose only lands the capability in this
+# container's bounding set — it never reaches a non-root process's
+# effective/permitted set on its own (no ambient caps by default), so
+# `USER node` below would otherwise leave ptrace-gated reads (like
+# /proc/<pid>/fdinfo, used by processesAmdgpuFdinfo.ts) failing with
+# EACCES even though `docker inspect` shows the capability granted.
+# A file capability sidesteps that: it's promoted from the bounding
+# set into the process's effective set at exec() time regardless of
+# the calling UID, so `node` keeps CAP_SYS_PTRACE without running as
+# root. Must run as root (before `USER node`) since setcap needs
+# CAP_SETFCAP on the target file.
+RUN setcap cap_sys_ptrace=+eip /usr/local/bin/node
 
 USER node
 

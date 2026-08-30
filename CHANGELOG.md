@@ -5,6 +5,19 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.14] - 2026-08-30
+
+### Fixed
+
+- **v0.8.13's DRM fdinfo scan silently found nothing on real deployments**: `cap_add: [SYS_PTRACE]` alone does not give a non-root container process (`USER node`) the capability in its effective set. Docker only lands an added capability in the container's bounding set; without ambient capabilities or a file capability, a process that execs directly as a non-root UID never gets it promoted to effective/permitted, so `/proc/<pid>/fdinfo/<fd>` reads for other users' processes (e.g. a Vulkan llama.cpp container) failed with EACCES even though `docker inspect` showed the capability granted.
+  - `agent/Dockerfile` now runs `setcap cap_sys_ptrace=+eip /usr/local/bin/node` as root before switching to `USER node`, so the capability is promoted from the bounding set at exec time regardless of the running UID.
+  - Verified locally: without the fix, a non-root `node` process shows `CapEff: 0000000000000000`; with it, `CapEff` includes `cap_sys_ptrace`.
+  - No compose changes needed: `agent-amd`/`agent-nvidia` already lack `security_opt: no-new-privileges`, which would otherwise block file-capability promotion at exec.
+
+### Internal
+
+- Agent Docker image only. No agent source changes, no hub/frontend changes, no DB migration.
+
 ## [0.8.13] - 2026-08-30
 
 ### Fixed
