@@ -69,7 +69,7 @@ export default function HostsSettingsTab() {
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-lg font-semibold">{t('hosts.section_title')}</h2>
-          <p className="text-xs" style={{ color: 'var(--gv-text-muted)' }}>
+          <p className="text-xs whitespace-pre-line" style={{ color: 'var(--gv-text-muted)' }}>
             {t('hosts.section_help')}
           </p>
         </div>

@@ -485,7 +485,7 @@
   },
   "hosts": {
     "section_title": "Hôtes distants",
-    "section_help": "Chaque hôte fait tourner un agent GpuViewR qui pousse ses échantillons GPU vers ce hub (via nvidia-smi ou rocm-smi selon le vendor de l'hôte). La première ligne est ce hub lui-même — étiqueté avec le hostname système.",
+    "section_help": "Chaque hôte fait tourner un agent GpuViewR qui pousse ses échantillons GPU vers ce hub (via nvidia-smi ou rocm-smi selon le vendor de l'hôte).\nLa première ligne est ce hub lui-même, étiqueté avec le hostname système.",
     "admin_only": "Seuls les administrateurs peuvent gérer les hôtes.",
     "clock_skew_warning": "L'horloge de ce navigateur est {{direction}} de {{seconds}} s par rapport à celle du hub. Les statuts et les « il y a Xs » de cette page sont corrigés automatiquement, mais synchronise l'heure de cette machine (NTP) pour éviter des mesures faussées ailleurs.",
     "clock_skew_ahead": "en avance",
