@@ -26,7 +26,8 @@ export function setupGpuWebSocket(): WebSocketServer {
       return;
     }
 
-    logger.debug('ws', `client connected (user=${payload.username})`);
+    logger.info('ws', `client connected (user=${payload.username})`);
+    const connectedAt = Date.now();
 
     // Initial snapshot for the client = the local sidecar's latest
     // samples (if any). Remote agents' samples will arrive via the
@@ -49,11 +50,18 @@ export function setupGpuWebSocket(): WebSocketServer {
     metricsBus.on('host_status', onHostStatus);
     alertService.on('event', onAlert);
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
       metricsBus.off('sample', onSample);
       metricsBus.off('host_status', onHostStatus);
       alertService.off('event', onAlert);
-      logger.debug('ws', `client disconnected (user=${payload.username})`);
+      const uptimeS = Math.round((Date.now() - connectedAt) / 1000);
+      // Elevated to warn when the socket lived less than 5s — a healthy
+      // browser tab holds this open indefinitely, so a sub-5s lifetime
+      // means something (proxy timeout, flapping reconnect loop) is
+      // killing it almost immediately after open, the exact pattern
+      // that produces a "lagging" flicker on every connected host.
+      const level = uptimeS < 5 ? 'warn' : 'info';
+      logger[level]('ws', `client disconnected (user=${payload.username}, code=${code}, reason=${reason || '-'}, uptime=${uptimeS}s)`);
     });
     ws.on('error', (err) => logger.warn('ws', 'socket error:', err.message));
   });

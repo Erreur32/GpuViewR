@@ -77,6 +77,7 @@ export function useGpuStream(): void {
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
+      const openedAt = Date.now();
       ws.onopen = () => { retryRef.current = 0; setConnected(true); };
       ws.onmessage = (ev) => {
         try {
@@ -103,8 +104,18 @@ export function useGpuStream(): void {
           /* ignore malformed messages */
         }
       };
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
         setConnected(false);
+        // A sub-5s lifetime means the socket died almost right after
+        // opening (proxy timeout, server restart, network blip) — the
+        // pattern that produces a rapid open/close loop and makes every
+        // host's status flicker to "lagging" in step. console.warn so it
+        // shows up without needing DEBUG on.
+        const uptimeS = Math.round((Date.now() - openedAt) / 1000);
+        if (uptimeS < 5) {
+          // eslint-disable-next-line no-console
+          console.warn(`[gpu-ws] closed after ${uptimeS}s (code=${ev.code}, reason=${ev.reason || '-'})`);
+        }
         if (stopped) return;
         const delay = Math.min(1000 * 2 ** retryRef.current, 15_000);
         retryRef.current++;
