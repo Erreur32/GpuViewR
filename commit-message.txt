@@ -1,35 +1,16 @@
-release: v0.8.15 fix nanoid DoS, clear stale pacote alert, dismiss npm-pin false positive
+release: v0.8.16 fix range-filtered charts freezing after ~10min
 
-Follow-up security triage after v0.8.14: reviewed the three open
-GitHub code-scanning alerts and resolved each on its merits instead
-of blanket-dismissing them.
+LiveChart, FleetChart and MultiGpuChart each loaded /gpu/history once
+and relied on the live in-memory buffer (capped at MAX_POINTS=600,
+~10min at 1Hz) for anything newer, so on 15m/1h/6h/24h/3j ranges every
+chart would stop reflecting new data shortly after the page was opened.
 
 Fixed
 -----
-- nanoid DoS (GHSA-2v37-7h3g-55p8 / CVE-2026-67213): pinned the
-  transitive nanoid dependency (pulled in by postcss) to ^3.3.18 via
-  a root package.json "overrides" entry. Versions before 3.3.18 spin
-  forever if customAlphabet/customRandom are called with size: 0.
-  Build-time only (postcss runs during vite build, never shipped in
-  the runtime bundle), but the fix is one line, so fix it properly
-  instead of risk-accepting it.
-
-Verified, not re-fixed
------------------------
-- pacote DoS (SNYK-JS-PACOTE-8225084): already patched in v0.8.12 via
-  `npm install -g npm@latest` in the hub Dockerfile's runtime stage.
-  Rebuilt the hub image locally and confirmed the bundled pacote is
-  now 22.0.0 (fix landed in 21.5.1). The open GitHub alert predates
-  that fix and never auto-closed; dismissing it as already resolved.
-
-Dismissed as false positive
-----------------------------
-- Scorecard "Pinned-Dependencies" (npmCommand not pinned by hash in
-  the Dockerfile): npm ci already pins exact versions and integrity
-  hashes via package-lock.json, Scorecard's static heuristic just
-  doesn't recognize that form of pinning.
-
-Scope
------
-package.json/package-lock.json (nanoid override) only. No Dockerfile,
-agent, hub, or frontend behavior changes.
+- LiveChart and FleetChart now poll /gpu/history periodically (interval
+  scaled to the range) instead of fetching it once.
+- FleetChart merges the live buffer's tail onto the periodically
+  refetched history so the curve keeps moving between two polls.
+- MultiGpuChart previously never called /gpu/history at all and
+  explicitly capped every non-live range at 10min; it now fetches real
+  per-GPU history and merges it with the live tail the same way.

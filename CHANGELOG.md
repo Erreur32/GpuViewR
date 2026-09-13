@@ -5,6 +5,15 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.16] - 2026-09-13
+
+### Fixed
+
+- **Range-filtered charts (15m/1h/6h/24h/3j) stopped updating after ~10min of the page being open**: `LiveChart`, `FleetChart` and `MultiGpuChart` each loaded `/gpu/history` once and relied on the live in-memory buffer (capped at `MAX_POINTS=600`, ~10min at 1Hz) for anything newer. Once more than 10 minutes had passed, a growing unfilled gap opened between the frozen historic snapshot and the live buffer's window, making every range longer than "live" plateau — visible on the Dashboard, the multi-GPU combined chart, and the Fleet chart alike.
+  - `LiveChart` and `FleetChart` now poll `/gpu/history` periodically (interval scaled to the range: 15s for live/5m/15m up to 120s for 3d) instead of fetching once.
+  - `FleetChart` also merges the live buffer's tail onto the periodically refetched history so the curve keeps moving between two polls.
+  - `MultiGpuChart` previously never called `/gpu/history` at all and explicitly capped every non-live range at 10min; it now fetches real per-GPU history and merges it with the live tail the same way as the other two charts.
+
 ## [0.8.15] - 2026-08-30
 
 ### Security
