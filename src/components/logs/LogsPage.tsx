@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -29,6 +29,9 @@ export default function LogsPage() {
   const [search, setSearch] = useState<string>('');
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [scopes, setScopes] = useState<string[]>([]);
+  const [counts, setCounts] = useState<Record<Level, number>>({
+    all: 0, info: 0, warn: 0, error: 0, success: 0, debug: 0,
+  });
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -39,9 +42,10 @@ export default function LogsPage() {
     if (scope) params.set('scope', scope);
     if (search) params.set('q', search);
     try {
-      const r = await api<{ entries: LogEntry[]; scopes: string[] }>(`/logs?${params}`);
+      const r = await api<{ entries: LogEntry[]; scopes: string[]; counts: Record<Level, number> }>(`/logs?${params}`);
       setEntries(r.entries);
       setScopes(r.scopes);
+      setCounts(r.counts);
     } finally {
       setLoading(false);
     }
@@ -55,12 +59,6 @@ export default function LogsPage() {
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh, level, scope, search]);
-
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { all: entries.length };
-    for (const e of entries) c[e.level] = (c[e.level] || 0) + 1;
-    return c;
-  }, [entries]);
 
   return (
     <div className="space-y-4">

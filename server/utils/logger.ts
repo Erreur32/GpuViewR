@@ -91,6 +91,25 @@ export const logger = {
     // (Sonar S2871 — default Array#sort coerces to string and is locale-blind).
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   },
+
+  /** Per-level counts matching scope/search/date filters but NOT the level
+   *  filter itself, so a UI can show accurate badge counts for every level
+   *  at once instead of only the currently selected one. */
+  counts(opts: {
+    scope?: string;
+    search?: string;
+    sinceTs?: number;
+    untilTs?: number;
+  } = {}): Record<LogLevel | 'all', number> {
+    const filter = buildLogFilter(opts);
+    const out: Record<LogLevel | 'all', number> = { all: 0, info: 0, warn: 0, error: 0, success: 0, debug: 0 };
+    for (const e of buffer) {
+      if (!filter(e)) continue;
+      out.all++;
+      out[e.level]++;
+    }
+    return out;
+  },
 };
 
 // Build a single predicate from the query options so the loop body in
