@@ -5,6 +5,19 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.22] - 2026-09-13
+
+### Added
+
+- **Rejected agent connections visibility**: an in-memory ring buffer now tracks every agent handshake the hub refused (bad/rotated token, deleted or unknown host, disabled host, flood detection), exposed via `GET /api/hosts/rejected` and a new panel in Settings → Hosts, so an admin can spot a badly-uninstalled agent still knocking without grepping hub logs.
+- **Delete-host modal now shows the detected install method**: next to the platform picker, or a warning when the agent never reported one (older agent), since picking the wrong tab hands the admin an uninstall command that silently does nothing on the remote machine.
+
+### Fixed
+
+- **Agent permanently gave up reconnecting after a host was disabled and re-enabled**: disabling a host closed the live socket with `4003`, but the agent's own reconnect attempts got the generic `4001` (same code as a genuinely bad token), so after 3 failures it stopped retrying forever, even after the admin re-enabled the host — the remote process stayed alive but idle, so `systemd`/Scheduled Task auto-restart never kicked in. The hub now closes with `4003` specifically for the disabled reason, and the agent no longer counts that toward its permanent give-up.
+- **AMD agents installed via `install.sh` could crash-loop at first boot**: the installer detected the GPU vendor but never wrote it to the agent's env file, so the agent re-probed on its own; a systemd service's minimal environment doesn't have `rocm-smi` on `$PATH` (only the absolute `/opt/rocm/bin` path), so the probe failed and silently fell back to `nvidia`. The installer now writes `GPU_VENDOR`/`ROCM_SMI_PATH` from its own detection.
+- **`npm test` was silently skipping two nested test files** (`Host.test.ts`, `rocm.test.ts`) due to a glob that doesn't expand recursively under the default shell — 13 tests never actually ran. Fixed the test script to use `find`; also corrected two `Host.test.ts` assertions that still expected pre-v0.5 behaviour from `seedLocalIfMissing`.
+
 ## [0.8.21] - 2026-09-13
 
 ### Fixed

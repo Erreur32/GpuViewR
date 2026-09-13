@@ -1,18 +1,22 @@
-release: v0.8.21 Windows log rotation + install cross-mode guard
+release: v0.8.22 rejected-connections panel + agent give-up fix
 
-Three fixes from the open TODO list:
-
-- Windows agent.log had no rotation and grew unbounded under
-  C:\ProgramData\GpuViewR-Agent\. The generated launcher.ps1 now
-  rotates it past 10 MB (.1/.2/.3, oldest dropped), checked on every
-  log write (both the launcher's own Write-Log and node's stdout).
-- install.sh (systemd) and install-agent.sh (Docker) now refuse to
-  run if the other mode is already installed on the host (Docker
-  container gpuviewr-agent / systemd gpuviewr-agent.service) — running
-  both at once double-reports the same GPU under two host ids. Both
-  accept --force to bypass.
-- Delete-host modal warning hardcoded "systemd restart loop" even
-  though it shows for all 3 install modes; generalized in fr/en.
-
-Rotate-token modal was audited and found already correct since
-v0.8.4 (no change needed).
+- Rejected agent connections are now tracked in an in-memory ring
+  buffer (bad/rotated token, deleted or unknown host, disabled host,
+  flood detection) and surfaced via GET /api/hosts/rejected + a new
+  panel in Settings -> Hosts, so a badly-uninstalled agent still
+  knocking is visible without grepping hub logs.
+- Agent no longer gives up reconnecting forever after a host is
+  disabled then re-enabled: the hub now closes with 4003 specifically
+  for the disabled reason (was the generic 4001, indistinguishable
+  from a genuinely bad token), and the agent stops counting that
+  toward its permanent give-up.
+- Delete-host modal shows the detected install method next to the
+  platform picker (or a warning when unknown), since the wrong tab
+  silently hands out a no-op uninstall command.
+- install.sh now writes the GPU vendor it detects (GPU_VENDOR,
+  ROCM_SMI_PATH) into the agent's env file instead of letting it
+  re-probe on its own, which could crash-loop AMD boxes at first
+  boot (rocm-smi not on $PATH in a systemd service's environment).
+- Fixed npm test silently skipping two nested test files (glob
+  didn't expand recursively under the default shell) and corrected
+  two Host.test.ts assertions left over from pre-v0.5 behaviour.
