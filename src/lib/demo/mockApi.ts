@@ -115,8 +115,9 @@ function handleHealthSystem(ctx: RouteCtx): Response | null {
   if (ctx.url.pathname === '/api/hosts') {
     // Fleet demo: return the 4 fake hosts. Single demo: just the
     // local row so the FleetIndicator stays hidden (≤1 host).
-    if (isFleetDemo()) return json({ hosts: fakeFleetHosts() });
-    return json({ hosts: [{
+    const now = Math.floor(Date.now() / 1000);
+    if (isFleetDemo()) return json({ hosts: fakeFleetHosts(), now });
+    return json({ now, hosts: [{
       id: 'local', label: 'demo-hub', hostname: 'demo-hub.local', kind: 'local',
       endpoint: null, capabilities: null, agent_version: null, install_mode: null, auto_update: 0,
       protocol_ver: 1, enrolled_at: Math.floor(Date.now() / 1000) - 86400,

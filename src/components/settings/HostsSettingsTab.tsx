@@ -8,6 +8,7 @@ import {
   freshestLastSeen,
   formatRelative,
   LOCAL_HOST_ID,
+  CLOCK_SKEW_WARN_S,
   type HostRecord,
   type RejectedAttempt,
 } from '../../store/hostsStore';
@@ -38,6 +39,7 @@ export default function HostsSettingsTab() {
   const refresh = useHostsStore((s) => s.refresh);
   const rejectedAttempts = useHostsStore((s) => s.rejectedAttempts);
   const fetchRejectedAttempts = useHostsStore((s) => s.fetchRejectedAttempts);
+  const clockOffsetS = useHostsStore((s) => s.clockOffsetS);
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [rotateFor, setRotateFor] = useState<HostRecord | null>(null);
   const [deleteFor, setDeleteFor] = useState<HostRecord | null>(null);
@@ -75,6 +77,8 @@ export default function HostsSettingsTab() {
           <Plus size={16} /> {t('hosts.add_host')}
         </button>
       </div>
+
+      {Math.abs(clockOffsetS) > CLOCK_SKEW_WARN_S && <ClockSkewBanner offsetS={clockOffsetS} t={t} />}
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -133,21 +137,35 @@ export default function HostsSettingsTab() {
   );
 }
 
+/** Shown when the browser clock and the hub clock disagree by more
+ *  than CLOCK_SKEW_WARN_S. Statuses and ages on this page are already
+ *  corrected by clockOffsetS; the banner exists so the drift gets fixed
+ *  at the source (NTP) instead of staying silently masked. */
+function ClockSkewBanner({
+  offsetS, t,
+}: Readonly<{ offsetS: number; t: (key: string, opts?: Record<string, unknown>) => string }>) {
+  const direction = offsetS > 0 ? t('hosts.clock_skew_behind') : t('hosts.clock_skew_ahead');
+  return (
+    <WarningBanner>
+      {t('hosts.clock_skew_warning', { seconds: Math.abs(offsetS), direction })}
+    </WarningBanner>
+  );
+}
+
 function HostRow({
   host, onRotate, onDelete,
 }: Readonly<{ host: HostRecord; onRotate: () => void; onDelete: () => void }>) {
   const { t } = useTranslation();
   const isLocal = host.id === LOCAL_HOST_ID;
-  const latestByHost = useGpuStore((s) => s.latestByHost);
-  const liveLastSeen = liveLastSeenFor(latestByHost, host.id);
-  const status = effectiveStatus(host, undefined, liveLastSeen);
+  const receivedAtByHost = useGpuStore((s) => s.receivedAtByHost);
+  const clockOffsetS = useHostsStore((s) => s.clockOffsetS);
+  const liveLastSeen = liveLastSeenFor(receivedAtByHost, host.id);
+  const status = effectiveStatus(host, undefined, liveLastSeen, clockOffsetS);
   const now = Math.floor(Date.now() / 1000);
-  // Take the freshest of the two signals (same rule as effectiveStatus
-  // above) — `liveLastSeen ?? host.last_seen` used to pick the live WS
-  // sample unconditionally even when it was staler than the polled
-  // host.last_seen, showing a misleading "il y a 25s" on a host that
-  // was actually fine.
-  const effectiveLastSeen = freshestLastSeen(host, liveLastSeen);
+  // Same rule as effectiveStatus: freshest of the polled (hub clock,
+  // shifted into browser clock) and live (browser clock) signals, so
+  // the "il y a Xs" label can never disagree with the pill.
+  const effectiveLastSeen = freshestLastSeen(host, liveLastSeen, clockOffsetS);
   const lastSeenLabel = effectiveLastSeen === null
     ? '—'
     : t('common.ago_relative', { time: formatRelative(now - effectiveLastSeen) });

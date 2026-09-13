@@ -41,6 +41,8 @@ function accumulateHostSamples(
 function computeFleetAggregate(
   hosts: HostRecord[],
   samplesByHost: Map<string, Map<number, GpuSample>>,
+  receivedAtByHost: Map<string, number>,
+  clockOffsetS: number,
 ): FleetAggregate {
   const acc = {
     online: 0, lagging: 0, offline: 0, pending: 0,
@@ -52,7 +54,7 @@ function computeFleetAggregate(
     utilSum: 0, utilCount: 0,
   };
   for (const h of hosts) {
-    const status = effectiveStatus(h, undefined, liveLastSeenFor(samplesByHost, h.id));
+    const status = effectiveStatus(h, undefined, liveLastSeenFor(receivedAtByHost, h.id), clockOffsetS);
     if (status === 'online') acc.online++;
     else if (status === 'lagging') acc.lagging++;
     else if (status === 'offline') acc.offline++;
@@ -75,6 +77,8 @@ export default function FleetPage() {
   const hydrated = useHostsStore((s) => s.hydrated);
   const setSelected = useHostsStore((s) => s.setSelectedHost);
   const samplesByHost = useGpuStore((s) => s.latestByHost);
+  const receivedAtByHost = useGpuStore((s) => s.receivedAtByHost);
+  const clockOffsetS = useHostsStore((s) => s.clockOffsetS);
   const fleetView = useUiStore((s) => s.fleetView);
   const setFleetView = useUiStore((s) => s.setFleetView);
 
@@ -86,8 +90,8 @@ export default function FleetPage() {
   // Aggregates depend on hosts AND the live samples (power, gpus
   // count). Recompute when either changes.
   const agg = useMemo<FleetAggregate>(
-    () => computeFleetAggregate(hosts, samplesByHost),
-    [hosts, samplesByHost],
+    () => computeFleetAggregate(hosts, samplesByHost, receivedAtByHost, clockOffsetS),
+    [hosts, samplesByHost, receivedAtByHost, clockOffsetS],
   );
 
   // Mono-host install: /fleet is meaningless. Redirect to the regular

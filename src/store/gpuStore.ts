@@ -70,6 +70,14 @@ interface GpuState {
 
   // ── Internal per-host storage ──────────────────────────────────────
   latestByHost: Map<string, Map<number, GpuSample>>;
+  /** Browser-clock epoch seconds at which the most recent WS frame for
+   *  each host was received. This is the freshness signal for the
+   *  online/lagging pill, NOT the samples' own timestamp_epoch: that
+   *  one is stamped by the agent's clock, and comparing it against
+   *  Date.now() of the browser makes any clock skew between the two
+   *  machines look like lag (a browser 24 s ahead of its hub flickered
+   *  "lagging" on every host at LAGGING_THRESHOLD_S = 25). */
+  receivedAtByHost: Map<string, number>;
   seriesByHost: Map<string, Map<number, Series>>;
   historyByHost: Map<string, Map<string, HistoryEntry>>;
 
@@ -107,6 +115,7 @@ export const useGpuStore = create<GpuState>((set, get) => ({
   series: new Map(),
   history: new Map(),
   latestByHost: new Map(),
+  receivedAtByHost: new Map(),
   seriesByHost: new Map(),
   historyByHost: new Map(),
 
@@ -136,6 +145,8 @@ export const useGpuStore = create<GpuState>((set, get) => ({
   ingest: (host_id, samples) =>
     set((state) => {
       const nextLatestByHost = new Map(state.latestByHost);
+      const nextReceivedAtByHost = new Map(state.receivedAtByHost);
+      nextReceivedAtByHost.set(host_id, Math.floor(Date.now() / 1000));
       const nextSeriesByHost = new Map(state.seriesByHost);
       const latestForHost = new Map(nextLatestByHost.get(host_id) ?? new Map<number, GpuSample>());
       const seriesForHost = new Map(nextSeriesByHost.get(host_id) ?? new Map<number, Series>());
@@ -155,12 +166,17 @@ export const useGpuStore = create<GpuState>((set, get) => ({
       if (host_id === selected) {
         return {
           latestByHost: nextLatestByHost,
+          receivedAtByHost: nextReceivedAtByHost,
           seriesByHost: nextSeriesByHost,
           latest: latestForHost,
           series: seriesForHost,
         };
       }
-      return { latestByHost: nextLatestByHost, seriesByHost: nextSeriesByHost };
+      return {
+        latestByHost: nextLatestByHost,
+        receivedAtByHost: nextReceivedAtByHost,
+        seriesByHost: nextSeriesByHost,
+      };
     }),
 
   projectForHost: (host_id) =>
@@ -175,6 +191,7 @@ export const useGpuStore = create<GpuState>((set, get) => ({
     series: new Map(),
     history: new Map(),
     latestByHost: new Map(),
+    receivedAtByHost: new Map(),
     seriesByHost: new Map(),
     historyByHost: new Map(),
   }),
@@ -196,16 +213,12 @@ export function currentHostId(): string {
   return useHostsStore.getState().selectedHostId || LOCAL_HOST_ID;
 }
 
-/** Most recent sample timestamp (epoch seconds) received over the WS
- *  for a given host, or null when no samples have arrived yet. Used by
- *  effectiveStatus() to override the stale-by-15s polled last_seen so
- *  the host card doesn't flicker between online/lagging. */
-export function liveLastSeenFor(latestByHost: Map<string, Map<number, GpuSample>>, hostId: string): number | null {
-  const inner = latestByHost.get(hostId);
-  if (!inner || inner.size === 0) return null;
-  let max = 0;
-  for (const s of inner.values()) {
-    if (s.timestamp_epoch > max) max = s.timestamp_epoch;
-  }
-  return max > 0 ? max : null;
+/** Browser-clock epoch seconds of the last WS frame received for a
+ *  given host, or null when nothing has arrived yet. Used by
+ *  effectiveStatus() as the live freshness signal: it overrides the
+ *  stale-by-15s polled last_seen, and because it is stamped by the
+ *  browser itself it is immune to clock skew between browser, hub and
+ *  agent (see receivedAtByHost above). */
+export function liveLastSeenFor(receivedAtByHost: Map<string, number>, hostId: string): number | null {
+  return receivedAtByHost.get(hostId) ?? null;
 }

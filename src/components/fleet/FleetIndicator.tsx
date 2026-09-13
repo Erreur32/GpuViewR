@@ -11,14 +11,15 @@ import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 export default function FleetIndicator() {
   const { t } = useTranslation();
   const hosts = useHostsStore((s) => s.hosts);
-  const latestByHost = useGpuStore((s) => s.latestByHost);
+  const clockOffsetS = useHostsStore((s) => s.clockOffsetS);
+  const receivedAtByHost = useGpuStore((s) => s.receivedAtByHost);
   if (hosts.length <= 1) return null;
 
   let online = 0;
   let lagging = 0;
   let offline = 0;
   for (const h of hosts) {
-    const s = effectiveStatus(h, undefined, liveLastSeenFor(latestByHost, h.id));
+    const s = effectiveStatus(h, undefined, liveLastSeenFor(receivedAtByHost, h.id), clockOffsetS);
     if (s === 'online') online++;
     else if (s === 'lagging') lagging++;
     else if (s === 'offline') offline++;

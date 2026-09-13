@@ -77,6 +77,13 @@ interface HostsState {
    *  brief window between mount and the first GET /api/hosts response. */
   hydrated: boolean;
   error: string | null;
+  /** Hub clock minus browser clock, in seconds (positive = hub ahead).
+   *  Measured on every /api/hosts poll from the `now` the hub stamps in
+   *  its response. Every hub-stamped epoch (last_seen) is shifted by
+   *  this before being compared with Date.now() so a browser whose
+   *  clock drifts never sees phantom "lagging" hosts or a wrong
+   *  "il y a Xs". 0 until the first poll completes. */
+  clockOffsetS: number;
   /** Drives which host the Dashboard currently visualises. Defaults
    *  to the local hub so single-host installs behave as before. */
   selectedHostId: string;
@@ -117,13 +124,19 @@ export const useHostsStore = create<HostsState>((set, get) => ({
   loading: false,
   hydrated: false,
   error: null,
+  clockOffsetS: 0,
   selectedHostId: LOCAL_HOST_ID,
 
   refresh: async () => {
     set({ loading: true, error: null });
     try {
-      const r = await api<{ hosts: HostRecord[] }>('/hosts');
-      set({ hosts: r.hosts, loading: false, hydrated: true });
+      const r = await api<{ hosts: HostRecord[]; now?: number }>('/hosts');
+      // `now` is absent on a pre-v0.8.23 hub (or the demo mock): keep
+      // whatever offset we had rather than snapping back to 0.
+      const clockOffsetS = typeof r.now === 'number'
+        ? r.now - Math.floor(Date.now() / 1000)
+        : get().clockOffsetS;
+      set({ hosts: r.hosts, clockOffsetS, loading: false, hydrated: true });
     } catch (err) {
       // Flip hydrated on failure too: a broken /api/hosts shouldn't trap
       // routes that gate on hosts.length in a perpetual loading state.
@@ -230,49 +243,51 @@ export function useIsMonoHost(): boolean {
 // backgrounded browser tab. Keep in sync with server/routes/health.ts.
 export const LAGGING_THRESHOLD_S = 25;
 
-/** Effective last-seen for lag computation. Combines two signals so
- *  the displayed status doesn't flicker on the 15 s /api/hosts polling
- *  cadence:
- *    - h.last_seen: authoritative but stale up to 15 s between polls.
- *    - liveLastSeen: latest sample timestamp received over the WS,
- *      pulled from gpuStore.latestByHost. Always 1-2 s fresh for any
- *      host actively streaming.
+/** Effective last-seen for lag computation, expressed in the BROWSER
+ *  clock. Combines two signals so the displayed status doesn't flicker
+ *  on the 15 s /api/hosts polling cadence:
+ *    - h.last_seen: authoritative but stale up to 15 s between polls,
+ *      and stamped by the hub's clock, hence shifted by clockOffsetS.
+ *    - liveLastSeen: browser-clock time of the last WS frame for this
+ *      host (gpuStore.receivedAtByHost). Always 1-2 s fresh for any
+ *      host actively streaming, and skew-free by construction.
  *  Returns whichever is more recent. */
-export function freshestLastSeen(h: HostRecord, liveLastSeen: number | null): number | null {
+export function freshestLastSeen(
+  h: HostRecord,
+  liveLastSeen: number | null,
+  clockOffsetS = 0,
+): number | null {
   if (h.last_seen === null && liveLastSeen === null) return null;
-  return Math.max(h.last_seen ?? 0, liveLastSeen ?? 0);
+  const polled = h.last_seen === null ? 0 : h.last_seen - clockOffsetS;
+  return Math.max(polled, liveLastSeen ?? 0);
 }
 
 /** Derive a displayed "effective" status that incorporates the lag
  *  window the watchdog uses internally: an agent whose last_seen is
  *  more than LAGGING_THRESHOLD_S old shows as 'lagging' even if status
  *  is still 'online' (the 30 s flip lives on the server side).
- *  Pass `liveLastSeen` from gpuStore.latestByHost to avoid the
- *  /api/hosts 15 s poll staleness — without it the status flickers
- *  green→orange→green between polls on a healthy agent. */
+ *  `now` and `liveLastSeen` are browser-clock epochs; `clockOffsetS`
+ *  (hostsStore) converts the hub-stamped h.last_seen into the same
+ *  reference. Without that conversion a browser running ~24 s ahead of
+ *  its hub sat right on the 25 s threshold and flickered "lagging" at
+ *  random on every render, the bug chased from v0.8.16 to v0.8.22. */
 export function effectiveStatus(
   h: HostRecord,
   now = Math.floor(Date.now() / 1000),
   liveLastSeen: number | null = null,
+  clockOffsetS = 0,
 ): HostStatus {
   if (h.status !== 'online') return h.status;
   if (h.kind !== 'agent') return 'online';
-  const seen = freshestLastSeen(h, liveLastSeen);
+  const seen = freshestLastSeen(h, liveLastSeen, clockOffsetS);
   if (seen === null) return 'online';
-  const diff = now - seen;
-  if (diff > LAGGING_THRESHOLD_S) {
-    // Temporary diagnostic for the sub-second "lagging" flicker reported
-    // in v0.8.19 — too fast to screenshot, but this survives in the
-    // console scrollback. Remove once the flicker is root-caused.
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[lag-flicker] ${h.label} (${h.id.slice(0, 8)}) now=${now} seen=${seen} ` +
-      `diff=${diff}s last_seen=${h.last_seen} liveLastSeen=${liveLastSeen}`,
-    );
-    return 'lagging';
-  }
-  return 'online';
+  return now - seen > LAGGING_THRESHOLD_S ? 'lagging' : 'online';
 }
+
+/** Above this the Settings → Hosts tab shows a "fix your clock" banner.
+ *  Statuses are already corrected by clockOffsetS; the banner is there
+ *  so a drifting workstation gets noticed instead of silently masked. */
+export const CLOCK_SKEW_WARN_S = 5;
 
 export function formatRelative(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;

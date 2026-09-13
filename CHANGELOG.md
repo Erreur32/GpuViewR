@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Random "lagging" flicker on Settings → Hosts and the fleet views, root-caused at last**: the online/lagging pill compared hub- and agent-stamped `last_seen`/`timestamp_epoch` values against the *browser's* `Date.now()`. A workstation whose clock ran ~24 s ahead of its hub sat right on the 25 s lagging threshold, so every re-render (one per incoming sample, from any host) had a random chance of flipping the pill. That is also why one enrolled agent looked fine while two flickered: the second host's samples re-render the first host's row at a moment its own sample is up to a second older. Three changes: (1) live freshness is now the browser-clock time the WS frame was *received* (`gpuStore.receivedAtByHost`), not the agent's sample timestamp; (2) `GET /api/hosts` returns the hub's `now`, the UI measures the clock offset and shifts every hub-stamped `last_seen` into the browser's clock before comparing (also fixes the "il y a 25s" label that was wrong by the same amount); (3) Settings → Hosts shows a warning banner when the browser and hub clocks disagree by more than 5 s, so the drift gets fixed at the source instead of being silently masked. The temporary `[lag-flicker]` console diagnostic added in v0.8.19 is removed.
+
 ## [0.8.22] - 2026-09-13
 
 ### Added

@@ -5,7 +5,7 @@ import {
   liveLastSeenFor,
   type GpuSample,
 } from "../../store/gpuStore";
-import { effectiveStatus, type HostRecord } from "../../store/hostsStore";
+import { effectiveStatus, useHostsStore, type HostRecord } from "../../store/hostsStore";
 import { statusFor, colorFor } from "../../lib/status";
 import StatusPill from "./StatusPill";
 import GpuMiniTile from "./GpuMiniTile";
@@ -35,8 +35,10 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
     samplesByHost.get(host.id)?.values() ?? [],
   ).sort((a, b) => a.gpu_index - b.gpu_index);
 
-  const liveLastSeen = liveLastSeenFor(samplesByHost, host.id);
-  const status = effectiveStatus(host, undefined, liveLastSeen);
+  const receivedAtByHost = useGpuStore((s) => s.receivedAtByHost);
+  const clockOffsetS = useHostsStore((s) => s.clockOffsetS);
+  const liveLastSeen = liveLastSeenFor(receivedAtByHost, host.id);
+  const status = effectiveStatus(host, undefined, liveLastSeen, clockOffsetS);
   const isOffline =
     status === "offline" || status === "disabled" || status === "pending";
 

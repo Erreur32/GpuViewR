@@ -50,7 +50,10 @@ router.use(requireAuth);
 // -------- Read endpoints (any authenticated user) --------
 
 router.get('/', (_req, res) => {
-  res.json({ hosts: HostsRepo.list().map(stripSensitive) });
+  // `now` lets the UI measure the hub-vs-browser clock offset and shift
+  // every hub-stamped last_seen into the browser's own clock before
+  // comparing with Date.now(). See clockOffsetS in src/store/hostsStore.ts.
+  res.json({ hosts: HostsRepo.list().map(stripSensitive), now: Math.floor(Date.now() / 1000) });
 });
 
 // Must be registered before `/:id` — otherwise Express would swallow
