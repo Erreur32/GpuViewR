@@ -17,6 +17,7 @@
 #   --interval MS      collector tick in ms (default 1000)
 #   --features LIST    CSV of gpu,system,temps,processes (default all)
 #   --uninstall        stop the service, remove the systemd unit + env + binary
+#   --force            skip the cross-mode guard (Docker agent already on this host)
 #
 # Distro support: Debian 11+ / Ubuntu 22+ / Rocky/Alma/RHEL 9+ / Fedora 38+.
 # Anything else exits 1 with a hint — install Node 22 manually then re-run.
@@ -28,6 +29,7 @@ TOKEN=""
 INTERVAL_MS=1000
 FEATURES="gpu,system,temps,processes"
 UNINSTALL=0
+FORCE=0
 
 SERVICE_USER="gpuviewr-agent"
 INSTALL_DIR="/opt/gpuviewr-agent"
@@ -52,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --interval)   INTERVAL_MS="$2"; shift 2 ;;
     --features)   FEATURES="$2"; shift 2 ;;
     --uninstall)  UNINSTALL=1; shift ;;
+    --force)      FORCE=1; shift ;;
     -h|--help)    sed -n '2,22p' "$0" | sed 's/^# //; s/^#//'; exit 0 ;;
     *)            die "Unknown flag: $1" ;;
   esac
@@ -94,6 +97,20 @@ SECRET="${TOKEN#*.}"
 HOST_ID="${HOST_ID#gpvr_}"  # tolerate a "gpvr_" prefix if the user pasted whole
 [[ -n "$HOST_ID" && -n "$SECRET" && "$HOST_ID" != "$SECRET" ]] \
   || die "Invalid --token (expected <host_id>.<secret>; got: $TOKEN)"
+
+# ──────────────────────────────────────────────────────────────────────
+# Cross-mode guard — refuse if a Docker agent container is already
+# running on this host. Running a systemd agent alongside a Docker
+# agent means two processes race to report the same GPU under two
+# different host_ids, confusing the hub UI (duplicate/flickering
+# host rows). Pass --force to install anyway (e.g. deliberately
+# migrating from Docker to systemd — stop the container yourself
+# afterwards).
+# ──────────────────────────────────────────────────────────────────────
+if [[ $FORCE -eq 0 ]] && command -v docker >/dev/null 2>&1 \
+   && docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'gpuviewr-agent'; then
+  die "A Docker agent container ('gpuviewr-agent') already exists on this host. Running it alongside a systemd agent double-reports this GPU. Stop/remove it first (cd to its install dir && docker compose down, or 'docker rm -f gpuviewr-agent'), or re-run with --force to install anyway."
+fi
 
 # ──────────────────────────────────────────────────────────────────────
 # Arch + distro probe

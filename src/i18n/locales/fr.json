@@ -575,7 +575,7 @@
     "confirm_delete": "Supprimer définitivement l'hôte \"{{label}}\" ? L'agent sera déconnecté et la ligne est irrécupérable ; les métriques historiques sont préservées.",
     "delete_title": "Supprimer \"{{label}}\" ?",
     "delete_intro": "Retire cet hôte du registre du hub.",
-    "delete_warning_orphan": "L'agent sur la machine distante va retenter la connexion (rejetée) en boucle systemd jusqu'à ce que tu le désinstalles. Lance la commande ci-dessous AVANT pour le nettoyer proprement.",
+    "delete_warning_orphan": "L'agent sur la machine distante va retenter la connexion (rejetée) en boucle (systemd, Docker ou tâche planifiée selon le mode) jusqu'à ce que tu le désinstalles. Lance la commande ci-dessous AVANT pour le nettoyer proprement.",
     "delete_uninstall_hint": "Sur la machine distante, avant de supprimer :",
     "uninstall_cmd": "Commande de désinstallation",
     "delete_confirm": "Supprimer du hub",

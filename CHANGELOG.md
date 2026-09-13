@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.21] - 2026-09-13
+
+### Fixed
+
+- **Windows agent log growing unbounded**: `agent.log` under `C:\ProgramData\GpuViewR-Agent\` had no rotation. The generated launcher now rotates it once it crosses 10 MB (`.1`/`.2`/`.3`, oldest dropped), checked on every log write.
+- **Delete-host warning text hardcoded "systemd restart loop"** even though the same warning shows for all 3 install modes (Docker has its own restart policy, Windows its launcher while-loop). Generalized in both `fr.json` and `en.json`.
+
+### Added
+
+- **Cross-mode install guard**: `install.sh` (systemd) now refuses to run if a Docker agent container (`gpuviewr-agent`) already exists on the host, and `install-agent.sh` (Docker) now refuses if a systemd agent (`gpuviewr-agent.service`) already exists — running both at once double-reports the same GPU under two host ids. Both accept `--force` to bypass.
+
 ## [0.8.20] - 2026-09-13
 
 ### Fixed

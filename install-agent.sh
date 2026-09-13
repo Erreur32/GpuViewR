@@ -28,6 +28,7 @@ HUB_HTTP=""
 TOKEN_COMPOSITE=""
 BRANCH="${GPUVIEWR_BRANCH:-main}"
 RAW_URL="https://raw.githubusercontent.com/Erreur32/GpuViewR/${BRANCH}"
+FORCE=0
 
 # ── Args ─────────────────────────────────────────────────────────────────────
 while [ $# -gt 0 ]; do
@@ -35,12 +36,14 @@ while [ $# -gt 0 ]; do
     --hub)        HUB_HTTP="$2"; shift 2 ;;
     --token)      TOKEN_COMPOSITE="$2"; shift 2 ;;
     --branch)     BRANCH="$2"; RAW_URL="https://raw.githubusercontent.com/Erreur32/GpuViewR/${BRANCH}"; shift 2 ;;
+    --force)      FORCE=1; shift ;;
     -h|--help)
       echo "Usage: $0 --hub <url> --token <host_id>.<secret>"
       echo "  --hub URL       e.g. http://hub.example.com:7510"
       echo "  --token TOKEN   composite token shown by the hub UI"
       echo "                  (format: <uuid>.<opaque-secret>)"
       echo "  --branch NAME   override GitHub branch (default: main)"
+      echo "  --force         skip the cross-mode guard (systemd agent already on this host)"
       exit 0 ;;
     *) echo -e "${RED}Unknown arg:${R} $1"; exit 1 ;;
   esac
@@ -71,6 +74,21 @@ docker compose version >/dev/null 2>&1 || {
   echo -e "${RED}Error:${R} 'docker compose' v2 plugin is required."
   exit 1
 }
+
+# ── Cross-mode guard ─────────────────────────────────────────────────────────
+# Refuse if a systemd agent is already running on this host — running it
+# alongside a Docker agent double-reports the same GPU under two different
+# host_ids, confusing the hub UI. Pass --force to install anyway (e.g.
+# deliberately migrating from systemd to Docker — stop the service yourself
+# afterwards).
+if [ "$FORCE" != "1" ] && command -v systemctl >/dev/null 2>&1 \
+   && systemctl list-unit-files 2>/dev/null | grep -q '^gpuviewr-agent\.service'; then
+  echo -e "${RED}Error:${R} A systemd agent (gpuviewr-agent.service) already exists on this host."
+  echo -e "  Running it alongside a Docker agent double-reports this GPU."
+  echo -e "  Stop/remove it first: ${C}sudo systemctl disable --now gpuviewr-agent${R}"
+  echo -e "  or re-run with ${C}--force${R} to install anyway."
+  exit 1
+fi
 
 # ── Split token: <HOST_ID>.<SECRET> on the FIRST dot ─────────────────────────
 HOST_ID="${TOKEN_COMPOSITE%%.*}"

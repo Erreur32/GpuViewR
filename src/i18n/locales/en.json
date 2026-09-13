@@ -575,7 +575,7 @@
     "confirm_delete": "Permanently remove host \"{{label}}\"? The agent will be disconnected and the row is unrecoverable; historical metrics are preserved.",
     "delete_title": "Delete \"{{label}}\"?",
     "delete_intro": "Remove this host from the hub registry.",
-    "delete_warning_orphan": "The agent on the remote machine will retry the (rejected) connection in a systemd restart loop until you uninstall it. Run the command below FIRST to clean it up cleanly.",
+    "delete_warning_orphan": "The agent on the remote machine will retry the (rejected) connection in an auto-restart loop (systemd/Docker/Scheduled Task) until you uninstall it. Run the command below FIRST to clean it up cleanly.",
     "delete_uninstall_hint": "On the remote machine, before deleting:",
     "uninstall_cmd": "Uninstall command",
     "delete_confirm": "Delete from hub",

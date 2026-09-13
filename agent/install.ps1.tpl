@@ -270,11 +270,27 @@ $LogPath = Join-Path $InstallDir 'agent.log'
 `$node    = '$($node.Command.Path)'
 `$logFile = '$LogPath'
 
+# Rotate agent.log once it crosses 10 MB: shift .1/.2 -> .2/.3 (dropping
+# the oldest .3), move the current file to .1, then let the next write
+# recreate an empty agent.log. Without this the file grows unbounded —
+# the agent's own stdout has no rotation of its own on Windows, unlike
+# systemd's journal on Linux which caps itself automatically.
+function Rotate-Log {
+    if ((Test-Path `$logFile) -and ((Get-Item `$logFile).Length -ge 10MB)) {
+        for (`$i = 3; `$i -ge 1; `$i--) {
+            `$dst = "`$logFile.`$i"
+            `$src = if (`$i -eq 1) { `$logFile } else { "`$logFile.`$(`$i - 1)" }
+            if (Test-Path `$src) { Move-Item -Force `$src `$dst }
+        }
+    }
+}
+
 # Helper: timestamped append to the log file. The scheduled task runs
 # hidden under SYSTEM so there's no console to write to — without this
 # log, a crashing node process is completely invisible. Operator can
 # tail it via `Get-Content '$LogPath' -Wait`.
 function Write-Log(`$msg) {
+    Rotate-Log
     `$ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
     Add-Content -Path `$logFile -Value "[`$ts] [launcher] `$msg"
 }
@@ -296,13 +312,17 @@ while (`$true) {
     }
 
     . `$envFile
-    # Pipe node's combined stdout+stderr to Out-File. `2>&1` merges
-    # the streams BEFORE PowerShell's NativeCommandError handler sees
+    # Pipe node's combined stdout+stderr line-by-line so each line can
+    # trigger a size-based rotation check first. `2>&1` merges the
+    # streams BEFORE PowerShell's NativeCommandError handler sees
     # stderr — without that merge, every non-empty stderr line on a
     # non-zero exit triggers a "Au caractère launcher.ps1:NN" wrapper
     # error that pollutes the log. With the merge, node's own
     # formatted log lines are the only thing that lands in agent.log.
-    & `$node `$bin 2>&1 | Out-File -Append -FilePath `$logFile -Encoding utf8
+    & `$node `$bin 2>&1 | ForEach-Object {
+        Rotate-Log
+        Add-Content -Path `$logFile -Value `$_ -Encoding utf8
+    }
     `$exitCode = `$LASTEXITCODE
     Write-Log "node exited with code `$exitCode; respawning in 5s"
 
