@@ -28,6 +28,14 @@ export default function FleetIndicator() {
   else if (lagging > 0) dot = 'var(--gv-warn)';
   else dot = 'var(--gv-ok)';
 
+  // Both online and total share the same worst-case digit count (online
+  // can never exceed total), so the label at online=total is the widest
+  // it will ever get. Reserving that width up front stops the badge
+  // from resizing (and shoving every other header badge sideways) each
+  // time `online` changes digit count, e.g. 9/10 -> 10/10.
+  const label = t('fleet.indicator', { online, total: hosts.length });
+  const widestLabel = t('fleet.indicator', { online: hosts.length, total: hosts.length });
+
   return (
     <NavLink
       to="/fleet"
@@ -36,11 +44,14 @@ export default function FleetIndicator() {
     >
       <Activity className="w-4 h-4" />
       <span
-        className="inline-block w-2 h-2 rounded-full"
+        className="inline-block w-2 h-2 rounded-full shrink-0"
         style={{ background: dot, boxShadow: `0 0 6px ${dot}` }}
       />
-      <span className="hidden sm:inline">
-        {t('fleet.indicator', { online, total: hosts.length })}
+      <span
+        className="hidden sm:inline-block tabular-nums"
+        style={{ minWidth: `${widestLabel.length}ch` }}
+      >
+        {label}
       </span>
     </NavLink>
   );
