@@ -248,13 +248,21 @@ function metricFromHistory(row: HistoryRow, metric: Metric): number | null {
   return row.power;
 }
 
-async function fetchHostHistory(
+// Fetches each GPU's history exactly once and derives all 3 metrics
+// from that same payload. `/gpu/history` already returns temperature +
+// utilization + power together, so looping this per-metric (as before)
+// tripled the HTTP/DB load for no reason — harmless for a one-shot
+// fetch, but this now runs on every background poll (15-120s) for as
+// long as the Fleet page stays open, so the waste compounds forever.
+async function fetchHostHistoryAll(
   hostId: string,
   gpuIndices: number[],
-  metric: Metric,
   range: string,
-): Promise<{ times: number[]; values: number[] }> {
-  if (gpuIndices.length === 0) return { times: [], values: [] };
+): Promise<Record<Metric, { times: number[]; values: number[] }>> {
+  const empty = { times: [] as number[], values: [] as number[] };
+  if (gpuIndices.length === 0) {
+    return { utilization: empty, temperature: empty, power: empty };
+  }
   const fetches = gpuIndices.map((gpu) =>
     api<{ history: HistoryRow[] }>(`/gpu/history?host=${encodeURIComponent(hostId)}&gpu=${gpu}&range=${range}`)
       .then((r) => r.history)
@@ -262,26 +270,32 @@ async function fetchHostHistory(
   );
   const allHistories = await Promise.all(fetches);
   const tSet = new Set<number>();
-  for (const rows of allHistories) for (const r of rows) tSet.add(r.timestamp_epoch);
-  const sortedT = Array.from(tSet).sort((a, b) => a - b);
-  const sums: number[] = new Array(sortedT.length).fill(0);
-  const counts: number[] = new Array(sortedT.length).fill(0);
-  for (const rows of allHistories) {
+  const maps = allHistories.map((rows) => {
     const map = new Map<number, HistoryRow>();
-    for (const r of rows) map.set(r.timestamp_epoch, r);
-    for (let i = 0; i < sortedT.length; i++) {
-      const r = map.get(sortedT[i]);
-      if (!r) continue;
-      const v = metricFromHistory(r, metric);
-      if (v === null || v === undefined) continue;
-      sums[i] += v;
-      counts[i] += 1;
+    for (const r of rows) {
+      map.set(r.timestamp_epoch, r);
+      tSet.add(r.timestamp_epoch);
     }
+    return map;
+  });
+  const sortedT = Array.from(tSet).sort((a, b) => a - b);
+  const out = {} as Record<Metric, { times: number[]; values: number[] }>;
+  for (const m of METRICS) {
+    const sums: number[] = new Array(sortedT.length).fill(0);
+    const counts: number[] = new Array(sortedT.length).fill(0);
+    for (const map of maps) {
+      for (let i = 0; i < sortedT.length; i++) {
+        const r = map.get(sortedT[i]);
+        if (!r) continue;
+        const v = metricFromHistory(r, m);
+        if (v === null || v === undefined) continue;
+        sums[i] += v;
+        counts[i] += 1;
+      }
+    }
+    out[m] = { times: sortedT, values: sums.map((s, i) => (counts[i] === 0 ? 0 : s / counts[i])) };
   }
-  return {
-    times: sortedT,
-    values: sums.map((s, i) => (counts[i] === 0 ? 0 : s / counts[i])),
-  };
+  return out;
 }
 
 interface SeriesEntry {
@@ -351,14 +365,14 @@ export default function FleetChart() {
     let first = true;
     const fetchAll = async () => {
       const store = useGpuStore.getState();
+      const perHost = await Promise.all(hostsToPlot.map((h) => {
+        const samples = store.latestByHost.get(h.id);
+        const gpuIndices = samples ? Array.from(samples.keys()) : [0];
+        return fetchHostHistoryAll(h.id, gpuIndices, range);
+      }));
       const out = {} as Record<Metric, { times: number[]; values: number[] }[]>;
       for (const m of METRICS) {
-        const fetches = hostsToPlot.map((h) => {
-          const samples = store.latestByHost.get(h.id);
-          const gpuIndices = samples ? Array.from(samples.keys()) : [0];
-          return fetchHostHistory(h.id, gpuIndices, m, range);
-        });
-        out[m] = await Promise.all(fetches);
+        out[m] = perHost.map((p) => p[m]);
       }
       return out;
     };
