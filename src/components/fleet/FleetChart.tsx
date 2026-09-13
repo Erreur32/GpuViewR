@@ -32,7 +32,7 @@ import { useGpuStore, type HistoryRow } from '../../store/gpuStore';
 import { useHostsStore, type HostRecord } from '../../store/hostsStore';
 import { useUiStore } from '../../store/uiStore';
 import { api } from '../../lib/api';
-import { fmtDateTime } from '../../lib/time';
+import { fmtDateTime, historyPollIntervalMs } from '../../lib/time';
 import RangeSelector from '../dashboard/RangeSelector';
 
 type Metric = 'temperature' | 'utilization' | 'power';
@@ -220,6 +220,23 @@ function buildHostSeries(
   return { times, values: sums.map((s, i) => (counts[i] === 0 ? 0 : s / counts[i])) };
 }
 
+// Append the live buffer's tail (points newer than `hist`'s last
+// timestamp) onto a periodically-refetched historic series. Without
+// this, a non-live chart would only ever move on each background poll
+// (15-120s depending on range) instead of on every incoming sample.
+function withLiveTail(
+  hist: { times: number[]; values: number[] },
+  live: { times: number[]; values: number[] },
+): { times: number[]; values: number[] } {
+  const lastHistT = hist.times.at(-1) ?? -Infinity;
+  const tailStart = live.times.findIndex((t) => t > lastHistT);
+  if (tailStart === -1) return hist;
+  return {
+    times: hist.times.concat(live.times.slice(tailStart)),
+    values: hist.values.concat(live.values.slice(tailStart)),
+  };
+}
+
 // (aggregateForTotal removed in v0.8.2 along with the "Tous hôtes"
 // mode toggle — user feedback: "je ne vois pas l'intérêt". The
 // per-host view with color-shaded metrics already conveys per-host
@@ -320,6 +337,10 @@ export default function FleetChart() {
     });
   }, [hostsToPlot, seriesByHost, range]);
 
+  // Fetch once on range/host-list change, then keep polling in the
+  // background so the non-live chart doesn't go permanently static: this
+  // branch has no live-tail merge, so without a periodic refresh it
+  // would never move past its first snapshot.
   useEffect(() => {
     if (range === 'live') {
       setHistoryByMetric(null);
@@ -327,9 +348,9 @@ export default function FleetChart() {
       return;
     }
     let cancelled = false;
-    setLoading(true);
-    const store = useGpuStore.getState();
+    let first = true;
     const fetchAll = async () => {
+      const store = useGpuStore.getState();
       const out = {} as Record<Metric, { times: number[]; values: number[] }[]>;
       for (const m of METRICS) {
         const fetches = hostsToPlot.map((h) => {
@@ -341,11 +362,18 @@ export default function FleetChart() {
       }
       return out;
     };
-    fetchAll()
-      .then((all) => { if (!cancelled) setHistoryByMetric(all); })
-      .catch(() => { if (!cancelled) setHistoryByMetric(null); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    const run = () => {
+      if (first) setLoading(true);
+      fetchAll()
+        .then((all) => { if (!cancelled) setHistoryByMetric(all); })
+        .catch(() => { if (!cancelled && first) setHistoryByMetric(null); })
+        .finally(() => {
+          if (!cancelled && first) { setLoading(false); first = false; }
+        });
+    };
+    run();
+    const id = setInterval(run, historyPollIntervalMs(range));
+    return () => { cancelled = true; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, hostsToPlot.map((h) => h.id).join(',')]);
 
@@ -371,7 +399,8 @@ export default function FleetChart() {
             const hb = historyByMetric[m] ?? [];
             return hostsWithData.map((h) => {
               const fullIdx = hostsToPlot.findIndex((x) => x.id === h.id);
-              return hb[fullIdx] ?? { times: [], values: [] };
+              const hist = hb[fullIdx] ?? { times: [], values: [] };
+              return withLiveTail(hist, buildHostSeries(h.id, m, store));
             });
           })();
       for (const h of visibleHostsWithData) {

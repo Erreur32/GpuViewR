@@ -23,6 +23,19 @@ export function rangeToSeconds(range: string): number {
   }
 }
 
+// Interval (ms) between background refreshes of the non-live "historic"
+// series fetched from /gpu/history. Short ranges poll tightly so newly
+// ingested samples show up quickly; long ranges are downsampled server
+// side and change slowly, so they poll less often to limit load.
+export function historyPollIntervalMs(range: string): number {
+  const seconds = rangeToSeconds(range);
+  if (seconds <= 15 * 60) return 15_000; // live, 5m, 15m
+  if (seconds <= 3600) return 20_000; // 1h
+  if (seconds <= 6 * 3600) return 30_000; // 6h
+  if (seconds <= 24 * 3600) return 60_000; // 24h
+  return 120_000; // 3d
+}
+
 // Build the uPlot axis label formatter for the time axis. Reads the
 // user's 24h / 12h preference through a ref so the chart can be
 // rebuilt without re-reading the store on every tick.

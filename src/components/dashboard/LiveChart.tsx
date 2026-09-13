@@ -7,7 +7,7 @@ import { useHostsStore } from '../../store/hostsStore';
 import { useUiStore } from '../../store/uiStore';
 import { notify } from '../../store/toastStore';
 import { api } from '../../lib/api';
-import { fmtClock, fmtDateTime, makeAxisTimeFormatter, rangeToSeconds } from '../../lib/time';
+import { fmtClock, fmtDateTime, historyPollIntervalMs, makeAxisTimeFormatter, rangeToSeconds } from '../../lib/time';
 
 interface Props { gpuIndex: number; }
 
@@ -79,24 +79,35 @@ export default function LiveChart({ gpuIndex }: Props) {
     });
   };
 
-  // Fetch history when gpu/range changes. We hydrate `historic` from the
-  // gpuStore cache synchronously so the chart paints instantly on mount
-  // (no flash of empty data while the API call is in flight), then the
-  // fetch refreshes the cache and the local state.
+  // Fetch history when gpu/range changes, then keep polling in the
+  // background so `historic` doesn't go stale after ~10 min: the live
+  // buffer in gpuStore only holds a rolling ~10 min window, so without a
+  // periodic refresh the historic segment loaded once at mount would
+  // never advance and a growing gap would appear between it and the
+  // live tail. We hydrate `historic` from the gpuStore cache
+  // synchronously so the chart paints instantly on mount (no flash of
+  // empty data while the first API call is in flight).
   useEffect(() => {
     let cancelled = false;
+    let first = true;
     const cached = useGpuStore.getState().getHistory(selectedHostId, gpuIndex, range);
     if (cached) setHistoric(cached);
-    setLoadingHistory(true);
-    api<{ history: HistoryRow[] }>(`/gpu/history?host=${encodeURIComponent(selectedHostId)}&gpu=${gpuIndex}&range=${range}`)
-      .then((r) => {
-        if (cancelled) return;
-        setHistoric(r.history);
-        setHistoryCache(selectedHostId, gpuIndex, range, r.history);
-      })
-      .catch(() => { if (!cancelled && !cached) setHistoric([]); })
-      .finally(() => { if (!cancelled) setLoadingHistory(false); });
-    return () => { cancelled = true; };
+    const fetchOnce = () => {
+      if (first) setLoadingHistory(true);
+      api<{ history: HistoryRow[] }>(`/gpu/history?host=${encodeURIComponent(selectedHostId)}&gpu=${gpuIndex}&range=${range}`)
+        .then((r) => {
+          if (cancelled) return;
+          setHistoric(r.history);
+          setHistoryCache(selectedHostId, gpuIndex, range, r.history);
+        })
+        .catch(() => { if (!cancelled && !cached && first) setHistoric([]); })
+        .finally(() => {
+          if (!cancelled && first) { setLoadingHistory(false); first = false; }
+        });
+    };
+    fetchOnce();
+    const id = setInterval(fetchOnce, historyPollIntervalMs(range));
+    return () => { cancelled = true; clearInterval(id); };
   }, [selectedHostId, gpuIndex, range, setHistoryCache]);
 
   // Build / rebuild chart on theme change

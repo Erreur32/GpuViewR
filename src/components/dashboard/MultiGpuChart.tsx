@@ -3,10 +3,12 @@ import uPlot, { type AlignedData } from 'uplot';
 import { useTranslation } from 'react-i18next';
 import { Thermometer, Activity, MemoryStick, Fan, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { GpuSample } from '../../store/gpuStore';
+import type { GpuSample, HistoryRow } from '../../store/gpuStore';
 import { useGpuStore } from '../../store/gpuStore';
+import { useHostsStore } from '../../store/hostsStore';
 import { useUiStore } from '../../store/uiStore';
-import { fmtClock, fmtDateTime, makeAxisTimeFormatter, rangeToSeconds } from '../../lib/time';
+import { api } from '../../lib/api';
+import { fmtClock, fmtDateTime, historyPollIntervalMs, makeAxisTimeFormatter, rangeToSeconds } from '../../lib/time';
 import { shortGpuName } from '../../lib/gpuName';
 
 // Per-GPU palette — eight high-contrast hues so up to eight GPUs stay
@@ -30,10 +32,12 @@ const METRICS: ReadonlyArray<{ key: Metric; labelKey: string; icon: LucideIcon; 
 export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample[] }>) {
   const { t } = useTranslation();
   const seriesMap = useGpuStore((s) => s.series);
+  const selectedHostId = useHostsStore((s) => s.selectedHostId);
   const range = useUiStore((s) => s.range);
   const timeFormat = useUiStore((s) => s.timeFormat);
   const themeId = useUiStore((s) => s.themeId);
   const [metric, setMetric] = useState<Metric>('utilization');
+  const [historyByGpu, setHistoryByGpu] = useState<Map<number, HistoryRow[]>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);
   const [cursorIdx, setCursorIdx] = useState<number | null>(null);
@@ -119,21 +123,91 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
     return () => { ro.disconnect(); plotRef.current?.destroy(); plotRef.current = null; };
   }, [samples, metric, meta.scale, themeId]);
 
-  // Push merged data on every store update. We use the live in-memory
-  // series (rolling ~10 min) so this view doesn't need backend history
-  // calls for every GPU; ranges > 10 min just plateau visually.
+  // Fetch per-GPU history for non-live ranges and keep polling in the
+  // background. The live buffer in gpuStore only holds a rolling ~10 min
+  // window, so without this the chart used to plateau past that mark for
+  // every range longer than "live".
+  const gpuIndicesKey = samples.map((s) => s.gpu_index).join(',');
+  useEffect(() => {
+    if (range === 'live' || samples.length === 0) {
+      setHistoryByGpu(new Map());
+      return;
+    }
+    let cancelled = false;
+    const gpuIndices = samples.map((s) => s.gpu_index);
+    const fetchAll = async () => {
+      const entries = await Promise.all(
+        gpuIndices.map((gpu) =>
+          api<{ history: HistoryRow[] }>(`/gpu/history?host=${encodeURIComponent(selectedHostId)}&gpu=${gpu}&range=${range}`)
+            .then((r): readonly [number, HistoryRow[]] => [gpu, r.history])
+            .catch((): readonly [number, HistoryRow[]] => [gpu, []]),
+        ),
+      );
+      return new Map(entries);
+    };
+    const run = () => { fetchAll().then((m) => { if (!cancelled) setHistoryByGpu(m); }); };
+    run();
+    const id = setInterval(run, historyPollIntervalMs(range));
+    return () => { cancelled = true; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedHostId, range, gpuIndicesKey]);
+
+  // Push merged data on every store update / history refresh. For each
+  // GPU we concatenate its periodically-refetched history with the live
+  // buffer's tail (points newer than the history's last timestamp) so
+  // the chart both covers the full selected range and keeps animating
+  // between two background polls.
   useEffect(() => {
     if (!plotRef.current) return;
     if (samples.length === 0) return;
+
+    const merged = new Map<number, {
+      t: number[];
+      util: (number | null)[];
+      temp: number[];
+      pow: number[];
+      mem: (number | null)[];
+      fan: (number | null)[];
+    }>();
+    for (const sample of samples) {
+      const hist = historyByGpu.get(sample.gpu_index) ?? [];
+      const t: number[] = [];
+      const util: (number | null)[] = [];
+      const temp: number[] = [];
+      const pow: number[] = [];
+      const mem: (number | null)[] = [];
+      const fan: (number | null)[] = [];
+      for (const h of hist) {
+        t.push(h.timestamp_epoch);
+        util.push(h.utilization);
+        temp.push(h.temperature);
+        pow.push(h.power);
+        mem.push(h.memory_total ? (h.memory_used / h.memory_total) * 100 : null);
+        fan.push(h.fan_speed);
+      }
+      const lastHistT = t.at(-1) ?? -Infinity;
+      const live = seriesMap.get(sample.gpu_index);
+      if (live) {
+        const total = sample.memory_total ?? 0;
+        for (let i = 0; i < live.t.length; i++) {
+          if (live.t[i] <= lastHistT) continue;
+          t.push(live.t[i]);
+          util.push(live.utilization[i] ?? null);
+          temp.push(live.temperature[i]);
+          pow.push(live.power[i]);
+          const used = live.memory_used[i];
+          mem.push(used !== undefined && total > 0 ? (used / total) * 100 : null);
+          fan.push(live.fan_speed[i] ?? null);
+        }
+      }
+      merged.set(sample.gpu_index, { t, util, temp, pow, mem, fan });
+    }
 
     // Build a unified time axis from the longest GPU's timeline so all
     // lines stay aligned; sparse GPUs simply contribute null at missing
     // ticks.
     let longest: number[] = [];
-    for (const s of samples) {
-      const ts = seriesMap.get(s.gpu_index)?.t ?? [];
-      if (ts.length > longest.length) longest = ts;
-    }
+    for (const m of merged.values()) if (m.t.length > longest.length) longest = m.t;
     const last = longest.at(-1);
     if (last === undefined) {
       plotRef.current.setData([[]] as unknown as AlignedData);
@@ -147,30 +221,25 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
     tArr.forEach((ts, i) => byTimeIndex.set(ts, i));
 
     const lines: (number | null)[][] = samples.map((sample) => {
-      const s = seriesMap.get(sample.gpu_index);
+      const m = merged.get(sample.gpu_index);
       const arr: (number | null)[] = new Array(tArr.length).fill(null);
-      if (!s) return arr;
-      for (let i = 0; i < s.t.length; i++) {
-        const targetIdx = byTimeIndex.get(s.t[i]);
+      if (!m) return arr;
+      for (let i = 0; i < m.t.length; i++) {
+        const targetIdx = byTimeIndex.get(m.t[i]);
         if (targetIdx === undefined) continue;
         switch (metric) {
-          case 'utilization': arr[targetIdx] = s.utilization[i] ?? null; break;
-          case 'temperature': arr[targetIdx] = s.temperature[i] ?? null; break;
-          case 'fan_speed':   arr[targetIdx] = s.fan_speed[i] ?? null;   break;
-          case 'power':       arr[targetIdx] = s.power[i] ?? null;        break;
-          case 'memory': {
-            const used = s.memory_used[i];
-            const total = sample.memory_total ?? 0;
-            arr[targetIdx] = used !== undefined && total > 0 ? (used / total) * 100 : null;
-            break;
-          }
+          case 'utilization': arr[targetIdx] = m.util[i]; break;
+          case 'temperature': arr[targetIdx] = m.temp[i]; break;
+          case 'fan_speed':   arr[targetIdx] = m.fan[i];  break;
+          case 'power':       arr[targetIdx] = m.pow[i];  break;
+          case 'memory':      arr[targetIdx] = m.mem[i];  break;
         }
       }
       return arr;
     });
 
     plotRef.current.setData([tArr, ...lines] as unknown as AlignedData);
-  }, [samples, seriesMap, metric, range]);
+  }, [samples, seriesMap, historyByGpu, metric, range]);
 
   // Tooltip rows for the current cursor index.
   const tipRows = useMemo(() => {
