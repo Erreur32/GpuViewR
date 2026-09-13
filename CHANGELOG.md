@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.17] - 2026-09-13
+
+### Fixed
+
+- **`/fleet` hosts flickering between online/lagging while the page was open**: the v0.8.16 fix that turned `FleetChart`'s one-shot `/gpu/history` fetch into a periodic poll re-fetched the same host/GPU history **three times per poll** (once per metric: utilization, temperature, power), even though the endpoint already returns all three in one response. Harmless as a one-shot call, but repeating that 3x waste every 15-120s indefinitely (across every enrolled host and GPU) produced request/DB bursts that could delay other server work, including WS heartbeats, making hosts intermittently show as "lagging" in a tight loop. `FleetChart` now fetches each host/GPU's history once per poll and derives all three metrics from that single response.
+
 ## [0.8.16] - 2026-09-13
 
 ### Fixed
