@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle, RefreshCw, DownloadCloud } from 'lucide-react';
 import Icon from '../ui/icons/IconRegistry';
-import { useHostsStore, effectiveStatus, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
+import { useHostsStore, effectiveStatus, freshestLastSeen, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
@@ -58,6 +58,16 @@ export default function HostsSettingsTab() {
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
+            <colgroup>
+              <col />
+              {/* Fixed width: "En ligne" / "En retard" / "Hors ligne" must
+                  not reflow the sibling columns as the status changes. */}
+              <col style={{ width: '7.5rem' }} />
+              <col />
+              <col />
+              <col />
+              <col />
+            </colgroup>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>
                 <th className="px-4 py-3 font-medium">{t('hosts.col_label')}</th>
@@ -109,7 +119,12 @@ function HostRow({
   const liveLastSeen = liveLastSeenFor(latestByHost, host.id);
   const status = effectiveStatus(host, undefined, liveLastSeen);
   const now = Math.floor(Date.now() / 1000);
-  const effectiveLastSeen = liveLastSeen ?? host.last_seen;
+  // Take the freshest of the two signals (same rule as effectiveStatus
+  // above) — `liveLastSeen ?? host.last_seen` used to pick the live WS
+  // sample unconditionally even when it was staler than the polled
+  // host.last_seen, showing a misleading "il y a 25s" on a host that
+  // was actually fine.
+  const effectiveLastSeen = freshestLastSeen(host, liveLastSeen);
   const lastSeenLabel = effectiveLastSeen === null
     ? '—'
     : t('common.ago_relative', { time: formatRelative(now - effectiveLastSeen) });
@@ -135,7 +150,7 @@ function HostRow({
           </div>
         )}
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 whitespace-nowrap">
         {/* lastSeenEpoch={null} → render only the status dot + label.
             The dedicated "Last seen" column on this row already shows
             the age, so duplicating it inside the pill would read as
