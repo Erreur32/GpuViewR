@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.18] - 2026-09-13
+
+### Fixed
+
+- **Hosts (including the local one) still intermittently flickering to "lagging" after v0.8.17**: `agentMetricsPersistor.onSample()` ran a synchronous SQLite write (`GpuDeviceRepository.upsert`) on **every single incoming sample, per GPU, per host, at 1Hz, forever** — unlike `markSeen()` which is already throttled. Device metadata (name/uuid/driver/memory total) essentially never changes tick-to-tick, so this was pure write amplification on the same single-threaded event loop that also has to process every other host's WS frames, including the local sidecar's own (it has shared this ingest path with remote agents since v0.8). Hosts sending heavier/more frequent traffic (Linux agents with process lists) could stall that loop just enough to delay `markSeen()` for any host queued behind, explaining why Linux hosts (and the local one) flickered while the lighter Windows agent didn't. The device-row upsert is now throttled to the same 60s cadence as the metrics buffer flush.
+
 ## [0.8.17] - 2026-09-13
 
 ### Fixed

@@ -30,6 +30,16 @@ let buffer: GpuMetric[] = [];
 let flushTimer: NodeJS.Timeout | null = null;
 let listener: ((e: SampleEvent) => void) | null = null;
 
+// GpuDeviceRepository.upsert() is a synchronous SQLite write. Device
+// metadata (name/uuid/driver/memory_total) essentially never changes
+// tick-to-tick, so hitting the DB for it on every single sample (1 Hz,
+// per GPU, per host, forever) is pure write amplification on the same
+// hot path/event loop that also has to process every other host's
+// frames — including the local sidecar's, which shares this path since
+// v0.8. Throttled to the same cadence as the metrics buffer flush.
+const DEVICE_UPSERT_THROTTLE_MS = FLUSH_INTERVAL_MS;
+const lastDeviceUpsertAt = new Map<string, number>();
+
 function onSample(e: SampleEvent): void {
   // Persist every sample we see on the bus, including the local
   // sidecar's (host_id='local'). Pre-v0.5 the hub had its own
@@ -45,14 +55,20 @@ function onSample(e: SampleEvent): void {
   if (!e.samples || e.samples.length === 0) return;
 
   for (const s of e.samples) {
-    GpuDeviceRepository.upsert({
-      host_id: e.host_id,
-      gpu_index: s.gpu_index,
-      name: s.name,
-      uuid: s.uuid,
-      memory_total: s.memory_total,
-      driver_version: s.driver_version,
-    });
+    const deviceKey = `${e.host_id}:${s.gpu_index}`;
+    const lastAt = lastDeviceUpsertAt.get(deviceKey) ?? 0;
+    const now = Date.now();
+    if (now - lastAt > DEVICE_UPSERT_THROTTLE_MS) {
+      lastDeviceUpsertAt.set(deviceKey, now);
+      GpuDeviceRepository.upsert({
+        host_id: e.host_id,
+        gpu_index: s.gpu_index,
+        name: s.name,
+        uuid: s.uuid,
+        memory_total: s.memory_total,
+        driver_version: s.driver_version,
+      });
+    }
     buffer.push({
       host_id: e.host_id,
       gpu_index: s.gpu_index,

@@ -1,10 +1,16 @@
-release: v0.8.17 stop FleetChart tripling /gpu/history requests on poll
+release: v0.8.18 throttle device-row writes causing lag flicker
 
-The v0.8.16 periodic-poll fix re-fetched each host/GPU's history once
-per metric (utilization, temperature, power) even though the endpoint
-already returns all three in one response. Repeating that 3x waste
-every 15-120s indefinitely produced request/DB bursts that could delay
-other server work (including WS heartbeats), making hosts intermittently
-flicker to "lagging" on the Fleet page. FleetChart now fetches each
-host/GPU's history once per poll and derives all three metrics from
-that single response.
+After v0.8.17, hosts (including the local one) kept intermittently
+flickering to "lagging". Root cause: agentMetricsPersistor.onSample()
+ran a synchronous SQLite write (GpuDeviceRepository.upsert) on every
+single incoming sample, per GPU, per host, at 1Hz, forever, unlike
+markSeen() which is already throttled. Device metadata almost never
+changes tick-to-tick, so this was pure write amplification on the same
+single-threaded event loop that processes every other host's WS
+frames, including the local sidecar's own since it shares this ingest
+path since v0.8. Hosts sending heavier traffic (Linux agents with
+process lists) could stall that loop just enough to delay markSeen()
+for any host queued behind, explaining why Linux hosts (and the local
+one) flickered while the lighter Windows agent didn't. The device-row
+upsert is now throttled to the same 60s cadence as the metrics buffer
+flush.
