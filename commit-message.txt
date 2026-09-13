@@ -1,16 +1,16 @@
-release: v0.8.18 throttle device-row writes causing lag flicker
+release: v0.8.19 WS close diagnostics + hosts table fixes
 
-After v0.8.17, hosts (including the local one) kept intermittently
-flickering to "lagging". Root cause: agentMetricsPersistor.onSample()
-ran a synchronous SQLite write (GpuDeviceRepository.upsert) on every
-single incoming sample, per GPU, per host, at 1Hz, forever, unlike
-markSeen() which is already throttled. Device metadata almost never
-changes tick-to-tick, so this was pure write amplification on the same
-single-threaded event loop that processes every other host's WS
-frames, including the local sidecar's own since it shares this ingest
-path since v0.8. Hosts sending heavier traffic (Linux agents with
-process lists) could stall that loop just enough to delay markSeen()
-for any host queued behind, explaining why Linux hosts (and the local
-one) flickered while the lighter Windows agent didn't. The device-row
-upsert is now throttled to the same 60s cadence as the metrics buffer
-flush.
+Two fixes for the Hosts Settings table: the Status column had no
+fixed width so "En retard" reflowed the sibling columns, and the
+"last seen" age label picked the live WS sample unconditionally over
+the polled host.last_seen (even when staler), showing a misleading
+age on a host that was actually online. Both now behave consistently
+with effectiveStatus()'s freshest-of-two-signals rule.
+
+Also: close reason was never falling back to '-' (ws passes it as a
+Buffer, always truthy even empty), DEBUG is now wired into
+docker-compose.yaml so logger.debug() output can actually be turned
+on in prod, and WS close code/reason + connection uptime are now
+surfaced (warn-level under 5s uptime) on both the agent-hub and
+browser-hub layers to chase the host-status flicker that persisted
+after v0.8.18 with no traceable regression in the hub's ingest path.

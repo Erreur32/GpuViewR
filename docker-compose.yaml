@@ -47,6 +47,9 @@ services:
       HOST_IP: ${HOST_IP:-}
       TZ: ${TZ:-Europe/Paris}
       RETENTION_DAYS: ${RETENTION_DAYS:-7}
+      # Set to 1 to surface logger.debug() lines (WS frame timing, ingest
+      # internals) in `docker compose logs hub`. Off by default: noisy.
+      DEBUG: ${DEBUG:-}
       # Resolve real host hostname inside the container.
       HOST_PROC: /host/proc
       HOST_ETC: /host/etc

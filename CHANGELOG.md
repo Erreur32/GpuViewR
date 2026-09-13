@@ -5,6 +5,22 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.19] - 2026-09-13
+
+### Fixed
+
+- **Hosts Settings table column shift**: the Status column had no fixed width, so switching between "En ligne" / "En retard" / "Hors ligne" reflowed the whole row and shifted the other columns. Locked with a `<colgroup>` fixed width.
+- **Misleading "last seen" age in Hosts Settings**: the age label picked the live WS sample unconditionally over the polled `host.last_seen`, even when the live signal was staler — showing e.g. "il y a 25s" on a host that was actually fine. Now takes the freshest of the two, same rule `effectiveStatus()` already used for the status badge.
+- `close reason was never falling back to '-'`: `ws`'s close handler passes `reason` as a `Buffer`, which is truthy even when empty, so clean closes logged an empty string instead of `-`.
+
+### Changed
+
+- **`DEBUG` env var wired into `docker-compose.yaml`**: `logger.debug()` output existed in code but had no way to be enabled from the compose file. Set `DEBUG=1` in `.env` and recreate the `hub` container to see it in `docker compose logs`.
+
+### Diagnostics
+
+- Surfaced WS close code/reason and connection uptime on both WS layers (agent↔hub and browser↔hub), elevated to `warn` when a connection lives under 5s — instrumentation to chase down a host-status flicker that persisted after v0.8.18 with no traceable code regression in the hub's ingest path.
+
 ## [0.8.18] - 2026-09-13
 
 ### Fixed
