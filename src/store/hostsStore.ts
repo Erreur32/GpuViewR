@@ -211,7 +211,18 @@ export function effectiveStatus(
   if (h.kind !== 'agent') return 'online';
   const seen = freshestLastSeen(h, liveLastSeen);
   if (seen === null) return 'online';
-  if (now - seen > LAGGING_THRESHOLD_S) return 'lagging';
+  const diff = now - seen;
+  if (diff > LAGGING_THRESHOLD_S) {
+    // Temporary diagnostic for the sub-second "lagging" flicker reported
+    // in v0.8.19 — too fast to screenshot, but this survives in the
+    // console scrollback. Remove once the flicker is root-caused.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[lag-flicker] ${h.label} (${h.id.slice(0, 8)}) now=${now} seen=${seen} ` +
+      `diff=${diff}s last_seen=${h.last_seen} liveLastSeen=${liveLastSeen}`,
+    );
+    return 'lagging';
+  }
   return 'online';
 }
 
