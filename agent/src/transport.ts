@@ -79,7 +79,15 @@ const BUFFER_MAX = 3600;
 const RECONNECT_MIN_MS = 1_000;
 const PING_INTERVAL_MS = 15_000;
 const REPLAY_CHUNK = 50;
-const REPLAY_DELAY_MS = 600;
+// Must stay > the hub's 1000ms rate-limit sliding window (RATE_LIMIT_PER_SEC
+// in agentIngestWS.ts). At 600ms, two consecutive chunks (50+50) plus the
+// `hello` frame sent just before the drain starts land inside the SAME
+// 1000ms window — 101 frames, tripping the limit and closing the socket
+// mid-replay. Observed in prod: any agent reconnecting with >50 buffered
+// frames got stuck in a connect→close(1008)→reconnect loop forever, since
+// the backlog only grew on each aborted attempt. 1100ms guarantees no two
+// chunks can ever share a window, regardless of jitter.
+const REPLAY_DELAY_MS = 1100;
 // A connection has to stay open this long before we consider it "stable"
 // and reset the reconnect backoff. Without it, a hub that accepts the WS
 // then closes 1008 right after welcome would reboucle à 1s indefinitely.

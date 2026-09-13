@@ -5,6 +5,16 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.20] - 2026-09-13
+
+### Fixed
+
+- **Agent stuck in an infinite reconnect loop after any real disconnect**: on reconnect, the agent replays its offline buffer in chunks of 50 frames every 600ms. The hub's rate limit counts messages over a *1000ms sliding window*, so two consecutive chunks (plus the `hello` frame sent just before the drain) landed inside the same window — 101 frames, tripping `close(1008, 'Rate limit exceeded')` mid-replay. The backlog then only grew on each aborted attempt, so the agent never recovered on its own. Spacing chunks 1100ms apart guarantees no two chunks can ever share a window.
+
+### Changed
+
+- **Hosts Settings**: the auto-update toggle wrongly shown on the hub's own row (`PATCH /hosts/:id` always rejects `LOCAL_HOST_ID`, so it never worked) is replaced with a real enable/disable toggle on remote agent rows. Turning an agent off immediately force-closes its live socket and rejects its next handshake — turning it back on lets it reconnect normally.
+
 ## [0.8.19] - 2026-09-13
 
 ### Fixed

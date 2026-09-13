@@ -1,16 +1,18 @@
-release: v0.8.19 WS close diagnostics + hosts table fixes
+release: v0.8.20 fix agent reconnect loop + real agent enable/disable toggle
 
-Two fixes for the Hosts Settings table: the Status column had no
-fixed width so "En retard" reflowed the sibling columns, and the
-"last seen" age label picked the live WS sample unconditionally over
-the polled host.last_seen (even when staler), showing a misleading
-age on a host that was actually online. Both now behave consistently
-with effectiveStatus()'s freshest-of-two-signals rule.
+Two remote agents (Deb13, Windows Gamer) were stuck bouncing every
+~30s in prod: connect, reject after ~600ms with "Rate limit exceeded
+(101 frames/s > 100)", reconnect, repeat. Root cause was a collision
+between the agent's offline-buffer replay and the hub's rate limit —
+chunks of 50 buffered frames were replayed every 600ms, but the hub
+counts messages over a 1000ms sliding window, so two consecutive
+chunks (plus the hello frame sent right before the drain) landed in
+the same window: 101 frames, tripping the close and growing the
+backlog on every aborted attempt. Spacing replay chunks 1100ms apart
+fixes it for good.
 
-Also: close reason was never falling back to '-' (ws passes it as a
-Buffer, always truthy even empty), DEBUG is now wired into
-docker-compose.yaml so logger.debug() output can actually be turned
-on in prod, and WS close code/reason + connection uptime are now
-surfaced (warn-level under 5s uptime) on both the agent-hub and
-browser-hub layers to chase the host-status flicker that persisted
-after v0.8.18 with no traceable regression in the hub's ingest path.
+Also swaps the non-functional auto-update toggle that had been added
+to the hub's own row (the backend always rejects PATCH on the local
+host) for a real enable/disable toggle on remote agent rows: turning
+one off force-closes its live socket and rejects its next handshake,
+turning it back on lets it reconnect normally.
