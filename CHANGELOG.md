@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.24] - 2026-09-13
+
+### Changed
+
+- **UI copy cleanup**: every em dash in the French and English locales is replaced by a comma, a colon or a plain hyphen (the "unknown install type" placeholder), and the Settings → Hosts intro text is split on two lines. No functional change.
+
 ## [0.8.23] - 2026-09-13
 
 ### Fixed
