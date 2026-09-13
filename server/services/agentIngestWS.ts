@@ -301,6 +301,19 @@ export function forceAgentUpdate(
   return { ok: true, version: hubVersion, size: bundle.size };
 }
 
+/** Force-closes a currently connected agent's live socket. Used when an
+ *  admin flips a host to 'disabled' from Settings → Hosts — without this
+ *  the agent keeps streaming until its own reconnect cycle stumbles into
+ *  the rejected auth in authenticateAgent(). Returns false if the agent
+ *  wasn't connected (nothing to do, the disabled status alone already
+ *  blocks its next handshake). */
+export function disconnectAgent(hostId: string): boolean {
+  const ws = liveAgentSockets.get(hostId);
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  ws.close(4003, 'Host disabled by admin');
+  return true;
+}
+
 /** Exported so the v0.6.5 scheduler (server/services/agentUpdateScheduler.ts)
  *  can re-use the exact same gate logic on its periodic tick — no risk of
  *  the scheduler and the welcome-time path drifting apart. */

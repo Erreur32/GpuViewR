@@ -76,6 +76,11 @@ interface HostsState {
   rotateToken: (id: string) => Promise<string>;
   remove: (id: string) => Promise<void>;
   setAutoUpdate: (id: string, enabled: boolean) => Promise<void>;
+  /** Toggles whether the hub accepts this agent's WS connections at all.
+   *  Setting `enabled=false` also force-closes any currently-live socket
+   *  server-side (see disconnectAgent in agentIngestWS.ts) so the cutoff
+   *  is immediate rather than waiting for the agent's own reconnect. */
+  setEnabled: (id: string, enabled: boolean) => Promise<void>;
   /** Force an immediate agent update push. Bypasses auto_update +
    *  cooldown + version compare gates on the backend; only constraint
    *  remaining is install_mode='systemd' and an actively connected agent.
@@ -139,6 +144,14 @@ export const useHostsStore = create<HostsState>((set, get) => ({
     const r = await api<{ host: HostRecord }>(`/hosts/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ auto_update: enabled }),
+    });
+    set((state) => ({ hosts: state.hosts.map((h) => (h.id === id ? r.host : h)) }));
+  },
+
+  setEnabled: async (id, enabled) => {
+    const r = await api<{ host: HostRecord }>(`/hosts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: enabled ? 'offline' : 'disabled' }),
     });
     set((state) => ({ hosts: state.hosts.map((h) => (h.id === id ? r.host : h)) }));
   },

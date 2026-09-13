@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle, RefreshCw, DownloadCloud } from 'lucide-react';
+import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle, RefreshCw, DownloadCloud, Power, PowerOff } from 'lucide-react';
 import Icon from '../ui/icons/IconRegistry';
 import { useHostsStore, effectiveStatus, freshestLastSeen, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
@@ -174,16 +174,9 @@ function HostRow({
       </td>
       <td className="px-4 py-3">
         <div className="flex justify-end gap-1.5">
-          {/* The local sidecar has no token to rotate and can't be
-              deleted, but it can still opt into hub-pushed auto-update
-              (relevant for bare-metal mono-host installs where the
-              sidecar runs as systemd rather than the Docker profile —
-              in that case the toggle behaves exactly like a remote
-              host's). Docker-installed sidecars show it disabled via
-              the same install_mode gate as any other agent. */}
-          {isLocal && <AutoUpdateToggle host={host} t={t} />}
           {!isLocal && (
             <>
+              <EnabledToggle host={host} t={t} />
               <ForceUpdateButton host={host} t={t} />
               <AutoUpdateToggle host={host} t={t} />
               <IconBtn title={t('hosts.rotate_token')} onClick={onRotate}>
@@ -403,6 +396,52 @@ function HubBadge({ t }: Readonly<{ t: (key: string) => string }>) {
       <Server className="w-2.5 h-2.5" />
       {t('hosts.hub_badge')}
     </span>
+  );
+}
+
+/** Toggle that flips a remote agent's status between 'disabled' and
+ *  'offline' — the one control that actually stops the hub from
+ *  accepting that agent's data. Disabling also force-closes any
+ *  currently-live socket server-side (see setEnabled in hostsStore.ts),
+ *  so the cutoff is immediate instead of waiting for the agent's next
+ *  rejected reconnect attempt. */
+function EnabledToggle({
+  host, t,
+}: Readonly<{
+  host: HostRecord;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}>) {
+  const setEnabled = useHostsStore((s) => s.setEnabled);
+  const enabled = host.status !== 'disabled';
+  const onClick = async () => {
+    try {
+      await setEnabled(host.id, !enabled);
+      notify('success', t(enabled ? 'hosts.agent_disabled' : 'hosts.agent_enabled'), '');
+    } catch (err) {
+      notify('error', t('hosts.agent_enabled_failed'), (err as Error).message);
+    }
+  };
+  return (
+    <button
+      type="button"
+      title={t(enabled ? 'hosts.agent_toggle_on' : 'hosts.agent_toggle_off')}
+      onClick={onClick}
+      aria-pressed={enabled}
+      className="inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
+      style={{
+        background: enabled ? 'transparent' : 'color-mix(in srgb, var(--gv-danger) 18%, transparent)',
+        color: enabled ? 'var(--gv-text-muted)' : 'var(--gv-danger)',
+        cursor: 'pointer',
+      }}
+      onMouseEnter={(e) => {
+        if (enabled) e.currentTarget.style.background = 'var(--gv-surface-alt)';
+      }}
+      onMouseLeave={(e) => {
+        if (enabled) e.currentTarget.style.background = 'transparent';
+      }}
+    >
+      {enabled ? <Power size={14} /> : <PowerOff size={14} />}
+    </button>
   );
 }
 

@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { HostsRepo, LOCAL_HOST_ID, type HostRecord, type HostStatus } from '../database/models/Host.js';
-import { forceAgentUpdate } from '../services/agentIngestWS.js';
+import { forceAgentUpdate, disconnectAgent } from '../services/agentIngestWS.js';
+import { metricsBus } from '../services/_metricsBus.js';
 
 // Same lookup as server/index.ts readVersion(). Kept local so the
 // force-update handler stays self-contained and doesn't import from
@@ -129,6 +130,13 @@ router.patch('/:id', (req, res) => {
   }
   const updated = HostsRepo.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'Not found' });
+  if (patch.status) {
+    // Cuts an already-connected agent immediately instead of waiting for
+    // it to notice the rejected auth on its own reconnect cycle, and
+    // pushes the new dot color to every connected browser right away.
+    if (patch.status === 'disabled') disconnectAgent(updated.id);
+    metricsBus.emit('host_status', { host_id: updated.id, status: patch.status, last_seen: updated.last_seen });
+  }
   res.json({ host: stripSensitive(updated) });
 });
 
