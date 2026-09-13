@@ -234,6 +234,20 @@ TICK_MS=${INTERVAL_MS}
 FEATURES=${FEATURES}
 LOG_LEVEL=info
 EOF
+# Pin the vendor + smi path we already detected above instead of letting
+# the agent re-probe on its own: 'rocm-smi' often only resolves via the
+# absolute /opt/rocm/bin path (not on $PATH for a systemd service's
+# minimal environment), so the agent's own auto-detect would fail the
+# probe and silently fall back to nvidia on Linux — crash-looping with
+# "nvidia smi not found" on an AMD-only box.
+if [[ "$VENDOR_BIN" == "rocm-smi" ]]; then
+  {
+    echo "GPU_VENDOR=amd"
+    echo "ROCM_SMI_PATH=${ROCM_BIN}"
+  } >> "$ENV_FILE"
+else
+  echo "GPU_VENDOR=nvidia" >> "$ENV_FILE"
+fi
 chmod 0600 "$ENV_FILE"
 chown root:root "$ENV_FILE"
 

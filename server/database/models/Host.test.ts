@@ -14,11 +14,22 @@ after(() => {
   closeDatabase();
 });
 
-test('HostsRepo: seedLocalIfMissing produces the local host row', () => {
+test('HostsRepo: seedLocalIfMissing is a no-op when no local row exists (aggregator-only mode)', () => {
+  // Since v0.5 the local row is only ever created by the sidecar's own
+  // handshake (upsertLocalSidecarHost in agentIngestWS.ts), never by
+  // seedLocalIfMissing — an aggregator-only hub with no sidecar
+  // correctly has no 'local' row at all.
+  HostsRepo.seedLocalIfMissing();
+  assert.equal(HostsRepo.findById(LOCAL_HOST_ID), undefined);
+});
+
+test('HostsRepo: seedLocalIfMissing migrates a legacy kind=local row to kind=agent', () => {
+  HostsRepo.insert({ id: LOCAL_HOST_ID, label: 'local', kind: 'local', token_hash: null, status: 'online' });
+  HostsRepo.seedLocalIfMissing();
   const local = HostsRepo.findById(LOCAL_HOST_ID);
   assert.ok(local, 'local row missing');
-  assert.equal(local!.kind, 'local');
-  assert.equal(local!.status, 'online');
+  assert.equal(local!.kind, 'agent');
+  HostsRepo.delete(LOCAL_HOST_ID);
 });
 
 test('HostsRepo: insert/findById round-trip with token hash', () => {
@@ -46,7 +57,6 @@ test('HostsRepo: list returns all rows ordered by enrolled_at', () => {
   HostsRepo.insert({ id: 'b', label: 'b', kind: 'agent', token_hash: 'h' });
   const rows = HostsRepo.list();
   const ids = rows.map((r) => r.id);
-  assert.ok(ids.includes(LOCAL_HOST_ID));
   assert.ok(ids.includes('a'));
   assert.ok(ids.includes('b'));
   HostsRepo.delete('a');
