@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, KeyRound, Trash2, Terminal, Container, Server, AlertTriangle, RefreshCw, DownloadCloud, Power, PowerOff } from 'lucide-react';
 import Icon from '../ui/icons/IconRegistry';
-import { useHostsStore, effectiveStatus, freshestLastSeen, formatRelative, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
+import {
+  useHostsStore,
+  effectiveStatus,
+  freshestLastSeen,
+  formatRelative,
+  LOCAL_HOST_ID,
+  type HostRecord,
+  type RejectedAttempt,
+} from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
@@ -15,6 +23,7 @@ import {
   defaultModeFor,
   InstallModePicker,
   LABEL_KEY_BY_MODE,
+  TAB_LABEL_KEY_BY_MODE,
   type InstallMode,
 } from './_installCommands';
 
@@ -27,11 +36,23 @@ export default function HostsSettingsTab() {
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
   const hosts = useHostsStore((s) => s.hosts);
   const refresh = useHostsStore((s) => s.refresh);
+  const rejectedAttempts = useHostsStore((s) => s.rejectedAttempts);
+  const fetchRejectedAttempts = useHostsStore((s) => s.fetchRejectedAttempts);
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [rotateFor, setRotateFor] = useState<HostRecord | null>(null);
   const [deleteFor, setDeleteFor] = useState<HostRecord | null>(null);
 
   useEffect(() => { refresh().catch(() => undefined); }, [refresh]);
+
+  // Page-scoped poll (not part of the global 15s host poll — this
+  // signal only matters while an admin is actually looking at this
+  // tab, e.g. right after deleting/uninstalling a host).
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetchRejectedAttempts().catch(() => undefined);
+    const id = setInterval(() => { fetchRejectedAttempts().catch(() => undefined); }, 15_000);
+    return () => clearInterval(id);
+  }, [isAdmin, fetchRejectedAttempts]);
 
   if (!isAdmin) {
     return (
@@ -99,6 +120,8 @@ export default function HostsSettingsTab() {
         </div>
       </div>
 
+      {rejectedAttempts.length > 0 && <RejectedAttemptsPanel attempts={rejectedAttempts} />}
+
       {enrollOpen && <EnrollHostModal onClose={() => setEnrollOpen(false)} />}
       {rotateFor && (
         <RotateTokenModal host={rotateFor} onClose={() => setRotateFor(null)} />
@@ -136,6 +159,17 @@ function HostRow({
   // populated, for example).
   const secondaryRaw = host.hostname ?? `${host.id.slice(0, 13)}…`;
   const secondary = secondaryRaw === host.label ? null : secondaryRaw;
+
+  // Reinstall command for the "key" tooltip, matching the host's own
+  // install_mode (Windows/binary/Docker) so an admin whose agent is
+  // unreachable via auto-update can retype it on the box by hand.
+  // The token is a placeholder — the hub only ever stores a bcrypt hash
+  // and can't recover the original plaintext (see routes/hosts.ts) — the
+  // admin fills in the token they saved at enrollment. No token on hand?
+  // Rotate below issues a fresh one.
+  const hubHttp = `${globalThis.location.protocol}//${globalThis.location.host}`;
+  const reinstallCmd = buildInstallCommands(hubHttp, t('hosts.rotate_tooltip_token_placeholder'))[defaultModeFor(host.install_mode)];
+  const rotateTooltip = `${t('hosts.rotate_token')}\n\n${t('hosts.rotate_tooltip_hint')}\n${reinstallCmd}`;
 
   return (
     <tr className="border-t" style={{ borderColor: 'var(--gv-border)' }}>
@@ -179,7 +213,7 @@ function HostRow({
               <EnabledToggle host={host} t={t} />
               <ForceUpdateButton host={host} t={t} />
               <AutoUpdateToggle host={host} t={t} />
-              <IconBtn title={t('hosts.rotate_token')} onClick={onRotate}>
+              <IconBtn title={rotateTooltip} onClick={onRotate}>
                 <KeyRound size={14} />
               </IconBtn>
               <IconBtn title={t('hosts.delete')} onClick={onDelete} danger>
@@ -768,6 +802,16 @@ function DeleteHostModal({ host, onClose }: Readonly<{ host: HostRecord; onClose
         {t('hosts.delete_uninstall_hint')}
       </p>
 
+      {host.install_mode && host.install_mode !== 'unknown' ? (
+        <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+          {t('hosts.delete_detected_mode', { mode: t(TAB_LABEL_KEY_BY_MODE[defaultModeFor(host.install_mode)]) })}
+        </p>
+      ) : (
+        <p className="text-xs" style={{ color: 'var(--gv-warn)' }}>
+          {t('hosts.delete_unknown_mode_warning')}
+        </p>
+      )}
+
       <InstallModePicker mode={mode} onChange={setMode} />
 
       <CopyValueBlock
@@ -791,5 +835,85 @@ function DeleteHostModal({ host, onClose }: Readonly<{ host: HostRecord; onClose
         </button>
       </div>
     </ModalShell>
+  );
+}
+
+function RejectedAttemptsPanel({ attempts }: Readonly<{ attempts: RejectedAttempt[] }>) {
+  const { t } = useTranslation();
+  const clearRejectedAttempts = useHostsStore((s) => s.clearRejectedAttempts);
+  const [clearing, setClearing] = useState(false);
+
+  const doClear = async () => {
+    setClearing(true);
+    try {
+      await clearRejectedAttempts();
+    } catch (err) {
+      notify('error', t('hosts.rejected_clear_failed'), (err as Error).message);
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const now = Math.floor(Date.now() / 1000);
+
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-1.5">
+            <AlertTriangle size={14} style={{ color: 'var(--gv-warn)' }} />
+            {t('hosts.rejected_title')}
+          </h3>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--gv-text-muted)' }}>
+            {t('hosts.rejected_help')}
+          </p>
+        </div>
+        <button type="button" onClick={doClear} disabled={clearing} className="btn-ghost text-xs">
+          {t('hosts.rejected_clear')}
+        </button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left uppercase tracking-wider" style={{ color: 'var(--gv-text-dim)' }}>
+              <th className="px-3 py-1.5 font-medium">{t('hosts.rejected_col_time')}</th>
+              <th className="px-3 py-1.5 font-medium">{t('hosts.rejected_col_ip')}</th>
+              <th className="px-3 py-1.5 font-medium">{t('hosts.rejected_col_host_id')}</th>
+              <th className="px-3 py-1.5 font-medium">{t('hosts.rejected_col_reason')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {attempts.map((a) => (
+              <tr
+                key={`${a.ts}-${a.ip}-${a.host_id}-${a.reason}`}
+                className="border-t"
+                style={{ borderColor: 'var(--gv-border)' }}
+              >
+                <td className="px-3 py-1.5 font-mono" style={{ color: 'var(--gv-text-muted)' }}>
+                  {formatRelative(now - Math.floor(a.ts / 1000))}
+                </td>
+                <td className="px-3 py-1.5 font-mono">{a.ip}</td>
+                <td className="px-3 py-1.5 font-mono" title={a.host_id}>
+                  {a.host_id.length > 20 ? `${a.host_id.slice(0, 20)}…` : a.host_id}
+                </td>
+                <td className="px-3 py-1.5">
+                  <span>{t(`hosts.rejected_reason_${a.reason}`)}</span>
+                  {a.flood && (
+                    <span
+                      className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
+                      style={{ background: 'var(--gv-danger)', color: 'white' }}
+                      title={t('hosts.rejected_flood_help')}
+                    >
+                      {t('hosts.rejected_flood_badge')}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

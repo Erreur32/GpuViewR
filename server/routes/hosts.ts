@@ -13,6 +13,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { HostsRepo, LOCAL_HOST_ID, type HostRecord, type HostStatus } from '../database/models/Host.js';
 import { forceAgentUpdate, disconnectAgent } from '../services/agentIngestWS.js';
 import { metricsBus } from '../services/_metricsBus.js';
+import { listRejections, clearRejections } from '../services/agentRejections.js';
 
 // Same lookup as server/index.ts readVersion(). Kept local so the
 // force-update handler stays self-contained and doesn't import from
@@ -50,6 +51,12 @@ router.use(requireAuth);
 
 router.get('/', (_req, res) => {
   res.json({ hosts: HostsRepo.list().map(stripSensitive) });
+});
+
+// Must be registered before `/:id` — otherwise Express would swallow
+// this path as a host-id lookup for a host literally named "rejected".
+router.get('/rejected', (_req, res) => {
+  res.json({ attempts: listRejections() });
 });
 
 router.get('/:id', (req, res) => {
@@ -195,6 +202,12 @@ router.post('/:id/force-update', (req, res) => {
     return res.status(result.status).json({ error: result.reason });
   }
   res.json({ ok: true, version: result.version, size: result.size });
+});
+
+// Same ordering constraint as the GET above.
+router.delete('/rejected', (_req, res) => {
+  clearRejections();
+  res.status(204).end();
 });
 
 router.delete('/:id', (req, res) => {

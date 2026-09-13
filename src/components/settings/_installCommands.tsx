@@ -45,6 +45,18 @@ export const LABEL_KEY_BY_MODE: Record<InstallMode, string> = {
   windows: 'hosts.windows_cmd',
 };
 
+/** i18n key for the segmented toggle's own tab label (as opposed to
+ *  LABEL_KEY_BY_MODE, which names the command block). Used to tell an
+ *  admin which tab matches the host's actually-detected install_mode,
+ *  since picking the wrong one hands them an uninstall command that
+ *  silently does nothing on the remote machine (e.g. `docker rm -f`
+ *  on a box that was never running the agent in Docker). */
+export const TAB_LABEL_KEY_BY_MODE: Record<InstallMode, string> = {
+  curl: 'hosts.install_mode_curl',
+  docker: 'hosts.install_mode_docker',
+  windows: 'hosts.install_mode_windows',
+};
+
 /** Map an agent's reported install_mode (the wire-side string) to
  *  the modal toggle's UI mode. Falls back to 'curl' (bash binary on
  *  Linux, the most common deployment) when the agent never reported

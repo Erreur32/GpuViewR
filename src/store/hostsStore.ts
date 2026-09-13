@@ -52,6 +52,22 @@ export interface HostRecord {
 export const LOCAL_HOST_ID = 'local';
 const POLL_MS = 15_000;
 
+export type RejectionReason = 'unknown_host' | 'bad_token' | 'disabled' | 'missing_credentials';
+
+/** One agent WS handshake that failed authentication (bad/rotated
+ *  token, unknown or deleted host_id, disabled host). Mirrors
+ *  server/services/agentRejections.ts — in-memory on the hub, reset
+ *  on restart. Not a substitute for gpu_metrics/alert_events history,
+ *  just an operational "is something still knocking?" signal. */
+export interface RejectedAttempt {
+  ip: string;
+  host_id: string;
+  reason: RejectionReason;
+  ts: number;
+  /** True when this host_id logged 5+ attempts within the last 5 min. */
+  flood: boolean;
+}
+
 interface HostsState {
   hosts: HostRecord[];
   loading: boolean;
@@ -87,6 +103,13 @@ interface HostsState {
    *  Returns the version that was pushed. Throws on REST error so the
    *  caller can surface the message in a toast. */
   forceUpdate: (id: string) => Promise<{ version: string; size: number }>;
+
+  /** Rejected agent WS handshakes, freshest first. Fetched on-demand
+   *  by the Settings → Hosts panel (not part of the 15s host poll —
+   *  irrelevant to every other screen). */
+  rejectedAttempts: RejectedAttempt[];
+  fetchRejectedAttempts: () => Promise<void>;
+  clearRejectedAttempts: () => Promise<void>;
 }
 
 export const useHostsStore = create<HostsState>((set, get) => ({
@@ -176,6 +199,18 @@ export const useHostsStore = create<HostsState>((set, get) => ({
       // Fall back to 'local' if we were viewing the host we just deleted.
       selectedHostId: state.selectedHostId === id ? LOCAL_HOST_ID : state.selectedHostId,
     }));
+  },
+
+  rejectedAttempts: [],
+
+  fetchRejectedAttempts: async () => {
+    const r = await api<{ attempts: RejectedAttempt[] }>('/hosts/rejected');
+    set({ rejectedAttempts: r.attempts });
+  },
+
+  clearRejectedAttempts: async () => {
+    await api<void>('/hosts/rejected', { method: 'DELETE' });
+    set({ rejectedAttempts: [] });
   },
 }));
 

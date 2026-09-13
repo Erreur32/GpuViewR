@@ -79,23 +79,26 @@ function connect(token: string, host_id: string): WebSocket {
 
 test('authenticateAgent: rejects local host_id', async () => {
   const r = await authenticateAgent(VALID_TOKEN, 'local');
-  assert.equal(r, null);
+  assert.equal(r.host, null);
+  assert.equal(r.reason, 'unknown_host');
 });
 
 test('authenticateAgent: rejects unknown id', async () => {
   const r = await authenticateAgent(VALID_TOKEN, 'nope-not-a-host');
-  assert.equal(r, null);
+  assert.equal(r.host, null);
+  assert.equal(r.reason, 'unknown_host');
 });
 
 test('authenticateAgent: accepts matching token + id', async () => {
   const r = await authenticateAgent(VALID_TOKEN, VALID_HOST_ID);
-  assert.ok(r);
-  assert.equal(r!.id, VALID_HOST_ID);
+  assert.ok(r.host);
+  assert.equal(r.host!.id, VALID_HOST_ID);
 });
 
 test('authenticateAgent: rejects wrong token for valid host', async () => {
   const r = await authenticateAgent('wrong-secret', VALID_HOST_ID);
-  assert.equal(r, null);
+  assert.equal(r.host, null);
+  assert.equal(r.reason, 'bad_token');
 });
 
 test('WS: valid handshake yields welcome + host_status online', async () => {

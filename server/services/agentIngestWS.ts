@@ -27,6 +27,7 @@ import { hostHostname } from '../utils/hostHostname.js';
 import type { GpuSample } from './parsers/nvidia.js';
 import { agentProcessStore } from './agentProcessStore.js';
 import type { GpuProcess } from './_processTypes.js';
+import { recordRejection, type RejectionReason } from './agentRejections.js';
 
 const RATE_LIMIT_PER_SEC = 100;
 const LAST_SEEN_THROTTLE_MS = 1000;
@@ -87,26 +88,30 @@ type IncomingFrame = HelloFrame | SampleFrame | PingFrame | ProcessFrame | { typ
  *     beforehand via Settings → Hosts. Bcrypt comparison is per-
  *     handshake (typically once per agent restart); LRU cache lives
  *     in MULTI_HOST_PLAN.md §13.1.1 if scale ever needs it.
+ *
+ * On failure the reason is returned (never the offending token) so the
+ * caller can log/track it for the "rejected connections" surface
+ * without ever persisting a secret.
  */
-export async function authenticateAgent(token: string, claimedHostId: string): Promise<HostRecord | null> {
-  if (!token || !claimedHostId) return null;
+export interface AuthOutcome { host: HostRecord | null; reason?: RejectionReason }
+
+export async function authenticateAgent(token: string, claimedHostId: string): Promise<AuthOutcome> {
+  if (!token || !claimedHostId) return { host: null, reason: 'missing_credentials' };
 
   // Bootstrap path: only valid for LOCAL_HOST_ID + when the hub has a
   // LOCAL_AGENT_BOOTSTRAP configured (aggregator-only deployments
   // leave it empty, which disables the sidecar enrollment entirely).
   if (claimedHostId === LOCAL_HOST_ID) {
-    if (!config.localAgentBootstrap) return null;
-    if (!constantTimeEqual(token, config.localAgentBootstrap)) return null;
-    return upsertLocalSidecarHost();
+    if (!config.localAgentBootstrap) return { host: null, reason: 'unknown_host' };
+    if (!constantTimeEqual(token, config.localAgentBootstrap)) return { host: null, reason: 'bad_token' };
+    return { host: upsertLocalSidecarHost() };
   }
 
   const host = HostsRepo.findById(claimedHostId);
-  if (!host) return null;
-  if (host.kind !== 'agent') return null;
-  if (host.status === 'disabled') return null;
-  if (!host.token_hash) return null;
+  if (!host || host.kind !== 'agent' || !host.token_hash) return { host: null, reason: 'unknown_host' };
+  if (host.status === 'disabled') return { host: null, reason: 'disabled' };
   const ok = await bcrypt.compare(token, host.token_hash);
-  return ok ? host : null;
+  return ok ? { host } : { host: null, reason: 'bad_token' };
 }
 
 /** Ensures the local-host row exists as kind='agent' for the sidecar.
@@ -382,16 +387,52 @@ export function setupAgentIngestWS(hubVersion: string): WebSocketServer {
   return wss;
 }
 
+/** Client IP for a WS upgrade request. Honors X-Forwarded-For's first
+ *  hop to match the `trust proxy: 1` setting on the Express app
+ *  (index.ts) — without this, every rejected attempt behind a reverse
+ *  proxy would log the proxy's own IP instead of the real caller. */
+function clientIp(req: IncomingMessage): string {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.length > 0) return xff.split(',')[0]!.trim();
+  return req.socket.remoteAddress || 'unknown';
+}
+
+/** Throttles the actual log line per (ip, host_id) pair so a fast
+ *  reconnect loop from an unauthenticated caller can't flood
+ *  `docker compose logs hub`. Every attempt is still recorded in the
+ *  rejected-attempts ring buffer regardless of this throttle — that's
+ *  cheap bounded array bookkeeping, not a log write. */
+const lastRejectionWarnAt = new Map<string, number>();
+const REJECTION_WARN_THROTTLE_MS = 30_000;
+
+function warnRejectionThrottled(ip: string, hostId: string, reason: RejectionReason): void {
+  const key = `${ip}|${hostId}`;
+  const now = Date.now();
+  const last = lastRejectionWarnAt.get(key) ?? 0;
+  if (now - last < REJECTION_WARN_THROTTLE_MS) return;
+  lastRejectionWarnAt.set(key, now);
+  logger.warn('agent', `Rejected connection from ${ip} (host_id=${hostId || '-'}, reason=${reason})`);
+}
+
 async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion: string): Promise<void> {
   const url = new URL(req.url || '/', 'http://localhost');
   const token = url.searchParams.get('token') || '';
   const claimedHostId = url.searchParams.get('host_id') || '';
 
-  const host = await authenticateAgent(token, claimedHostId);
-  if (!host) {
-    ws.close(4001, 'Unauthorized');
+  const auth = await authenticateAgent(token, claimedHostId);
+  if (!auth.host) {
+    const ip = clientIp(req);
+    const reason = auth.reason ?? 'unknown_host';
+    recordRejection({ ip, host_id: claimedHostId || '(empty)', reason });
+    warnRejectionThrottled(ip, claimedHostId, reason);
+    // 'disabled' gets the same code as the live force-disconnect (4003)
+    // instead of the generic 4001 — an admin toggle is reversible at any
+    // time, unlike a bad/rotated token, so the agent must tell these
+    // apart to know whether giving up permanently is ever appropriate.
+    ws.close(reason === 'disabled' ? 4003 : 4001, reason === 'disabled' ? 'Host disabled by admin' : 'Unauthorized');
     return;
   }
+  const host = auth.host;
 
   logger.success('agent', `Agent connected: ${host.id} (label=${host.label})`);
 

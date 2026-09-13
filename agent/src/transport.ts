@@ -527,6 +527,16 @@ export function createTransport(config: AgentConfig): Transport {
         `Connection closed (code=${code}${r ? `, reason=${r}` : ""})`,
       );
       conn.ws = null;
+      // 4003 = host disabled by an admin toggle — reversible at any time
+      // from Settings → Hosts, so it must never count toward the
+      // permanent give-up below. Just keep backing off and retrying;
+      // re-enabling the host on the hub is enough to recover, no agent
+      // restart needed.
+      if (code === 4003) {
+        conn.authFailures = 0;
+        scheduleReconnect(conn);
+        return;
+      }
       // 4001/1008 = auth or policy violations. With multi-hub, one bad
       // hub doesn't kill the agent — other hubs keep working. But three
       // repeated failures on the SAME hub is a permanent token issue.
