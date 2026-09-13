@@ -440,7 +440,8 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion:
   });
 
   ws.on('close', (code, reason) => {
-    logger.info('agent', `Agent disconnected: ${host.id} (label=${host.label}, code=${code}, reason=${reason || '-'})`);
+    const reasonStr = reason.toString('utf8');
+    logger.info('agent', `Agent disconnected: ${host.id} (label=${host.label}, code=${code}, reason=${reasonStr || '-'})`);
     // Only un-register if WE are still the registered socket — a
     // reconnect that landed BEFORE this close fired has already
     // overwritten the slot, and clearing it here would orphan the

@@ -61,7 +61,8 @@ export function setupGpuWebSocket(): WebSocketServer {
       // killing it almost immediately after open, the exact pattern
       // that produces a "lagging" flicker on every connected host.
       const level = uptimeS < 5 ? 'warn' : 'info';
-      logger[level]('ws', `client disconnected (user=${payload.username}, code=${code}, reason=${reason || '-'}, uptime=${uptimeS}s)`);
+      const reasonStr = reason.toString('utf8');
+      logger[level]('ws', `client disconnected (user=${payload.username}, code=${code}, reason=${reasonStr || '-'}, uptime=${uptimeS}s)`);
     });
     ws.on('error', (err) => logger.warn('ws', 'socket error:', err.message));
   });
