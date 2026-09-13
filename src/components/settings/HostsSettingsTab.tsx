@@ -174,6 +174,14 @@ function HostRow({
       </td>
       <td className="px-4 py-3">
         <div className="flex justify-end gap-1.5">
+          {/* The local sidecar has no token to rotate and can't be
+              deleted, but it can still opt into hub-pushed auto-update
+              (relevant for bare-metal mono-host installs where the
+              sidecar runs as systemd rather than the Docker profile —
+              in that case the toggle behaves exactly like a remote
+              host's). Docker-installed sidecars show it disabled via
+              the same install_mode gate as any other agent. */}
+          {isLocal && <AutoUpdateToggle host={host} t={t} />}
           {!isLocal && (
             <>
               <ForceUpdateButton host={host} t={t} />
