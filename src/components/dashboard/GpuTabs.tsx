@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
 import { Layers, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUiStore } from '../../store/uiStore';
 import type { GpuSample } from '../../store/gpuStore';
 import { shortGpuName } from '../../lib/gpuName';
+import { useDropdown } from '../../lib/useDropdown';
+import DropdownPanel from '../ui/DropdownPanel';
 
 // Collapsed dropdown instead of one tab per GPU: a host with many cards
 // used to blow out the header width with an ever-growing .seg strip.
@@ -13,24 +14,7 @@ export default function GpuTabs({ samples }: { samples: GpuSample[] }) {
   const setSelected = useUiStore((s) => s.setSelectedGpu);
   const dashboardView = useUiStore((s) => s.dashboardView);
   const setDashboardView = useUiStore((s) => s.setDashboardView);
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
+  const { open, setOpen, rootRef } = useDropdown();
 
   if (samples.length <= 1) return null;
   const isAll = dashboardView === 'all';
@@ -57,12 +41,7 @@ export default function GpuTabs({ samples }: { samples: GpuSample[] }) {
         <ChevronDown className="w-3 h-3" />
       </button>
       {open && (
-        <div
-          className="seg absolute left-0 top-full mt-1 z-20 flex-col max-h-72 overflow-y-auto"
-          style={{ background: 'var(--gv-bg2)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
-          role="listbox"
-          aria-label={t('dashboard.gpus_all_help')}
-        >
+        <DropdownPanel label={t('dashboard.gpus_all_help')}>
           <button
             type="button"
             role="option"
@@ -91,7 +70,7 @@ export default function GpuTabs({ samples }: { samples: GpuSample[] }) {
               GPU #{s.gpu_index} <span className="opacity-60 ml-1">{shortGpuName(s.name)}</span>
             </button>
           ))}
-        </div>
+        </DropdownPanel>
       )}
     </div>
   );

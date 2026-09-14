@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Clock, ChevronDown } from 'lucide-react';
 import { useUiStore, type Range } from '../../store/uiStore';
+import { useDropdown } from '../../lib/useDropdown';
+import DropdownPanel from '../ui/DropdownPanel';
 
 const RANGES: Range[] = ['live', '5m', '15m', '1h', '6h', '24h', '3d'];
 
@@ -12,24 +13,7 @@ export default function RangeSelector() {
   const { t } = useTranslation();
   const range = useUiStore((s) => s.range);
   const setRange = useUiStore((s) => s.setRange);
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
+  const { open, setOpen, rootRef } = useDropdown();
 
   return (
     <div className="relative" ref={rootRef}>
@@ -47,12 +31,7 @@ export default function RangeSelector() {
         <ChevronDown className="w-3 h-3" />
       </button>
       {open && (
-        <div
-          className="seg absolute right-0 top-full mt-1 z-20 flex-col"
-          style={{ background: 'var(--gv-bg2)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
-          role="listbox"
-          aria-label={t('dashboard.range_label')}
-        >
+        <DropdownPanel align="right" label={t('dashboard.range_label')}>
           {RANGES.map((r) => (
             <button
               key={r}
@@ -68,7 +47,7 @@ export default function RangeSelector() {
               {t(`dashboard.ranges.${r}`)}
             </button>
           ))}
-        </div>
+        </DropdownPanel>
       )}
     </div>
   );
