@@ -42,7 +42,7 @@ import type { GpuSample } from "../../server/services/parsers/nvidia.js";
 import type { AgentGpuProcess } from "./collectors/processes.js";
 import type { AgentConfig, HubTarget } from "./config.js";
 
-export type InstallMode = "docker" | "systemd" | "windows" | "unknown";
+export type InstallMode = "docker" | "systemd" | "windows" | "macos" | "unknown";
 
 // Detected once at module load — the runtime context doesn't change
 // over the life of the agent process. Result is included in every
@@ -56,6 +56,11 @@ function detectInstallMode(): InstallMode {
   // enough from 'systemd' (different update mechanism: .pending file
   // swap vs systemd unit restart) that the hub needs to know.
   if (process.platform === "win32") return "windows";
+  // macOS always reports 'macos' — the install.sh.mac.tpl installer
+  // registers a per-user LaunchAgent (launchd), distinct enough from
+  // 'systemd' (different restart/update mechanism) that the hub needs
+  // to know, same reasoning as the Windows branch above.
+  if (process.platform === "darwin") return "macos";
   // Strongest signal — Docker mounts an empty marker file.
   if (existsSync("/.dockerenv")) return "docker";
   // Fallback: cgroup v1 paths usually contain /docker/ or /containerd/.

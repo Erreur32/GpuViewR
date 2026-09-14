@@ -123,6 +123,38 @@ node agent.mjs
 
 To run on boot, register it as a Scheduled Task with trigger _At startup_, action `node.exe`, argument `C:\ProgramData\GpuViewR-Agent\agent.mjs`, and the three env vars baked into the task definition (Task Scheduler GUI → Actions → New → Environment).
 
+## macOS (Apple Silicon only, GPU stats + unified memory, no process list yet)
+
+The agent runs on Apple Silicon (M1+) via `powermetrics`, Apple's only
+supported way to read GPU counters (no public GPU perf API on macOS). Intel
+Macs are not supported. Process list is not collected (no per-process GPU
+memory API on macOS).
+
+```bash
+curl -fsSL http://<your-hub>:7510/install.mac.sh | bash -s -- \
+  --url http://<your-hub>:7510 \
+  --token <host_id>.<secret>
+```
+
+Requires Node 22+ (`brew install node@22`). The installer:
+
+- writes a sudoers rule scoped to `/usr/bin/powermetrics` at
+  `/etc/sudoers.d/gpuviewr-agent` (validated with `visudo -c` before it's
+  activated), since reading GPU counters needs `sudo`,
+- installs a per-user LaunchAgent at
+  `~/Library/LaunchAgents/com.gpuviewr.agent.plist` (`KeepAlive=true`,
+  `RunAtLoad=true`) so the agent respawns automatically.
+
+Uninstall:
+
+```bash
+curl -fsSL http://<your-hub>:7510/install.mac.sh | bash -s -- --uninstall
+```
+
+Since Apple Silicon has no discrete VRAM (the GPU shares the same physical
+RAM pool as the CPU), the hub UI labels this host's memory metric "Unified"
+instead of "VRAM".
+
 ## Configuration — environment variables
 
 ### Required

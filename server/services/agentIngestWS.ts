@@ -52,7 +52,7 @@ interface HelloFrame {
   agent_version?: string;
   protocol_ver?: number;
   hostname?: string;
-  install_mode?: 'docker' | 'systemd' | 'windows' | 'unknown';
+  install_mode?: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown';
   capabilities?: { gpu?: boolean; system?: boolean; temps?: boolean; processes?: boolean };
 }
 
@@ -270,11 +270,13 @@ export function forceAgentUpdate(
   const host = HostsRepo.findById(hostId);
   if (!host) return { ok: false, reason: 'host not found', status: 404 };
   if (host.kind !== 'agent') return { ok: false, reason: 'not an agent host', status: 400 };
-  // Auto-update works on systemd (Linux) and windows (launcher.ps1
-  // supervisor swaps .pending into place on next iteration). Docker
-  // can't rewrite a baked-in bundle; 'unknown' is legacy / dev runs.
-  if (host.install_mode !== 'systemd' && host.install_mode !== 'windows') {
-    return { ok: false, reason: `force-update only supported on systemd/windows hosts (install_mode=${host.install_mode ?? 'unknown'})`, status: 400 };
+  // Auto-update works on systemd (Linux), windows (launcher.ps1
+  // supervisor swaps .pending into place on next iteration), and macos
+  // (LaunchAgent KeepAlive relaunches after the same atomic-rename path
+  // as Linux — cf. Docs/MACOS_AGENT.md §8.2). Docker can't rewrite a
+  // baked-in bundle; 'unknown' is legacy / dev runs.
+  if (host.install_mode !== 'systemd' && host.install_mode !== 'windows' && host.install_mode !== 'macos') {
+    return { ok: false, reason: `force-update only supported on systemd/windows/macos hosts (install_mode=${host.install_mode ?? 'unknown'})`, status: 400 };
   }
   const ws = liveAgentSockets.get(hostId);
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -331,8 +333,10 @@ export function maybePushAutoUpdate(ws: WebSocket, host: HostRecord, hubVersion:
   // we can't reliably restart. 'windows' is allowed: launcher.ps1
   // supervises node + atomically swaps agent.mjs.pending on the next
   // iteration of its while-loop (same effective semantics as systemd's
-  // ExecStart restart, ~5 s downtime).
-  if (host.install_mode !== 'systemd' && host.install_mode !== 'windows') return;
+  // ExecStart restart, ~5 s downtime). 'macos' is allowed: LaunchAgent
+  // KeepAlive relaunches node within ~1s of the agent's own exit(0),
+  // same atomic-rename path as systemd (cf. Docs/MACOS_AGENT.md §8.2).
+  if (host.install_mode !== 'systemd' && host.install_mode !== 'windows' && host.install_mode !== 'macos') return;
   // Gate 3: outdated.
   if (!isOlder(host.agent_version, hubVersion)) return;
   // Gate 4: cooldown — protect against crash-loop amplification.

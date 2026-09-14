@@ -14,6 +14,7 @@ import {
 import { createRocmGpuCollector } from "./collectors/gpuRocm.js";
 import { createAmdgpuSysfsCollector } from "./collectors/gpuAmdgpuSysfs.js";
 import { createPdhGpuCollector } from "./collectors/gpuWindowsPdh.js";
+import { createMacosPowermetricsCollector } from "./collectors/gpuMacosPowermetrics.js";
 import {
   createProcessCollector,
   type ProcessCollectorHandle,
@@ -84,6 +85,18 @@ if (config.features.gpu) {
     gpuHandle = await buildGpuCollector(vendor, config);
     if (!gpuHandle.available()) {
       const bin = vendor === "amd" ? config.rocmSmiPath : config.nvidiaSmiPath;
+      // macOS: no alternate collector to fall back to (powermetrics is
+      // the only source), so a missing/broken `sudo -n powermetrics`
+      // is fatal, same posture as a missing nvidia-smi on Linux. The
+      // collector's available() already logged the specific reason
+      // (sudo probe failed / sudoers missing) before we get here.
+      if (process.platform === "darwin") {
+        logger.error(
+          "boot",
+          "powermetrics unavailable — exiting (check /etc/sudoers.d/gpuviewr-agent, set MOCK_GPU=1 for dev)",
+        );
+        process.exit(1);
+      }
       // Windows fallback: vendor-specific tool unavailable (e.g.
       // nvidia-smi.exe missing on an AMD/Intel box that resolveVendor
       // initially guessed as nvidia). Try the PDH collector — it works
@@ -128,17 +141,27 @@ if (config.features.gpu) {
 // samples don't have real PIDs to enrich. Also skipped on Windows —
 // the collector reads /proc/<pid>/{stat,cmdline} which is Linux-only,
 // and nvidia-smi pmon (used for GPU SM% per pid) isn't supported on
-// the Windows WDDM driver model anyway.
+// the Windows WDDM driver model anyway. Same story on macOS: no /proc,
+// and per-PID GPU usage would need the private Metal Performance
+// Shaders Counter API (cf. Docs/MACOS_AGENT.md §2.4, deferred to a
+// future `--samplers tasks` follow-up).
 if (process.platform === "win32" && config.features.processes) {
   logger.warn(
     "boot",
     "process collector disabled on Windows (no /proc; nvidia-smi pmon unsupported). GPU samples will still stream normally.",
   );
 }
+if (process.platform === "darwin" && config.features.processes) {
+  logger.warn(
+    "boot",
+    "process collector disabled on macOS (no /proc, no per-PID GPU API). GPU samples will still stream normally.",
+  );
+}
 if (
   config.features.processes &&
   !config.mockGpu &&
-  process.platform !== "win32"
+  process.platform !== "win32" &&
+  process.platform !== "darwin"
 ) {
   processHandle = buildProcessCollector(vendor, config);
   if (processHandle.available()) {
@@ -180,9 +203,14 @@ function smiResponds(bin: string): boolean {
   }
 }
 
-function resolveVendor(cfg: AgentConfig): "nvidia" | "amd" {
+function resolveVendor(cfg: AgentConfig): "nvidia" | "amd" | "apple" {
   if (cfg.gpuVendor === "nvidia") return "nvidia";
   if (cfg.gpuVendor === "amd") return "amd";
+  if (cfg.gpuVendor === "apple") return "apple";
+  // Apple Silicon has no other GPU worth probing — there's no
+  // nvidia-smi/rocm-smi equivalent to try first, and no discrete-GPU
+  // Mac scenario in scope (cf. Docs/MACOS_AGENT.md §0, arm64-only v1).
+  if (process.platform === "darwin") return "apple";
   // auto: probe both. Prefer nvidia when both exist (historical default,
   // and nvidia-smi exposes strictly more telemetry — PCIe RX/TX, pmon).
   if (cfg.mockGpu) return "nvidia";
@@ -208,6 +236,12 @@ async function buildGpuCollector(
   // shows. Works for AMD, Intel iGPU, even NVIDIA-without-smi.
   if (process.platform === "win32" && v === "amd") {
     return createPdhGpuCollector({
+      tickMs: cfg.tickMs,
+      onSample: (samples) => transport.enqueueSample(samples),
+    });
+  }
+  if (v === "apple") {
+    return createMacosPowermetricsCollector({
       tickMs: cfg.tickMs,
       onSample: (samples) => transport.enqueueSample(samples),
     });

@@ -24,6 +24,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const AGENT_DIR = path.join(REPO_ROOT, 'agent');
 const TPL_PATH = path.join(AGENT_DIR, 'install.sh.tpl');
 const PS1_TPL_PATH = path.join(AGENT_DIR, 'install.ps1.tpl');
+const MAC_TPL_PATH = path.join(AGENT_DIR, 'install.sh.mac.tpl');
 const BUNDLE_PATH = path.join(AGENT_DIR, 'dist', 'agent.mjs');
 const INSTALL_AGENT_PATH = path.join(REPO_ROOT, 'install-agent.sh');
 
@@ -74,6 +75,23 @@ router.get('/install.ps1', installLimiter, (req, res) => {
   const body = tpl.replaceAll('__HUB_URL__', hubUrl);
   res
     .type('text/plain; charset=utf-8')
+    .set('Cache-Control', 'no-store')
+    .send(body);
+});
+
+router.get('/install.mac.sh', installLimiter, (req, res) => {
+  // macOS variant of /install.sh — LaunchAgent + sudoers instead of
+  // systemd, Apple Silicon powermetrics collector.
+  if (!fs.existsSync(MAC_TPL_PATH)) {
+    logger.warn('agent-dist', `install.mac.sh template missing at ${MAC_TPL_PATH}`);
+    res.status(503).type('text/plain').send('# install.mac.sh template not found in this build\n');
+    return;
+  }
+  const tpl = fs.readFileSync(MAC_TPL_PATH, 'utf8');
+  const hubUrl = resolveHubUrl(req);
+  const body = tpl.replaceAll('__HUB_URL__', hubUrl);
+  res
+    .type('text/x-shellscript; charset=utf-8')
     .set('Cache-Control', 'no-store')
     .send(body);
 });

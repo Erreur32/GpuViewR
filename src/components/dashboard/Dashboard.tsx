@@ -19,6 +19,7 @@ import type { GpuSample } from "../../store/gpuStore";
 import { useGpuStore } from "../../store/gpuStore";
 import { useUiStore } from "../../store/uiStore";
 import { useHostsStore, LOCAL_HOST_ID } from "../../store/hostsStore";
+import { memoryLabel } from "../../lib/memoryFormat";
 import GaugeCard from "./GaugeCard";
 import LiveChart from "./LiveChart";
 import RangeSelector from "./RangeSelector";
@@ -189,7 +190,7 @@ export default function Dashboard() {
         />
         <GaugeCard
           variant={gaugeView}
-          label={t("dashboard.metrics.memory")}
+          label={memoryLabel(currentHost?.install_mode)}
           value={memPct}
           displayValue={
             active.memory_used == null ? "N/A" : `${fmt(active.memory_used)}`

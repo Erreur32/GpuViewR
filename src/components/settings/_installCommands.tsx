@@ -14,25 +14,28 @@
 
 import { Terminal, Container, Monitor } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import Icon from '../ui/icons/IconRegistry';
 
-export type InstallMode = 'curl' | 'docker' | 'windows';
+export type InstallMode = 'curl' | 'docker' | 'windows' | 'macos';
 
 export interface InstallCommandSet {
   curl: string;
   docker: string;
   windows: string;
+  macos: string;
 }
 
-/** Generate the three install one-liners for a `host_id.secret`
+/** Generate the four install one-liners for a `host_id.secret`
  *  composite token + a hub HTTP base URL (e.g.
  *  `http://192.168.32.210:7510`). Multi-line PowerShell snippet for
- *  Windows since `iex` can't forward args; the other two are POSIX
+ *  Windows since `iex` can't forward args; the others are POSIX
  *  shell one-liners with backslash continuations for readability. */
 export function buildInstallCommands(hubHttp: string, token: string): InstallCommandSet {
   return {
     curl: `curl -fsSL ${hubHttp}/install.sh | sudo bash -s -- \\\n  --url ${hubHttp} \\\n  --token ${token}`,
     docker: `curl -fsSL ${hubHttp}/install-agent.sh | bash -s -- \\\n  --hub ${hubHttp} \\\n  --token ${token}`,
     windows: `Set-ExecutionPolicy Bypass -Scope Process -Force\n$env:GPVR_HUB_URL = '${hubHttp}'\n$env:GPVR_TOKEN   = '${token}'\niex (iwr "$env:GPVR_HUB_URL/install.ps1" -UseBasicParsing).Content`,
+    macos: `curl -fsSL ${hubHttp}/install.mac.sh | bash -s -- \\\n  --url ${hubHttp} \\\n  --token ${token}`,
   };
 }
 
@@ -43,6 +46,7 @@ export const LABEL_KEY_BY_MODE: Record<InstallMode, string> = {
   curl: 'hosts.curl_cmd',
   docker: 'hosts.docker_cmd',
   windows: 'hosts.windows_cmd',
+  macos: 'hosts.macos_cmd',
 };
 
 /** i18n key for the segmented toggle's own tab label (as opposed to
@@ -55,6 +59,7 @@ export const TAB_LABEL_KEY_BY_MODE: Record<InstallMode, string> = {
   curl: 'hosts.install_mode_curl',
   docker: 'hosts.install_mode_docker',
   windows: 'hosts.install_mode_windows',
+  macos: 'hosts.install_mode_macos',
 };
 
 /** Map an agent's reported install_mode (the wire-side string) to
@@ -64,10 +69,11 @@ export const TAB_LABEL_KEY_BY_MODE: Record<InstallMode, string> = {
 export function defaultModeFor(installMode: string | null | undefined): InstallMode {
   if (installMode === 'docker') return 'docker';
   if (installMode === 'windows') return 'windows';
+  if (installMode === 'macos') return 'macos';
   return 'curl';
 }
 
-/** Segmented toggle for the three install modes. Pure presentational
+/** Segmented toggle for the four install modes. Pure presentational
  *  — the parent owns the `mode` state and decides what to do with
  *  the active selection (typically: render `commands[mode]` in a
  *  CopyValueBlock). */
@@ -100,6 +106,14 @@ export function InstallModePicker({
         onClick={() => onChange('windows')}
       >
         <Monitor size={14} /> {t('hosts.install_mode_windows')}
+      </button>
+      <button
+        type="button"
+        className="seg-btn inline-flex items-center gap-1.5"
+        aria-pressed={mode === 'macos'}
+        onClick={() => onChange('macos')}
+      >
+        <Icon name="platform.macos" size={14} /> {t('hosts.install_mode_macos')}
       </button>
     </div>
   );

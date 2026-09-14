@@ -1,5 +1,6 @@
 // Periodic scheduler that pushes hub-side bundle updates to connected
-// systemd agents that opted into auto_update.
+// self-updatable agents (systemd/windows/macos) that opted into
+// auto_update.
 //
 // Background: until v0.6.5 the only trigger for an auto-update was the
 // WS hello frame (cf. agentIngestWS.maybePushAutoUpdate, called from
@@ -50,7 +51,7 @@ function tick(hubVersion: string): void {
     // bail out in the first line of the inner function anyway.
     if (host.kind !== 'agent') continue;
     if (!host.auto_update) continue;
-    if (host.install_mode !== 'systemd') continue;
+    if (host.install_mode !== 'systemd' && host.install_mode !== 'windows' && host.install_mode !== 'macos') continue;
     const ws = liveAgentSockets.get(host.id);
     if (!ws || ws.readyState !== WebSocket.OPEN) continue;
     considered++;

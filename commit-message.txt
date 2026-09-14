@@ -1,13 +1,16 @@
-release: v0.8.25 collapse dashboard header controls into dropdowns
+release: v0.9.0 macOS agent support (Apple Silicon)
 
-- Gauge/compact view toggle: icons only, no label text.
-- Time-range picker collapsed into a single dropdown button showing
-  the active range instead of listing all 7 choices inline.
-- Per-GPU tab strip collapsed into a dropdown too, so multi-GPU hosts
-  don't push the header wider than the page.
-- Both new dropdowns use an opaque background instead of the
-  toolbar's semi-transparent one.
-- Gauge/compact toggle padding trimmed to align its height with the
-  other header controls.
-- Dev-only: mock-agent-1 now exposes two synthetic GPUs so the "all
-  GPUs" view is testable under MOCK_GPU=1.
+- New bare-metal agent for Apple Silicon Macs: powermetrics-based GPU
+  collector (utilization, power, unified memory), install.mac.sh
+  installer (sudoers rule scoped to powermetrics, per-user LaunchAgent
+  with KeepAlive), auto-update support.
+- Hub UI: 4th "macOS" tab in the install-mode picker, macOS icon and
+  label in Settings, Hosts, "Unified" memory label on host cards and
+  the dashboard gauge.
+- README/agent README document the new install path; the "local GPU
+  monitoring not possible on macOS" caveat is now scoped to Docker
+  Desktop only.
+- Fix: periodic auto-update scheduler was silently skipping Windows
+  agents (install_mode pre-filter only matched 'systemd').
+- Fix: agent's npm test silently skipped config.test.ts, same glob
+  bug already fixed server-side in v0.8.22.

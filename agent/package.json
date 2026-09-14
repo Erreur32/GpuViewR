@@ -1,6 +1,6 @@
 {
   "name": "gpuviewr-agent",
-  "version": "0.8.25",
+  "version": "0.9.0",
   "private": true,
   "description": "Remote GpuViewR agent — collects nvidia-smi locally and pushes to a central hub via WebSocket",
   "type": "module",
@@ -12,7 +12,7 @@
     "start": "tsx src/index.ts",
     "build": "node scripts/build.mjs",
     "start:bundle": "node dist/agent.mjs",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test $(find src -name '*.test.ts')",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

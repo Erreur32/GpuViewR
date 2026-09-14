@@ -106,16 +106,17 @@ export default function EnrollHostModal({ onClose }: Props) {
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Three install one-liners (Linux bash, Docker, Windows
-  // PowerShell), pre-filled with the composite "host_id.secret"
+  // Four install one-liners (Linux bash, Docker, Windows PowerShell,
+  // macOS bash), pre-filled with the composite "host_id.secret"
   // token. Shared with RotateTokenModal — see _installCommands.tsx.
   const cmdByMode = result
     ? buildInstallCommands(result.hubHttp, `${result.hostId}.${result.token}`)
-    : { curl: '', docker: '', windows: '' };
+    : { curl: '', docker: '', windows: '', macos: '' };
   const hintKeyByMode: Record<InstallMode, string> = {
     curl: 'hosts.install_curl_hint',
     docker: 'hosts.install_docker_hint',
     windows: 'hosts.install_windows_hint',
+    macos: 'hosts.install_macos_hint',
   };
   const activeCmd = cmdByMode[mode];
 

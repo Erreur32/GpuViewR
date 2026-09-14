@@ -164,13 +164,13 @@ docker compose pull && docker compose up -d
 
 The hub image is multi-arch (`linux/amd64` + `linux/arm64`) and ships zero GPU code, so it runs cleanly on Docker Desktop for Mac (Intel and Apple Silicon) in **aggregator-only mode**.
 
-**Local GPU monitoring is not possible on macOS**, because Docker Desktop does not expose:
+**Local GPU monitoring through Docker Desktop is not possible**, because Docker Desktop does not expose:
 
 - the NVIDIA Container Toolkit runtime (no `--gpus all` on Mac)
 - the AMD device nodes `/dev/kfd` and `/dev/dri` (no kernel passthrough)
 - the Apple Silicon GPU itself (Metal-only, not surfaced as a device)
 
-So a Mac is suitable as a **central dashboard** that aggregates one or more remote Linux machines running NVIDIA or AMD agents.
+For Apple Silicon, a bare-metal agent (`install.mac.sh`, a per-user LaunchAgent reading `powermetrics`) does support local GPU monitoring, see the macOS alternative under [Add a remote host](#add-a-remote-host) below. Outside of that path, a Mac running the hub in Docker Desktop is suitable as a **central dashboard** that aggregates one or more remote machines (Linux NVIDIA/AMD agents, Windows agents, or Apple Silicon agents).
 
 The `install.sh` quickstart is Linux-only (it uses `hostname -I` which does not exist on macOS). Setup is manual:
 
@@ -297,6 +297,23 @@ agent in a while-loop. AMD on Windows is not supported (no
 auto-update *immediate-restart* are skipped for now, see
 `agent/README.md` for the long-form notes.
 
+**macOS alternative** (Apple Silicon only, GPU stats + unified
+memory, no process list yet):
+
+```bash
+curl -fsSL http://<your-hub>:7510/install.mac.sh | bash -s -- \
+  --url http://<your-hub>:7510 \
+  --token <host_id>.<secret>
+```
+
+Requires Node 22+ (`brew install node@22`). Installs a sudoers rule
+scoped to `/usr/bin/powermetrics` (the only way to read Apple
+Silicon GPU counters, needs `sudo`) and a per-user LaunchAgent
+(`~/Library/LaunchAgents/com.gpuviewr.agent.plist`, `KeepAlive=true`
+so it respawns). Since Apple Silicon has no discrete VRAM, the UI
+labels its memory metric "Unified" instead of "VRAM". Intel Macs are
+not supported (no `powermetrics` GPU counters).
+
 **One agent → multiple hubs** (failover, shared monitoring, etc.):
 
 ```env
@@ -332,8 +349,11 @@ binary. A 5-minute cooldown protects against crash-loop pile-up
 Windows agents also support auto-update from v0.6.7: the bundle is
 written to `C:\ProgramData\GpuViewR-Agent\agent.mjs.pending`,
 `launcher.ps1` swaps it in atomically on the next supervisor
-iteration (≈5 s downtime). Docker agents currently skip auto-update;
-upgrade them via `docker compose pull && docker compose up -d`.
+iteration (≈5 s downtime). macOS agents support it too: the bundle
+is swapped in place and `launchctl kickstart -k` restarts the
+LaunchAgent, which picks it up via `KeepAlive`. Docker agents
+currently skip auto-update; upgrade them via
+`docker compose pull && docker compose up -d`.
 
 The Auto-update toggle's tooltip surfaces the scheduler state per
 host: "Last check: 12m ago" / "Last push: → 0.6.5 (3h ago)". For
@@ -404,7 +424,7 @@ Common cases:
 ## Roadmap
 
 - v0.6: filesystem handshake to replace the bootstrap shared-secret (one-shot token file, no secret in `.env`)
-- v0.6: macOS install script
+- ~~v0.6: macOS install script~~ done: `install.mac.sh`, see [Add a remote host](#add-a-remote-host)
 - v0.7: ARM agent native binary (no Docker on the remote side)
 - v0.7: Multi-card AMD process attribution via `--showpidgpus`
 - Later: RBAC, organisation scoping

@@ -7,6 +7,7 @@ import {
 } from "../../store/gpuStore";
 import { effectiveStatus, useHostsStore, type HostRecord } from "../../store/hostsStore";
 import { statusFor, colorFor } from "../../lib/status";
+import { memoryLabel } from "../../lib/memoryFormat";
 import StatusPill from "./StatusPill";
 import GpuMiniTile from "./GpuMiniTile";
 import MetricRow from "../ui/MetricRow";
@@ -121,7 +122,7 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
       </header>
 
       {!detailed && (
-        <HostMetricRows isOffline={isOffline} stats={stats} t={t} />
+        <HostMetricRows isOffline={isOffline} stats={stats} t={t} installMode={host.install_mode} />
       )}
 
       {detailed && !isOffline && hostSamples.length > 0 && (
@@ -257,10 +258,12 @@ function HostMetricRows({
   isOffline,
   stats,
   t,
+  installMode,
 }: Readonly<{
   isOffline: boolean;
   stats: HostStats;
   t: (key: string) => string;
+  installMode: string | null;
 }>) {
   if (isOffline) {
     return (
@@ -291,7 +294,7 @@ function HostMetricRows({
       />
       <MetricRow
         icon={<MemoryStick className="w-3.5 h-3.5" />}
-        label={t("dashboard.metrics.memory")}
+        label={memoryLabel(installMode)}
         value={vramPct}
         displayValue={
           stats.vramTotal === 0

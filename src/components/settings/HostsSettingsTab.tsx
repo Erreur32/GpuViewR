@@ -254,7 +254,7 @@ function InstallTypeCell({
   isLocal, installMode, t,
 }: Readonly<{
   isLocal: boolean;
-  installMode: 'docker' | 'systemd' | 'windows' | 'unknown' | null;
+  installMode: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown' | null;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }>) {
   if (isLocal) {
@@ -290,6 +290,14 @@ function InstallTypeCell({
       </span>
     );
   }
+  if (installMode === 'macos') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs"
+            title={t('hosts.type_macos_help')}>
+        <Icon name="platform.macos" size={14} /> {t('hosts.type_macos')}
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs"
           style={{ color: 'var(--gv-text-dim)' }}
@@ -312,7 +320,7 @@ function VersionCell({
 }: Readonly<{
   isLocal: boolean;
   agentVersion: string | null;
-  installMode: 'docker' | 'systemd' | 'windows' | 'unknown' | null;
+  installMode: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown' | null;
   kind: string;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }>) {
@@ -344,7 +352,7 @@ function VersionCell({
  *  copied as a sensible default. Running the bare-metal recipe on a
  *  Docker host creates a "double agent" install — that's exactly
  *  what this per-host selection avoids. */
-function pickUpdateCmd(installMode: 'docker' | 'systemd' | 'windows' | 'unknown' | null, hubOrigin: string): {
+function pickUpdateCmd(installMode: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown' | null, hubOrigin: string): {
   primary: string;
   /** Non-null when we are guessing — UI shows both recipes in the tooltip. */
   secondary: string | null;
@@ -357,9 +365,14 @@ function pickUpdateCmd(installMode: 'docker' | 'systemd' | 'windows' | 'unknown'
   // copy-paste form is to re-run the install.ps1 one-liner from the
   // Add Host modal, which re-downloads the bundle.
   const windowsCmd = `iwr ${hubOrigin}/agent.mjs -OutFile $env:ProgramData\\GpuViewR-Agent\\agent.mjs.pending -UseBasicParsing`;
+  // macOS: re-download the bundle into the LaunchAgent's install dir,
+  // then kick the LaunchAgent so it picks up the new agent.mjs
+  // immediately instead of waiting for the next KeepAlive respawn.
+  const macosCmd = `curl -fsSL ${hubOrigin}/agent.mjs -o "$HOME/Library/Application Support/GpuViewR-Agent/agent.mjs" && launchctl kickstart -k gui/$(id -u)/com.gpuviewr.agent`;
   if (installMode === 'systemd') return { primary: systemdCmd, secondary: null };
   if (installMode === 'docker') return { primary: dockerCmd, secondary: null };
   if (installMode === 'windows') return { primary: windowsCmd, secondary: null };
+  if (installMode === 'macos') return { primary: macosCmd, secondary: null };
   return { primary: systemdCmd, secondary: dockerCmd };
 }
 
@@ -368,7 +381,7 @@ function AgentUpdateButton({
 }: Readonly<{
   t: (key: string, opts?: Record<string, unknown>) => string;
   agentVersion: string;
-  installMode: 'docker' | 'systemd' | 'windows' | 'unknown' | null;
+  installMode: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown' | null;
 }>) {
   const hubOrigin = typeof globalThis.window === 'object' ? globalThis.location.origin : '';
   const { primary, secondary } = pickUpdateCmd(installMode, hubOrigin);
@@ -506,11 +519,12 @@ function EnabledToggle({
 /** Whether the agent's install_mode supports hub-pushed auto-update.
  *  systemd: renameSync + RestartSec=5 — Linux atomic swap.
  *  windows: agent.mjs.pending + launcher.ps1 supervisor loop swap.
+ *  macos: renameSync (APFS) + LaunchAgent KeepAlive respawn.
  *  Anything else (docker, unknown) cannot self-replace its bundle.
  *  Mirrors the check in server/services/agentIngestWS.ts so the UI
  *  state matches what the backend will actually accept. */
 function isAgentSelfUpdatable(installMode: string | null | undefined): boolean {
-  return installMode === 'systemd' || installMode === 'windows';
+  return installMode === 'systemd' || installMode === 'windows' || installMode === 'macos';
 }
 
 function AutoUpdateToggle({
@@ -686,7 +700,7 @@ function RotateTokenModal({ host, onClose }: Readonly<{ host: HostRecord; onClos
   const hubHttp = `${globalThis.location.protocol}//${globalThis.location.host}`;
   const cmdByMode = newToken
     ? buildInstallCommands(hubHttp, newToken)
-    : { curl: '', docker: '', windows: '' };
+    : { curl: '', docker: '', windows: '', macos: '' };
   const activeCmd = cmdByMode[mode];
 
   const copy = async () => {
@@ -783,6 +797,7 @@ function DeleteHostModal({ host, onClose }: Readonly<{ host: HostRecord; onClose
     curl: `curl -fsSL ${hubHttp}/install.sh | sudo bash -s -- --uninstall`,
     docker: `docker rm -f gpuviewr-agent`,
     windows: `iwr ${hubHttp}/install.ps1 -OutFile $env:TEMP\\gpvr-uninstall.ps1 -UseBasicParsing\n& $env:TEMP\\gpvr-uninstall.ps1 -Uninstall`,
+    macos: `curl -fsSL ${hubHttp}/install.mac.sh | bash -s -- --uninstall`,
   };
   const activeCmd = cmdByMode[mode];
 

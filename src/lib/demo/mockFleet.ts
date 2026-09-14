@@ -48,6 +48,10 @@ export interface DemoHost {
   gpuIndices: number[];
   // Per-host "amplitude" offset so curves don't all overlap perfectly.
   phaseOffsetMs: number;
+  // Varied across hosts (rather than one hardcoded value for every
+  // agent) so the demo fleet actually showcases the per-mode icon /
+  // label / update-recipe branching in HostsSettingsTab and HostCard.
+  installMode: 'docker' | 'systemd' | 'windows' | 'macos' | null;
 }
 
 const NOW = Math.floor(Date.now() / 1000);
@@ -63,6 +67,7 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     enrolledAt: NOW - 86400 * 30,
     gpuIndices: [0, 1],
     phaseOffsetMs: 0,
+    installMode: null,
   },
   {
     id: 'a1b2c3d4-rtx-rig-fake-uuid-000000000001',
@@ -74,6 +79,7 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     enrolledAt: NOW - 86400 * 7,
     gpuIndices: [0],
     phaseOffsetMs: 5000,
+    installMode: 'systemd',
   },
   {
     id: 'a1b2c3d4-lab-3-fake-uuid-000000000002',
@@ -85,6 +91,7 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     enrolledAt: NOW - 86400 * 3,
     gpuIndices: [0, 1],
     phaseOffsetMs: 12000,
+    installMode: 'docker',
   },
   {
     id: 'a1b2c3d4-dev-mac-fake-uuid-00000000003',
@@ -96,6 +103,7 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     enrolledAt: NOW - 86400 * 1,
     gpuIndices: [0],
     phaseOffsetMs: 23000,
+    installMode: 'macos',
   },
 ];
 
@@ -111,7 +119,7 @@ export function fakeFleetHosts() {
     endpoint: null,
     capabilities: h.kind === 'agent' ? '{"gpu":true,"system":true,"temps":true,"processes":true}' : null,
     agent_version: h.agent_version,
-    install_mode: h.kind === 'agent' ? 'docker' : null,
+    install_mode: h.installMode,
     auto_update: 0,
     protocol_ver: 1,
     enrolled_at: h.enrolledAt,

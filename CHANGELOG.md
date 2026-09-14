@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-09-14
+
+### Added
+
+- **macOS agent support (Apple Silicon only)**: a new bare-metal agent for M1+ Macs, reading GPU utilization, power and unified memory via `powermetrics`. Install with `curl -fsSL <hub>/install.mac.sh | bash -s -- --url <hub> --token <host_id>.<secret>`. The installer writes a sudoers rule scoped to `/usr/bin/powermetrics` (validated with `visudo -c` before activation) and a per-user LaunchAgent (`KeepAlive=true`) so the agent respawns on its own. Auto-update is supported, same as systemd and Windows agents.
+- Hub UI: a 4th "macOS" tab in the install-mode picker (Add host / Rotate token / Delete host), a macOS icon and label in Settings → Hosts, and a "Unified" memory label on host cards and the dashboard gauge (Apple Silicon has no discrete VRAM, the GPU shares the CPU's RAM pool).
+- `agent/README.md` and the root `README.md` document the new install path; the README's Docker-only "local GPU monitoring not possible on macOS" caveat is now scoped to the Docker Desktop path, since bare-metal Apple Silicon monitoring works.
+- Full plan and design rationale in `Docs/MACOS_AGENT.md`.
+
+### Fixed
+
+- **Periodic auto-update scheduler was silently skipping Windows agents.** `agentUpdateScheduler.ts`'s hourly tick pre-filtered on `install_mode === 'systemd'` only, so Windows (and now macOS) hosts never received an update on the periodic path, only at WS reconnect time. Found while auditing every `install_mode` comparison for the new `'macos'` value; the pre-filter now matches the same three modes as the actual push gate.
+- **`agent`'s `npm test` was silently skipping `config.test.ts`** (11 tests): the `tsx --test src/**/*.test.ts` glob only matched files at least one directory below `src/`, so top-level test files never ran under npm's default script shell. Switched to `tsx --test $(find src -name '*.test.ts')`, same shell-agnostic fix already applied to the server side in v0.8.22. `npm test` now reports 47/47 (was 36/36).
+
 ## [0.8.25] - 2026-09-14
 
 ### Changed

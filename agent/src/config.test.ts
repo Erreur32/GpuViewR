@@ -35,6 +35,7 @@ test('parseFeatures: gpu-only minimal', () => {
 test('parseGpuVendor: explicit values pass through', () => {
   assert.equal(parseGpuVendor('nvidia'), 'nvidia');
   assert.equal(parseGpuVendor('amd'), 'amd');
+  assert.equal(parseGpuVendor('apple'), 'apple');
   assert.equal(parseGpuVendor('auto'), 'auto');
 });
 
