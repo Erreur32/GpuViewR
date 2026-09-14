@@ -41,6 +41,9 @@ interface FakeAgentDevice {
   phase: number;
 }
 
+// Two devices on mock-agent-1 so the multi-GPU dashboard path (GpuTabs
+// "all" tab, AllGpusGrid, MultiGpuChart) is exercisable under MOCK_GPU=1
+// without real multi-GPU hardware.
 const DEVICES: FakeAgentDevice[] = [
   {
     index: 0,
@@ -53,6 +56,18 @@ const DEVICES: FakeAgentDevice[] = [
     pcieGen: 4, pcieGenMax: 4,
     pcieWidth: 16, pcieWidthMax: 16,
     phase: Math.PI / 3,
+  },
+  {
+    index: 1,
+    name: 'Mock RTX 4090 (agent)',
+    uuid: 'GPU-mockagt-cccc-cccc-cccc-cccccccccccc',
+    driver: '550.54.14',
+    memTotal: 24576,
+    powerCap: 450,
+    pciBusId: '00000000:0b:00.0',
+    pcieGen: 4, pcieGenMax: 4,
+    pcieWidth: 16, pcieWidthMax: 16,
+    phase: Math.PI,
   },
 ];
 
@@ -79,6 +94,7 @@ const FAKE_PROCESSES: ReadonlyArray<{ pid: number; name: string; gpu: number }> 
   { pid: 9001, name: 'pytorch-train', gpu: 0 },
   { pid: 9002, name: 'jupyter-kernel', gpu: 0 },
   { pid: 9003, name: 'ray-worker', gpu: 0 },
+  { pid: 9004, name: 'stable-diffusion', gpu: 1 },
 ];
 
 function buildSamples(devices: readonly FakeAgentDevice[] = DEVICES): GpuSample[] {

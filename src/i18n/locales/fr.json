@@ -71,6 +71,7 @@
       "clock_gpu": "Fréquence GPU",
       "clock_mem": "Fréquence mémoire"
     },
+    "range_label": "Période",
     "ranges": {
       "live": "Live",
       "5m": "5 min",

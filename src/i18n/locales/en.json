@@ -71,6 +71,7 @@
       "clock_gpu": "Core Clock",
       "clock_mem": "Memory Clock"
     },
+    "range_label": "Time range",
     "ranges": {
       "live": "Live",
       "5m": "5 min",

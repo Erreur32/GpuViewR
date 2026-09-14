@@ -144,22 +144,28 @@ export default function Dashboard() {
         <GpuTabs samples={samples} />
 
         <div className="flex flex-wrap items-center gap-2 ml-auto">
-          <div className="seg" role="group" aria-label="Gauge view">
+          {/* p-0: the outer .seg's own p-1 stacks on top of each
+              seg-btn's padding, making this group taller than the
+              standalone RangeSelector/GpuTabs trigger buttons next to
+              it on the same row. Dropping it lines the heights up. */}
+          <div className="seg p-0" role="group" aria-label="Gauge view">
             <button
-              className="seg-btn inline-flex items-center gap-1"
+              className="seg-btn inline-flex items-center"
               aria-pressed={gaugeView === "arc"}
               onClick={() => setGaugeView("arc")}
               title={t("dashboard.view_arc")}
+              aria-label={t("dashboard.view_arc")}
             >
-              <LayoutGrid className="w-3.5 h-3.5" /> {t("dashboard.view_arc")}
+              <LayoutGrid className="w-3.5 h-3.5" />
             </button>
             <button
-              className="seg-btn inline-flex items-center gap-1"
+              className="seg-btn inline-flex items-center"
               aria-pressed={gaugeView === "bar"}
               onClick={() => setGaugeView("bar")}
               title={t("dashboard.view_bar")}
+              aria-label={t("dashboard.view_bar")}
             >
-              <BarChart3 className="w-3.5 h-3.5" /> {t("dashboard.view_bar")}
+              <BarChart3 className="w-3.5 h-3.5" />
             </button>
           </div>
           <RangeSelector />

@@ -1,6 +1,13 @@
-release: v0.8.24 UI copy cleanup (no em dashes, hosts intro on two lines)
+release: v0.8.25 collapse dashboard header controls into dropdowns
 
-- Every em dash in the fr/en locales replaced by a comma, a colon or a
-  plain hyphen (unknown install type placeholder).
-- Settings -> Hosts intro text split on two lines.
-- No functional change on top of v0.8.23.
+- Gauge/compact view toggle: icons only, no label text.
+- Time-range picker collapsed into a single dropdown button showing
+  the active range instead of listing all 7 choices inline.
+- Per-GPU tab strip collapsed into a dropdown too, so multi-GPU hosts
+  don't push the header wider than the page.
+- Both new dropdowns use an opaque background instead of the
+  toolbar's semi-transparent one.
+- Gauge/compact toggle padding trimmed to align its height with the
+  other header controls.
+- Dev-only: mock-agent-1 now exposes two synthetic GPUs so the "all
+  GPUs" view is testable under MOCK_GPU=1.

@@ -5,6 +5,14 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.25] - 2026-09-14
+
+### Changed
+
+- **Dashboard header decluttered on multi-GPU hosts**: the gauge/compact view toggle now shows icons only (no label text), the time-range picker (live/5m/15m/1h/6h/24h/3d) collapsed into a single dropdown button showing the active range, and the per-GPU tab strip collapsed into a dropdown too, so a host with many cards no longer pushes the header wider than the page. Both dropdowns use an opaque background (previously inherited the toolbar's semi-transparent one, which let page content show through when floating over it).
+- Gauge/compact toggle padding trimmed so its height lines up with the other header controls on the same row.
+- **Dev-only**: `mock-agent-1` (used by `MOCK_GPU=1`) now exposes two synthetic GPUs instead of one, so the "all GPUs" dashboard view is exercisable without real multi-GPU hardware.
+
 ## [0.8.24] - 2026-09-13
 
 ### Changed
