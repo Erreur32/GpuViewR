@@ -8,6 +8,7 @@
 ![Docker](https://img.shields.io/badge/Docker-Ready-1f2937?style=for-the-badge&logo=docker&logoColor=38bdf8)
 ![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900)
 ![AMD](https://img.shields.io/badge/AMD-ROCm-111827?style=for-the-badge&logo=amd&logoColor=ed1c24)
+![macOS](https://img.shields.io/badge/macOS-Apple_Silicon-111827?style=for-the-badge&logo=apple&logoColor=white)
 [![License](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white)](LICENSE)
 
 [![OSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/Erreur32/GpuViewR?style=for-the-badge&label=Scorecard)](https://scorecard.dev/viewer/?uri=github.com/Erreur32/GpuViewR)
@@ -31,24 +32,27 @@
 
 <table>
 <tr>
-<td align="center" width="25%" height="64"><img src="public/icons/nvidia.svg" height="48" alt="NVIDIA" /></td>
-<td align="center" width="25%" height="64"><img src="public/icons/amd.svg" height="48" alt="AMD" /></td>
-<td align="center" width="25%" height="64"><img src="public/icons/linux.svg" height="48" alt="Linux" /></td>
-<td align="center" width="25%" height="64"><img src="public/icons/windows.svg" height="48" alt="Windows" /></td>
+<td align="center" width="20%" height="64"><img src="public/icons/nvidia.svg" height="48" alt="NVIDIA" /></td>
+<td align="center" width="20%" height="64"><img src="public/icons/amd.svg" height="48" alt="AMD" /></td>
+<td align="center" width="20%" height="64"><img src="public/icons/linux.svg" height="48" alt="Linux" /></td>
+<td align="center" width="20%" height="64"><img src="public/icons/windows.svg" height="48" alt="Windows" /></td>
+<td align="center" width="20%" height="64"><img src="public/icons/apple.svg" height="48" alt="macOS" /></td>
 </tr>
 <tr>
 <td align="center" valign="top"><b>NVIDIA</b><br/><sub>nvidia-smi + pmon</sub></td>
 <td align="center" valign="top"><b>AMD</b><br/><sub>ROCm / sysfs amdgpu</sub></td>
 <td align="center" valign="top"><b>Linux</b><br/><sub>systemd / Docker</sub></td>
 <td align="center" valign="top"><b>Windows</b><br/><sub> Scheduled Task - PDH</sub></td>
+<td align="center" valign="top"><b>macOS</b><br/><sub>Apple Silicon - LaunchAgent</sub></td>
 </tr>
 </table>
 
 **Multi-host & mixed-fleet.** One hub aggregates any combination of
 NVIDIA + AMD GPUs running on Linux (`systemd` binary or Docker
-sidecar) and Windows (PowerShell-installed Scheduled Task), see the
-whole fleet on a single dashboard, each host coded with its own
-colour on every chart.
+sidecar), Windows (PowerShell-installed Scheduled Task) and macOS
+Apple Silicon (LaunchAgent reading `powermetrics`), see the whole
+fleet on a single dashboard, each host coded with its own colour on
+every chart.
 
 </div>
 
