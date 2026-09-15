@@ -1,10 +1,11 @@
 import { useEffect, useMemo } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Cpu, Zap, CheckCircle2, LayoutGrid, BarChart3, Activity, MemoryStick, Cable, Info } from 'lucide-react';
+import { Cpu, Zap, CheckCircle2, LayoutGrid, BarChart3, Activity, MemoryStick, Cable, Info, Plus } from 'lucide-react';
 import { useHostsStore, effectiveStatus, LOCAL_HOST_ID, type HostRecord } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor, type GpuSample } from '../../store/gpuStore';
 import { useUiStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
 import HostCard from './HostCard';
 import FleetChart from './FleetChart';
 
@@ -81,6 +82,7 @@ export default function FleetPage() {
   const clockOffsetS = useHostsStore((s) => s.clockOffsetS);
   const fleetView = useUiStore((s) => s.fleetView);
   const setFleetView = useUiStore((s) => s.setFleetView);
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
 
   // Hydrate at mount — covers a deep-link refresh before any other
   // page has triggered a list fetch.
@@ -132,27 +134,41 @@ export default function FleetPage() {
           </h1>
           <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('fleet.subtitle')}</p>
         </div>
-        {/* Order mirrors Dashboard + System: Jauges (detailed) first,
-            Compact (simple) second — same icons, same muscle memory. */}
-        <div className="seg" role="toolbar" aria-label={t('fleet.view_label')}>
-          <button
-            type="button"
-            className="seg-btn inline-flex items-center gap-1.5"
-            aria-pressed={fleetView === 'detailed'}
-            onClick={() => setFleetView('detailed')}
-            title={t('fleet.view_detailed')}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" /> {t('fleet.view_detailed')}
-          </button>
-          <button
-            type="button"
-            className="seg-btn inline-flex items-center gap-1.5"
-            aria-pressed={fleetView === 'simple'}
-            onClick={() => setFleetView('simple')}
-            title={t('fleet.view_simple')}
-          >
-            <BarChart3 className="w-3.5 h-3.5" /> {t('fleet.view_simple')}
-          </button>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              type="button"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-full shrink-0 transition-transform hover:scale-105"
+              onClick={() => navigate('/settings/hosts')}
+              title={t('fleet.add_agent_title')}
+              aria-label={t('fleet.add_agent_title')}
+              style={{ background: 'var(--gv-accent)', color: 'white' }}
+            >
+              <Plus className="w-4 h-4" strokeWidth={2.5} />
+            </button>
+          )}
+          {/* Order mirrors Dashboard + System: Jauges (detailed) first,
+              Compact (simple) second — same icons, same muscle memory. */}
+          <div className="seg" role="toolbar" aria-label={t('fleet.view_label')}>
+            <button
+              type="button"
+              className="seg-btn inline-flex items-center gap-1.5"
+              aria-pressed={fleetView === 'detailed'}
+              onClick={() => setFleetView('detailed')}
+              title={t('fleet.view_detailed')}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" /> {t('fleet.view_detailed')}
+            </button>
+            <button
+              type="button"
+              className="seg-btn inline-flex items-center gap-1.5"
+              aria-pressed={fleetView === 'simple'}
+              onClick={() => setFleetView('simple')}
+              title={t('fleet.view_simple')}
+            >
+              <BarChart3 className="w-3.5 h-3.5" /> {t('fleet.view_simple')}
+            </button>
+          </div>
         </div>
       </header>
 

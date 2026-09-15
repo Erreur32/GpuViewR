@@ -1,16 +1,5 @@
-release: v0.9.0 macOS agent support (Apple Silicon)
+release: v0.9.1 Fleet "add agent" shortcut
 
-- New bare-metal agent for Apple Silicon Macs: powermetrics-based GPU
-  collector (utilization, power, unified memory), install.mac.sh
-  installer (sudoers rule scoped to powermetrics, per-user LaunchAgent
-  with KeepAlive), auto-update support.
-- Hub UI: 4th "macOS" tab in the install-mode picker, macOS icon and
-  label in Settings, Hosts, "Unified" memory label on host cards and
-  the dashboard gauge.
-- README/agent README document the new install path; the "local GPU
-  monitoring not possible on macOS" caveat is now scoped to Docker
-  Desktop only.
-- Fix: periodic auto-update scheduler was silently skipping Windows
-  agents (install_mode pre-filter only matched 'systemd').
-- Fix: agent's npm test silently skipped config.test.ts, same glob
-  bug already fixed server-side in v0.8.22.
+- Fleet page: new admin-only "+" button (solid blue circle, tooltip)
+  to the left of the Jauges/Compact toggle, linking straight to
+  Settings -> Hosts to enrol a new agent.

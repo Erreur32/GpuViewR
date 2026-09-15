@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-09-15
+
+### Added
+
+- **Fleet page: quick "add agent" shortcut.** A solid blue circular `+` button (admins only) now sits to the left of the Jauges/Compact view toggle on `/fleet`, jumping straight to Settings → Hosts to enrol a new agent. Tooltip explains the action.
+
 ## [0.9.0] - 2026-09-14
 
 ### Added

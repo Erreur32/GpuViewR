@@ -459,6 +459,7 @@
     "stat_util": "Util",
     "stat_vram": "VRAM",
     "stat_pcie": "PCIe Rx+Tx",
+    "add_agent_title": "Add a new agent to monitor another machine",
     "no_data": "no data",
     "combined_chart_title_total": "All hosts · cumulative {{metric}} · last 60s",
     "combined_chart_title_total_multi": "All hosts · cumulative · last 60s",
