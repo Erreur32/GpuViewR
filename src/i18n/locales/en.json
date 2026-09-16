@@ -364,7 +364,7 @@
     "ws_disconnected_help": "WebSocket stream offline: values shown are the last known sample; the page will reconnect automatically."
   },
   "system": {
-    "title": "System",
+    "title": "Machine",
     "subtitle": "Hardware and runtime information for the host machine",
     "zone_machine": "Machine",
     "zone_machine_sub": "Host, CPU and memory of the server running GpuViewR",

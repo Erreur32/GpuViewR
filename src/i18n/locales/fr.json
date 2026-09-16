@@ -364,7 +364,7 @@
     "ws_disconnected_help": "Flux WebSocket hors ligne : les valeurs affichées datent du dernier échantillon ; la page se reconnectera automatiquement."
   },
   "system": {
-    "title": "Système",
+    "title": "Machine",
     "subtitle": "Informations matérielles et runtime de la machine hôte",
     "zone_machine": "Machine",
     "zone_machine_sub": "Hôte, CPU et mémoire du serveur qui fait tourner GpuViewR",
