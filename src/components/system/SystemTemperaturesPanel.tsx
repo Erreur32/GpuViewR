@@ -234,8 +234,12 @@ export default function SystemTemperaturesPanel({ temperatures, gpus }: Readonly
         </div>
       </div>
 
-      {/* Source-grouped chip cards. Each chip = one sensor reading. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      {/* Source-grouped chip cards. Each chip = one sensor reading.
+          3-across only kicks in at 2xl — this panel now typically shares
+          the row with the machine zone (SystemPage), so a half-width
+          column needs to stay at 2 columns until the viewport is wide
+          enough for each column to still be roomy. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">
         {groups.map((g) => {
           const groupCrit = defaultCrit(g.source, g.hottest.critC);
           const groupColor = tempColor(g.hottest.valueC);

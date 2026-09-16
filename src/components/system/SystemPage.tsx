@@ -77,6 +77,8 @@ export default function SystemPage() {
     return () => clearInterval(id);
   }, []);
 
+  const hasThermal = Boolean(info?.temperatures && info.temperatures.length > 0);
+
   return (
     <div className="space-y-4">
       <div className="flex items-end justify-between flex-wrap gap-3">
@@ -116,120 +118,133 @@ export default function SystemPage() {
 
       {info && (
         <>
-          <ZoneHeader
-            color="var(--gv-info)"
-            icon={<Server className="w-4 h-4" />}
-            label={t('system.zone_machine')}
-            sub={t('system.zone_machine_sub')}
-          />
-          {/* Machine zone layout:
-              - bar mode: vertical stack (full-width bars read better)
-              - gauge mode + md  : Host full width / CPU + Memory side-by-side
-              - gauge mode + xl  : Host (2fr) + CPU (1fr) + Memory (1fr) all on one row */}
-          <div
-            className={
-              'pl-3 border-l-2 '
-              + (viewMode === 'gauge'
-                ? 'grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-4'
-                : 'space-y-4')
-            }
-            style={{ borderColor: 'color-mix(in srgb, var(--gv-info) 35%, transparent)' }}
-          >
-            <section
-              className={
-                'card p-4 flex flex-col gap-3'
-                + (viewMode === 'gauge' ? ' md:col-span-2' : '')
-              }
-            >
-              <CardHeader
-                icon={<Server className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
-                title={t('system.host')}
-                badge={
-                  <span
-                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wider"
-                    style={{
-                      color: 'var(--gv-info)',
-                      background: 'color-mix(in srgb, var(--gv-info) 14%, transparent)',
-                      border: '1px solid color-mix(in srgb, var(--gv-info) 35%, transparent)',
-                    }}
-                    title={t('hosts.hub_badge_help')}
-                  >
-                    {t('hosts.hub_badge')}
-                  </span>
-                }
-                meta={[
-                  info.host.os.prettyName ?? info.host.os.name,
-                  `${info.host.platform} ${info.host.release}`,
-                  info.host.arch,
-                  info.host.hostname,
-                  `up ${fmtUptime(info.host.uptime)}`,
-                ]}
-              />
-              <div className="mt-auto">
-                <LoadAvgBars loadavg={info.host.loadavg} cores={info.cpu.cores} label={t('system.loadavg')} viewMode={viewMode} />
-              </div>
-            </section>
-
-            <section className="card p-4 flex flex-col gap-3">
-              <CardHeader
-                icon={<Cpu className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
-                title={t('system.cpu')}
-                meta={[
-                  info.cpu.model,
-                  `${info.cpu.cores} cores`,
-                  `${info.cpu.speedMHz} MHz`,
-                ]}
-              />
-              <div className="mt-auto">
-                <UsageBar label={t('system.cpu_usage')} pct={info.cpu.usagePct} viewMode={viewMode} />
-              </div>
-            </section>
-
-            <section className="card p-4 flex flex-col gap-3">
-              <CardHeader
-                icon={<MemoryStick className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
-                title={t('system.memory')}
-                meta={[
-                  `${fmtBytes(info.memory.total)} total`,
-                  `${fmtBytes(info.memory.used)} used`,
-                  `${fmtBytes(info.memory.free)} free`,
-                ]}
-              />
-              <div className="mt-auto">
-                <UsageBar
-                  label={t('system.mem_used')}
-                  pct={info.memory.usedPct}
-                  valueText={`${info.memory.usedPct.toFixed(1)}%`}
-                  valueSub={`${fmtBytes(info.memory.used)} / ${fmtBytes(info.memory.total)}`}
-                  viewMode={viewMode}
-                />
-              </div>
-            </section>
-          </div>
-
-          {info.temperatures && info.temperatures.length > 0 && (
-            <>
+          {/* Machine + Thermal zones sit side by side on wide screens (two
+              columns, each keeping its own header) so the ample horizontal
+              space isn't wasted on a single centred stack. Below xl they
+              fall back to the vertical stack used before. The machine
+              zone's own card grid is capped at 2 columns whenever a
+              thermal zone shares the row — a half-width column is too
+              narrow for the previous 4-across layout and would truncate
+              text. */}
+          <div className={hasThermal ? 'grid grid-cols-1 xl:grid-cols-2 gap-4 items-start' : ''}>
+            <div className="space-y-4">
               <ZoneHeader
-                color="var(--gv-warn)"
-                icon={<Thermometer className="w-4 h-4" />}
-                label={t('system.zone_thermal')}
-                sub={t('system.zone_thermal_sub')}
+                color="var(--gv-info)"
+                icon={<Server className="w-4 h-4" />}
+                label={t('system.zone_machine')}
+                sub={t('system.zone_machine_sub')}
               />
+              {/* Machine zone layout:
+                  - bar mode: vertical stack (full-width bars read better)
+                  - gauge mode + md  : Host full width / CPU + Memory side-by-side
+                  - gauge mode + xl  : Host (2fr) + CPU (1fr) + Memory (1fr) all on
+                    one row — only when the zone has the full page width to itself */}
               <div
-                className="pl-3 border-l-2"
-                style={{ borderColor: 'color-mix(in srgb, var(--gv-warn) 35%, transparent)' }}
+                className={
+                  'pl-3 border-l-2 '
+                  + (viewMode === 'gauge'
+                    ? `grid gap-4 grid-cols-1 md:grid-cols-2 ${hasThermal ? '' : 'xl:grid-cols-4'}`
+                    : 'space-y-4')
+                }
+                style={{ borderColor: 'color-mix(in srgb, var(--gv-info) 35%, transparent)' }}
               >
-                <SystemTemperaturesPanel
-                  temperatures={info.temperatures}
-                  gpus={info.gpus.map((g) => ({
-                    gpu_index: g.gpu_index,
-                    name: g.name,
-                    temperature: g.temperature,
-                  }))}
-                />
+                <section
+                  className={
+                    'card p-4 flex flex-col gap-3'
+                    + (viewMode === 'gauge' ? ' md:col-span-2' : '')
+                  }
+                >
+                  <CardHeader
+                    icon={<Server className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
+                    title={t('system.host')}
+                    badge={
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wider"
+                        style={{
+                          color: 'var(--gv-info)',
+                          background: 'color-mix(in srgb, var(--gv-info) 14%, transparent)',
+                          border: '1px solid color-mix(in srgb, var(--gv-info) 35%, transparent)',
+                        }}
+                        title={t('hosts.hub_badge_help')}
+                      >
+                        {t('hosts.hub_badge')}
+                      </span>
+                    }
+                    meta={[
+                      info.host.os.prettyName ?? info.host.os.name,
+                      `${info.host.platform} ${info.host.release}`,
+                      info.host.arch,
+                      info.host.hostname,
+                      `up ${fmtUptime(info.host.uptime)}`,
+                    ]}
+                  />
+                  <div className="mt-auto">
+                    <LoadAvgBars loadavg={info.host.loadavg} cores={info.cpu.cores} label={t('system.loadavg')} viewMode={viewMode} />
+                  </div>
+                </section>
+
+                <section className="card p-4 flex flex-col gap-3">
+                  <CardHeader
+                    icon={<Cpu className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
+                    title={t('system.cpu')}
+                    meta={[
+                      info.cpu.model,
+                      `${info.cpu.cores} cores`,
+                      `${info.cpu.speedMHz} MHz`,
+                    ]}
+                  />
+                  <div className="mt-auto">
+                    <UsageBar label={t('system.cpu_usage')} pct={info.cpu.usagePct} viewMode={viewMode} />
+                  </div>
+                </section>
+
+                <section className="card p-4 flex flex-col gap-3">
+                  <CardHeader
+                    icon={<MemoryStick className="w-4 h-4" style={{ color: 'var(--gv-info)' }} />}
+                    title={t('system.memory')}
+                    meta={[
+                      `${fmtBytes(info.memory.total)} total`,
+                      `${fmtBytes(info.memory.used)} used`,
+                      `${fmtBytes(info.memory.free)} free`,
+                    ]}
+                  />
+                  <div className="mt-auto">
+                    <UsageBar
+                      label={t('system.mem_used')}
+                      pct={info.memory.usedPct}
+                      valueText={`${info.memory.usedPct.toFixed(1)}%`}
+                      valueSub={`${fmtBytes(info.memory.used)} / ${fmtBytes(info.memory.total)}`}
+                      viewMode={viewMode}
+                    />
+                  </div>
+                </section>
               </div>
-            </>
-          )}
+            </div>
+
+            {hasThermal && (
+              <div className="space-y-4">
+                <ZoneHeader
+                  color="var(--gv-warn)"
+                  icon={<Thermometer className="w-4 h-4" />}
+                  label={t('system.zone_thermal')}
+                  sub={t('system.zone_thermal_sub')}
+                />
+                <div
+                  className="pl-3 border-l-2"
+                  style={{ borderColor: 'color-mix(in srgb, var(--gv-warn) 35%, transparent)' }}
+                >
+                  <SystemTemperaturesPanel
+                    temperatures={info.temperatures ?? []}
+                    gpus={info.gpus.map((g) => ({
+                      gpu_index: g.gpu_index,
+                      name: g.name,
+                      temperature: g.temperature,
+                    }))}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
           <ZoneHeader
             color="var(--gv-accent)"

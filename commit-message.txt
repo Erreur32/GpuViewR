@@ -1,5 +1,10 @@
-release: v0.9.1 Fleet "add agent" shortcut
+release: v0.9.2 System page two-column layout
 
-- Fleet page: new admin-only "+" button (solid blue circle, tooltip)
-  to the left of the Jauges/Compact toggle, linking straight to
-  Settings -> Hosts to enrol a new agent.
+- /system: Machine and Temperature zones now sit side by side on wide
+  screens (>= xl) instead of stacking full-width; falls back to the
+  previous vertical stack below that breakpoint. Internal card grids
+  are capped to avoid text truncation when a zone only has half the
+  page width.
+- Nav tab renamed from "System" to "Machine" (FR/EN).
+- Dev: MOCK_GPU=1 now also fakes host thermal sensors so the
+  Temperature panel can be tested without real hwmon access.

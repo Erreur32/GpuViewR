@@ -4,6 +4,8 @@
 // sensors — callers must treat an empty list as "feature unavailable".
 import fs from 'node:fs';
 import path from 'node:path';
+import { config } from '../config.js';
+import { sweep } from './_mockHelpers.js';
 
 export interface HostTempSensor {
   // hwmon driver name (e.g. coretemp, k10temp, nvme, acpitz). Multiple
@@ -82,7 +84,26 @@ function readOneSensor(dir: string, source: string, idx: number): HostTempSensor
   return { source, label, valueC, maxC, critC };
 }
 
+// Synthetic hwmon-shaped sensors for dev hosts without real sensors
+// (e.g. a sandboxed container). Reuses MOCK_GPU=1 rather than a
+// dedicated flag — it's already the "fake dev hardware" switch and
+// config.mockGpu already refuses to activate in production.
+function mockHostTemperatures(): HostTempSensor[] {
+  return [
+    { source: 'coretemp', label: 'Package id 0', valueC: round1(sweep(35, 78, 40, 0)), maxC: 90, critC: 100 },
+    { source: 'coretemp', label: 'Core 0', valueC: round1(sweep(33, 75, 40, 0.6)), maxC: 90, critC: 100 },
+    { source: 'coretemp', label: 'Core 1', valueC: round1(sweep(33, 75, 40, 1.2)), maxC: 90, critC: 100 },
+    { source: 'nvme', label: 'Composite', valueC: round1(sweep(30, 65, 55, 2)), maxC: 70, critC: 85 },
+    { source: 'acpitz', label: 'temp1', valueC: round1(sweep(28, 55, 65, 3)), maxC: null, critC: null },
+  ];
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
 export function readHostTemperatures(): HostTempSensor[] {
+  if (config.mockGpu) return mockHostTemperatures();
   if (!fs.existsSync(HWMON_ROOT)) return [];
   const out: HostTempSensor[] = [];
   for (const entry of listDirSafe(HWMON_ROOT)) {

@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-09-16
+
+### Changed
+
+- **`/system` page: two-column layout on wide screens.** The Machine and Temperature zones now sit side by side (≥ xl) instead of stacking full-width, so the ample horizontal space isn't wasted. Falls back to the previous vertical stack below that breakpoint. Internal card grids are capped to avoid text truncation when a zone only has half the page width.
+- Nav tab renamed from "System" to "Machine" (FR/EN) for clarity, avoiding confusion with Settings/Fleet.
+
+### Dev
+
+- `MOCK_GPU=1` now also fakes host thermal sensors (coretemp/nvme/acpitz), so the Temperature panel can be exercised on dev machines without real hwmon sensors.
+
 ## [0.9.1] - 2026-09-15
 
 ### Added
