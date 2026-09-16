@@ -366,7 +366,7 @@
   "system": {
     "title": "Machine",
     "subtitle": "Hardware and runtime information for the host machine",
-    "zone_machine": "Machine",
+    "zone_machine": "Host",
     "zone_machine_sub": "Host, CPU and memory of the server running GpuViewR",
     "zone_gpu": "GPUs",
     "zone_gpu_sub": "GPU accelerators reported by the active vendor smi (nvidia-smi or rocm-smi)",
