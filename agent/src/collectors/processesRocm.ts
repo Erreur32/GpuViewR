@@ -156,11 +156,17 @@ export function createRocmProcessCollector(
 
         const devices = fdinfoRaw.get(p.pid);
         if (!devices || devices.length === 0) {
+          // One-shot per collector lifetime, not per pid: this can
+          // recur silently for other pids afterwards (intermittent
+          // /proc access restriction, several processes with no DRM
+          // fd) — the goal is just to surface that the fallback path
+          // is active on this host at all, not an exhaustive log of
+          // every occurrence.
           if (isMultiCard && !multiCardFallbackWarned) {
             multiCardFallbackWarned = true;
             logger.warn(
               "proc",
-              `pid ${p.pid}: no DRM fdinfo visibility on a multi-GPU AMD host, attributing to card0 (older kernel or restricted /proc access?)`,
+              `no DRM fdinfo visibility for at least one pid (first seen: ${p.pid}) on a multi-GPU AMD host — attributing to card0 (older kernel or restricted /proc access?). May recur silently for other pids.`,
             );
           }
           return [
@@ -194,7 +200,12 @@ export function createRocmProcessCollector(
         return devices.map((d) => ({
           pid: p.pid,
           process_name: name || "unknown",
-          gpu_uuid: rocmUuidFromBus(d.pdev ?? undefined),
+          // A device entry can have a null pdev (fd readable but the
+          // kernel's drm-pdev line was missing/unparsable) — fall back
+          // to defaultUuid rather than the synthetic "ROCm-unknown",
+          // so the row still joins against the real GPU card list the
+          // UI keys on (${pid}-${gpu_uuid}, see the module header).
+          gpu_uuid: d.pdev ? rocmUuidFromBus(d.pdev) : defaultUuid,
           used_memory: Math.floor(d.vramBytes / 1048576),
           type: "C" as const,
           command,

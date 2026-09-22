@@ -111,6 +111,13 @@ export function scanAmdgpuFdinfo(
       const parsed = parseFdinfoText(text);
       if (parsed.driver !== "amdgpu") continue;
       const perPid = result.get(pid) ?? [];
+      // Known limitation: fds with an unreadable/missing drm-pdev all
+      // key as pdev===null, so they merge into a single entry here —
+      // if the same pid genuinely spans two physical cards and BOTH
+      // fail to report drm-pdev, they'd be incorrectly collapsed into
+      // one row instead of two. No way to disambiguate them from this
+      // interface alone; processesRocm.ts's null-pdev fallback (uses
+      // defaultUuid) is the safety net for this case.
       const existing = perPid.find((u) => u.pdev === parsed.pdev);
       if (existing) {
         existing.vramBytes = Math.max(existing.vramBytes, parsed.vramBytes);
@@ -146,6 +153,11 @@ export interface FdinfoGpuSampler {
   retain(stillAlive: Set<number>): void;
 }
 
+// Sample history is keyed by (pid, pdev) so two cards for the same pid
+// track independent deltas, but the pid is also stored in the value
+// (not just encoded in the string key) so retain() below can filter by
+// pid without an implicit "pid never contains a colon" string-parsing
+// convention.
 function sampleKey(pid: number, pdev: string | null): string {
   return `${pid}:${pdev ?? ""}`;
 }
@@ -153,7 +165,7 @@ function sampleKey(pid: number, pdev: string | null): string {
 export function createFdinfoGpuSampler(): FdinfoGpuSampler {
   const prev = new Map<
     string,
-    { gfxNs: number; computeNs: number; ts: number }
+    { pid: number; gfxNs: number; computeNs: number; ts: number }
   >();
   return {
     sample(pid, usage) {
@@ -170,6 +182,7 @@ export function createFdinfoGpuSampler(): FdinfoGpuSampler {
       const now = Date.now();
       const before = prev.get(key);
       prev.set(key, {
+        pid,
         gfxNs: usage.gfxNs,
         computeNs: usage.computeNs,
         ts: now,
@@ -187,9 +200,8 @@ export function createFdinfoGpuSampler(): FdinfoGpuSampler {
       return { gpuPct, type };
     },
     retain(stillAlive) {
-      for (const key of prev.keys()) {
-        const pid = Number.parseInt(key.slice(0, key.indexOf(":")), 10);
-        if (!stillAlive.has(pid)) prev.delete(key);
+      for (const [key, value] of prev) {
+        if (!stillAlive.has(value.pid)) prev.delete(key);
       }
     },
   };
