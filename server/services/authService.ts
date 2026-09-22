@@ -50,19 +50,30 @@ export const authService = {
     }
   },
 
-  async register(username: string, password: string): Promise<{ user: User; token: string }> {
-    const trimmed = username.trim();
-    if (trimmed.length < 3) throw new Error('Username must be at least 3 characters');
-    if (password.length < 8) throw new Error('Password must be at least 8 characters');
-
-    if (UserRepository.findByUsername(trimmed)) {
-      throw new Error('Username already taken');
-    }
-    // First user becomes admin automatically
-    const role: 'admin' | 'user' = UserRepository.count() === 0 ? 'admin' : 'user';
-    const passwordHash = await this.hashPassword(password);
-    const user = UserRepository.create(trimmed, passwordHash, role);
-    return { user, token: this.signToken(user) };
+  async register(
+    username: string,
+    password: string,
+    opts?: { callerIsAdmin?: boolean },
+  ): Promise<{ user: User; token: string }> {
+    // Serialized: doRegisterLocked's count()-based decisions (both
+    // "is registration still closed?" and "does this account become
+    // admin?") and the INSERT that follows must run as one atomic unit
+    // per caller. Without this, two concurrent bootstrap requests can
+    // both read count()===0 (the check happens after `await
+    // hashPassword()` yields the event loop) and both get promoted to
+    // 'admin' before either INSERT lands — defeating the "only the
+    // very first account is admin, registration closes after" guarantee
+    // server/routes/auth.ts relies on.
+    const callerIsAdmin = opts?.callerIsAdmin ?? false;
+    const task = registerChain.then(
+      () => doRegisterLocked(username, password, callerIsAdmin),
+      () => doRegisterLocked(username, password, callerIsAdmin),
+    );
+    registerChain = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    return task;
   },
 
   async login(username: string, password: string): Promise<{ user: User; token: string }> {
@@ -73,3 +84,37 @@ export const authService = {
     return { user, token: this.signToken(user) };
   },
 };
+
+// Serialization lock for register(): resolves once the previous
+// register() call (success or failure) has fully settled, so the next
+// one's count()->role check can't run until the prior INSERT (or
+// rejection) has landed. See the comment on authService.register.
+let registerChain: Promise<unknown> = Promise.resolve();
+
+async function doRegisterLocked(
+  username: string,
+  password: string,
+  callerIsAdmin: boolean,
+): Promise<{ user: User; token: string }> {
+  const trimmed = username.trim();
+  if (trimmed.length < 3) throw new Error('Username must be at least 3 characters');
+  if (password.length < 8) throw new Error('Password must be at least 8 characters');
+
+  if (UserRepository.findByUsername(trimmed)) {
+    throw new Error('Username already taken');
+  }
+  // Authoritative check, now serialized: the route's own count()>0
+  // guard runs before entering this lock, so two concurrent bootstrap
+  // requests can both pass it with count()===0 and both queue up here.
+  // Re-checking with a count() taken *after* acquiring the lock is
+  // what makes only one of them actually win.
+  const existingCount = UserRepository.count();
+  if (existingCount > 0 && !callerIsAdmin) {
+    throw new Error('Registration is closed. Ask an admin to create your account.');
+  }
+  // First user becomes admin automatically
+  const role: 'admin' | 'user' = existingCount === 0 ? 'admin' : 'user';
+  const passwordHash = await authService.hashPassword(password);
+  const user = UserRepository.create(trimmed, passwordHash, role);
+  return { user, token: authService.signToken(user) };
+}
