@@ -26,6 +26,7 @@
 
 import { readFile, readdir, readlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import os from 'node:os';
 import type { GpuSample } from '../../../server/services/parsers/nvidia.js';
 import { rocmDeviceName, rocmUuidFromBus } from '../../../server/services/parsers/rocm.js';
 import { logger } from '../logger.js';
@@ -164,7 +165,18 @@ async function discoverAmdgpuCards(sysClassDrm: string): Promise<CardMeta[]> {
 }
 
 async function readDriverVersion(amdgpuModulePath: string): Promise<string | null> {
-  return readText(join(amdgpuModulePath, 'version'));
+  const moduleVersion = await readText(join(amdgpuModulePath, 'version'));
+  if (moduleVersion) return moduleVersion;
+  // /sys/module/amdgpu/version doesn't exist on most real systems: the
+  // in-tree amdgpu kernel module never calls MODULE_VERSION() (unlike
+  // NVIDIA's out-of-tree proprietary driver, which does version
+  // itself) — verified on real Strix Halo hardware, Debian 6.12
+  // kernel, the file is simply absent. Kernel release is the closest
+  // meaningful analog: amdgpu.ko's behavior/features are tied 1:1 to
+  // the kernel it ships with. Same fallback pattern already used for
+  // macOS, which has no discrete "driver version" concept either (see
+  // gpuMacosPowermetrics.ts's driver_version = osVersion).
+  return os.release();
 }
 
 async function sampleCard(meta: CardMeta, driverVersion: string | null): Promise<GpuSample> {
@@ -270,4 +282,4 @@ export function createAmdgpuSysfsCollector(opts: SysfsGpuCollectorOptions): Sysf
 
 // Exposed for the test suite — discovery and parsing are pure enough to
 // validate without spinning up the collector.
-export const __test = { discoverAmdgpuCards, parseActiveDpm, parseUevent, sampleCard };
+export const __test = { discoverAmdgpuCards, parseActiveDpm, parseUevent, sampleCard, readDriverVersion };
