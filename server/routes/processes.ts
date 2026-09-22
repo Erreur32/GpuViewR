@@ -4,8 +4,10 @@ import { agentProcessStore } from '../services/agentProcessStore.js';
 import { metricsBus } from '../services/_metricsBus.js';
 import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import type { GpuSample } from '../services/parsers/nvidia.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+router.use(requireAuth);
 
 router.get('/', async (req, res) => {
   const hostRaw = req.query.host;
