@@ -45,6 +45,11 @@ if (!config.jwtSecret || config.jwtSecret.length < 16) {
   config.jwtSecret = 'dev-only-insecure-secret-change-me-please-________________';
 }
 
+if (config.encryptionKey && config.encryptionKey.length < 16) {
+  console.warn('[config] ENCRYPTION_KEY is set but shorter than 16 chars: ignoring it, falling back to JWT_SECRET for at-rest encryption.');
+  config.encryptionKey = '';
+}
+
 /** Returns PUBLIC_URL if explicitly configured, otherwise an empty string. */
 export function getPublicUrl(): string {
   return config.publicUrl || '';

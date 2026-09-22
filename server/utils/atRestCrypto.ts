@@ -59,7 +59,7 @@ export function decryptSecret(value: string): string {
     const plain = Buffer.concat([decipher.update(Buffer.from(ctB64, 'base64')), decipher.final()]);
     return plain.toString('utf8');
   } catch (err) {
-    logger.warn('crypto', `Failed to decrypt stored secret (JWT_SECRET rotated?): ${(err as Error).message}`);
+    logger.warn('crypto', `Failed to decrypt stored secret (ENCRYPTION_KEY or JWT_SECRET rotated?): ${(err as Error).message}`);
     return '';
   }
 }
