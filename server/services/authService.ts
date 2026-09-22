@@ -50,19 +50,45 @@ export const authService = {
     }
   },
 
-  async register(username: string, password: string): Promise<{ user: User; token: string }> {
+  async register(
+    username: string,
+    password: string,
+    opts?: { callerIsAdmin?: boolean },
+  ): Promise<{ user: User; token: string }> {
     const trimmed = username.trim();
     if (trimmed.length < 3) throw new Error('Username must be at least 3 characters');
     if (password.length < 8) throw new Error('Password must be at least 8 characters');
 
+    const callerIsAdmin = opts?.callerIsAdmin ?? false;
+
+    // Cheap pre-check so an obviously-rejected duplicate username fails
+    // fast instead of paying the ~50-100ms bcrypt cost first. Re-checked
+    // authoritatively inside doRegisterLocked's serialized section
+    // below, since a concurrent request can still claim the name
+    // between this read and the lock actually running. The
+    // registration-closed rule (canRegister) is NOT pre-checked here on
+    // top of it: routes/auth.ts already short-circuits that case before
+    // ever calling register(), so duplicating it here would just be a
+    // third place encoding the same rule for no real benefit — the rare
+    // bootstrap-race caller that slips past the route still gets
+    // rejected by doRegisterLocked, just after paying the hash cost
+    // once, ever.
     if (UserRepository.findByUsername(trimmed)) {
       throw new Error('Username already taken');
     }
-    // First user becomes admin automatically
-    const role: 'admin' | 'user' = UserRepository.count() === 0 ? 'admin' : 'user';
+
+    // Hash BEFORE entering the serialized section below. bcrypt is the
+    // slow part of registration and touches no shared state, so it's
+    // safe — and much better for throughput — to run concurrently
+    // across calls. Only the count()-based decisions and the INSERT
+    // need to be serialized (see doRegisterLocked).
     const passwordHash = await this.hashPassword(password);
-    const user = UserRepository.create(trimmed, passwordHash, role);
-    return { user, token: this.signToken(user) };
+
+    const task = registerChain
+      .catch(() => undefined)
+      .then(() => doRegisterLocked(trimmed, passwordHash, callerIsAdmin));
+    registerChain = task.catch(() => undefined);
+    return task;
   },
 
   async login(username: string, password: string): Promise<{ user: User; token: string }> {
@@ -73,3 +99,51 @@ export const authService = {
     return { user, token: this.signToken(user) };
   },
 };
+
+/** Shared between routes/auth.ts's cheap pre-check and the
+ *  authoritative re-check in doRegisterLocked below, so the two error
+ *  paths can't drift apart in wording. */
+export const REGISTRATION_CLOSED_MESSAGE = 'Registration is closed. Ask an admin to create your account.';
+
+/** The one source of truth for "is registration open to this caller?":
+ *  either no user exists yet (bootstrap) or the caller is already an
+ *  authenticated admin. Used by both routes/auth.ts's fast pre-check
+ *  (evaluated once, before ever calling register()) and
+ *  doRegisterLocked's authoritative re-check (evaluated again inside
+ *  the lock) — two different points in time on purpose, for the
+ *  race-safety reasons explained on doRegisterLocked, but one rule. */
+export function canRegister(existingUserCount: number, callerIsAdmin: boolean): boolean {
+  return existingUserCount === 0 || callerIsAdmin;
+}
+
+// Serialization lock for register(): resolves once the previous
+// register() call's doRegisterLocked (success or failure) has fully
+// settled, so the next one's count()->role check can't run until the
+// prior INSERT (or rejection) has landed. See the comment on
+// authService.register. better-sqlite3 is synchronous, so everything
+// inside doRegisterLocked below effectively runs atomically once its
+// turn in the chain comes up — no awaits inside it to yield on.
+let registerChain: Promise<unknown> = Promise.resolve();
+
+function doRegisterLocked(
+  trimmed: string,
+  passwordHash: string,
+  callerIsAdmin: boolean,
+): { user: User; token: string } {
+  if (UserRepository.findByUsername(trimmed)) {
+    throw new Error('Username already taken');
+  }
+  // Authoritative check, now serialized: the route's own count()>0
+  // guard runs before entering this lock, so two concurrent bootstrap
+  // requests can both pass it with count()===0 and both queue up here.
+  // Re-checking with a count() taken *after* acquiring the lock is
+  // what makes only one of them actually win.
+  const existingCount = UserRepository.count();
+  if (!canRegister(existingCount, callerIsAdmin)) {
+    throw new Error(REGISTRATION_CLOSED_MESSAGE);
+  }
+  // First user becomes admin automatically
+  const role: 'admin' | 'user' = existingCount === 0 ? 'admin' : 'user';
+  const user = UserRepository.create(trimmed, passwordHash, role);
+  return { user, token: authService.signToken(user) };
+}
