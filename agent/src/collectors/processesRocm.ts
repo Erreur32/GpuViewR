@@ -233,7 +233,10 @@ export function createRocmProcessCollector(
           enrichedFromFdinfo.push({
             pid,
             process_name: name,
-            gpu_uuid: rocmUuidFromBus(usage.pdev ?? undefined),
+            // Same null-pdev fallback as the rocm-attributed branch
+            // above: prefer the real defaultUuid over the synthetic
+            // "ROCm-unknown" sentinel when drm-pdev was unreadable.
+            gpu_uuid: usage.pdev ? rocmUuidFromBus(usage.pdev) : defaultUuid,
             used_memory: Math.floor(usage.vramBytes / 1048576),
             type,
             command,
