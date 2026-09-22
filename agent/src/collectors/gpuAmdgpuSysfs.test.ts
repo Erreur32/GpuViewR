@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, symlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { tmpdir, release } from 'node:os';
 import { join } from 'node:path';
 import { __test, createAmdgpuSysfsCollector } from './gpuAmdgpuSysfs.js';
 import type { GpuSample } from '../../../server/services/parsers/nvidia.js';
@@ -166,4 +166,24 @@ test('sysfs collector: hwmon symlink path also works (real-world layout)', async
   // sanity: a temp read should not crash even if we never reach the link target
   const sample = await __test.sampleCard(cards[0], '6.10.5');
   assert.equal(sample.temperature, 45);
+});
+
+test('readDriverVersion: /sys/module/amdgpu/version present takes precedence', async () => {
+  const { amdgpuModulePath } = await makeFakeSys();
+  const version = await __test.readDriverVersion(amdgpuModulePath);
+  assert.equal(version, '6.10.5');
+});
+
+test('readDriverVersion: falls back to the kernel release when the module file is absent', async () => {
+  // Regression test: verified on real Strix Halo hardware (Debian,
+  // kernel 6.12) that /sys/module/amdgpu/version simply does not
+  // exist — the in-tree amdgpu module never calls MODULE_VERSION().
+  // Reproduce that here by pointing at an amdgpu module dir with no
+  // version file, same as a real fresh install.
+  const root = await mkdtemp(join(tmpdir(), 'gpuviewr-sysfs-nodriver-'));
+  const amdgpuModulePath = join(root, 'sys', 'module', 'amdgpu');
+  await mkdir(amdgpuModulePath, { recursive: true });
+  const version = await __test.readDriverVersion(amdgpuModulePath);
+  assert.equal(version, release());
+  assert.notEqual(version, null);
 });

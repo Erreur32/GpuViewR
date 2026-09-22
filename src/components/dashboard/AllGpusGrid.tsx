@@ -58,9 +58,21 @@ function CompactGpuTile({ sample }: Readonly<{ sample: GpuSample }>) {
             <h3 className="text-sm font-semibold leading-tight truncate" style={{ color: 'var(--gv-text)' }} title={sample.name}>
               {sample.name}
             </h3>
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--gv-text-dim)' }}>
-              GPU #{sample.gpu_index} · driver {sample.driver_version || '-'}
-            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span
+                className="text-[10px] leading-none px-1.5 py-0.5 rounded-full font-mono"
+                style={{
+                  background: 'var(--gv-surface-alt)',
+                  border: '1px solid var(--gv-border)',
+                  color: 'var(--gv-text-muted)',
+                }}
+              >
+                GPU #{sample.gpu_index}
+              </span>
+              <span className="text-[11px] font-mono" style={{ color: 'var(--gv-text-dim)' }}>
+                {sample.driver_version || '-'}
+              </span>
+            </div>
           </div>
         </div>
         {series?.utilization && series.utilization.length > 1 && (
