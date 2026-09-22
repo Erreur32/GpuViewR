@@ -55,24 +55,22 @@ export const authService = {
     password: string,
     opts?: { callerIsAdmin?: boolean },
   ): Promise<{ user: User; token: string }> {
-    // Serialized: doRegisterLocked's count()-based decisions (both
-    // "is registration still closed?" and "does this account become
-    // admin?") and the INSERT that follows must run as one atomic unit
-    // per caller. Without this, two concurrent bootstrap requests can
-    // both read count()===0 (the check happens after `await
-    // hashPassword()` yields the event loop) and both get promoted to
-    // 'admin' before either INSERT lands — defeating the "only the
-    // very first account is admin, registration closes after" guarantee
-    // server/routes/auth.ts relies on.
+    const trimmed = username.trim();
+    if (trimmed.length < 3) throw new Error('Username must be at least 3 characters');
+    if (password.length < 8) throw new Error('Password must be at least 8 characters');
+
+    // Hash BEFORE entering the serialized section below. bcrypt is the
+    // slow part of registration (~50-100ms) and touches no shared
+    // state, so it's safe — and much better for throughput — to run
+    // concurrently across calls. Only the count()-based decisions and
+    // the INSERT need to be serialized (see doRegisterLocked).
+    const passwordHash = await this.hashPassword(password);
+
     const callerIsAdmin = opts?.callerIsAdmin ?? false;
-    const task = registerChain.then(
-      () => doRegisterLocked(username, password, callerIsAdmin),
-      () => doRegisterLocked(username, password, callerIsAdmin),
-    );
-    registerChain = task.then(
-      () => undefined,
-      () => undefined,
-    );
+    const task = registerChain
+      .catch(() => undefined)
+      .then(() => doRegisterLocked(trimmed, passwordHash, callerIsAdmin));
+    registerChain = task.catch(() => undefined);
     return task;
   },
 
@@ -85,21 +83,25 @@ export const authService = {
   },
 };
 
+/** Shared between routes/auth.ts's cheap pre-check and the
+ *  authoritative re-check in doRegisterLocked below, so the two error
+ *  paths can't drift apart in wording. */
+export const REGISTRATION_CLOSED_MESSAGE = 'Registration is closed. Ask an admin to create your account.';
+
 // Serialization lock for register(): resolves once the previous
-// register() call (success or failure) has fully settled, so the next
-// one's count()->role check can't run until the prior INSERT (or
-// rejection) has landed. See the comment on authService.register.
+// register() call's doRegisterLocked (success or failure) has fully
+// settled, so the next one's count()->role check can't run until the
+// prior INSERT (or rejection) has landed. See the comment on
+// authService.register. better-sqlite3 is synchronous, so everything
+// inside doRegisterLocked below effectively runs atomically once its
+// turn in the chain comes up — no awaits inside it to yield on.
 let registerChain: Promise<unknown> = Promise.resolve();
 
-async function doRegisterLocked(
-  username: string,
-  password: string,
+function doRegisterLocked(
+  trimmed: string,
+  passwordHash: string,
   callerIsAdmin: boolean,
-): Promise<{ user: User; token: string }> {
-  const trimmed = username.trim();
-  if (trimmed.length < 3) throw new Error('Username must be at least 3 characters');
-  if (password.length < 8) throw new Error('Password must be at least 8 characters');
-
+): { user: User; token: string } {
   if (UserRepository.findByUsername(trimmed)) {
     throw new Error('Username already taken');
   }
@@ -110,11 +112,10 @@ async function doRegisterLocked(
   // what makes only one of them actually win.
   const existingCount = UserRepository.count();
   if (existingCount > 0 && !callerIsAdmin) {
-    throw new Error('Registration is closed. Ask an admin to create your account.');
+    throw new Error(REGISTRATION_CLOSED_MESSAGE);
   }
   // First user becomes admin automatically
   const role: 'admin' | 'user' = existingCount === 0 ? 'admin' : 'user';
-  const passwordHash = await authService.hashPassword(password);
   const user = UserRepository.create(trimmed, passwordHash, role);
   return { user, token: authService.signToken(user) };
 }

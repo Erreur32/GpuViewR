@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
-import { authService } from '../services/authService.js';
+import { authService, REGISTRATION_CLOSED_MESSAGE } from '../services/authService.js';
 import { UserRepository } from '../database/models/User.js';
 import { requireAuth, getBearerPayload } from '../middleware/auth.js';
 
@@ -32,7 +32,7 @@ router.post('/register', authLimiter, async (req, res) => {
     // count()===0, so this alone isn't sufficient.
     const callerIsAdmin = isCallerAdmin(req);
     if (UserRepository.count() > 0 && !callerIsAdmin) {
-      return res.status(403).json({ error: 'Registration is closed. Ask an admin to create your account.' });
+      return res.status(403).json({ error: REGISTRATION_CLOSED_MESSAGE });
     }
     const { username, password } = req.body || {};
     if (typeof username !== 'string' || typeof password !== 'string') {
