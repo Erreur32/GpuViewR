@@ -255,7 +255,15 @@ function HostRow({
  *  override if set, else the same index-based palette color
  *  FleetChart.tsx would assign for this host's position in the full
  *  enrolled-hosts list — so this row's dot matches what the fleet
- *  chart draws, for the (realistic, chart-capped-at-12) common case. */
+ *  chart draws, PROVIDED this host is among the first 12 (both this
+ *  page and FleetChart read hosts in the same store-provided order,
+ *  but FleetChart caps what it actually plots to hostsToPlot =
+ *  hosts.slice(0, 12) — this settings table intentionally does not
+ *  cap, since every enrolled host still needs to be manageable here
+ *  even if the chart doesn't draw it). Beyond the 12th host this
+ *  preview shows a color that never appears on any chart — acceptable
+ *  given how unrealistic a >12-host single-hub fleet is today, but
+ *  worth revisiting together if hostsToPlot's cap is ever lifted. */
 function ColorPickerButton({
   host, hostIdx, t,
 }: Readonly<{
@@ -334,6 +342,16 @@ function ColorPickerButton({
               type="color"
               aria-label={t('hosts.color_custom')}
               disabled={saving}
+              // Uncontrolled (defaultValue, not value) so onBlur below
+              // can commit once instead of fighting the native picker's
+              // own state on every drag tick — but that means React
+              // only applies defaultValue on mount. Keying on the
+              // external color forces a remount (fresh defaultValue)
+              // whenever it changes from outside this input: another
+              // admin/tab updates it, or apply() throws and host.color
+              // reverts — without this the input would keep showing a
+              // stale value after either of those.
+              key={host.color ?? effective}
               defaultValue={host.color ?? effective}
               // onBlur, not onChange: Chrome fires `input`/onChange
               // continuously while the native color picker is open
