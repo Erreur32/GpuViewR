@@ -275,6 +275,7 @@ function ColorPickerButton({
   const { open, setOpen, rootRef } = useDropdown();
   const [saving, setSaving] = useState(false);
   const effective = resolveHostColor(host, hostIdx);
+  const currentColor = host.color ?? effective;
 
   const apply = async (color: string | null) => {
     setSaving(true);
@@ -351,8 +352,8 @@ function ColorPickerButton({
               // admin/tab updates it, or apply() throws and host.color
               // reverts — without this the input would keep showing a
               // stale value after either of those.
-              key={host.color ?? effective}
-              defaultValue={host.color ?? effective}
+              key={currentColor}
+              defaultValue={currentColor}
               // onBlur, not onChange: Chrome fires `input`/onChange
               // continuously while the native color picker is open
               // (every drag tick on the color wheel), which would PATCH
