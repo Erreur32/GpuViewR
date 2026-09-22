@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2026-09-22
+
+### Security
+
+- **`POST /api/auth/register` was still open to anyone with network access after the first admin existed.** The first registrant becomes admin (as designed), but every registrant after that was silently allowed in with no invite or approval step. Registration now stays open only for the zero-user bootstrap case; once any user exists, only an already-authenticated admin can create further accounts. Also fixes a TOCTOU race where two concurrent bootstrap requests could both get promoted to admin.
+
 ## [0.9.3] - 2026-09-22
 
 ### Security
