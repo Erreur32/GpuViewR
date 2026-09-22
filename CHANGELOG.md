@@ -5,6 +5,16 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6] - 2026-09-22
+
+### Fixed
+
+- **AMD hosts on the default `sysfs` backend always showed "driver -"** on the dashboard. Root-caused on real hardware (Strix Halo, Debian, kernel 6.12): `/sys/module/amdgpu/version` doesn't exist, because the in-tree `amdgpu` kernel module never calls `MODULE_VERSION()` (unlike NVIDIA's proprietary driver). Falls back to the kernel release, same pattern already used for macOS.
+
+### Changed
+
+- Dashboard header and all-GPUs grid cards: `GPU #0` is now a pill tag next to the driver version shown as plain text, dropping the `·` separator and the word "driver".
+
 ## [0.9.5] - 2026-09-22
 
 ### Added
