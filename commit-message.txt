@@ -1,10 +1,8 @@
-release: v0.9.3 process-list auth fix, encrypted export secrets, AMD multi-card attribution
+release: v0.9.4 close /api/auth/register after the first admin
 
-- Security: /api/processes had no authentication at all, exposing GPU
-  process lists across every host with zero auth. Fixed.
-- Security: MQTT/InfluxDB/Telegram export secrets are now encrypted at
-  rest (AES-256-GCM), with an optional dedicated ENCRYPTION_KEY env
-  var decoupled from JWT_SECRET.
-- Fixed: multi-card AMD hosts attributed every GPU process to card0.
-  Per-process attribution now cross-references the kernel's DRM
-  fdinfo interface for correct per-card assignment.
+- Security: POST /api/auth/register stayed open to anyone with
+  network access even after the first admin existed. Registration
+  now stays open only for the zero-user bootstrap case; only an
+  authenticated admin can create further accounts afterward.
+- Fixes a TOCTOU race where two concurrent bootstrap requests could
+  both get promoted to admin.
