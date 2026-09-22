@@ -42,12 +42,13 @@ test("scanAmdgpuFdinfo: picks up an amdgpu fd with gfx/compute/vram", async () =
 
   const result = scanAmdgpuFdinfo(root);
   assert.equal(result.size, 1);
-  const usage = result.get(1234);
-  assert.ok(usage);
-  assert.equal(usage.pdev, "0000:c5:00.0");
-  assert.equal(usage.vramBytes, 524288 * 1024);
-  assert.equal(usage.gfxNs, 1_000_000_000);
-  assert.equal(usage.computeNs, 500_000_000);
+  const devices = result.get(1234);
+  assert.ok(devices);
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0].pdev, "0000:c5:00.0");
+  assert.equal(devices[0].vramBytes, 524288 * 1024);
+  assert.equal(devices[0].gfxNs, 1_000_000_000);
+  assert.equal(devices[0].computeNs, 500_000_000);
 });
 
 test("scanAmdgpuFdinfo: ignores non-amdgpu fds but keeps amdgpu ones for the same pid", async () => {
@@ -71,10 +72,71 @@ test("scanAmdgpuFdinfo: ignores non-amdgpu fds but keeps amdgpu ones for the sam
 
   const result = scanAmdgpuFdinfo(root);
   assert.equal(result.size, 1);
-  const usage = result.get(42);
-  assert.ok(usage);
-  assert.equal(usage.pdev, "0000:c5:00.0");
-  assert.equal(usage.gfxNs, 200);
+  const devices = result.get(42);
+  assert.ok(devices);
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0].pdev, "0000:c5:00.0");
+  assert.equal(devices[0].gfxNs, 200);
+});
+
+test("scanAmdgpuFdinfo: two fds on different cards for the same pid produce two device entries", async () => {
+  const root = await makeFakeProc();
+  await writeFdinfo(
+    root,
+    55,
+    "3",
+    "drm-driver:\tamdgpu\n" +
+      "drm-pdev:\t0000:c5:00.0\n" +
+      "drm-memory-vram:\t1024 KiB\n" +
+      "drm-engine-gfx:\t100 ns\n",
+  );
+  await writeFdinfo(
+    root,
+    55,
+    "4",
+    "drm-driver:\tamdgpu\n" +
+      "drm-pdev:\t0000:c6:00.0\n" +
+      "drm-memory-vram:\t2048 KiB\n" +
+      "drm-engine-gfx:\t200 ns\n",
+  );
+
+  const result = scanAmdgpuFdinfo(root);
+  const devices = result.get(55);
+  assert.ok(devices);
+  assert.equal(devices.length, 2);
+  const byBus = new Map(devices.map((d) => [d.pdev, d]));
+  assert.equal(byBus.get("0000:c5:00.0")?.vramBytes, 1024 * 1024);
+  assert.equal(byBus.get("0000:c6:00.0")?.vramBytes, 2048 * 1024);
+});
+
+test("scanAmdgpuFdinfo: two fds on the SAME card still merge into one device entry", async () => {
+  const root = await makeFakeProc();
+  await writeFdinfo(
+    root,
+    56,
+    "3",
+    "drm-driver:\tamdgpu\n" +
+      "drm-pdev:\t0000:c5:00.0\n" +
+      "drm-memory-vram:\t1024 KiB\n" +
+      "drm-engine-gfx:\t100 ns\n",
+  );
+  await writeFdinfo(
+    root,
+    56,
+    "4",
+    "drm-driver:\tamdgpu\n" +
+      "drm-pdev:\t0000:c5:00.0\n" +
+      "drm-memory-vram:\t4096 KiB\n" +
+      "drm-engine-gfx:\t50 ns\n",
+  );
+
+  const result = scanAmdgpuFdinfo(root);
+  const devices = result.get(56);
+  assert.ok(devices);
+  assert.equal(devices.length, 1);
+  // max vram across fds on the same card, summed gfx ns — same rule as before.
+  assert.equal(devices[0].vramBytes, 4096 * 1024);
+  assert.equal(devices[0].gfxNs, 150);
 });
 
 test("scanAmdgpuFdinfo: pid with no fdinfo dir is skipped without throwing", async () => {
@@ -97,10 +159,10 @@ test("scanAmdgpuFdinfo: tolerates malformed lines and missing unit suffixes", as
   );
 
   const result = scanAmdgpuFdinfo(root);
-  const usage = result.get(7);
-  assert.ok(usage);
-  assert.equal(usage.gfxNs, 42);
-  assert.equal(usage.vramBytes, 0);
+  const devices = result.get(7);
+  assert.ok(devices);
+  assert.equal(devices[0].gfxNs, 42);
+  assert.equal(devices[0].vramBytes, 0);
 });
 
 test("scanAmdgpuFdinfo: non-numeric pid directories are ignored", async () => {
@@ -195,4 +257,19 @@ test("createFdinfoGpuSampler: retain drops history for pids no longer present", 
     computeNs: 0,
   });
   assert.equal(gpuPct, null);
+});
+
+test("createFdinfoGpuSampler: same pid on two different cards tracks independent deltas", async () => {
+  const sampler = createFdinfoGpuSampler();
+  // Baseline on both cards for the same pid.
+  sampler.sample(7, { pdev: "0000:c5:00.0", vramBytes: 0, gfxNs: 0, computeNs: 0 });
+  sampler.sample(7, { pdev: "0000:c6:00.0", vramBytes: 0, gfxNs: 0, computeNs: 0 });
+
+  await new Promise((r) => setTimeout(r, 20));
+  // Card c5 is busy, card c6 is idle — the two deltas must not bleed
+  // into each other via a shared pid-only key.
+  const c5 = sampler.sample(7, { pdev: "0000:c5:00.0", vramBytes: 0, gfxNs: 10_000_000, computeNs: 0 });
+  const c6 = sampler.sample(7, { pdev: "0000:c6:00.0", vramBytes: 0, gfxNs: 0, computeNs: 0 });
+  assert.ok(c5.gpuPct !== null && c5.gpuPct > 0);
+  assert.equal(c6.gpuPct, 0);
 });

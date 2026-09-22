@@ -430,7 +430,7 @@ Common cases:
 - v0.6: filesystem handshake to replace the bootstrap shared-secret (one-shot token file, no secret in `.env`)
 - ~~v0.6: macOS install script~~ done: `install.mac.sh`, see [Add a remote host](#add-a-remote-host)
 - v0.7: ARM agent native binary (no Docker on the remote side)
-- v0.7: Multi-card AMD process attribution via `--showpidgpus`
+- ~~v0.7: Multi-card AMD process attribution~~ done: per-process attribution now cross-references the kernel's DRM fdinfo interface (not `--showpidgpus` — upstream rocm-smi's `--json` mode drops that data)
 - Later: RBAC, organisation scoping
 
 ---

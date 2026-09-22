@@ -13,14 +13,25 @@
 //    a stable synthesized gpu_uuid (ROCm-${pciBus}). Cheap and avoids
 //    a per-tick extra spawn.
 //  - --showpids only tells us *how many* cards a pid uses, not which
-//    one — fine on single-card AMD boxes (attribute everything to the
-//    sole card). For multi-card AMD a follow-up will integrate
-//    --showpidgpus; that case logs a one-shot warning.
+//    one. Multi-card attribution is NOT done via `rocm-smi
+//    --showpidgpus`: as of the current upstream rocm-smi source, its
+//    --json mode silently drops the per-pid device-index list
+//    (printListLog() only prints when PRINT_JSON is false — the data
+//    is computed then thrown away), so there is nothing machine-
+//    readable to parse from it. Instead we cross-reference the DRM
+//    fdinfo scan (processesAmdgpuFdinfo.ts, kernel interface since
+//    Linux 5.19) for each rocm-reported pid: its `drm-pdev` field
+//    says exactly which card(s) a pid's fds are open on, so a pid
+//    that touches N cards gets N rows below, each with that card's
+//    own fdinfo-reported VRAM. Falls back to card0 (with a one-shot
+//    warning on multi-card boxes) only for a pid with zero DRM fd
+//    visibility — kernel <5.19, restricted /proc, or a pure-KFD
+//    client that never opened a render node.
 //  - rocm-smi only sees processes that opened /dev/kfd (ROCm/HIP
 //    compute). A Vulkan/OpenGL-only workload (e.g. llama.cpp built
 //    against Vulkan) never touches KFD and is invisible here — we
 //    additively merge in processesAmdgpuFdinfo.ts's DRM fdinfo scan
-//    to cover that case. rocm-smi's data wins on any pid overlap.
+//    to cover that case too. rocm-smi's data wins on any pid overlap.
 
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -68,7 +79,7 @@ export function createRocmProcessCollector(
   let timer: NodeJS.Timeout | null = null;
   let rocmSmiAvailable: boolean | null = null;
   let inflight = false;
-  let multiCardWarned = false;
+  let multiCardFallbackWarned = false;
   const cpuSampler = createCpuSampler(opts.hostProc);
   const fdinfoSampler = createFdinfoGpuSampler();
 
@@ -106,24 +117,22 @@ export function createRocmProcessCollector(
       const procs = parseRocmPids(out);
       const info = parseRocmInfo(out);
 
-      // Build cardIndex → uuid map. On a single-card box (the only path
-      // we currently support reliably for AMD) every pid attaches to
-      // that one card.
+      // Fallback uuid for a pid with zero DRM fdinfo visibility (see
+      // the module header comment). Real per-card attribution below
+      // comes from fdinfoRaw, not this.
       const uuids = info.cards.map((c) => rocmUuidFromBus(c.raw["PCI Bus"]));
       const defaultUuid = uuids[0] ?? "ROCm-unknown";
-      if (info.cards.length > 1 && !multiCardWarned) {
-        multiCardWarned = true;
-        logger.warn(
-          "proc",
-          "multi-GPU AMD detected; all processes will be attributed to card0 until --showpidgpus integration lands",
-        );
-      }
+      const isMultiCard = info.cards.length > 1;
 
       const rocmPids = new Set(procs.map((p) => p.pid));
 
-      const enrichedFromRocm: AgentGpuProcess[] = procs.map((p) => {
+      // Scanned once per tick, for every pid regardless of how it was
+      // discovered — drm-pdev per (pid, fd) is what makes correct
+      // multi-card attribution possible for both branches below.
+      const fdinfoRaw = scanAmdgpuFdinfo(opts.hostProc);
+
+      const enrichedFromRocm: AgentGpuProcess[] = procs.flatMap((p) => {
         const command = readCmdline(p.pid, opts.hostProc);
-        const usedMiB = Math.floor(p.vram_used_bytes / 1048576);
         // rocm-smi --showpids regularly returns an empty process_name
         // field (driver build / permissions dependent — most visible
         // when the hub runs in a container without CAP_SYS_PTRACE).
@@ -140,49 +149,89 @@ export function createRocmProcessCollector(
           name = resolveProcessName(p.pid, opts.hostProc) ?? "";
         }
         const llm = classifyLLM(command, opts.llmResolvers);
-        return {
+        // Stateful (delta-based) sampler — must be called exactly once
+        // per pid per tick even though a multi-card pid below produces
+        // several rows, so hoist it here rather than call it per-row.
+        const cpuPct = cpuSampler.sample(p.pid);
+
+        const devices = fdinfoRaw.get(p.pid);
+        if (!devices || devices.length === 0) {
+          if (isMultiCard && !multiCardFallbackWarned) {
+            multiCardFallbackWarned = true;
+            logger.warn(
+              "proc",
+              `pid ${p.pid}: no DRM fdinfo visibility on a multi-GPU AMD host, attributing to card0 (older kernel or restricted /proc access?)`,
+            );
+          }
+          return [
+            {
+              pid: p.pid,
+              process_name: name || "unknown",
+              gpu_uuid: defaultUuid,
+              used_memory: Math.floor(p.vram_used_bytes / 1048576),
+              type: "C" as const,
+              command,
+              cpu_pct: cpuPct,
+              // CU occupancy is the AMD equivalent of nvidia-smi's pmon
+              // SM%: share of compute units this pid is using. Surface
+              // it as gpu_pct so the UI can render a real number
+              // instead of a permanent "—". Null when the driver
+              // reports "unknown" (some kernels / non-root callers).
+              gpu_pct: p.cu_occupancy,
+              llm_runtime: llm.runtime,
+              llm_model: llm.model,
+            },
+          ];
+        }
+
+        // One row per card this pid's fds are actually open on. VRAM
+        // comes from fdinfo's own per-device counter — not rocm-smi's
+        // single pid-wide aggregate — so the split is self-consistent.
+        // cu_occupancy has no per-card breakdown available from
+        // rocm-smi, so the same pid-wide value is repeated on every
+        // row: an approximation, still strictly better than today's
+        // everything-on-card0 behaviour.
+        return devices.map((d) => ({
           pid: p.pid,
           process_name: name || "unknown",
-          gpu_uuid: defaultUuid,
-          used_memory: usedMiB,
-          type: "C",
+          gpu_uuid: rocmUuidFromBus(d.pdev ?? undefined),
+          used_memory: Math.floor(d.vramBytes / 1048576),
+          type: "C" as const,
           command,
-          cpu_pct: cpuSampler.sample(p.pid),
-          // CU occupancy is the AMD equivalent of nvidia-smi's pmon SM%:
-          // share of compute units this pid is using. Surface it as
-          // gpu_pct so the UI can render a real number instead of a
-          // permanent "—". cu_occupancy is null when the driver reports
-          // "unknown" (some kernels / non-root callers).
+          cpu_pct: cpuPct,
           gpu_pct: p.cu_occupancy,
           llm_runtime: llm.runtime,
           llm_model: llm.model,
-        };
+        }));
       });
 
       // Fill in whatever rocm-smi missed: Vulkan/OpenGL clients that
       // never opened /dev/kfd but do hold an amdgpu DRM fd. Skip any
-      // pid rocm-smi already reported, so its cu_occupancy-based data
-      // always wins on overlap.
-      const fdinfoRaw = scanAmdgpuFdinfo(opts.hostProc);
+      // pid rocm-smi already reported (handled above via fdinfoRaw
+      // directly), so its cu_occupancy-based data always wins on
+      // overlap. One row per card, same rule as the branch above.
       const enrichedFromFdinfo: AgentGpuProcess[] = [];
-      for (const [pid, usage] of fdinfoRaw) {
+      for (const [pid, devices] of fdinfoRaw) {
         if (rocmPids.has(pid)) continue;
         const command = readCmdline(pid, opts.hostProc);
         const name = resolveProcessName(pid, opts.hostProc) ?? "unknown";
-        const { gpuPct, type } = fdinfoSampler.sample(pid, usage);
         const llm = classifyLLM(command, opts.llmResolvers);
-        enrichedFromFdinfo.push({
-          pid,
-          process_name: name,
-          gpu_uuid: rocmUuidFromBus(usage.pdev ?? undefined),
-          used_memory: Math.floor(usage.vramBytes / 1048576),
-          type,
-          command,
-          cpu_pct: cpuSampler.sample(pid),
-          gpu_pct: gpuPct,
-          llm_runtime: llm.runtime,
-          llm_model: llm.model,
-        });
+        const cpuPct = cpuSampler.sample(pid); // once per pid per tick
+        for (const usage of devices) {
+          const { gpuPct, type } = fdinfoSampler.sample(pid, usage);
+          enrichedFromFdinfo.push({
+            pid,
+            process_name: name,
+            gpu_uuid: rocmUuidFromBus(usage.pdev ?? undefined),
+            used_memory: Math.floor(usage.vramBytes / 1048576),
+            type,
+            command,
+            cpu_pct: cpuPct,
+            gpu_pct: gpuPct,
+            llm_runtime: llm.runtime,
+            llm_model: llm.model,
+          });
+        }
       }
 
       const enriched = [...enrichedFromRocm, ...enrichedFromFdinfo];

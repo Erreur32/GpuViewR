@@ -72,11 +72,20 @@ function parseFdinfoText(text: string): {
  * malformed fd file is skipped silently — most pids on a host aren't
  * GPU clients and/or aren't readable, and that's the expected case,
  * not an error worth logging on every tick.
+ *
+ * Returns one entry per (pid, pdev) pair, not one per pid: a process
+ * with fds open on two different cards (genuine multi-GPU job) gets
+ * two array entries, each carrying that card's own vram/gfx/compute
+ * numbers. This is what makes multi-card AMD process attribution
+ * possible without `rocm-smi --showpidgpus` — see processesRocm.ts,
+ * which is the only other consumer of this per-device breakdown.
+ * Multiple fds on the *same* card still merge (max vram, summed
+ * gfx/compute ns), same as before this became per-device.
  */
 export function scanAmdgpuFdinfo(
   hostProc: string,
-): Map<number, FdinfoGpuUsage> {
-  const result = new Map<number, FdinfoGpuUsage>();
+): Map<number, FdinfoGpuUsage[]> {
+  const result = new Map<number, FdinfoGpuUsage[]>();
   let pidDirs: string[];
   try {
     pidDirs = readdirSync(hostProc);
@@ -101,19 +110,20 @@ export function scanAmdgpuFdinfo(
       }
       const parsed = parseFdinfoText(text);
       if (parsed.driver !== "amdgpu") continue;
-      const existing = result.get(pid);
+      const perPid = result.get(pid) ?? [];
+      const existing = perPid.find((u) => u.pdev === parsed.pdev);
       if (existing) {
         existing.vramBytes = Math.max(existing.vramBytes, parsed.vramBytes);
         existing.gfxNs += parsed.gfxNs;
         existing.computeNs += parsed.computeNs;
-        if (!existing.pdev) existing.pdev = parsed.pdev;
       } else {
-        result.set(pid, {
+        perPid.push({
           pdev: parsed.pdev,
           vramBytes: parsed.vramBytes,
           gfxNs: parsed.gfxNs,
           computeNs: parsed.computeNs,
         });
+        result.set(pid, perPid);
       }
     }
   }
@@ -122,9 +132,12 @@ export function scanAmdgpuFdinfo(
 
 export interface FdinfoGpuSampler {
   /** % of wall-clock time spent busy on gfx+compute engines since the
-   *  last sample for this pid. Null on the first observation (no
-   *  baseline yet) or on a non-positive elapsed/delta, same contract
-   *  as createCpuSampler in _procTicks.ts. */
+   *  last sample for this (pid, device) pair. Null on the first
+   *  observation (no baseline yet) or on a non-positive elapsed/delta,
+   *  same contract as createCpuSampler in _procTicks.ts. Call once per
+   *  device when a pid spans multiple GPUs — history is keyed by
+   *  (pid, pdev), not pid alone, so per-card deltas don't bleed into
+   *  each other. */
   sample(
     pid: number,
     usage: FdinfoGpuUsage,
@@ -133,9 +146,13 @@ export interface FdinfoGpuSampler {
   retain(stillAlive: Set<number>): void;
 }
 
+function sampleKey(pid: number, pdev: string | null): string {
+  return `${pid}:${pdev ?? ""}`;
+}
+
 export function createFdinfoGpuSampler(): FdinfoGpuSampler {
   const prev = new Map<
-    number,
+    string,
     { gfxNs: number; computeNs: number; ts: number }
   >();
   return {
@@ -149,9 +166,10 @@ export function createFdinfoGpuSampler(): FdinfoGpuSampler {
               ? "G"
               : null;
 
+      const key = sampleKey(pid, usage.pdev);
       const now = Date.now();
-      const before = prev.get(pid);
-      prev.set(pid, {
+      const before = prev.get(key);
+      prev.set(key, {
         gfxNs: usage.gfxNs,
         computeNs: usage.computeNs,
         ts: now,
@@ -169,8 +187,9 @@ export function createFdinfoGpuSampler(): FdinfoGpuSampler {
       return { gpuPct, type };
     },
     retain(stillAlive) {
-      for (const pid of prev.keys()) {
-        if (!stillAlive.has(pid)) prev.delete(pid);
+      for (const key of prev.keys()) {
+        const pid = Number.parseInt(key.slice(0, key.indexOf(":")), 10);
+        if (!stillAlive.has(pid)) prev.delete(key);
       }
     },
   };
