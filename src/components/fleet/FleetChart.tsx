@@ -147,24 +147,20 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 
 /** Shade a host's base color by the metric's lightness delta. The
  *  result is the actual stroke color drawn for that (host, metric)
- *  pair. Pre-computed to a Map at module scope to avoid touching
- *  color math on every render — 10 hosts × 3 metrics = 30 entries. */
-const HOST_METRIC_COLOR_CACHE = new Map<string, string>();
+ *  pair. Computed directly, no cache: a handful of hex/HSL conversions
+ *  (bounded by hosts × 3 metrics, realistically under a few dozen) is
+ *  negligible, and a cache keyed by the resolved color would grow
+ *  unbounded now that admins can assign arbitrary custom colors via
+ *  the Settings → Hosts picker — or, keyed by host id instead, would
+ *  go stale and keep returning a color's old shade after the admin
+ *  picks a new one. Not worth the complexity either way. */
 function hostMetricColor(base: string, metric: Metric): string {
-  const key = `${base}|${metric}`;
-  const hit = HOST_METRIC_COLOR_CACHE.get(key);
-  if (hit) return hit;
   const delta = METRIC_LIGHTNESS_DELTA[metric];
-  if (delta === 0) {
-    HOST_METRIC_COLOR_CACHE.set(key, base);
-    return base;
-  }
+  if (delta === 0) return base;
   const [r, g, b] = hexToRgb(base);
   const [h, s, l] = rgbToHsl(r, g, b);
   const [nr, ng, nb] = hslToRgb(h, s, Math.min(0.92, Math.max(0.08, l + delta)));
-  const shaded = rgbToHex(nr, ng, nb);
-  HOST_METRIC_COLOR_CACHE.set(key, shaded);
-  return shaded;
+  return rgbToHex(nr, ng, nb);
 }
 
 const WINDOW_POINTS = 60;
@@ -401,13 +397,23 @@ export default function FleetChart() {
             });
           })();
       for (const h of visibleHostsWithData) {
-        const idx = hostsWithData.findIndex((x) => x.id === h.id);
+        // Two different indices on purpose: `dataIdx` looks up this
+        // host's series in `perHost` (parallel array, built from
+        // hostsWithData — the data-availability-filtered list).
+        // `colorIdx` is this host's position in hostsToPlot (the full
+        // enrolled-hosts list, independent of who currently has data)
+        // — that's what resolveHostColor uses, and what the Settings →
+        // Hosts color picker's swatch preview computes too, so a
+        // host's fallback palette color stays the same regardless of
+        // which other hosts happen to have data at any given moment.
+        const dataIdx = hostsWithData.findIndex((x) => x.id === h.id);
+        const colorIdx = hostsToPlot.findIndex((x) => x.id === h.id);
         out.push({
           key: `${h.id}-${m}`,
           metric: m,
           host: h,
-          hostIdx: idx,
-          data: perHost[idx] ?? { times: [], values: [] },
+          hostIdx: colorIdx,
+          data: perHost[dataIdx] ?? { times: [], values: [] },
         });
       }
     }
@@ -525,11 +531,15 @@ export default function FleetChart() {
           host's chart curve; empty hosts get a muted "no data" pill
           so the legend stays honest about what's drawn. */}
       <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
-        {hostsToPlot.map((h) => {
+        {hostsToPlot.map((h, colorIdx) => {
           const hidden = hiddenHosts.has(h.id);
-          const dataIdx = hostsWithData.findIndex((x) => x.id === h.id);
-          const hasData = dataIdx >= 0;
-          const color = hasData ? resolveHostColor(h, dataIdx) : 'var(--gv-text-dim)';
+          const hasData = hostsWithData.some((x) => x.id === h.id);
+          // colorIdx (position in hostsToPlot, the full enrolled-hosts
+          // list) not a hostsWithData-relative index — see the comment
+          // on the `entries` builder above for why: keeps this legend
+          // swatch, the chart stroke, and the Settings → Hosts picker
+          // preview all agreeing on the same color for a given host.
+          const color = hasData ? resolveHostColor(h, colorIdx) : 'var(--gv-text-dim)';
           const titleKey = hasData
             ? (hidden ? 'fleet.legend_show' : 'fleet.legend_hide')
             : 'fleet.legend_no_data';

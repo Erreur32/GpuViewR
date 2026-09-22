@@ -253,8 +253,9 @@ function HostRow({
  *  host's fixed identity color (or reset it back to automatic). The
  *  swatch itself always shows the *effective* color — the admin's
  *  override if set, else the same index-based palette color
- *  FleetChart.tsx would assign — so this row's dot always matches
- *  what the fleet chart actually draws for this host. */
+ *  FleetChart.tsx would assign for this host's position in the full
+ *  enrolled-hosts list — so this row's dot matches what the fleet
+ *  chart draws, for the (realistic, chart-capped-at-12) common case. */
 function ColorPickerButton({
   host, hostIdx, t,
 }: Readonly<{
@@ -333,8 +334,13 @@ function ColorPickerButton({
               type="color"
               aria-label={t('hosts.color_custom')}
               disabled={saving}
-              value={host.color ?? effective}
-              onChange={(e) => apply(e.target.value)}
+              defaultValue={host.color ?? effective}
+              // onBlur, not onChange: Chrome fires `input`/onChange
+              // continuously while the native color picker is open
+              // (every drag tick on the color wheel), which would PATCH
+              // the API on every one of those. Committing once when the
+              // picker closes (blur) is what the admin actually meant.
+              onBlur={(e) => apply(e.target.value)}
               className="w-full h-full opacity-0 cursor-pointer"
             />
           </label>
