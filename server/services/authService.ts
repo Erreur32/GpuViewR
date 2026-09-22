@@ -59,14 +59,30 @@ export const authService = {
     if (trimmed.length < 3) throw new Error('Username must be at least 3 characters');
     if (password.length < 8) throw new Error('Password must be at least 8 characters');
 
+    const callerIsAdmin = opts?.callerIsAdmin ?? false;
+
+    // Cheap pre-checks so an obviously-rejected request (duplicate
+    // username, or registration already closed) fails fast instead of
+    // paying the ~50-100ms bcrypt cost first — that cost is bounded by
+    // authLimiter, but there's no reason to pay it for a request that
+    // can't possibly succeed. Both are re-checked authoritatively
+    // inside doRegisterLocked's serialized section below, since a
+    // concurrent request can change either between this read and the
+    // lock actually running.
+    if (UserRepository.findByUsername(trimmed)) {
+      throw new Error('Username already taken');
+    }
+    if (UserRepository.count() > 0 && !callerIsAdmin) {
+      throw new Error(REGISTRATION_CLOSED_MESSAGE);
+    }
+
     // Hash BEFORE entering the serialized section below. bcrypt is the
-    // slow part of registration (~50-100ms) and touches no shared
-    // state, so it's safe — and much better for throughput — to run
-    // concurrently across calls. Only the count()-based decisions and
-    // the INSERT need to be serialized (see doRegisterLocked).
+    // slow part of registration and touches no shared state, so it's
+    // safe — and much better for throughput — to run concurrently
+    // across calls. Only the count()-based decisions and the INSERT
+    // need to be serialized (see doRegisterLocked).
     const passwordHash = await this.hashPassword(password);
 
-    const callerIsAdmin = opts?.callerIsAdmin ?? false;
     const task = registerChain
       .catch(() => undefined)
       .then(() => doRegisterLocked(trimmed, passwordHash, callerIsAdmin));
