@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { _setDatabaseForTests, closeDatabase } from '../database/connection.js';
 import { UserRepository } from '../database/models/User.js';
-import { authService } from './authService.js';
+import { authService, canRegister } from './authService.js';
 
 before(() => {
   const db = new Database(':memory:');
@@ -56,4 +56,15 @@ test('register: concurrent bootstrap requests only ever produce ONE admin', asyn
 
   const fulfilled = results.filter((r) => r.status === 'fulfilled');
   assert.ok(fulfilled.length >= 1, 'at least the winning racer should succeed');
+});
+
+test('canRegister: open for the zero-user bootstrap case, regardless of caller', () => {
+  assert.equal(canRegister(0, false), true);
+  assert.equal(canRegister(0, true), true);
+});
+
+test('canRegister: closed once a user exists, unless the caller is an admin', () => {
+  assert.equal(canRegister(1, false), false);
+  assert.equal(canRegister(5, false), false);
+  assert.equal(canRegister(1, true), true);
 });

@@ -61,19 +61,20 @@ export const authService = {
 
     const callerIsAdmin = opts?.callerIsAdmin ?? false;
 
-    // Cheap pre-checks so an obviously-rejected request (duplicate
-    // username, or registration already closed) fails fast instead of
-    // paying the ~50-100ms bcrypt cost first — that cost is bounded by
-    // authLimiter, but there's no reason to pay it for a request that
-    // can't possibly succeed. Both are re-checked authoritatively
-    // inside doRegisterLocked's serialized section below, since a
-    // concurrent request can change either between this read and the
-    // lock actually running.
+    // Cheap pre-check so an obviously-rejected duplicate username fails
+    // fast instead of paying the ~50-100ms bcrypt cost first. Re-checked
+    // authoritatively inside doRegisterLocked's serialized section
+    // below, since a concurrent request can still claim the name
+    // between this read and the lock actually running. The
+    // registration-closed rule (canRegister) is NOT pre-checked here on
+    // top of it: routes/auth.ts already short-circuits that case before
+    // ever calling register(), so duplicating it here would just be a
+    // third place encoding the same rule for no real benefit — the rare
+    // bootstrap-race caller that slips past the route still gets
+    // rejected by doRegisterLocked, just after paying the hash cost
+    // once, ever.
     if (UserRepository.findByUsername(trimmed)) {
       throw new Error('Username already taken');
-    }
-    if (UserRepository.count() > 0 && !callerIsAdmin) {
-      throw new Error(REGISTRATION_CLOSED_MESSAGE);
     }
 
     // Hash BEFORE entering the serialized section below. bcrypt is the
@@ -104,6 +105,17 @@ export const authService = {
  *  paths can't drift apart in wording. */
 export const REGISTRATION_CLOSED_MESSAGE = 'Registration is closed. Ask an admin to create your account.';
 
+/** The one source of truth for "is registration open to this caller?":
+ *  either no user exists yet (bootstrap) or the caller is already an
+ *  authenticated admin. Used by both routes/auth.ts's fast pre-check
+ *  (evaluated once, before ever calling register()) and
+ *  doRegisterLocked's authoritative re-check (evaluated again inside
+ *  the lock) — two different points in time on purpose, for the
+ *  race-safety reasons explained on doRegisterLocked, but one rule. */
+export function canRegister(existingUserCount: number, callerIsAdmin: boolean): boolean {
+  return existingUserCount === 0 || callerIsAdmin;
+}
+
 // Serialization lock for register(): resolves once the previous
 // register() call's doRegisterLocked (success or failure) has fully
 // settled, so the next one's count()->role check can't run until the
@@ -127,7 +139,7 @@ function doRegisterLocked(
   // Re-checking with a count() taken *after* acquiring the lock is
   // what makes only one of them actually win.
   const existingCount = UserRepository.count();
-  if (existingCount > 0 && !callerIsAdmin) {
+  if (!canRegister(existingCount, callerIsAdmin)) {
     throw new Error(REGISTRATION_CLOSED_MESSAGE);
   }
   // First user becomes admin automatically
