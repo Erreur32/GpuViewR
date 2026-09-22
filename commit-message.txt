@@ -1,8 +1,8 @@
-release: v0.9.5 per-host color picker on Settings → Hosts
+release: v0.9.6 fix AMD driver version display, GPU tag styling
 
-- Added: a color swatch next to each host's label on Settings → Hosts
-  opens a picker (10-color palette, custom color, Auto reset). The
-  chosen color now stays pinned to that host everywhere on /fleet
-  (legend, chart line, tooltip) instead of shifting with fleet
-  composition changes.
-- Default palette's 3rd color changed from orange to mauve/fuchsia.
+- Fixed: AMD hosts on the default sysfs backend always showed
+  "driver -" (root-caused on real hardware, /sys/module/amdgpu/version
+  doesn't exist for the in-tree kernel module). Falls back to the
+  kernel release.
+- Changed: GPU #N is now a pill tag next to the driver version, no
+  more "· driver" text.
