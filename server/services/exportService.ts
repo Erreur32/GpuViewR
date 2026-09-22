@@ -416,7 +416,7 @@ class ExportService {
             (WEBHOOK_PAYLOAD_FIELDS as readonly string[]).includes(f))
         : [...WEBHOOK_PAYLOAD_FIELDS],
     };
-    // Secrets are encrypted at rest (see server/utils/secretCrypto.ts);
+    // Secrets are encrypted at rest (see server/utils/atRestCrypto.ts);
     // decrypt on the way out so every in-memory consumer keeps working
     // with plaintext, same as before at-rest encryption was added.
     mqtt.password = decryptSecret(mqtt.password ?? '');

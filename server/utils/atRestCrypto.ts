@@ -1,16 +1,19 @@
 // At-rest encryption for exporter secrets (MQTT password, InfluxDB token,
 // Telegram bot token) stored in the app_config table. AES-256-GCM with a key
-// derived from JWT_SECRET (already required in production, no new env var).
+// derived from ENCRYPTION_KEY if set, else JWT_SECRET (already required in
+// production, so this works with zero new required config).
 //
 // Format: `gvr1:<iv-b64>:<tag-b64>:<ciphertext-b64>`. decrypt() treats any
 // value without the `gvr1:` prefix as legacy plaintext and returns it
 // unchanged — existing installs upgrade transparently: their old plaintext
 // secrets keep working and get re-encrypted the next time they're saved.
 //
-// Caveat: rotating JWT_SECRET makes previously-encrypted secrets
-// undecryptable (decrypt() falls back to '' and logs a warning rather than
-// throwing) — the admin re-enters them in Settings. No crash, no data loss
-// beyond those three fields.
+// Caveat: rotating whichever of ENCRYPTION_KEY/JWT_SECRET is in use as key
+// material makes previously-encrypted secrets undecryptable (decrypt()
+// falls back to '' and logs a warning rather than throwing) — the admin
+// re-enters them in Settings. No crash, no data loss beyond those three
+// fields. Setting a dedicated ENCRYPTION_KEY decouples this from JWT_SECRET
+// rotations done for auth reasons.
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
 import { config } from '../config.js';
@@ -24,7 +27,13 @@ let cachedKey: Buffer | null = null;
 
 function getKey(): Buffer {
   if (!cachedKey) {
-    cachedKey = scryptSync(config.jwtSecret, KEY_SALT, 32);
+    // Prefer a dedicated ENCRYPTION_KEY (decouples secret-at-rest
+    // encryption from JWT signing, so rotating JWT_SECRET for an auth
+    // reason doesn't collaterally break decryption of stored exporter
+    // secrets). Falls back to jwtSecret when unset — no existing
+    // install needs a new env var to keep working.
+    const material = config.encryptionKey || config.jwtSecret;
+    cachedKey = scryptSync(material, KEY_SALT, 32);
   }
   return cachedKey;
 }
