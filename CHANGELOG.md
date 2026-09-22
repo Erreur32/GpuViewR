@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-09-22
+
+### Security
+
+- **`/api/processes` had no authentication at all**, unlike every sibling route (`gpu`, `alerts`, `system`, `hosts`), exposing GPU process lists (names, PIDs, possibly command-line args) across every host to anyone reaching the hub. Fixed by adding `requireAuth`.
+- **MQTT password, InfluxDB token and Telegram bot token are now encrypted at rest** (AES-256-GCM) in the `app_config` SQLite table, instead of plaintext. Key derives from a new optional `ENCRYPTION_KEY` env var if set (falls back to `JWT_SECRET`, so no existing install needs a new required var). Existing plaintext secrets keep working and are transparently re-encrypted on the next Settings save.
+
+### Fixed
+
+- **Multi-card AMD hosts attributed every GPU process to card0.** `rocm-smi --showpids` only reports how many cards a pid touches, not which one(s), and the originally planned `--showpidgpus` turned out to be a dead end (upstream rocm-smi's `--json` mode never emits that data). Per-process attribution now cross-references the kernel's DRM fdinfo interface (already used for Vulkan/OpenGL process discovery) to know exactly which card(s) each process's file descriptors are open on, emitting one row per card for genuinely multi-GPU processes. Falls back to card0 only when a pid has no DRM fd visibility at all. Not validated on real multi-card AMD hardware (none in the maintainer's lab).
+
 ## [0.9.2] - 2026-09-16
 
 ### Changed
