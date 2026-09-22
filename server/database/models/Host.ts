@@ -56,6 +56,11 @@ export interface HostRecord {
   /** Hub version that was pushed at last_update_pushed_at. NULL if
    *  never pushed. Lets the UI show "v0.6.3 → v0.6.4" in the tooltip. */
   last_update_pushed_version: string | null;
+  /** Admin-picked hex color (e.g. '#c026d3'), or NULL to fall back to
+   *  the index-based palette (FleetChart.tsx's hostColor()). Purely
+   *  cosmetic — identifies this host consistently across the fleet
+   *  chart / host cards regardless of its position in the list. */
+  color: string | null;
 }
 
 export interface HostInsertInput {
@@ -71,6 +76,7 @@ export interface HostInsertInput {
   auto_update?: number;
   protocol_ver?: number;
   status?: HostStatus;
+  color?: string | null;
 }
 
 const DDL = `
@@ -91,7 +97,8 @@ CREATE TABLE IF NOT EXISTS hosts (
   status        TEXT NOT NULL DEFAULT 'pending',
   last_update_check_at       INTEGER,
   last_update_pushed_at      INTEGER,
-  last_update_pushed_version TEXT
+  last_update_pushed_version TEXT,
+  color         TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_hosts_status ON hosts(status);
@@ -127,8 +134,8 @@ export const HostsRepo = {
       .prepare(
         `INSERT INTO hosts
          (id, label, hostname, kind, endpoint, token_hash, capabilities,
-          agent_version, install_mode, auto_update, protocol_ver, enrolled_at, last_seen, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+          agent_version, install_mode, auto_update, protocol_ver, enrolled_at, last_seen, status, color)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
       )
       .run(
         input.id,
@@ -144,6 +151,7 @@ export const HostsRepo = {
         input.protocol_ver ?? 1,
         now,
         input.status ?? 'pending',
+        input.color ?? null,
       );
     return this.findById(input.id)!;
   },
@@ -158,7 +166,8 @@ export const HostsRepo = {
            label = ?, hostname = ?, kind = ?, endpoint = ?, token_hash = ?,
            capabilities = ?, agent_version = ?, install_mode = ?, auto_update = ?,
            protocol_ver = ?, last_seen = ?, status = ?,
-           last_update_check_at = ?, last_update_pushed_at = ?, last_update_pushed_version = ?
+           last_update_check_at = ?, last_update_pushed_at = ?, last_update_pushed_version = ?,
+           color = ?
          WHERE id = ?`,
       )
       .run(
@@ -166,6 +175,7 @@ export const HostsRepo = {
         m.capabilities, m.agent_version, m.install_mode, m.auto_update,
         m.protocol_ver, m.last_seen, m.status,
         m.last_update_check_at, m.last_update_pushed_at, m.last_update_pushed_version,
+        m.color,
         id,
       );
     return this.findById(id);

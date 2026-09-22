@@ -47,6 +47,10 @@ export interface HostRecord {
   last_update_pushed_at: number | null;
   /** Hub version pushed at last_update_pushed_at. NULL if never. */
   last_update_pushed_version: string | null;
+  /** Admin-picked hex color (e.g. '#c026d3'), or null to fall back to
+   *  the index-based palette in FleetChart.tsx. Set via Settings →
+   *  Hosts' color picker (setColor below). */
+  color: string | null;
 }
 
 export const LOCAL_HOST_ID = 'local';
@@ -99,6 +103,10 @@ interface HostsState {
   rotateToken: (id: string) => Promise<string>;
   remove: (id: string) => Promise<void>;
   setAutoUpdate: (id: string, enabled: boolean) => Promise<void>;
+  /** Sets this host's fixed identity color (Settings → Hosts' color
+   *  picker), or clears it back to the index-based palette when
+   *  `color` is null. */
+  setColor: (id: string, color: string | null) => Promise<void>;
   /** Toggles whether the hub accepts this agent's WS connections at all.
    *  Setting `enabled=false` also force-closes any currently-live socket
    *  server-side (see disconnectAgent in agentIngestWS.ts) so the cutoff
@@ -180,6 +188,14 @@ export const useHostsStore = create<HostsState>((set, get) => ({
     const r = await api<{ host: HostRecord }>(`/hosts/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ auto_update: enabled }),
+    });
+    set((state) => ({ hosts: state.hosts.map((h) => (h.id === id ? r.host : h)) }));
+  },
+
+  setColor: async (id, color) => {
+    const r = await api<{ host: HostRecord }>(`/hosts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ color }),
     });
     set((state) => ({ hosts: state.hosts.map((h) => (h.id === id ? r.host : h)) }));
   },

@@ -187,6 +187,15 @@ function migrateMultiHost(database: Database.Database): void {
     }
   }
 
+  // v0.9.5: ADD COLUMN hosts.color (nullable hex string, e.g. '#c026d3').
+  // NULL = fall back to the index-based palette (FleetChart.tsx's
+  // hostColor()); a set value pins that host to a fixed color
+  // regardless of its position in the fleet list.
+  if (!hostCols.some((c) => c.name === 'color')) {
+    database.exec('ALTER TABLE hosts ADD COLUMN color TEXT;');
+    logger.success('DB', 'hosts.color column added.');
+  }
+
   // -- gpu_metrics: ADD COLUMN host_id (legacy v0.2.x DB) — the
   //    host-prefixed index is created unconditionally below because
   //    applySchema can't reference host_id on a still-legacy table.

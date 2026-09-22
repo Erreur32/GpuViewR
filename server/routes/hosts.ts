@@ -138,6 +138,19 @@ router.patch('/:id', (req, res) => {
     }
     patch.auto_update = req.body.auto_update ? 1 : 0;
   }
+  if (req.body?.color !== undefined) {
+    const { color } = req.body;
+    // null clears the override so the UI falls back to the
+    // index-based palette (FleetChart.tsx's hostColor()). Otherwise
+    // require a strict #rrggbb hex string — this value is used
+    // directly as a CSS color on the client, so validating the shape
+    // here keeps the DB from ever holding something that isn't safe
+    // to drop straight into a style attribute.
+    if (color !== null && !(typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color))) {
+      return res.status(400).json({ error: 'color must be a #rrggbb hex string or null' });
+    }
+    patch.color = color;
+  }
   const updated = HostsRepo.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'Not found' });
   if (patch.status) {

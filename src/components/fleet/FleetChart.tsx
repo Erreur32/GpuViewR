@@ -33,6 +33,7 @@ import { useHostsStore, type HostRecord } from '../../store/hostsStore';
 import { useUiStore } from '../../store/uiStore';
 import { api } from '../../lib/api';
 import { fmtDateTime, historyPollIntervalMs } from '../../lib/time';
+import { resolveHostColor } from '../../lib/hostColors';
 import RangeSelector from '../dashboard/RangeSelector';
 
 type Metric = 'temperature' | 'utilization' | 'power';
@@ -65,29 +66,12 @@ const METRIC_SCALE: Record<Metric, '%' | 'W'> = {
   power: 'W',
 };
 
-// Per-host palette. Solid colours, picked to be distinguishable on
-// both light and dark themes (no near-pure-yellow, no near-pure-cyan,
-// no >50% luminance). Pre-v0.8 we used a metric × dash-pattern
-// scheme which got unreadable above 2 hosts; user feedback was
-// explicit: "les traits tillés ça fait moche, uniformise couleur par
-// machine". Cycle past 10 hosts — unrealistic on a single dashboard,
-// but keeps the assignment deterministic.
-const HOST_PALETTE: readonly string[] = [
-  '#3b82f6', // blue 500
-  '#22c55e', // green 500
-  '#f97316', // orange 500
-  '#a855f7', // purple 500
-  '#ef4444', // red 500
-  '#14b8a6', // teal 500
-  '#eab308', // yellow 500 (used past index 6 only — lowest contrast)
-  '#ec4899', // pink 500
-  '#6366f1', // indigo 500
-  '#84cc16', // lime 500
-];
-
-function hostColor(idx: number): string {
-  return HOST_PALETTE[idx % HOST_PALETTE.length];
-}
+// Per-host palette + resolveHostColor (admin override → palette
+// fallback) live in ../../lib/hostColors so the Settings → Hosts color
+// picker shares the exact same swatches and fallback logic. Pre-v0.8
+// this chart used a metric × dash-pattern scheme which got unreadable
+// above 2 hosts; user feedback was explicit: "les traits tillés ça
+// fait moche, uniformise couleur par machine".
 
 // Per-metric stroke width. utilization is the headline number so it
 // gets the boldest stroke; power the thinnest. Same width applied
@@ -163,25 +147,20 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 
 /** Shade a host's base color by the metric's lightness delta. The
  *  result is the actual stroke color drawn for that (host, metric)
- *  pair. Pre-computed to a Map at module scope to avoid touching
- *  color math on every render — 10 hosts × 3 metrics = 30 entries. */
-const HOST_METRIC_COLOR_CACHE = new Map<string, string>();
-function hostMetricColor(hostIdx: number, metric: Metric): string {
-  const key = `${hostIdx}|${metric}`;
-  const hit = HOST_METRIC_COLOR_CACHE.get(key);
-  if (hit) return hit;
-  const base = hostColor(hostIdx);
+ *  pair. Computed directly, no cache: a handful of hex/HSL conversions
+ *  (bounded by hosts × 3 metrics, realistically under a few dozen) is
+ *  negligible, and a cache keyed by the resolved color would grow
+ *  unbounded now that admins can assign arbitrary custom colors via
+ *  the Settings → Hosts picker — or, keyed by host id instead, would
+ *  go stale and keep returning a color's old shade after the admin
+ *  picks a new one. Not worth the complexity either way. */
+function hostMetricColor(base: string, metric: Metric): string {
   const delta = METRIC_LIGHTNESS_DELTA[metric];
-  if (delta === 0) {
-    HOST_METRIC_COLOR_CACHE.set(key, base);
-    return base;
-  }
+  if (delta === 0) return base;
   const [r, g, b] = hexToRgb(base);
   const [h, s, l] = rgbToHsl(r, g, b);
   const [nr, ng, nb] = hslToRgb(h, s, Math.min(0.92, Math.max(0.08, l + delta)));
-  const shaded = rgbToHex(nr, ng, nb);
-  HOST_METRIC_COLOR_CACHE.set(key, shaded);
-  return shaded;
+  return rgbToHex(nr, ng, nb);
 }
 
 const WINDOW_POINTS = 60;
@@ -418,13 +397,23 @@ export default function FleetChart() {
             });
           })();
       for (const h of visibleHostsWithData) {
-        const idx = hostsWithData.findIndex((x) => x.id === h.id);
+        // Two different indices on purpose: `dataIdx` looks up this
+        // host's series in `perHost` (parallel array, built from
+        // hostsWithData — the data-availability-filtered list).
+        // `colorIdx` is this host's position in hostsToPlot (the full
+        // enrolled-hosts list, independent of who currently has data)
+        // — that's what resolveHostColor uses, and what the Settings →
+        // Hosts color picker's swatch preview computes too, so a
+        // host's fallback palette color stays the same regardless of
+        // which other hosts happen to have data at any given moment.
+        const dataIdx = hostsWithData.findIndex((x) => x.id === h.id);
+        const colorIdx = hostsToPlot.findIndex((x) => x.id === h.id);
         out.push({
           key: `${h.id}-${m}`,
           metric: m,
           host: h,
-          hostIdx: idx,
-          data: perHost[idx] ?? { times: [], values: [] },
+          hostIdx: colorIdx,
+          data: perHost[dataIdx] ?? { times: [], values: [] },
         });
       }
     }
@@ -542,11 +531,15 @@ export default function FleetChart() {
           host's chart curve; empty hosts get a muted "no data" pill
           so the legend stays honest about what's drawn. */}
       <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
-        {hostsToPlot.map((h) => {
+        {hostsToPlot.map((h, colorIdx) => {
           const hidden = hiddenHosts.has(h.id);
-          const dataIdx = hostsWithData.findIndex((x) => x.id === h.id);
-          const hasData = dataIdx >= 0;
-          const color = hasData ? hostColor(dataIdx) : 'var(--gv-text-dim)';
+          const hasData = hostsWithData.some((x) => x.id === h.id);
+          // colorIdx (position in hostsToPlot, the full enrolled-hosts
+          // list) not a hostsWithData-relative index — see the comment
+          // on the `entries` builder above for why: keeps this legend
+          // swatch, the chart stroke, and the Settings → Hosts picker
+          // preview all agreeing on the same color for a given host.
+          const color = hasData ? resolveHostColor(h, colorIdx) : 'var(--gv-text-dim)';
           const titleKey = hasData
             ? (hidden ? 'fleet.legend_show' : 'fleet.legend_hide')
             : 'fleet.legend_no_data';
@@ -682,7 +675,7 @@ function ChartPlot({ entries, data, metricColor, range }: Readonly<ChartPlotProp
       // total mode: color = metric (single curve per metric, no host
       // distinction — keeps the visual association with the metric
       // chip).
-      const stroke = e.host ? hostMetricColor(e.hostIdx, e.metric) : metricColor[e.metric];
+      const stroke = e.host ? hostMetricColor(resolveHostColor(e.host, e.hostIdx), e.metric) : metricColor[e.metric];
       seriesDefs.push({
         label,
         stroke,
@@ -827,7 +820,7 @@ function ChartPlot({ entries, data, metricColor, range }: Readonly<ChartPlotProp
               // Match the chart: per-host curves use the host base
               // colour shaded per metric (util base / temp lighter /
               // power darker); total mode uses metric colour.
-              const stroke = e.host ? hostMetricColor(e.hostIdx, e.metric) : metricColor[e.metric];
+              const stroke = e.host ? hostMetricColor(resolveHostColor(e.host, e.hostIdx), e.metric) : metricColor[e.metric];
               const width = e.host ? METRIC_WIDTH[e.metric] : 2;
               return (
                 <div key={e.key} className="flex items-center justify-between gap-3">
