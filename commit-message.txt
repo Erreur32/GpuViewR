@@ -1,8 +1,8 @@
-release: v0.9.4 close /api/auth/register after the first admin
+release: v0.9.5 per-host color picker on Settings → Hosts
 
-- Security: POST /api/auth/register stayed open to anyone with
-  network access even after the first admin existed. Registration
-  now stays open only for the zero-user bootstrap case; only an
-  authenticated admin can create further accounts afterward.
-- Fixes a TOCTOU race where two concurrent bootstrap requests could
-  both get promoted to admin.
+- Added: a color swatch next to each host's label on Settings → Hosts
+  opens a picker (10-color palette, custom color, Auto reset). The
+  chosen color now stays pinned to that host everywhere on /fleet
+  (legend, chart line, tooltip) instead of shifting with fleet
+  composition changes.
+- Default palette's 3rd color changed from orange to mauve/fuchsia.
