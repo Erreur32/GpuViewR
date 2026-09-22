@@ -4,6 +4,7 @@ import { type GpuSample } from './parsers/nvidia.js';
 import { metricsBus, type SampleEvent } from './_metricsBus.js';
 import { AppConfigRepo, ensureAppConfigSchema } from '../database/models/AppConfig.js';
 import { logger } from '../utils/logger.js';
+import { encryptSecret, decryptSecret } from '../utils/atRestCrypto.js';
 import { formatAlert, type AlertEventLite, type AlertLang } from './alertFormatter.js';
 import { getSystemStats } from './systemStats.js';
 
@@ -347,6 +348,20 @@ function mergeOverrideForTest(
   return { ...stored, [kind]: { ...stored[kind], ...sanitized } };
 }
 
+/** Encrypts the three exporter secret fields before they hit
+ *  AppConfigRepo. Takes a plaintext ExportConfigs (as returned by
+ *  getConfigs()/setConfig()'s `merged`) and returns a copy safe to
+ *  persist. Never mutates the input — callers keep using the
+ *  plaintext version in memory. */
+function encryptConfigsForStorage(cfg: ExportConfigs): ExportConfigs {
+  return {
+    ...cfg,
+    mqtt: { ...cfg.mqtt, password: encryptSecret(cfg.mqtt.password ?? '') },
+    influxdb: { ...cfg.influxdb, token: encryptSecret(cfg.influxdb.token ?? '') },
+    webhook: { ...cfg.webhook, token: encryptSecret(cfg.webhook.token ?? '') },
+  };
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Service
 // ──────────────────────────────────────────────────────────────────────────────
@@ -391,18 +406,27 @@ class ExportService {
 
   getConfigs(): ExportConfigs {
     const stored = AppConfigRepo.getJson<Partial<ExportConfigs>>(CONFIG_KEY) ?? {};
+    const mqtt = { ...DEFAULTS.mqtt, ...(stored.mqtt ?? {}) };
+    const influxdb = { ...DEFAULTS.influxdb, ...(stored.influxdb ?? {}) };
+    const webhook = {
+      ...DEFAULTS.webhook,
+      ...stored.webhook,
+      payloadFields: Array.isArray(stored.webhook?.payloadFields)
+        ? stored.webhook.payloadFields.filter((f): f is WebhookPayloadField =>
+            (WEBHOOK_PAYLOAD_FIELDS as readonly string[]).includes(f))
+        : [...WEBHOOK_PAYLOAD_FIELDS],
+    };
+    // Secrets are encrypted at rest (see server/utils/secretCrypto.ts);
+    // decrypt on the way out so every in-memory consumer keeps working
+    // with plaintext, same as before at-rest encryption was added.
+    mqtt.password = decryptSecret(mqtt.password ?? '');
+    influxdb.token = decryptSecret(influxdb.token ?? '');
+    webhook.token = decryptSecret(webhook.token ?? '');
     return {
       prometheus: { ...DEFAULTS.prometheus, ...(stored.prometheus ?? {}) },
-      mqtt: { ...DEFAULTS.mqtt, ...(stored.mqtt ?? {}) },
-      influxdb: { ...DEFAULTS.influxdb, ...(stored.influxdb ?? {}) },
-      webhook: {
-        ...DEFAULTS.webhook,
-        ...stored.webhook,
-        payloadFields: Array.isArray(stored.webhook?.payloadFields)
-          ? stored.webhook.payloadFields.filter((f): f is WebhookPayloadField =>
-              (WEBHOOK_PAYLOAD_FIELDS as readonly string[]).includes(f))
-          : [...WEBHOOK_PAYLOAD_FIELDS],
-      },
+      mqtt,
+      influxdb,
+      webhook,
     };
   }
 
@@ -434,7 +458,7 @@ class ExportService {
     }
     const merged = { ...all[kind], ...patch } as ExportConfigs[K];
     const next = { ...all, [kind]: merged };
-    AppConfigRepo.setJson<ExportConfigs>(CONFIG_KEY, next);
+    AppConfigRepo.setJson<ExportConfigs>(CONFIG_KEY, encryptConfigsForStorage(next));
     this.applyOne(kind);
     return merged;
   }
