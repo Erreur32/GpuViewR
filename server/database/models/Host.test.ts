@@ -113,3 +113,16 @@ test('HostsRepo: seedLocalIfMissing is idempotent', () => {
   const after = HostsRepo.list().length;
   assert.equal(after, before, 'seedLocalIfMissing should not duplicate the local row');
 });
+
+test('HostsRepo: color defaults to null and round-trips through insert/update', () => {
+  const inserted = HostsRepo.insert({ id: 'color-test', label: 'c', kind: 'agent', token_hash: 'h' });
+  assert.equal(inserted.color, null);
+
+  const updated = HostsRepo.update('color-test', { color: '#c026d3' });
+  assert.equal(updated!.color, '#c026d3');
+  assert.equal(HostsRepo.findById('color-test')!.color, '#c026d3');
+
+  const cleared = HostsRepo.update('color-test', { color: null });
+  assert.equal(cleared!.color, null);
+  HostsRepo.delete('color-test');
+});

@@ -16,6 +16,8 @@ import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
 import { copyText } from '../../lib/clipboard';
+import { HOST_PALETTE, resolveHostColor } from '../../lib/hostColors';
+import { useDropdown } from '../../lib/useDropdown';
 import StatusPill from '../fleet/StatusPill';
 import EnrollHostModal from './EnrollHostModal';
 import { ModalShell, WarningBanner, CopyValueBlock } from './_modalParts';
@@ -104,10 +106,11 @@ export default function HostsSettingsTab() {
               </tr>
             </thead>
             <tbody>
-              {hosts.map((h) => (
+              {hosts.map((h, idx) => (
                 <HostRow
                   key={h.id}
                   host={h}
+                  hostIdx={idx}
                   onRotate={() => setRotateFor(h)}
                   onDelete={() => setDeleteFor(h)}
                 />
@@ -153,8 +156,8 @@ function ClockSkewBanner({
 }
 
 function HostRow({
-  host, onRotate, onDelete,
-}: Readonly<{ host: HostRecord; onRotate: () => void; onDelete: () => void }>) {
+  host, hostIdx, onRotate, onDelete,
+}: Readonly<{ host: HostRecord; hostIdx: number; onRotate: () => void; onDelete: () => void }>) {
   const { t } = useTranslation();
   const isLocal = host.id === LOCAL_HOST_ID;
   const receivedAtByHost = useGpuStore((s) => s.receivedAtByHost);
@@ -193,6 +196,7 @@ function HostRow({
     <tr className="border-t" style={{ borderColor: 'var(--gv-border)' }}>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1.5">
+          <ColorPickerButton host={host} hostIdx={hostIdx} t={t} />
           <span className="font-medium">{host.label}</span>
           {isLocal && <HubBadge t={t} />}
         </div>
@@ -242,6 +246,117 @@ function HostRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+/** Small colored swatch button that opens a popover to pick this
+ *  host's fixed identity color (or reset it back to automatic). The
+ *  swatch itself always shows the *effective* color — the admin's
+ *  override if set, else the same index-based palette color
+ *  FleetChart.tsx would assign — so this row's dot always matches
+ *  what the fleet chart actually draws for this host. */
+function ColorPickerButton({
+  host, hostIdx, t,
+}: Readonly<{
+  host: HostRecord;
+  hostIdx: number;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}>) {
+  const setColor = useHostsStore((s) => s.setColor);
+  const { open, setOpen, rootRef } = useDropdown();
+  const [saving, setSaving] = useState(false);
+  const effective = resolveHostColor(host, hostIdx);
+
+  const apply = async (color: string | null) => {
+    setSaving(true);
+    try {
+      await setColor(host.id, color);
+      notify('success', t('hosts.color_changed'), '');
+      setOpen(false);
+    } catch (err) {
+      notify('error', t('hosts.color_change_failed'), (err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="relative shrink-0" ref={rootRef}>
+      <button
+        type="button"
+        title={t('hosts.color_picker')}
+        aria-label={t('hosts.color_picker')}
+        onClick={() => setOpen(!open)}
+        className="w-4 h-4 rounded-full"
+        style={{
+          background: effective,
+          border: '1px solid color-mix(in srgb, var(--gv-border) 60%, black 20%)',
+          cursor: 'pointer',
+        }}
+      />
+      {open && (
+        <div
+          className="absolute z-20 top-full left-0 mt-1.5 p-2 rounded-lg shadow-lg grid grid-cols-6 gap-1.5"
+          style={{ background: 'var(--gv-surface)', border: '1px solid var(--gv-border)', width: 168 }}
+        >
+          {HOST_PALETTE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              disabled={saving}
+              onClick={() => apply(c)}
+              title={c}
+              aria-label={c}
+              className="w-6 h-6 rounded-full"
+              style={{
+                background: c,
+                outline: host.color === c ? '2px solid var(--gv-text)' : 'none',
+                outlineOffset: 1,
+                cursor: saving ? 'default' : 'pointer',
+              }}
+            />
+          ))}
+          <label
+            title={t('hosts.color_custom')}
+            className="w-6 h-6 rounded-full overflow-hidden"
+            style={{
+              border: '1px solid var(--gv-border)',
+              cursor: saving ? 'default' : 'pointer',
+              // Conic-gradient "rainbow" swatch — the conventional
+              // affordance for "pick a custom color" (this dot is a
+              // static button, not a reflection of the current value:
+              // the main swatch above the popover already shows that).
+              background: 'conic-gradient(from 0deg, red, yellow, lime, cyan, blue, magenta, red)',
+            }}
+          >
+            <input
+              type="color"
+              aria-label={t('hosts.color_custom')}
+              disabled={saving}
+              value={host.color ?? effective}
+              onChange={(e) => apply(e.target.value)}
+              className="w-full h-full opacity-0 cursor-pointer"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={saving || !host.color}
+            onClick={() => apply(null)}
+            title={t('hosts.color_auto')}
+            aria-label={t('hosts.color_auto')}
+            className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-medium"
+            style={{
+              border: '1px dashed var(--gv-border)',
+              color: 'var(--gv-text-dim)',
+              cursor: (saving || !host.color) ? 'default' : 'pointer',
+              opacity: host.color ? 1 : 0.4,
+            }}
+          >
+            A
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
