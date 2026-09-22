@@ -132,10 +132,20 @@ export default function Dashboard() {
           {active.name}
         </h2>
         <span
-          className="text-xs leading-none"
+          className="text-xs leading-none px-2 py-0.5 rounded-full font-mono"
+          style={{
+            background: "var(--gv-surface-alt)",
+            border: "1px solid var(--gv-border)",
+            color: "var(--gv-text-muted)",
+          }}
+        >
+          GPU #{active.gpu_index}
+        </span>
+        <span
+          className="text-xs leading-none font-mono"
           style={{ color: "var(--gv-text-dim)" }}
         >
-          GPU #{active.gpu_index} · driver {active.driver_version || "-"}
+          {active.driver_version || "-"}
         </span>
         <HostChip
           label={currentHostLabel}
