@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "GpuViewR",
-    "subtitle": "Supervision GPU NVIDIA en temps réel"
+    "subtitle": "Supervision GPU multi-hôtes en temps réel"
   },
   "nav": {
     "dashboard": "Tableau de bord",

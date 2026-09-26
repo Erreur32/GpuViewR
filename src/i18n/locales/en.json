@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "GpuViewR",
-    "subtitle": "Real-time NVIDIA GPU monitoring"
+    "subtitle": "Real-time multi-host GPU monitoring"
   },
   "nav": {
     "dashboard": "Dashboard",
