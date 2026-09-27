@@ -1,8 +1,6 @@
-release: v0.9.6 fix AMD driver version display, GPU tag styling
+release: v0.9.7 vendor-neutral wording
 
-- Fixed: AMD hosts on the default sysfs backend always showed
-  "driver -" (root-caused on real hardware, /sys/module/amdgpu/version
-  doesn't exist for the in-tree kernel module). Falls back to the
-  kernel release.
-- Changed: GPU #N is now a pill tag next to the driver version, no
-  more "· driver" text.
+- Changed: header subtitle, About tagline, PWA manifest and npm
+  descriptions are no longer NVIDIA-only; AMD ROCm badge in About.
+- Fixed: hub host type help now mentions nvidia-smi or rocm-smi
+  depending on GPU_VENDOR.

@@ -5,6 +5,16 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.7] - 2026-09-27
+
+### Changed
+
+- **Vendor-neutral wording now that AMD is first-class.** Header subtitle, About tagline, PWA manifest and npm package descriptions no longer say "NVIDIA" only. The About tab gets an AMD ROCm badge next to the NVIDIA one.
+
+### Fixed
+
+- Hub host type help said collection runs via `nvidia-smi` only, contradicting the hub badge help. It now mentions `nvidia-smi` or `rocm-smi` depending on `GPU_VENDOR`.
+
 ## [0.9.6] - 2026-09-22
 
 ### Fixed
