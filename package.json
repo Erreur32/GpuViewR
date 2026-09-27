@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.9.6",
   "type": "module",
-  "description": "Modern real-time NVIDIA GPU monitoring dashboard (React + Vite + Express + WebSocket + uPlot)",
+  "description": "Modern real-time multi-host GPU monitoring dashboard (React + Vite + Express + WebSocket + uPlot)",
   "homepage": "https://github.com/Erreur32/GpuViewR",
   "repository": {
     "type": "git",
