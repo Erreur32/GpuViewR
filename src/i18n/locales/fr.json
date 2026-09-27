@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "GpuViewR",
-    "subtitle": "Supervision GPU NVIDIA en temps réel"
+    "subtitle": "Supervision GPU multi-hôtes en temps réel"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -178,7 +178,7 @@
     "chart_palette": "Courbes du graphique",
     "chart_palette_help": "Choisis une palette préréglée ou ajuste finement la couleur de chaque métrique. Le dégradé sous la courbe suit la couleur sélectionnée.",
     "chart_palette_reset": "Réinitialiser",
-    "about_tagline": "Tableau de bord NVIDIA GPU en temps réel",
+    "about_tagline": "Tableau de bord GPU multi-hôtes en temps réel",
     "about_description": "GpuViewR diffuse les métriques GPU en direct via WebSocket, stocke l'historique en SQLite, déclenche des alertes et exporte vers Prometheus, MQTT (découverte Home Assistant), InfluxDB v2 et webhooks. Le tout dans une image Docker multi-arch unique.",
     "about_version": "Installée",
     "about_latest": "Dernière",
@@ -531,7 +531,7 @@
     "color_changed": "Couleur mise à jour",
     "color_change_failed": "Impossible de changer la couleur",
     "type_hub": "Hub",
-    "type_hub_help": "Cet hôte est le hub lui-même : pas d'agent distant, la collecte se fait via nvidia-smi local.",
+    "type_hub_help": "Cet hôte est le hub lui-même : pas d'agent distant, la collecte se fait via nvidia-smi ou rocm-smi local (selon GPU_VENDOR).",
     "type_docker": "Docker",
     "type_docker_help": "Agent installé via docker compose. Mise à jour : docker compose pull && up -d.",
     "type_binary": "Binaire",

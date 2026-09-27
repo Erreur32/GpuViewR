@@ -52,7 +52,7 @@ const pwaPlugin = VitePWA({
   manifest: {
     name: 'GpuViewR',
     short_name: 'GpuViewR',
-    description: 'Real-time NVIDIA GPU monitoring dashboard',
+    description: 'Real-time multi-host GPU monitoring dashboard',
     theme_color: '#0b1220',
     background_color: '#020617',
     display: 'standalone',

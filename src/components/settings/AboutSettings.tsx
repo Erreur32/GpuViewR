@@ -216,6 +216,7 @@ export default function AboutSettings() {
           </a>
           <img alt="Docker" src="https://img.shields.io/badge/Docker-Ready-1f2937?style=for-the-badge&logo=docker&logoColor=38bdf8" />
           <img alt="NVIDIA" src="https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900" />
+          <img alt="AMD" src="https://img.shields.io/badge/AMD-ROCm-111827?style=for-the-badge&logo=amd&logoColor=ed1c24" />
           <a href="https://github.com/Erreur32/GpuViewR/blob/main/LICENSE" target="_blank" rel="noreferrer">
             <img alt="License" src="https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white" />
           </a>
