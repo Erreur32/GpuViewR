@@ -52,6 +52,7 @@ import {
 } from "./_procTicks.js";
 import {
   createFdinfoGpuSampler,
+  createFdinfoScanState,
   scanAmdgpuFdinfo,
 } from "./processesAmdgpuFdinfo.js";
 import { classifyLLM } from "./llmClassifier.js";
@@ -82,8 +83,8 @@ export function createRocmProcessCollector(
   let multiCardFallbackWarned = false;
   const cpuSampler = createCpuSampler(opts.hostProc);
   const fdinfoSampler = createFdinfoGpuSampler();
-  // Pids whose fdinfo dir was refused, see scanAmdgpuFdinfo.
-  const fdinfoDeniedPids = new Set<number>();
+  // Denied pids + first-seen ages, see scanAmdgpuFdinfo.
+  const fdinfoScanState = createFdinfoScanState();
   let fdinfoDeniedWarned = false;
 
   function checkRocmSmi(): boolean {
@@ -132,12 +133,13 @@ export function createRocmProcessCollector(
       // Scanned once per tick, for every pid regardless of how it was
       // discovered — drm-pdev per (pid, fd) is what makes correct
       // multi-card attribution possible for both branches below.
-      const fdinfoRaw = scanAmdgpuFdinfo(opts.hostProc, fdinfoDeniedPids);
-      if (fdinfoDeniedPids.size > 0 && !fdinfoDeniedWarned) {
+      const fdinfoRaw = scanAmdgpuFdinfo(opts.hostProc, fdinfoScanState);
+      const deniedCount = fdinfoScanState.deniedPids.size;
+      if (deniedCount > 0 && !fdinfoDeniedWarned) {
         fdinfoDeniedWarned = true;
         logger.warn(
           "proc",
-          `DRM fdinfo unreadable for ${fdinfoDeniedPids.size} pid(s) owned by other users (AppArmor or missing CAP_SYS_PTRACE?), Vulkan/OpenGL clients among them won't be listed. Not retried until those pids exit.`,
+          `DRM fdinfo unreadable for ${deniedCount} pid(s), most likely processes running directly on the host (AppArmor docker-default denies ptrace reads of unconfined peers) or CAP_SYS_PTRACE is missing. Vulkan/OpenGL clients among them won't be listed, other containers are unaffected. Not retried until those pids exit.`,
         );
       }
 

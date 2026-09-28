@@ -82,20 +82,42 @@ function parseFdinfoText(text: string): {
  * Multiple fds on the *same* card still merge (max vram, summed
  * gfx/compute ns), same as before this became per-device.
  *
- * `deniedPids` (optional, owned by the caller so it survives across
- * ticks) remembers pids whose fdinfo dir was refused with
- * EACCES/EPERM, so they're only tried once instead of every tick.
- * Opening /proc/<pid>/fdinfo is a ptrace-gated access: under Docker's
- * `docker-default` AppArmor profile it's denied for every host process
- * of another UID even with CAP_SYS_PTRACE, and each attempt emits a
- * kernel audit record. Retrying hundreds of pids per tick flooded the
- * audit queue (`audit: backlog limit exceeded`). Entries are purged
- * once the pid is gone from hostProc, so a recycled pid gets a fresh
- * attempt.
+ * `state` (optional, owned by the caller so it survives across ticks)
+ * keeps the scan from tripping AppArmor over and over. Opening
+ * /proc/<pid>/fdinfo is a ptrace-gated access: under Docker's
+ * `docker-default` profile it's denied for every unconfined peer, i.e.
+ * every process running directly on the host (other containers share
+ * the docker-default label and stay readable with CAP_SYS_PTRACE), and
+ * each attempt emits a kernel audit record. Two guards:
+ *   - a pid refused with EACCES/EPERM lands in `deniedPids` and is
+ *     never retried while it lives (v0.9.8, stopped the
+ *     `audit: backlog limit exceeded` storm);
+ *   - a pid is only tried once it has been seen for at least
+ *     FDINFO_MIN_AGE_MS (`firstSeen`). A busy host spawns hundreds of
+ *     short-lived pids per minute (cron, shells, healthchecks), each of
+ *     which cost one denial before this. GPU clients are long-running,
+ *     so the only cost is a Vulkan/OpenGL-only client showing up a few
+ *     seconds late.
+ * Both are purged once the pid is gone from hostProc, so a recycled
+ * pid starts over.
  */
+export const FDINFO_MIN_AGE_MS = 10_000;
+
+export interface FdinfoScanState {
+  /** Pids whose fdinfo dir was refused, skipped until they exit. */
+  deniedPids: Set<number>;
+  /** Wall-clock ms when each pid was first seen under hostProc. */
+  firstSeen: Map<number, number>;
+}
+
+export function createFdinfoScanState(): FdinfoScanState {
+  return { deniedPids: new Set(), firstSeen: new Map() };
+}
+
 export function scanAmdgpuFdinfo(
   hostProc: string,
-  deniedPids?: Set<number>,
+  state?: FdinfoScanState,
+  now: number = Date.now(),
 ): Map<number, FdinfoGpuUsage[]> {
   const result = new Map<number, FdinfoGpuUsage[]>();
   let pidDirs: string[];
@@ -109,13 +131,21 @@ export function scanAmdgpuFdinfo(
     if (!/^\d+$/.test(entry)) continue;
     const pid = Number.parseInt(entry, 10);
     alive.add(pid);
-    if (deniedPids?.has(pid)) continue;
+    if (state) {
+      if (state.deniedPids.has(pid)) continue;
+      let seen = state.firstSeen.get(pid);
+      if (seen === undefined) {
+        seen = now;
+        state.firstSeen.set(pid, now);
+      }
+      if (now - seen < FDINFO_MIN_AGE_MS) continue;
+    }
     let fds: string[];
     try {
       fds = readdirSync(`${hostProc}/${entry}/fdinfo`);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
-      if (code === "EACCES" || code === "EPERM") deniedPids?.add(pid);
+      if (code === "EACCES" || code === "EPERM") state?.deniedPids.add(pid);
       continue;
     }
     for (const fd of fds) {
@@ -151,9 +181,12 @@ export function scanAmdgpuFdinfo(
       }
     }
   }
-  if (deniedPids) {
-    for (const pid of deniedPids) {
-      if (!alive.has(pid)) deniedPids.delete(pid);
+  if (state) {
+    for (const pid of state.deniedPids) {
+      if (!alive.has(pid)) state.deniedPids.delete(pid);
+    }
+    for (const pid of state.firstSeen.keys()) {
+      if (!alive.has(pid)) state.firstSeen.delete(pid);
     }
   }
   return result;
