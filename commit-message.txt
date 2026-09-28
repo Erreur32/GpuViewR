@@ -1,8 +1,8 @@
-release: v0.9.8 stop fdinfo audit storm on AMD agents
+release: v0.9.9 skip short-lived pids in the fdinfo scan
 
-- Fixed: the DRM fdinfo scan retried ptrace-gated
-  /proc/<pid>/fdinfo reads for every other-UID pid on each tick.
-  AppArmor docker-default denies them even with CAP_SYS_PTRACE,
-  one kernel audit record each, overflowing the audit backlog.
-  Denied pids are now tried once and skipped until they exit,
-  with a single startup warning.
+- Fixed: short-lived host pids each cost one AppArmor ptrace denial
+  before landing in the denied cache (~20/min on a busy host). The
+  fdinfo scan now only tries pids alive for at least 10 s.
+- Fixed: the fdinfo warning and compose comments blamed other UIDs.
+  AppArmor docker-default denies unconfined (host) peers only, other
+  containers stay readable with CAP_SYS_PTRACE, which must stay.

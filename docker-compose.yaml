@@ -184,9 +184,12 @@ services:
       retries: 3
       start_period: 30s
     # SYS_PTRACE — see the agent-nvidia service block above for the
-    # full reasoning. Same need on AMD: rocm-smi may shell out to ps
-    # for processes the agent container can't otherwise see, and our
-    # resolveProcessName fallback reads /proc directly.
+    # full reasoning. On AMD it is also what lets the DRM fdinfo scan
+    # (processesAmdgpuFdinfo.ts) see Vulkan/OpenGL clients running in
+    # OTHER containers under another UID (e.g. a root llama.cpp
+    # container). Processes running directly on the host stay denied
+    # by AppArmor docker-default whatever the caps, so keep this even
+    # if the kernel log shows occasional ptrace denials.
     cap_add:
       - SYS_PTRACE
     depends_on:

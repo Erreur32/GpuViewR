@@ -5,6 +5,13 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.9] - 2026-09-28
+
+### Fixed
+
+- **Residual AppArmor `ptrace` denials on AMD agents** (~20 per minute on a busy host after 0.9.8). Each short-lived host process (cron, shells, healthchecks, hundreds per minute) still cost one denied `/proc/<pid>/fdinfo` read before being cached. The fdinfo scan now only tries a pid once it has been alive for 10 s. GPU clients are long-running, so the only side effect is a Vulkan/OpenGL-only client appearing a few seconds later (clients seen by `rocm-smi` are unaffected).
+- The "DRM fdinfo unreadable" warning blamed "pids owned by other users". Verified on real hardware: AppArmor `docker-default` denies the read for processes running directly on the host (unconfined peers), whatever their UID, while GPU clients in other containers stay readable thanks to `CAP_SYS_PTRACE`. The warning and the compose comments now say so. `SYS_PTRACE` must stay in the compose files, dropping it hides Vulkan/OpenGL clients running in other containers.
+
 ## [0.9.8] - 2026-09-28
 
 ### Fixed

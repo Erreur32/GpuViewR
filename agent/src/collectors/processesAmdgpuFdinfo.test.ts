@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createFdinfoGpuSampler,
+  createFdinfoScanState,
+  FDINFO_MIN_AGE_MS,
+  type FdinfoScanState,
   scanAmdgpuFdinfo,
 } from "./processesAmdgpuFdinfo.js";
 
@@ -274,15 +277,36 @@ test("createFdinfoGpuSampler: same pid on two different cards tracks independent
   assert.equal(c6.gpuPct, 0);
 });
 
+/** Scan state where every pid is already old enough to be tried. */
+function agedState(pids: number[], denied: number[] = []): FdinfoScanState {
+  const state = createFdinfoScanState();
+  for (const pid of pids) state.firstSeen.set(pid, 0);
+  for (const pid of denied) state.deniedPids.add(pid);
+  return state;
+}
+
 test("scanAmdgpuFdinfo: skips pids already in deniedPids, purges exited ones", async () => {
   const root = await makeFakeProc();
   await writeFdinfo(root, 7, "3", "drm-driver:\tamdgpu\n");
-  const denied = new Set<number>([7, 99]);
-  const result = scanAmdgpuFdinfo(root, denied);
+  const state = agedState([7, 99], [7, 99]);
+  const result = scanAmdgpuFdinfo(root, state, FDINFO_MIN_AGE_MS);
   // 7 is still alive but known-denied: not re-read, even though readable.
   assert.equal(result.size, 0);
   // 99 no longer exists under hostProc: dropped so a reused pid is retried.
-  assert.deepEqual([...denied], [7]);
+  assert.deepEqual([...state.deniedPids], [7]);
+  assert.deepEqual([...state.firstSeen.keys()], [7]);
+});
+
+test("scanAmdgpuFdinfo: a pid is only tried once it has been seen for FDINFO_MIN_AGE_MS", async () => {
+  const root = await makeFakeProc();
+  await writeFdinfo(root, 5, "3", "drm-driver:\tamdgpu\n");
+  const state = createFdinfoScanState();
+  // First sighting: recorded, not opened (short-lived host pids never
+  // reach the ptrace-gated fdinfo read).
+  assert.equal(scanAmdgpuFdinfo(root, state, 1_000).size, 0);
+  assert.equal(state.firstSeen.get(5), 1_000);
+  assert.equal(scanAmdgpuFdinfo(root, state, 1_000 + FDINFO_MIN_AGE_MS - 1).size, 0);
+  assert.equal(scanAmdgpuFdinfo(root, state, 1_000 + FDINFO_MIN_AGE_MS).size, 1);
 });
 
 test(
@@ -294,9 +318,9 @@ test(
     const dir = join(root, "8", "fdinfo");
     await chmod(dir, 0o000);
     try {
-      const denied = new Set<number>();
-      scanAmdgpuFdinfo(root, denied);
-      assert.deepEqual([...denied], [8]);
+      const state = agedState([8]);
+      scanAmdgpuFdinfo(root, state, FDINFO_MIN_AGE_MS);
+      assert.deepEqual([...state.deniedPids], [8]);
     } finally {
       await chmod(dir, 0o755);
     }
