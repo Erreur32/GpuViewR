@@ -81,9 +81,21 @@ function parseFdinfoText(text: string): {
  * which is the only other consumer of this per-device breakdown.
  * Multiple fds on the *same* card still merge (max vram, summed
  * gfx/compute ns), same as before this became per-device.
+ *
+ * `deniedPids` (optional, owned by the caller so it survives across
+ * ticks) remembers pids whose fdinfo dir was refused with
+ * EACCES/EPERM, so they're only tried once instead of every tick.
+ * Opening /proc/<pid>/fdinfo is a ptrace-gated access: under Docker's
+ * `docker-default` AppArmor profile it's denied for every host process
+ * of another UID even with CAP_SYS_PTRACE, and each attempt emits a
+ * kernel audit record. Retrying hundreds of pids per tick flooded the
+ * audit queue (`audit: backlog limit exceeded`). Entries are purged
+ * once the pid is gone from hostProc, so a recycled pid gets a fresh
+ * attempt.
  */
 export function scanAmdgpuFdinfo(
   hostProc: string,
+  deniedPids?: Set<number>,
 ): Map<number, FdinfoGpuUsage[]> {
   const result = new Map<number, FdinfoGpuUsage[]>();
   let pidDirs: string[];
@@ -92,13 +104,18 @@ export function scanAmdgpuFdinfo(
   } catch {
     return result;
   }
+  const alive = new Set<number>();
   for (const entry of pidDirs) {
     if (!/^\d+$/.test(entry)) continue;
     const pid = Number.parseInt(entry, 10);
+    alive.add(pid);
+    if (deniedPids?.has(pid)) continue;
     let fds: string[];
     try {
       fds = readdirSync(`${hostProc}/${entry}/fdinfo`);
-    } catch {
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EACCES" || code === "EPERM") deniedPids?.add(pid);
       continue;
     }
     for (const fd of fds) {
@@ -132,6 +149,11 @@ export function scanAmdgpuFdinfo(
         });
         result.set(pid, perPid);
       }
+    }
+  }
+  if (deniedPids) {
+    for (const pid of deniedPids) {
+      if (!alive.has(pid)) deniedPids.delete(pid);
     }
   }
   return result;

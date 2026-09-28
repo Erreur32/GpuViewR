@@ -82,6 +82,9 @@ export function createRocmProcessCollector(
   let multiCardFallbackWarned = false;
   const cpuSampler = createCpuSampler(opts.hostProc);
   const fdinfoSampler = createFdinfoGpuSampler();
+  // Pids whose fdinfo dir was refused, see scanAmdgpuFdinfo.
+  const fdinfoDeniedPids = new Set<number>();
+  let fdinfoDeniedWarned = false;
 
   function checkRocmSmi(): boolean {
     if (rocmSmiAvailable !== null) return rocmSmiAvailable;
@@ -129,7 +132,14 @@ export function createRocmProcessCollector(
       // Scanned once per tick, for every pid regardless of how it was
       // discovered — drm-pdev per (pid, fd) is what makes correct
       // multi-card attribution possible for both branches below.
-      const fdinfoRaw = scanAmdgpuFdinfo(opts.hostProc);
+      const fdinfoRaw = scanAmdgpuFdinfo(opts.hostProc, fdinfoDeniedPids);
+      if (fdinfoDeniedPids.size > 0 && !fdinfoDeniedWarned) {
+        fdinfoDeniedWarned = true;
+        logger.warn(
+          "proc",
+          `DRM fdinfo unreadable for ${fdinfoDeniedPids.size} pid(s) owned by other users (AppArmor or missing CAP_SYS_PTRACE?), Vulkan/OpenGL clients among them won't be listed. Not retried until those pids exit.`,
+        );
+      }
 
       const enrichedFromRocm: AgentGpuProcess[] = procs.flatMap((p) => {
         const command = readCmdline(p.pid, opts.hostProc);

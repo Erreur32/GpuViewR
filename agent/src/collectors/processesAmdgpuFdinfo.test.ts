@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -273,3 +273,32 @@ test("createFdinfoGpuSampler: same pid on two different cards tracks independent
   assert.ok(c5.gpuPct !== null && c5.gpuPct > 0);
   assert.equal(c6.gpuPct, 0);
 });
+
+test("scanAmdgpuFdinfo: skips pids already in deniedPids, purges exited ones", async () => {
+  const root = await makeFakeProc();
+  await writeFdinfo(root, 7, "3", "drm-driver:\tamdgpu\n");
+  const denied = new Set<number>([7, 99]);
+  const result = scanAmdgpuFdinfo(root, denied);
+  // 7 is still alive but known-denied: not re-read, even though readable.
+  assert.equal(result.size, 0);
+  // 99 no longer exists under hostProc: dropped so a reused pid is retried.
+  assert.deepEqual([...denied], [7]);
+});
+
+test(
+  "scanAmdgpuFdinfo: records EACCES on the fdinfo dir in deniedPids",
+  { skip: process.getuid?.() === 0 && "root bypasses chmod 000" },
+  async () => {
+    const root = await makeFakeProc();
+    await writeFdinfo(root, 8, "3", "drm-driver:\tamdgpu\n");
+    const dir = join(root, "8", "fdinfo");
+    await chmod(dir, 0o000);
+    try {
+      const denied = new Set<number>();
+      scanAmdgpuFdinfo(root, denied);
+      assert.deepEqual([...denied], [8]);
+    } finally {
+      await chmod(dir, 0o755);
+    }
+  },
+);

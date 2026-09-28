@@ -1,6 +1,8 @@
-release: v0.9.7 vendor-neutral wording
+release: v0.9.8 stop fdinfo audit storm on AMD agents
 
-- Changed: header subtitle, About tagline, PWA manifest and npm
-  descriptions are no longer NVIDIA-only; AMD ROCm badge in About.
-- Fixed: hub host type help now mentions nvidia-smi or rocm-smi
-  depending on GPU_VENDOR.
+- Fixed: the DRM fdinfo scan retried ptrace-gated
+  /proc/<pid>/fdinfo reads for every other-UID pid on each tick.
+  AppArmor docker-default denies them even with CAP_SYS_PTRACE,
+  one kernel audit record each, overflowing the audit backlog.
+  Denied pids are now tried once and skipped until they exit,
+  with a single startup warning.

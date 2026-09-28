@@ -5,6 +5,15 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.8] - 2026-09-28
+
+### Fixed
+
+- **AMD agent flooded the kernel audit log** (`audit: backlog limit exceeded`, thousands of `apparmor="DENIED" operation="ptrace"` lines). The DRM fdinfo scan opens `/proc/<pid>/fdinfo` for every pid on the host, every tick. That access is ptrace-gated, and Docker's `docker-default` AppArmor profile denies it for every host process of another UID even with `CAP_SYS_PTRACE`, logging one audit record per attempt. Verified on real hardware (Debian, kernel 6.12): `cmdline`, `comm` and `stat` reads are not affected, only `fdinfo`.
+  - A pid refused with `EACCES`/`EPERM` is now tried once, then skipped until it exits (a recycled pid gets a fresh attempt).
+  - One warning at startup reports how many pids are unreadable, instead of silent retries.
+  - Under AppArmor, Vulkan/OpenGL clients owned by another user stay invisible, as before. Showing them would need a custom AppArmor profile allowing `ptrace (read) peer=unconfined`.
+
 ## [0.9.7] - 2026-09-27
 
 ### Changed
