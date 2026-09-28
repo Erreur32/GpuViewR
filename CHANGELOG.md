@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.10] - 2026-09-28
+
+### Fixed
+
+- **Last periodic AppArmor `ptrace` denials on AMD agents.** After 0.9.9 the remaining denials came from kernel threads (`kworker`): the kernel keeps spawning them, they outlive the 10 s age gate, and as host tasks their `fdinfo` read is refused. The fdinfo scan now detects kernel threads once (`PF_KTHREAD` flag in `/proc/<pid>/stat`, a read AppArmor does not audit) and never opens their `fdinfo`. Verified on real hardware: 375 kernel threads skipped, the llama.cpp container still detected. What remains is one denial per long-lived host process, once, when the agent starts.
+
 ## [0.9.9] - 2026-09-28
 
 ### Fixed

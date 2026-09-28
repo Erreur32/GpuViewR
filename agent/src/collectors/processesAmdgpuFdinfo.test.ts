@@ -309,6 +309,21 @@ test("scanAmdgpuFdinfo: a pid is only tried once it has been seen for FDINFO_MIN
   assert.equal(scanAmdgpuFdinfo(root, state, 1_000 + FDINFO_MIN_AGE_MS).size, 1);
 });
 
+test("scanAmdgpuFdinfo: never opens fdinfo of kernel threads (PF_KTHREAD)", async () => {
+  const root = await makeFakeProc();
+  await writeFdinfo(root, 9, "3", "drm-driver:\tamdgpu\n");
+  await writeFdinfo(root, 10, "3", "drm-driver:\tamdgpu\n");
+  // flags (field 9) = 0x04208060 for a kworker, 0x00400100 for a userspace task.
+  await writeFile(join(root, "9", "stat"), "9 (kworker/u128:0) I 2 0 0 0 -1 69238880 0 0\n");
+  await writeFile(join(root, "10", "stat"), "10 (llama server) S 1 10 10 0 -1 4194560 0 0\n");
+  const state = createFdinfoScanState();
+  scanAmdgpuFdinfo(root, state, 0);
+  const result = scanAmdgpuFdinfo(root, state, FDINFO_MIN_AGE_MS);
+  assert.deepEqual([...result.keys()], [10]);
+  assert.deepEqual([...state.kernelThreads], [9]);
+  assert.equal(state.firstSeen.has(9), false);
+});
+
 test(
   "scanAmdgpuFdinfo: records EACCES on the fdinfo dir in deniedPids",
   { skip: process.getuid?.() === 0 && "root bypasses chmod 000" },
