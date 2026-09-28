@@ -97,8 +97,12 @@ function parseFdinfoText(text: string): {
  *     short-lived pids per minute (cron, shells, healthchecks), each of
  *     which cost one denial before this. GPU clients are long-running,
  *     so the only cost is a Vulkan/OpenGL-only client showing up a few
- *     seconds late.
- * Both are purged once the pid is gone from hostProc, so a recycled
+ *     seconds late;
+ *   - kernel threads (`kernelThreads`, PF_KTHREAD in /proc/<pid>/stat,
+ *     which is not ptrace-gated) are never tried. The kernel keeps
+ *     spawning kworkers that outlive the age gate, they never hold a
+ *     DRM fd, and each one was still costing one denial in v0.9.9.
+ * All are purged once the pid is gone from hostProc, so a recycled
  * pid starts over.
  */
 export const FDINFO_MIN_AGE_MS = 10_000;
@@ -108,10 +112,33 @@ export interface FdinfoScanState {
   deniedPids: Set<number>;
   /** Wall-clock ms when each pid was first seen under hostProc. */
   firstSeen: Map<number, number>;
+  /** Kernel threads, detected once on first sighting, never scanned. */
+  kernelThreads: Set<number>;
 }
 
 export function createFdinfoScanState(): FdinfoScanState {
-  return { deniedPids: new Set(), firstSeen: new Map() };
+  return {
+    deniedPids: new Set(),
+    firstSeen: new Map(),
+    kernelThreads: new Set(),
+  };
+}
+
+// include/linux/sched.h
+const PF_KTHREAD = 0x00200000;
+
+/** True if /proc/<pid>/stat flags (field 9) carry PF_KTHREAD. Same
+ *  last-`)` slicing as readProcTicks in _procTicks.ts. */
+function isKernelThread(hostProc: string, pid: number): boolean {
+  try {
+    const stat = readFileSync(`${hostProc}/${pid}/stat`, "utf8");
+    const after = stat.lastIndexOf(")");
+    if (after < 0) return false;
+    const flags = Number.parseInt(stat.slice(after + 2).split(" ")[6], 10);
+    return Number.isFinite(flags) && (flags & PF_KTHREAD) !== 0;
+  } catch {
+    return false;
+  }
 }
 
 export function scanAmdgpuFdinfo(
@@ -132,9 +159,13 @@ export function scanAmdgpuFdinfo(
     const pid = Number.parseInt(entry, 10);
     alive.add(pid);
     if (state) {
-      if (state.deniedPids.has(pid)) continue;
+      if (state.deniedPids.has(pid) || state.kernelThreads.has(pid)) continue;
       let seen = state.firstSeen.get(pid);
       if (seen === undefined) {
+        if (isKernelThread(hostProc, pid)) {
+          state.kernelThreads.add(pid);
+          continue;
+        }
         seen = now;
         state.firstSeen.set(pid, now);
       }
@@ -187,6 +218,9 @@ export function scanAmdgpuFdinfo(
     }
     for (const pid of state.firstSeen.keys()) {
       if (!alive.has(pid)) state.firstSeen.delete(pid);
+    }
+    for (const pid of state.kernelThreads) {
+      if (!alive.has(pid)) state.kernelThreads.delete(pid);
     }
   }
   return result;

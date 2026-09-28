@@ -1,8 +1,6 @@
-release: v0.9.9 skip short-lived pids in the fdinfo scan
+release: v0.9.10 skip kernel threads in the fdinfo scan
 
-- Fixed: short-lived host pids each cost one AppArmor ptrace denial
-  before landing in the denied cache (~20/min on a busy host). The
-  fdinfo scan now only tries pids alive for at least 10 s.
-- Fixed: the fdinfo warning and compose comments blamed other UIDs.
-  AppArmor docker-default denies unconfined (host) peers only, other
-  containers stay readable with CAP_SYS_PTRACE, which must stay.
+- Fixed: kworker threads outlived the 10 s age gate and each cost
+  one AppArmor ptrace denial. Kernel threads are now detected once
+  via PF_KTHREAD in /proc/<pid>/stat (not ptrace-gated) and never
+  scanned.
