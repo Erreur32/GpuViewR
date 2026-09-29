@@ -98,10 +98,13 @@ function parseFdinfoText(text: string): {
  *     which cost one denial before this. GPU clients are long-running,
  *     so the only cost is a Vulkan/OpenGL-only client showing up a few
  *     seconds late;
- *   - kernel threads (`kernelThreads`, PF_KTHREAD in /proc/<pid>/stat,
- *     which is not ptrace-gated) are never tried. The kernel keeps
- *     spawning kworkers that outlive the age gate, they never hold a
- *     DRM fd, and each one was still costing one denial in v0.9.9.
+ *   - kernel threads (`kernelThreads`, `Kthread:` in /proc/<pid>/status)
+ *     are never tried. The kernel keeps spawning kworkers that outlive
+ *     the age gate, they never hold a DRM fd, and each one was still
+ *     costing one denial in v0.9.9. The check reads `status`, not
+ *     `stat`: AppArmor audits the ptrace check inside `stat` even
+ *     though the read succeeds, so v0.9.10 (which used `stat`) paid
+ *     one denial per new pid, short-lived ones included.
  * All are purged once the pid is gone from hostProc, so a recycled
  * pid starts over.
  */
@@ -124,18 +127,15 @@ export function createFdinfoScanState(): FdinfoScanState {
   };
 }
 
-// include/linux/sched.h
-const PF_KTHREAD = 0x00200000;
-
-/** True if /proc/<pid>/stat flags (field 9) carry PF_KTHREAD. Same
- *  last-`)` slicing as readProcTicks in _procTicks.ts. */
+/** True if /proc/<pid>/status says `Kthread: 1`. Kernels without that
+ *  line fall back to kthreadd (pid 2) and its children (`PPid: 2`). */
 function isKernelThread(hostProc: string, pid: number): boolean {
   try {
-    const stat = readFileSync(`${hostProc}/${pid}/stat`, "utf8");
-    const after = stat.lastIndexOf(")");
-    if (after < 0) return false;
-    const flags = Number.parseInt(stat.slice(after + 2).split(" ")[6], 10);
-    return Number.isFinite(flags) && (flags & PF_KTHREAD) !== 0;
+    const status = readFileSync(`${hostProc}/${pid}/status`, "utf8");
+    const kthread = /^Kthread:\s*(\d+)/m.exec(status);
+    if (kthread) return kthread[1] === "1";
+    const ppid = /^PPid:\s*(\d+)/m.exec(status);
+    return pid === 2 || ppid?.[1] === "2";
   } catch {
     return false;
   }

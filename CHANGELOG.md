@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.11] - 2026-09-29
+
+### Fixed
+
+- **AppArmor `ptrace` denials still at 10 to 20 per minute on AMD agents after 0.9.10.** The kernel thread check added in 0.9.10 read `/proc/<pid>/stat` for every new pid, and that read is audited by AppArmor too (the 0.9.10 entry wrongly said it was not), so every new process, short-lived ones included, still cost one denial. The check now reads the `Kthread:` line of `/proc/<pid>/status`, which AppArmor does not audit (falls back to `PPid: 2` on older kernels). Verified on real hardware by timing single reads against `journalctl -k`: `status`, `cmdline`, `comm` and `cgroup` stay silent, `stat` does not. What remains is one denial per long-lived host process, once, when the agent starts.
+
 ## [0.9.10] - 2026-09-28
 
 ### Fixed

@@ -309,18 +309,20 @@ test("scanAmdgpuFdinfo: a pid is only tried once it has been seen for FDINFO_MIN
   assert.equal(scanAmdgpuFdinfo(root, state, 1_000 + FDINFO_MIN_AGE_MS).size, 1);
 });
 
-test("scanAmdgpuFdinfo: never opens fdinfo of kernel threads (PF_KTHREAD)", async () => {
+test("scanAmdgpuFdinfo: never tries kernel threads (Kthread in status)", async () => {
   const root = await makeFakeProc();
   await writeFdinfo(root, 9, "3", "drm-driver:\tamdgpu\n");
   await writeFdinfo(root, 10, "3", "drm-driver:\tamdgpu\n");
-  // flags (field 9) = 0x04208060 for a kworker, 0x00400100 for a userspace task.
-  await writeFile(join(root, "9", "stat"), "9 (kworker/u128:0) I 2 0 0 0 -1 69238880 0 0\n");
-  await writeFile(join(root, "10", "stat"), "10 (llama server) S 1 10 10 0 -1 4194560 0 0\n");
+  await writeFdinfo(root, 11, "3", "drm-driver:\tamdgpu\n");
+  await writeFile(join(root, "9", "status"), "Name:\tkworker/u128:0\nPPid:\t2\nKthread:\t1\n");
+  await writeFile(join(root, "10", "status"), "Name:\tllama-server\nPPid:\t1\nKthread:\t0\n");
+  // Older kernel, no Kthread line: parent kthreadd gives it away.
+  await writeFile(join(root, "11", "status"), "Name:\tkworker/3:1\nPPid:\t2\n");
   const state = createFdinfoScanState();
   scanAmdgpuFdinfo(root, state, 0);
   const result = scanAmdgpuFdinfo(root, state, FDINFO_MIN_AGE_MS);
   assert.deepEqual([...result.keys()], [10]);
-  assert.deepEqual([...state.kernelThreads], [9]);
+  assert.deepEqual([...state.kernelThreads].sort((a, b) => a - b), [9, 11]);
   assert.equal(state.firstSeen.has(9), false);
 });
 
