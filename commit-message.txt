@@ -1,6 +1,6 @@
-release: v0.9.10 skip kernel threads in the fdinfo scan
+release: v0.9.11 detect kernel threads via /proc/<pid>/status
 
-- Fixed: kworker threads outlived the 10 s age gate and each cost
-  one AppArmor ptrace denial. Kernel threads are now detected once
-  via PF_KTHREAD in /proc/<pid>/stat (not ptrace-gated) and never
-  scanned.
+- Fixed: the 0.9.10 kernel thread check read /proc/<pid>/stat for every
+  new pid, which AppArmor audits, so agents kept logging 10 to 20
+  ptrace denials per minute. Read the Kthread: line of
+  /proc/<pid>/status instead (silent), PPid: 2 fallback on older kernels.
