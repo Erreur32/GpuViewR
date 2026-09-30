@@ -37,6 +37,12 @@ jobs:
         with:
           sarif_file: snyk-code.sarif
 
+      # continue-on-error hides tool failures (bad token, API outage) as well
+      # as findings. Findings still produce a SARIF file, failures do not.
+      - name: Fail if Snyk Code did not run
+        if: always()
+        run: test -s snyk-code.sarif || { echo "::error::Snyk Code produced no SARIF, check SNYK_TOKEN and the scan step log"; exit 1; }
+
   snyk-deps:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -60,6 +66,12 @@ jobs:
         if: always() && hashFiles('snyk-deps.sarif') != ''
         with:
           sarif_file: snyk-deps.sarif
+
+      # continue-on-error hides tool failures (bad token, API outage) as well
+      # as findings. Findings still produce a SARIF file, failures do not.
+      - name: Fail if Snyk Open Source did not run
+        if: always()
+        run: test -s snyk-deps.sarif || { echo "::error::Snyk Open Source produced no SARIF, check SNYK_TOKEN and the scan step log"; exit 1; }
 
   snyk-docker:
     runs-on: ubuntu-latest
@@ -88,3 +100,9 @@ jobs:
         if: always() && hashFiles('snyk-docker.sarif') != ''
         with:
           sarif_file: snyk-docker.sarif
+
+      # continue-on-error hides tool failures (bad token, API outage) as well
+      # as findings. Findings still produce a SARIF file, failures do not.
+      - name: Fail if Snyk Container did not run
+        if: always()
+        run: test -s snyk-docker.sarif || { echo "::error::Snyk Container produced no SARIF, check SNYK_TOKEN and the scan step log"; exit 1; }
