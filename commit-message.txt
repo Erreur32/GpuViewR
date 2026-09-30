@@ -1,6 +1,6 @@
-release: v0.9.11 detect kernel threads via /proc/<pid>/status
+release: v0.9.12 dependency security fixes
 
-- Fixed: the 0.9.10 kernel thread check read /proc/<pid>/stat for every
-  new pid, which AppArmor audits, so agents kept logging 10 to 20
-  ptrace denials per minute. Read the Kthread: line of
-  /proc/<pid>/status instead (silent), PPid: 2 fallback on older kernels.
+- Security: ip-address 10.7.2 (SSRF, GHSA-2vr4-cq9g-pvrc,
+  GHSA-rpw4-54j3-4h4q), brace-expansion 2.1.7 / 5.0.12 and
+  fast-uri 3.1.8 (dev). Lockfile only.
+- Removed: PR security review Action, now run locally on demand.
