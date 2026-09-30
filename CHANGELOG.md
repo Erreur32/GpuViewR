@@ -5,6 +5,19 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.12] - 2026-09-30
+
+### Security
+
+- **Dependency updates** (lockfile only, no `package.json` change):
+  - `ip-address` 10.5.0 to 10.7.2 (runtime, via `express-rate-limit` and `mqtt`): `isLinkLocal()` matched `fe80::/64` instead of `fe80::/10`, and the NAT64 local-use range was not classified, both allowing SSRF and trust-boundary bypass (GHSA-2vr4-cq9g-pvrc, GHSA-rpw4-54j3-4h4q).
+  - `brace-expansion` 2.1.7 and 5.0.12 (dev): CPU and stack exhaustion DoS (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p).
+  - `fast-uri` 3.1.8 (dev): inconsistent host case normalization (GHSA-hrr3-gc8f-f4qj).
+
+### Removed
+
+- The Claude Code security review GitHub Action on pull requests (too costly in API usage). Security review now runs locally on demand.
+
 ## [0.9.11] - 2026-09-29
 
 ### Fixed
