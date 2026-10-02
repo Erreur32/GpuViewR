@@ -66,11 +66,13 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /app/data && chown -R node:node /app
 
-# node:22-trixie-slim still bundles npm 10.9.x, whose vendored pacote
-# (19.0.2) is below the patched 21.5.1 (SNYK-JS-PACOTE-8225084, DoS via
-# addGitSha). Self-updating npm here pulls a newer pacote without waiting
-# on a new Node base image tag.
-RUN npm install -g npm@latest --loglevel=error && npm cache clean --force
+# The runtime never calls npm (CMD runs tsx straight from node_modules),
+# but the base image ships npm + corepack under /usr/local/lib/node_modules
+# and their vendored deps (undici, http-cache-semantics, brace-expansion)
+# keep raising Snyk Container alerts even on npm@latest. Drop them; the
+# builder stage above keeps npm for `npm ci` / builds.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
