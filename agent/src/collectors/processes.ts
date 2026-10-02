@@ -64,6 +64,9 @@ const MIN_TICK_MS = 1_000;
 
 const QUERY = ['pid', 'process_name', 'gpu_uuid', 'used_memory'].join(',');
 
+// Retry window for the bus id → UUID lookup when a GPU stays unmapped.
+const UUID_MAP_TTL_MS = 60_000;
+
 export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCollectorHandle {
   const tickMs = Math.max(opts.tickMs, MIN_TICK_MS);
   let timer: NodeJS.Timeout | null = null;
@@ -82,53 +85,67 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
     return nvidiaSmiAvailable;
   }
 
-  function spawnComputeApps(): Promise<AgentGpuProcess[]> {
+  /** Run nvidia-smi and resolve its stdout, or null on spawn error / non-zero exit. */
+  function runSmi(args: string[]): Promise<string | null> {
     return new Promise((resolve) => {
-      const child = spawn(opts.nvidiaSmiPath, [
-        `--query-compute-apps=${QUERY}`,
-        '--format=csv,noheader,nounits',
-      ]);
+      const child = spawn(opts.nvidiaSmiPath, args);
       let stdout = '';
       let stderr = '';
       child.stdout.on('data', (d) => (stdout += d.toString()));
       child.stderr.on('data', (d) => (stderr += d.toString()));
-      child.on('error', () => resolve([]));
+      child.on('error', () => resolve(null));
       child.on('close', (code) => {
         if (code !== 0) {
-          if (stderr.trim()) logger.debug('proc', `nvidia-smi compute-apps exited ${code}: ${stderr.trim()}`);
-          resolve([]);
+          if (stderr.trim()) logger.debug('proc', `nvidia-smi ${args[0]} exited ${code}: ${stderr.trim()}`);
+          resolve(null);
           return;
         }
-        resolve(parseComputeApps(stdout, opts.hostProc));
+        resolve(stdout);
       });
     });
   }
 
-  function spawnPmon(): Promise<Map<number, { type: GpuProcessType; gpuPct: number | null }>> {
-    return new Promise((resolve) => {
-      const child = spawn(opts.nvidiaSmiPath, ['pmon', '-c', '1', '-s', 'u']);
-      let stdout = '';
-      child.stdout.on('data', (d) => (stdout += d.toString()));
-      child.on('error', () => resolve(new Map()));
-      child.on('close', (code) => {
-        if (code !== 0) { resolve(new Map()); return; }
-        resolve(parsePmon(stdout));
-      });
-    });
+  // `nvidia-smi -q` keys its GPU blocks by PCI bus id, the hub keys
+  // processes by GPU UUID. Cached because the mapping only changes on
+  // hotplug; refreshed (throttled) when an unknown bus id shows up.
+  let uuidByBus = new Map<string, string>();
+  let uuidMapAt = 0;
+
+  async function resolveUuids(busIds: string[]): Promise<void> {
+    if (busIds.every((b) => uuidByBus.has(b))) return;
+    if (Date.now() - uuidMapAt < UUID_MAP_TTL_MS) return;
+    uuidMapAt = Date.now();
+    const out = await runSmi(['--query-gpu=pci.bus_id,uuid', '--format=csv,noheader']);
+    if (out !== null) uuidByBus = parseBusUuidMap(out);
   }
 
   async function tick(): Promise<void> {
     if (inflight) return;
     inflight = true;
     try {
-      const [procs, pmonByPid] = await Promise.all([spawnComputeApps(), spawnPmon()]);
+      const [computeOut, pidsOut, pmonOut] = await Promise.all([
+        runSmi([`--query-compute-apps=${QUERY}`, '--format=csv,noheader,nounits']),
+        // Only source that also lists graphics-only clients (Xorg,
+        // compositors, browsers): --query-compute-apps skips them.
+        runSmi(['-q', '-d', 'PIDS']),
+        runSmi(['pmon', '-c', '1', '-s', 'u']),
+      ]);
+      const procs = computeOut === null ? [] : parseComputeApps(computeOut, opts.hostProc);
+      const pmonByPid = pmonOut === null ? new Map() : parsePmon(pmonOut);
+      const smiTypeByPid = new Map<number, GpuProcessType>();
+      if (pidsOut !== null) {
+        const listed = parseQueryPids(pidsOut);
+        await resolveUuids(listed.map((e) => e.busId));
+        mergeQueryPids(procs, listed, uuidByBus, opts.hostProc);
+        for (const e of listed) if (e.type) smiTypeByPid.set(e.pid, e.type);
+      }
       const enriched: AgentGpuProcess[] = procs.map((p) => {
         const pmon = pmonByPid.get(p.pid);
         const command = readCmdline(p.pid, opts.hostProc);
         const llm = classifyLLM(command, opts.llmResolvers);
         return {
           ...p,
-          type: pmon?.type ?? (command ? 'C' : null),
+          type: pmon?.type ?? smiTypeByPid.get(p.pid) ?? (command ? 'C' : null),
           command,
           cpu_pct: cpuSampler.sample(p.pid),
           gpu_pct: pmon?.gpuPct ?? null,
@@ -174,29 +191,12 @@ function parseComputeApps(out: string, procRoot: string): AgentGpuProcess[] {
     const pid = Number.parseInt(parts[0], 10);
     if (!Number.isFinite(pid)) continue;
     const used = Number.parseInt(parts[3], 10);
-    let name = parts[1] || '';
-    if (!name || name === '[Not Found]' || name === '-' || name.toLowerCase() === 'n/a') {
-      name = resolveProcessName(pid, procRoot) || 'unknown';
-    } else {
-      // nvidia-smi reports the full executable path; keep the basename
-      // like the ROCm collector does, the full path is in `command`.
-      name = basename(name);
-    }
-    procs.push({
-      pid,
-      process_name: name,
-      gpu_uuid: parts[2] || '',
-      used_memory: Number.isFinite(used) ? used : 0,
-      type: null,
-      command: null,
-      cpu_pct: null,
-      gpu_pct: null,
-    });
+    procs.push(bareProcess(pid, displayName(parts[1], pid, procRoot), parts[2] || '', Number.isFinite(used) ? used : 0));
   }
   return procs;
 }
 
-function parsePmon(out: string): Map<number, { type: GpuProcessType; gpuPct: number | null }> {
+export function parsePmon(out: string): Map<number, { type: GpuProcessType; gpuPct: number | null }> {
   const result = new Map<number, { type: GpuProcessType; gpuPct: number | null }>();
   for (const raw of out.split('\n')) {
     const line = raw.trim();
@@ -205,11 +205,113 @@ function parsePmon(out: string): Map<number, { type: GpuProcessType; gpuPct: num
     if (parts.length < 4) continue;
     const pid = Number.parseInt(parts[1], 10);
     if (!Number.isFinite(pid)) continue;
-    const typeRaw = parts[2];
-    let type: GpuProcessType = null;
-    if (typeRaw === 'C' || typeRaw === 'G' || typeRaw === 'G+C') type = typeRaw;
     const sm = Number.parseInt(parts[3], 10);
-    result.set(pid, { type, gpuPct: Number.isFinite(sm) ? sm : null });
+    result.set(pid, { type: normalizeType(parts[2]), gpuPct: Number.isFinite(sm) ? sm : null });
   }
   return result;
+}
+
+/** Recent drivers print "C+G", older ones "G+C"; normalise to the latter. */
+function normalizeType(raw: string): GpuProcessType {
+  if (raw === 'C' || raw === 'G') return raw;
+  if (raw === 'G+C' || raw === 'C+G') return 'G+C';
+  return null;
+}
+
+function displayName(raw: string | undefined, pid: number, procRoot: string): string {
+  const name = raw?.trim() ?? '';
+  if (!name || name === '[Not Found]' || name === '-' || name.toLowerCase() === 'n/a') {
+    return resolveProcessName(pid, procRoot) || 'unknown';
+  }
+  // nvidia-smi reports the full executable path; keep the basename
+  // like the ROCm collector does, the full path is in `command`.
+  return basename(name);
+}
+
+function normalizeBusId(id: string): string {
+  return id.trim().toLowerCase();
+}
+
+export interface QueryPidsEntry {
+  busId: string;
+  pid: number;
+  type: GpuProcessType;
+  name: string;
+  used_memory: number; // MiB, 0 when the driver doesn't report it (WDDM)
+}
+
+/**
+ * Parse `nvidia-smi -q -d PIDS`. Unlike --query-compute-apps it lists
+ * graphics clients too. Layout per GPU block:
+ *
+ *   GPU 00000000:01:00.0
+ *       Processes
+ *           Process ID                        : 1607
+ *               Type                          : G
+ *               Name                          : /usr/lib/xorg/Xorg
+ *               Used GPU Memory               : 245 MiB
+ */
+export function parseQueryPids(out: string): QueryPidsEntry[] {
+  const entries: QueryPidsEntry[] = [];
+  for (const block of out.split(/^GPU\s+/m).slice(1)) {
+    const busId = normalizeBusId(block.split('\n', 1)[0]);
+    for (const chunk of block.split(/^\s*Process ID\s*:/m).slice(1)) {
+      const pid = Number.parseInt(chunk, 10);
+      if (!Number.isFinite(pid)) continue;
+      const type = /^\s*Type\s*:\s*(\S+)/m.exec(chunk)?.[1] ?? '';
+      const name = /^\s*Name\s*:\s*(.*)$/m.exec(chunk)?.[1] ?? '';
+      const used = Number.parseInt(/^\s*Used GPU Memory\s*:\s*(.*)$/m.exec(chunk)?.[1] ?? '', 10);
+      entries.push({
+        busId,
+        pid,
+        type: normalizeType(type),
+        name: name.trim(),
+        used_memory: Number.isFinite(used) ? used : 0,
+      });
+    }
+  }
+  return entries;
+}
+
+/** Parse `--query-gpu=pci.bus_id,uuid --format=csv,noheader`. */
+export function parseBusUuidMap(out: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const line of out.split('\n')) {
+    const [bus, uuid] = line.split(',').map((s) => s.trim());
+    if (bus && uuid) map.set(normalizeBusId(bus), uuid);
+  }
+  return map;
+}
+
+/** Append `-q` entries missing from the compute-apps list (graphics-only
+ *  clients). Entries on a GPU whose UUID is unknown are dropped, the hub
+ *  could not attribute them to a card anyway. */
+export function mergeQueryPids(
+  procs: AgentGpuProcess[],
+  listed: QueryPidsEntry[],
+  uuidByBus: Map<string, string>,
+  procRoot: string,
+): void {
+  const seen = new Set(procs.map((p) => `${p.pid}|${p.gpu_uuid}`));
+  for (const e of listed) {
+    const uuid = uuidByBus.get(e.busId);
+    const key = `${e.pid}|${uuid}`;
+    if (!uuid || seen.has(key)) continue;
+    seen.add(key);
+    procs.push(bareProcess(e.pid, displayName(e.name, e.pid, procRoot), uuid, e.used_memory));
+  }
+}
+
+/** Row before enrichment (type, cmdline, CPU%, GPU%) in tick(). */
+function bareProcess(pid: number, name: string, uuid: string, usedMiB: number): AgentGpuProcess {
+  return {
+    pid,
+    process_name: name,
+    gpu_uuid: uuid,
+    used_memory: usedMiB,
+    type: null,
+    command: null,
+    cpu_pct: null,
+    gpu_pct: null,
+  };
 }
