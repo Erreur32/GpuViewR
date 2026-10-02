@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFeatures, parseGpuBackend, parseGpuVendor } from './config.js';
+import { parseFeatures, parseGpuBackend, parseGpuVendor, resolveHostProc } from './config.js';
 
 test('parseFeatures: parses canonical CSV', () => {
   assert.deepEqual(parseFeatures('gpu,system,temps,processes'), {
@@ -65,4 +65,20 @@ test('parseGpuBackend: unknown / undefined falls back to auto', () => {
   assert.equal(parseGpuBackend(undefined), 'auto');
   assert.equal(parseGpuBackend(''), 'auto');
   assert.equal(parseGpuBackend('libdrm'), 'auto');
+});
+
+test('resolveHostProc: explicit HOST_PROC wins', () => {
+  assert.equal(resolveHostProc('/custom/proc', 'linux', () => false), '/custom/proc');
+});
+
+test('resolveHostProc: docker mount point used when present', () => {
+  assert.equal(resolveHostProc(undefined, 'linux', () => true), '/host/proc');
+});
+
+test('resolveHostProc: systemd install without /host/proc falls back to /proc', () => {
+  assert.equal(resolveHostProc(undefined, 'linux', () => false), '/proc');
+});
+
+test('resolveHostProc: empty on Windows', () => {
+  assert.equal(resolveHostProc(undefined, 'win32', () => true), '');
 });

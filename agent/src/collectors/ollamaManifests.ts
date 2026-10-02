@@ -36,11 +36,12 @@
 // `OLLAMA_MANIFESTS_DIR=`.
 //
 //   1. $OLLAMA_MANIFESTS_DIR   (explicit override)
-//   2. /host/ollama/manifests  (docker bind-mount we add in compose)
-//   3. /usr/share/ollama/.ollama/manifests
+//   2. /host/ollama/models/manifests  (docker bind-mount of ~/.ollama)
+//   3. /usr/share/ollama/.ollama/models/manifests
 //                              (systemd `ollama` user default)
-//   4. $HOME/.ollama/manifests (per-user install)
-//   5. /root/.ollama/manifests (root user, ollama-as-root install)
+//   4. $HOME/.ollama/models/manifests (per-user install)
+//   5. /root/.ollama/models/manifests (root user, ollama-as-root install)
+// Each root is also tried without the `models/` segment.
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -79,10 +80,13 @@ function candidateManifestsDirs(): string[] {
   const env = process.env.OLLAMA_MANIFESTS_DIR?.trim();
   const out: string[] = [];
   if (env) out.push(env);
-  out.push('/host/ollama/manifests');
-  out.push('/usr/share/ollama/.ollama/manifests');
-  if (process.env.HOME) out.push(`${process.env.HOME}/.ollama/manifests`);
-  out.push('/root/.ollama/manifests');
+  // Ollama keeps manifests under <home>/.ollama/models/manifests. The
+  // bare <home>/.ollama/manifests forms are kept for older setups that
+  // pointed OLLAMA_MODELS straight at .ollama.
+  const roots = ['/host/ollama', '/usr/share/ollama/.ollama'];
+  if (process.env.HOME) roots.push(`${process.env.HOME}/.ollama`);
+  roots.push('/root/.ollama');
+  for (const root of roots) out.push(`${root}/models/manifests`, `${root}/manifests`);
   return out;
 }
 

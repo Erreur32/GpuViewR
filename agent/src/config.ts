@@ -2,6 +2,8 @@
 // fatal exit at boot (cf. Docs/MULTI_HOST_PLAN.md §12 — "soit l'agent
 // tourne, soit il tourne pas"). Optional vars get sensible defaults.
 
+import { existsSync } from "node:fs";
+
 export interface AgentFeatures {
   gpu: boolean;
   system: boolean;
@@ -56,6 +58,23 @@ export function parseGpuBackend(raw: string | undefined): GpuBackend {
   const v = (raw || "").trim().toLowerCase();
   if (v === "sysfs" || v === "rocm-smi" || v === "auto") return v;
   return "auto";
+}
+
+/** Where to read per-pid /proc entries. Docker agents get the host's
+ *  /proc bind-mounted at /host/proc; the systemd binary runs on the host
+ *  itself, never sets HOST_PROC, and has no /host/proc, so every cmdline
+ *  and stat read used to fail silently (no command, CPU% or LLM badge).
+ *  Fall back to /proc when the default mount point is absent. */
+export function resolveHostProc(
+  raw: string | undefined,
+  platform: NodeJS.Platform,
+  exists: (path: string) => boolean = existsSync,
+): string {
+  if (raw) return raw;
+  // On Windows we don't read /proc at all (process collector is
+  // skipped); empty string keeps the path out of log lines.
+  if (platform === "win32") return "";
+  return exists("/host/proc") ? "/host/proc" : "/proc";
 }
 
 function requiredEnv(name: string): string {
@@ -232,12 +251,7 @@ export function loadConfig(): AgentConfig {
       process.env.NVIDIA_SMI_PATH ||
       (process.platform === "win32" ? "nvidia-smi.exe" : "nvidia-smi"),
     rocmSmiPath: process.env.ROCM_SMI_PATH || "rocm-smi",
-    // /host/proc only exists on Linux. On Windows we don't read /proc
-    // at all (process collector is skipped); empty string makes that
-    // explicit and prevents the path from leaking into log lines.
-    hostProc:
-      process.env.HOST_PROC ||
-      (process.platform === "win32" ? "" : "/host/proc"),
+    hostProc: resolveHostProc(process.env.HOST_PROC, process.platform),
     reconnectMaxMs: parseInt10("RECONNECT_MAX_MS", 30_000),
     tlsInsecure: parseBool("TLS_INSECURE", false),
     mockGpu: parseBool("MOCK_GPU", false),
