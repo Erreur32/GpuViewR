@@ -1,8 +1,12 @@
-release: v0.9.14 NVIDIA graphics processes in the process table
+release: v0.9.15 theme palettes, page width, light-theme fixes
 
-- Fixed: graphics-only NVIDIA processes (Xorg, compositors, browsers)
-  were never listed, --query-compute-apps skips them. The agent now
-  also parses nvidia-smi -q -d PIDS, mapped to the GPU UUID via the
-  PCI bus id.
-- Fixed: recent drivers print "C+G" instead of "G+C", the process
-  type was dropped. Both spellings map to G+C.
+- Added: page width slider in Settings > Custom (1200-2560 px or full).
+- Added: Slate chart preset, dark-on-light variant of Graphite.
+- Changed: picking a theme resets the chart curves to its palette;
+  per-host colours untouched.
+- Changed: process table shows the LLM model in colour and a command
+  line coloured by role; logs use zebra rows instead of separators.
+- Fixed: headings near invisible on light themes (hardcoded body text
+  colour in index.html).
+- Fixed: AMD GPU names now shortened like NVIDIA (RX 7900 XTX).
+- Fixed: demo Logs page crash; TypeScript 7 PCIe tile props.
