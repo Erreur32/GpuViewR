@@ -70,7 +70,7 @@ every chart.
 
 <div align="center">
 
-<img src="public/CpuViewR_screnshot.png" alt="GpuViewR dashboard screenshot" />
+<img src="public/chrome-capture-2026-10-02.png" alt="GpuViewR dashboard screenshot" />
 
 </div>
 
