@@ -137,14 +137,15 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
                         {p.process_name}
                       </span>
                       {p.llm_runtime && <LlmBadge runtime={p.llm_runtime} model={p.llm_model ?? null} />}
+                      {p.llm_model && (
+                        <span className="font-mono text-[11px] font-semibold truncate" style={{ color: MODEL_COLOR }}>
+                          {p.llm_model}
+                        </span>
+                      )}
                     </div>
                     {p.command && p.command !== p.process_name && (
-                      <div
-                        className="text-[10px] font-mono truncate opacity-80"
-                        style={{ color: 'var(--gv-text-dim)' }}
-                        title={p.command}
-                      >
-                        {p.command}
+                      <div className="text-[10px] font-mono break-all line-clamp-2" title={p.command}>
+                        <CommandLine command={p.command} />
                       </div>
                     )}
                   </td>
@@ -187,6 +188,51 @@ function TypeBadge({ type }: Readonly<{ type: 'C' | 'G' | 'G+C' | null }>) {
     >
       {type}
     </span>
+  );
+}
+
+const MODEL_COLOR = 'var(--gv-ok)';
+
+/** Flags whose value names the loaded model (llama.cpp, vLLM, ollama
+ *  runner, KoboldCpp). Mirrors the agent's llmClassifier lookups. */
+const MODEL_FLAGS = new Set(['-m', '--model', '-hf', '--hf-repo', '--alias']);
+
+const TOKEN_COLORS = {
+  flag: 'var(--gv-text-muted)',
+  model: MODEL_COLOR,
+  value: 'var(--gv-text)',
+} as const;
+type TokenRole = keyof typeof TOKEN_COLORS;
+
+/** Command line split on spaces and coloured by role: flags dim, values
+ *  and the executable in the regular text colour, model values in
+ *  MODEL_COLOR. Plain space scan, no regex (see SonarCloud S5852). */
+function CommandLine({ command }: Readonly<{ command: string }>) {
+  const tokens: { text: string; offset: number; role: TokenRole }[] = [];
+  let offset = 0;
+  let prev = '';
+  for (const text of command.split(' ')) {
+    if (text) {
+      let role: TokenRole = 'value';
+      if (text.startsWith('-')) role = 'flag';
+      else if (MODEL_FLAGS.has(prev)) role = 'model';
+      tokens.push({ text, offset, role });
+      prev = text;
+    }
+    offset += text.length + 1;
+  }
+  return (
+    <>
+      {tokens.map((tok) => (
+        <span
+          key={tok.offset}
+          className={tok.role === 'model' ? 'font-semibold' : undefined}
+          style={{ color: TOKEN_COLORS[tok.role] }}
+        >
+          {tok.text}{' '}
+        </span>
+      ))}
+    </>
   );
 }
 

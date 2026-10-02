@@ -29,7 +29,7 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-30 border-b backdrop-blur-xl"
             style={{ borderColor: 'var(--gv-border)', background: 'color-mix(in srgb, var(--gv-bg) 70%, transparent)' }}>
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-4 flex-wrap">
+      <div className="max-w-[var(--gv-content-max)] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-3 group">
           <NavLink
             to="/settings/about"

@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Page width slider** in Settings → Custom. Sets the max width of the header, pages and footer (1200 to 2560 px, or full width), saved per browser. Default stays 1600 px.
+
+### Changed
+
+- **Process table**: the LLM model name is shown in colour next to the runtime badge (it was only in the badge tooltip), and the command line is coloured by role: values in the regular text colour, flags dimmed, model values highlighted. Wraps on two lines instead of being cut on one.
+- **Picking a theme resets the chart curves to its palette**: Midnight → Royal, Graphite → Graphite, Oceanic → Aurora, Paper Dark → Cyber, light themes → Slate, a new dark-on-light variant of Graphite (the light greys of Graphite were barely visible on white). Per-host colours (Settings → Hosts) are not affected.
+- **Logs page**: no more separator lines between entries, rows are zebra-striped instead. Stripes, hover and the new slider are built from theme tokens, so they read on light themes too.
+
 ### Fixed
+
+- **Light themes: headings and untinted text stayed white.** `index.html` hardcoded `text-slate-100` / `bg-slate-950` on `<body>`, which beat the theme colour, so every element without an explicit colour (page titles, card headings, app name) was near invisible on Daylight and Paper.
+- **Demo mode: Logs page crashed.** The demo API returned no per-level `counts`; it now mirrors the real `/api/logs` response, including level, scope and search filters.
 
 - **AMD GPU names shown in full** ("AMD Radeon RX 7900 XTX") in GPU tabs, charts and fleet tiles. The short name now also drops the `AMD` vendor prefix and the `Radeon` / `Instinct` brand (`RX 7900 XTX`, `MI300X`), like it already did for NVIDIA. A bare APU name ("AMD Radeon Graphics") keeps its brand. Fleet tiles now use the same shortening as the dashboard instead of only stripping `NVIDIA `.
 - TypeScript 7 compatibility: the dashboard PCIe tiles received `undefined` when a sample had no PCIe throughput, now coalesced to `null`.

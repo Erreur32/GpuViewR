@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { applyTheme, getTheme } from '../lib/themes';
+import { chartPresetForTheme } from '../lib/chartPresets';
 
 export type GaugeView = 'arc' | 'bar';
 export type DashboardView = 'single' | 'all';
@@ -31,6 +32,20 @@ export const ROYAL_DEFAULT_COLORS: Required<ChartColors> = {
 
 export type FleetView = 'simple' | 'detailed';
 
+/** Max width of the page body (header, main, footer) in px. The top of
+ *  the slider means "full width" and is stored as 0. */
+export const CONTENT_WIDTH = { min: 1200, max: 2560, step: 80, default: 1600, full: 0 } as const;
+
+function applyContentWidth(px: number): void {
+  document.documentElement.style.setProperty('--gv-content-max', px === CONTENT_WIDTH.full ? '100%' : `${px}px`);
+}
+
+function clampContentWidth(px: number): number {
+  if (px === CONTENT_WIDTH.full) return px;
+  if (!Number.isFinite(px)) return CONTENT_WIDTH.default;
+  return Math.min(CONTENT_WIDTH.max, Math.max(CONTENT_WIDTH.min, px));
+}
+
 interface UiState {
   themeId: string;
   gaugeView: GaugeView;
@@ -46,6 +61,7 @@ interface UiState {
   /** Fleet page density: 'simple' = single hottest-GPU card, 'detailed' =
    *  per-GPU mini-tile row with util / temp / power + sparkline. */
   fleetView: FleetView;
+  contentWidth: number;
 
   setThemeId: (id: string) => void;
   setGaugeView: (v: GaugeView) => void;
@@ -60,6 +76,7 @@ interface UiState {
   setChartThresholdsEnabled: (v: boolean) => void;
   resetChartThresholds: () => void;
   setFleetView: (v: FleetView) => void;
+  setContentWidth: (px: number) => void;
 
   hydrate: () => void;
 }
@@ -77,6 +94,7 @@ const KEYS = {
   chartThresholdsEnabled: 'gpuviewr.chart_thresholds_enabled',
   chartPaletteInitialized: 'gpuviewr.chart_palette_initialized',
   fleetView: 'gpuviewr.fleet_view',
+  contentWidth: 'gpuviewr.content_width',
 };
 
 function readLS(key: string, fallback: string): string {
@@ -128,12 +146,18 @@ export const useUiStore = create<UiState>((set, get) => ({
   chartThresholdsEnabled: true,
   chartPaletteInitialized: false,
   fleetView: 'simple',
+  contentWidth: CONTENT_WIDTH.default,
 
   setThemeId: (id) => {
     const t = getTheme(id);
     applyTheme(t.id);
     localStorage.setItem(KEYS.theme, t.id);
-    set({ themeId: t.id });
+    // Each theme comes with its own chart palette; picking a theme resets
+    // the curves to it. Per-host colours (hosts.color, server side) are
+    // a separate setting and stay untouched.
+    const chartColors: ChartColors = { ...chartPresetForTheme(t.id).colors };
+    localStorage.setItem(KEYS.chartColors, JSON.stringify(chartColors));
+    set({ themeId: t.id, chartColors });
   },
   setGaugeView: (v) => {
     localStorage.setItem(KEYS.view, v);
@@ -190,6 +214,12 @@ export const useUiStore = create<UiState>((set, get) => ({
     localStorage.setItem(KEYS.fleetView, v);
     set({ fleetView: v });
   },
+  setContentWidth: (px) => {
+    const w = clampContentWidth(px);
+    applyContentWidth(w);
+    localStorage.setItem(KEYS.contentWidth, String(w));
+    set({ contentWidth: w });
+  },
 
   hydrate: () => {
     const themeId = readLS(KEYS.theme, 'midnight');
@@ -224,10 +254,12 @@ export const useUiStore = create<UiState>((set, get) => ({
     }
     applyTheme(themeId);
     const fleetView: FleetView = readLS(KEYS.fleetView, 'simple') === 'detailed' ? 'detailed' : 'simple';
+    const contentWidth = clampContentWidth(Number.parseInt(readLS(KEYS.contentWidth, String(CONTENT_WIDTH.default)), 10));
+    applyContentWidth(contentWidth);
     set({
       themeId, gaugeView, dashboardView, range, selectedGpu, soundEnabled: sound, chartColors: effectiveColors, timeFormat,
       chartThresholds, chartThresholdsEnabled, chartPaletteInitialized: initialized,
-      fleetView,
+      fleetView, contentWidth,
     });
   },
 }));

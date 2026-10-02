@@ -243,7 +243,7 @@ function handleExports(ctx: RouteCtx): Response | null {
 }
 
 function handleLogsUpdates(ctx: RouteCtx): Response | null {
-  if (ctx.url.pathname === '/api/logs') return json(fakeLogs());
+  if (ctx.url.pathname === '/api/logs') return json(fakeLogs(ctx.url.searchParams));
   if (ctx.url.pathname === '/api/updates/config') {
     if (ctx.method === 'GET') return json({ config: demoUpdateConfig });
     if (ctx.method === 'PUT') {
