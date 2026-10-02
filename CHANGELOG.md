@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.16] - 2026-10-02
+
+### Security
+
+- **`proxy-addr` 2.0.7 → 2.0.8** (pulled by Express). Fixes the critical user impersonation issue [SNYK-JS-PROXYADDR-19812342](https://security.snyk.io/vuln/SNYK-JS-PROXYADDR-19812342).
+
+### Fixed
+
+- `package-lock.json`: 8 dependencies (`forwarded`, `tempy`, `deep-extend`, `tunnel-agent`, …) had their recorded version overwritten to `0.7.0` by an old release-script bug. The right code was installed, but security scanners read the wrong versions. Restored to the real versions.
+
+### Changed
+
+- CI: Snyk jobs now fail when a scan produces no results (bad token, API outage), instead of passing silently. The Snyk Code job is removed (not enabled on the Snyk org, CodeQL covers static analysis).
+
 ## [0.9.15] - 2026-10-02
 
 ### Added
