@@ -7,6 +7,8 @@
 
 /* Default tokens (overridden at runtime by applyTheme) */
 :root {
+  /* Page body max width, overridden by the Custom > layout slider. */
+  --gv-content-max: 1600px;
   --gv-bg: #0a1020;
   --gv-bg2: #0e1830;
   --gv-surface: rgba(15, 23, 42, 0.7);
@@ -176,6 +178,35 @@ body {
     color: var(--gv-accent);
     background: transparent;
     box-shadow: inset 0 0 0 1px var(--gv-accent);
+  }
+
+  /* Theme-aware range slider: thin track from --gv-border, accent thumb. */
+  .range {
+    @apply w-full h-1.5 rounded-full cursor-pointer appearance-none;
+    background: color-mix(in srgb, var(--gv-text) 12%, transparent);
+  }
+  .range::-webkit-slider-thumb {
+    @apply appearance-none w-4 h-4 rounded-full;
+    background: var(--gv-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--gv-accent) 25%, transparent);
+  }
+  .range::-moz-range-thumb {
+    @apply w-4 h-4 rounded-full border-0;
+    background: var(--gv-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--gv-accent) 25%, transparent);
+  }
+  .range:focus-visible {
+    @apply outline-none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--gv-accent) 35%, transparent);
+  }
+
+  /* Zebra rows mixed from --gv-text so the stripe reads on both dark
+     (light veil) and light (dark veil) themes. */
+  .zebra-row:nth-child(odd) {
+    background: color-mix(in srgb, var(--gv-text) 3%, transparent);
+  }
+  .zebra-row:hover {
+    background: color-mix(in srgb, var(--gv-text) 7%, transparent);
   }
 
   /* Scope override: the Settings page keeps the legacy filled-blue

@@ -19,8 +19,9 @@ import {
   BellOff,
   BellRing,
   Server,
+  MoveHorizontal,
 } from "lucide-react";
-import { useUiStore, DEFAULT_THRESHOLDS } from "../../store/uiStore";
+import { useUiStore, DEFAULT_THRESHOLDS, CONTENT_WIDTH } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
 import { useHostsStore } from "../../store/hostsStore";
 import { THEMES } from "../../lib/themes";
@@ -62,6 +63,8 @@ export default function SettingsPage() {
     resetChartColors,
     soundEnabled,
     setSoundEnabled,
+    contentWidth,
+    setContentWidth,
   } = useUiStore();
 
   const applyChartPreset = (preset: ChartPreset) => {
@@ -181,6 +184,8 @@ export default function SettingsPage() {
             />
           </section>
 
+          <ContentWidthSection value={contentWidth} onChange={setContentWidth} />
+
           <section className="card p-5 space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="font-semibold flex items-center gap-2">
@@ -200,7 +205,7 @@ export default function SettingsPage() {
               {t("settings.chart_palette_help")}
             </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
               {CHART_PRESETS.map((p) => {
                 const active =
                   chartColors.util === p.colors.util &&
@@ -754,5 +759,55 @@ function ThemeRow({
         ))}
       </div>
     </div>
+  );
+}
+
+/** Page-width slider. The slider's last notch (max + step) maps to
+ *  CONTENT_WIDTH.full, i.e. no max width at all. */
+function ContentWidthSection({ value, onChange }: Readonly<{
+  value: number;
+  onChange: (px: number) => void;
+}>) {
+  const { t } = useTranslation();
+  const fullNotch = CONTENT_WIDTH.max + CONTENT_WIDTH.step;
+  const isFull = value === CONTENT_WIDTH.full;
+  const sliderValue = isFull ? fullNotch : value;
+  return (
+    <section className="card p-5 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="font-semibold flex items-center gap-2">
+          <MoveHorizontal className="w-4 h-4" /> {t("settings.content_width")}
+        </h2>
+        <button
+          type="button"
+          className="seg-btn text-xs inline-flex items-center gap-1.5"
+          onClick={() => onChange(CONTENT_WIDTH.default)}
+          disabled={value === CONTENT_WIDTH.default}
+        >
+          <RotateCcw className="w-3.5 h-3.5" /> {t("settings.content_width_reset")}
+        </button>
+      </div>
+      <p className="text-xs" style={{ color: "var(--gv-text-muted)" }}>
+        {t("settings.content_width_help")}
+      </p>
+      <div className="flex items-center gap-4">
+        <input
+          type="range"
+          className="range flex-1"
+          min={CONTENT_WIDTH.min}
+          max={fullNotch}
+          step={CONTENT_WIDTH.step}
+          value={sliderValue}
+          onChange={(e) => {
+            const px = Number(e.target.value);
+            onChange(px >= fullNotch ? CONTENT_WIDTH.full : px);
+          }}
+          aria-label={t("settings.content_width")}
+        />
+        <span className="w-28 text-right text-sm font-mono tabular-nums" style={{ color: "var(--gv-text)" }}>
+          {isFull ? t("settings.content_width_full") : `${value} px`}
+        </span>
+      </div>
+    </section>
   );
 }

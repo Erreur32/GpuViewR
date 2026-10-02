@@ -113,9 +113,9 @@ export default function LogsPage() {
             {loading ? t('common.loading') : t('logs.empty')}
           </div>
         ) : (
-          <ul className="font-mono text-xs leading-relaxed divide-y" style={{ borderColor: 'var(--gv-border)' }}>
+          <ul className="font-mono text-xs leading-relaxed">
             {entries.map((e, i) => (
-              <li key={`${e.ts}-${i}`} className="px-3 py-1.5 hover:bg-white/[0.02] flex gap-3">
+              <li key={`${e.ts}-${i}`} className="zebra-row px-3 py-1.5 flex gap-3">
                 <span className="tabular-nums" style={{ color: 'var(--gv-text-dim)' }}>
                   {fmtTs(e.ts)}
                 </span>

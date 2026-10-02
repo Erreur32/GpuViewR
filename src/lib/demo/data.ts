@@ -254,7 +254,9 @@ export function fakeAlertPresets() {
   ];
 }
 
-export function fakeLogs() {
+/** Mirrors GET /api/logs: entries filtered by level/scope/q, `counts`
+ *  per level ignoring the level filter (like logger.counts()). */
+export function fakeLogs(params: URLSearchParams) {
   const now = Math.floor(Date.now() / 1000);
   const scopes = ['gpu', 'auth', 'db', 'mqtt', 'alerts', 'updates'];
   const entries = [
@@ -267,7 +269,18 @@ export function fakeLogs() {
     { ts: now - 1200, level: 'info',    scope: 'auth',    message: 'Demo session opened' },
     { ts: now - 1800, level: 'info',    scope: 'updates', message: 'Update check disabled in demo mode' },
   ];
-  return { entries, scopes };
+  const level = params.get('level');
+  const scope = params.get('scope');
+  const q = params.get('q')?.toLowerCase();
+  const matching = entries.filter((e) =>
+    (!scope || e.scope === scope) && (!q || e.message.toLowerCase().includes(q)));
+  const counts: Record<string, number> = { all: matching.length, info: 0, warn: 0, error: 0, success: 0, debug: 0 };
+  for (const e of matching) counts[e.level]++;
+  return {
+    entries: level ? matching.filter((e) => e.level === level) : matching,
+    scopes,
+    counts,
+  };
 }
 
 export function fakeExportsConfig() {

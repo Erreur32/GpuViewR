@@ -47,7 +47,7 @@ export default function AppFooter() {
         background: 'color-mix(in srgb, var(--gv-bg) 60%, transparent)',
       }}
     >
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3 flex-wrap text-xs">
+      <div className="max-w-[var(--gv-content-max)] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3 flex-wrap text-xs">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="font-semibold" style={{ color: 'var(--gv-text)' }}>GpuViewR</span>
           <span className="font-mono" style={{ color: 'var(--gv-text-dim)' }}>{VERSION}</span>
