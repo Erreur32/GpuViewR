@@ -5,6 +5,13 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **NVIDIA process table missing graphics-only processes** (Xorg, compositors, browsers). The agent only listed `nvidia-smi --query-compute-apps`, which skips graphics clients, so a desktop host showed at most its compute processes. It now also reads `nvidia-smi -q -d PIDS` and adds the graphics-only clients with their VRAM, mapped to the right card through the PCI bus id.
+- **NVIDIA process type lost on recent drivers.** `nvidia-smi pmon` prints `C+G` where older drivers print `G+C`; only the latter was recognised, so mixed graphics/compute processes had no type badge. Both spellings now map to `G+C`.
+
 ## [0.9.13] - 2026-10-02
 
 ### Fixed
