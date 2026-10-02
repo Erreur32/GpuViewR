@@ -7,8 +7,9 @@
 # Updated files:
 #   1. package.json                           : "version" field
 #   2. package-lock.json                      : root + packages."".version
-#   3. src/components/layout/Header.tsx       : VERSION constant
-#   4. README.md                              : GpuViewR-vX.Y.Z badges & links
+#      agent/package.json, agent/package-lock.json : same, agent workspace
+#   3. README.md                              : release links & version text
+#   4. sonar-project.properties               : sonar.projectVersion
 #
 # Commit message file (should be edited before committing):
 #      commit-message.txt: used by git commit -F commit-message.txt
@@ -156,20 +157,28 @@ fi
 # then the v0.7.0 bump pushed it to 0.7.0 which violates the
 # `^0.6.0` semver constraint of its parent and broke `npm ci` on
 # every CI job. Restrict to the first two top-level matches only.
-if [ -f "$PACKAGE_LOCK" ]; then
+bump_lockfile() {
+  local lock="$1" label="$2"
+  if [ ! -f "$lock" ]; then
+    echo -e "  ${Y}○${R} $(printf '%-34s' "$label") ${Y}(not found, run npm install later)${R}"
+    return
+  fi
   # First match: top-level "version" on the file (root project).
-  sedi "$PACKAGE_LOCK" "0,/\"version\": \"$CURRENT_ESC\"/s/\"version\": \"$CURRENT_ESC\"/\"version\": \"$NEW\"/"
+  sedi "$lock" "0,/\"version\": \"$CURRENT_ESC\"/s/\"version\": \"$CURRENT_ESC\"/\"version\": \"$NEW\"/"
   # Second match: packages."" entry, a few lines below the first.
   # We bound the range to the packages section's first ~20 lines so
   # we don't accidentally walk into a nested dep that happens to
   # collide on version. The pattern `"packages": {` followed by the
   # next "version" line is what npm always emits at the top of the
   # packages map for the root project.
-  sedi "$PACKAGE_LOCK" "/\"packages\": {/,/^    },$/ s/\"version\": \"$CURRENT_ESC\"/\"version\": \"$NEW\"/"
-  echo -e "  ${G}✓${R} package-lock.json                  ${C}(root + packages.\"\".version)${R}"
-else
-  echo -e "  ${Y}○${R} package-lock.json                  ${Y}(not found, run npm install later)${R}"
-fi
+  sedi "$lock" "/\"packages\": {/,/^    },$/ s/\"version\": \"$CURRENT_ESC\"/\"version\": \"$NEW\"/"
+  echo -e "  ${G}✓${R} $(printf '%-34s' "$label") ${C}(root + packages.\"\".version)${R}"
+}
+bump_lockfile "$PACKAGE_LOCK" "package-lock.json"
+# The agent is a separate npm project with its own lockfile; left stale,
+# `npm ci` in agent/Dockerfile still works but the lock disagrees with
+# agent/package.json until someone runs npm install by hand.
+bump_lockfile "$REPO_ROOT/agent/package-lock.json" "agent/package-lock.json"
 
 # ── 3. Header / footer VERSION: derived from package.json at build time
 #       (vite injects __APP_VERSION__), so nothing to bump here anymore.
@@ -221,7 +230,8 @@ echo ""
 echo -e "  ${B}── Files to commit (do NOT forget these!) ──${R}"
 echo -e "  ${C}  package.json${R}"
 echo -e "  ${C}  package-lock.json${R}  (if updated)"
-echo -e "  ${C}  src/components/layout/Header.tsx${R}"
+echo -e "  ${C}  agent/package.json${R}"
+echo -e "  ${C}  agent/package-lock.json${R}"
 echo -e "  ${C}  README.md${R}"
 echo -e "  ${C}  sonar-project.properties${R}"
 echo -e "  ${C}  CHANGELOG.md${R}"
