@@ -155,7 +155,13 @@ const PATTERNS: readonly Pattern[] = [
     matches: (cmd) => /\b(llama-server|llama-cli|llamafile)\b/i.test(cmd)
       || (/\bllama\.cpp\b/i.test(cmd))
       || (/\b(?:main|server)\b.*(?:^|\s)-m\s+\S+\.gguf\b/i.test(cmd)),
-    model: (cmd) => modelBasename(flagValue(cmd, ['-m', '--model'])),
+    // -m is a local file; -hf pulls from Hugging Face (`org/repo:quant`)
+    // and --alias is the served name, the only hint left otherwise.
+    model: (cmd) => modelBasename(
+      flagValue(cmd, ['-m', '--model'])
+        ?? flagValue(cmd, ['-hf', '--hf-repo'])
+        ?? flagValue(cmd, ['-a', '--alias']),
+    ),
   },
 
   // KoboldCpp — Python launcher (`koboldcpp.py --model <path>`) or the

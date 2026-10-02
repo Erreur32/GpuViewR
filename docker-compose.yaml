@@ -142,7 +142,7 @@ services:
       # for systemd installs, or /root/.ollama if you run ollama as
       # root). Without the matching volume below, the agent falls
       # back to the sha256 prefix — feature degrades gracefully.
-      OLLAMA_MANIFESTS_DIR: /host/ollama/manifests
+      OLLAMA_MANIFESTS_DIR: /host/ollama/models/manifests
       TZ: ${TZ:-Europe/Paris}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
@@ -218,7 +218,7 @@ services:
       # Optional Ollama model-name resolution — see the agent-nvidia
       # service above for the full explanation. Uncomment the
       # matching volume below to enable.
-      OLLAMA_MANIFESTS_DIR: /host/ollama/manifests
+      OLLAMA_MANIFESTS_DIR: /host/ollama/models/manifests
       TZ: ${TZ:-Europe/Paris}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     devices:

@@ -10,6 +10,7 @@
 // nvtop-style enrichment (type, command, cpu_pct, gpu_pct).
 
 import { spawn, spawnSync } from 'node:child_process';
+import { basename } from 'node:path';
 import { logger } from '../logger.js';
 import { createCpuSampler, readCmdline, resolveProcessName } from './_procTicks.js';
 import { classifyLLM, type LLMResolvers } from './llmClassifier.js';
@@ -176,6 +177,10 @@ function parseComputeApps(out: string, procRoot: string): AgentGpuProcess[] {
     let name = parts[1] || '';
     if (!name || name === '[Not Found]' || name === '-' || name.toLowerCase() === 'n/a') {
       name = resolveProcessName(pid, procRoot) || 'unknown';
+    } else {
+      // nvidia-smi reports the full executable path; keep the basename
+      // like the ROCm collector does, the full path is in `command`.
+      name = basename(name);
     }
     procs.push({
       pid,

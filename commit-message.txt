@@ -1,6 +1,9 @@
-release: v0.9.12 dependency security fixes
+release: v0.9.13 NVIDIA process details on systemd agents
 
-- Security: ip-address 10.7.2 (SSRF, GHSA-2vr4-cq9g-pvrc,
-  GHSA-rpw4-54j3-4h4q), brace-expansion 2.1.7 / 5.0.12 and
-  fast-uri 3.1.8 (dev). Lockfile only.
-- Removed: PR security review Action, now run locally on demand.
+- Fixed: systemd agents read /host/proc (Docker-only path), so the
+  NVIDIA process table had no command, CPU% or LLM badge. Fall back
+  to /proc when HOST_PROC is unset and /host/proc is absent.
+- Fixed: Ollama manifests are under .ollama/models/manifests, model
+  names never resolved. Both layouts tried, compose path updated.
+- Fixed: NVIDIA process name shows the basename, not the full path.
+- Added: llama.cpp model from -hf / --hf-repo, fallback --alias.

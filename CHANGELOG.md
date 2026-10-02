@@ -5,6 +5,18 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.13] - 2026-10-02
+
+### Fixed
+
+- **NVIDIA process table missing the command line, CPU% and LLM badge on systemd agents.** The agent read per-process data from `/host/proc`, a path that only exists in the Docker agent (bind mount of the host `/proc`). The systemd install never sets `HOST_PROC`, so every read failed silently and only what `nvidia-smi` reports (pid, path, VRAM) was left. When `HOST_PROC` is unset and `/host/proc` does not exist, the agent now reads `/proc`. Existing systemd agents pick it up through the auto-update, no reinstall needed.
+- **Ollama model names never resolved** (badge stuck on `sha256:<prefix>`). The manifest lookup searched `<home>/.ollama/manifests`, but Ollama stores them in `<home>/.ollama/models/manifests`. Both layouts are now tried, and `OLLAMA_MANIFESTS_DIR` in `docker-compose.yaml` points to `/host/ollama/models/manifests`.
+- NVIDIA process names now show the executable basename (`llama-server`) instead of the full path, like on AMD. The full path stays in the command line.
+
+### Added
+
+- llama.cpp model detection also reads `-hf` / `--hf-repo` (Hugging Face `org/repo:quant`, shown as `repo:quant`) and falls back to `--alias`, so `llama-server -hf ...` gets a model name next to its badge.
+
 ## [0.9.12] - 2026-09-30
 
 ### Security
