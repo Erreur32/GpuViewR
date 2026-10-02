@@ -5,6 +5,13 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **AMD GPU names shown in full** ("AMD Radeon RX 7900 XTX") in GPU tabs, charts and fleet tiles. The short name now also drops the `AMD` vendor prefix and the `Radeon` / `Instinct` brand (`RX 7900 XTX`, `MI300X`), like it already did for NVIDIA. A bare APU name ("AMD Radeon Graphics") keeps its brand. Fleet tiles now use the same shortening as the dashboard instead of only stripping `NVIDIA `.
+- TypeScript 7 compatibility: the dashboard PCIe tiles received `undefined` when a sample had no PCIe throughput, now coalesced to `null`.
+
 ## [0.9.14] - 2026-10-02
 
 ### Fixed

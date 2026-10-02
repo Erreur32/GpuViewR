@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { type GpuSample } from '../../store/gpuStore';
 import UsageArc from '../ui/UsageArc';
+import { shortGpuName } from '../../lib/gpuName';
 
 type Props = Readonly<{
   sample: GpuSample;
@@ -51,7 +52,7 @@ export default function GpuMiniTile({ sample }: Props) {
     >
       <div className="flex items-center justify-between text-xs">
         <span className="font-medium truncate" style={{ color: 'var(--gv-text)' }}>
-          GPU #{sample.gpu_index} · {sample.name.replace('NVIDIA ', '')}
+          GPU #{sample.gpu_index} · {shortGpuName(sample.name)}
         </span>
         <span className="font-mono text-[10px] tabular-nums" style={{ color: tempC }}>
           {sample.temperature}°C
