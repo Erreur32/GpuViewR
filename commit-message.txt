@@ -1,9 +1,8 @@
-release: v0.9.13 NVIDIA process details on systemd agents
+release: v0.9.14 NVIDIA graphics processes in the process table
 
-- Fixed: systemd agents read /host/proc (Docker-only path), so the
-  NVIDIA process table had no command, CPU% or LLM badge. Fall back
-  to /proc when HOST_PROC is unset and /host/proc is absent.
-- Fixed: Ollama manifests are under .ollama/models/manifests, model
-  names never resolved. Both layouts tried, compose path updated.
-- Fixed: NVIDIA process name shows the basename, not the full path.
-- Added: llama.cpp model from -hf / --hf-repo, fallback --alias.
+- Fixed: graphics-only NVIDIA processes (Xorg, compositors, browsers)
+  were never listed, --query-compute-apps skips them. The agent now
+  also parses nvidia-smi -q -d PIDS, mapped to the GPU UUID via the
+  PCI bus id.
+- Fixed: recent drivers print "C+G" instead of "G+C", the process
+  type was dropped. Both spellings map to G+C.
