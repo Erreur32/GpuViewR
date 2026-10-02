@@ -65,9 +65,9 @@ The Scorecard badge in the README links to the public dashboard.
 
 ## 4. Snyk (free for open-source)
 
-[`snyk.yml`](snyk.yml) runs three scans on every push/PR:
+[`snyk.yml`](snyk.yml) runs two scans on every push/PR (SAST is left to
+CodeQL, Snyk Code is not enabled on the org):
 
-- **Snyk Code** (SAST): TypeScript code patterns
 - **Snyk Open Source**: npm dependency vulnerabilities (severity ≥ high)
 - **Snyk Container**: Docker image scan (severity ≥ high, excluding base
   image vulns)

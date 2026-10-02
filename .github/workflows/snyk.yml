@@ -11,38 +11,9 @@ on:
 
 permissions: {}
 
+# Snyk Code (SAST) is not enabled on the Snyk org (SNYK-CODE-0005) and
+# CodeQL already covers SAST, so only dependencies and the image are scanned.
 jobs:
-  snyk-code:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Run Snyk Code (SAST)
-        uses: snyk/actions/node@9adf32b1121593767fc3c057af55b55db032dc04 # master
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          command: code test
-          args: --sarif-file-output=snyk-code.sarif
-
-      - name: Upload Snyk Code results to GitHub
-        uses: github/codeql-action/upload-sarif@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3
-        if: always() && hashFiles('snyk-code.sarif') != ''
-        with:
-          sarif_file: snyk-code.sarif
-
-      # continue-on-error hides tool failures (bad token, API outage) as well
-      # as findings. Findings still produce a SARIF file, failures do not.
-      - name: Fail if Snyk Code did not run
-        if: always()
-        run: test -s snyk-code.sarif || { echo "::error::Snyk Code produced no SARIF, check SNYK_TOKEN and the scan step log"; exit 1; }
-
   snyk-deps:
     runs-on: ubuntu-latest
     timeout-minutes: 10
