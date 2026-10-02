@@ -311,8 +311,8 @@ function PcieBandwidthCard({ sample }: Readonly<{ sample: GpuSample }>) {
     sample.pcie_width_current,
   );
   const linkMax = pcieBandwidth(sample.pcie_gen_max, sample.pcie_width_max);
-  const rxKbps = sample.pcie_rx_kbps;
-  const txKbps = sample.pcie_tx_kbps;
+  const rxKbps = sample.pcie_rx_kbps ?? null;
+  const txKbps = sample.pcie_tx_kbps ?? null;
   // Hide the card entirely when the driver doesn't expose anything useful.
   if (linkBw === null && !sample.pci_bus_id) return null;
 
