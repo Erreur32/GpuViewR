@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Windows process list still empty after v0.9.17.** The Windows installer wrote `FEATURES='gpu'` to `agent.env.ps1`, so the process collector never started, and auto-updates only replace `agent.mjs`. The installer now defaults to `gpu,processes`, and the agent reads the old `gpu` value on Windows as `gpu,processes`, so existing installs pick up the feature with the next update.
+- **Windows process list too long.** It listed every process holding any VRAM (every window on the desktop, 20+ rows). Only processes that explain the GPU load are kept now: at least 256 MiB of dedicated VRAM, or GPU activity in the last 30 seconds. The `System` pseudo-process is hidden.
 
 ## [0.9.17] - 2026-10-03
 

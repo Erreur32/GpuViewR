@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchAdaptersToUuids, parsePdhProcLine, pdhDisplayName, pdhType } from './processesWindowsPdh.js';
+import { matchAdaptersToUuids, parsePdhProcLine, pdhDisplayName, pdhKeepRow, pdhType } from './processesWindowsPdh.js';
 
 const DGPU = 'luid_0x00000000_0x0000D1B5_phys_0';
 const IGPU = 'luid_0x00000000_0x0000C9A5_phys_0';
@@ -60,4 +60,21 @@ test('matchAdaptersToUuids: two NVIDIA cards map one-to-one', () => {
   const m = matchAdaptersToUuids(rows, uuidByPid);
   assert.equal(m.get(DGPU), 'GPU-a');
   assert.equal(m.get(second), 'GPU-b');
+});
+
+test('pdhKeepRow: real VRAM footprint or recent GPU activity only', () => {
+  const now = 100_000;
+  // Values from a real RTX 3090 Ti desktop: LLM server, dwm, iCUE renderer.
+  assert.equal(pdhKeepRow({ pid: 14132, ded_mb: 21259 }, undefined, now), true);
+  assert.equal(pdhKeepRow({ pid: 2108, ded_mb: 1563 }, undefined, now), true);
+  // Small desktop surfaces (Telegram, explorer, csrss) drop out...
+  assert.equal(pdhKeepRow({ pid: 5088, ded_mb: 70 }, undefined, now), false);
+  assert.equal(pdhKeepRow({ pid: 1696, ded_mb: 91 }, undefined, now), false);
+  // ...unless they drew on the GPU in the last 30 s.
+  assert.equal(pdhKeepRow({ pid: 5088, ded_mb: 70 }, now - 10_000, now), true);
+  assert.equal(pdhKeepRow({ pid: 5088, ded_mb: 70 }, now - 31_000, now), false);
+});
+
+test('pdhKeepRow: never the System pseudo-process', () => {
+  assert.equal(pdhKeepRow({ pid: 4, ded_mb: 4 }, 100_000, 100_000), false);
 });
