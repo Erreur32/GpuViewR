@@ -45,6 +45,16 @@ export type PdhProcessCollectorOptions = Readonly<{
 }>;
 
 const MIN_TICK_MS = 2_000;
+// PDH lists every process holding any VRAM, i.e. every window on the
+// desktop (Task Manager's view). Only keep what actually explains the
+// GPU load: a real VRAM footprint, or engine time in the last BUSY_HOLD_MS
+// (the hold stops a 1-2 % browser row from blinking in and out).
+const MIN_VRAM_MIB = 256;
+const MIN_BUSY_PCT = 1;
+const BUSY_HOLD_MS = 30_000;
+// "System": kernel-side paging/scheduling done for other processes,
+// not something the user can act on.
+const SYSTEM_PID = 4;
 // Retry window for the adapter → NVIDIA uuid mapping when an adapter
 // stays unmapped (iGPU, Basic Render Driver: those never map).
 const NVIDIA_MAP_TTL_MS = 60_000;
@@ -209,6 +219,17 @@ export function pdhType(row: Pick<PdhProcRow, 'g' | 'c'>): GpuProcessType {
   return null;
 }
 
+/** Whether a row explains GPU load (see MIN_VRAM_MIB / BUSY_HOLD_MS). */
+export function pdhKeepRow(
+  row: Pick<PdhProcRow, 'pid' | 'ded_mb'>,
+  lastBusyAt: number | undefined,
+  now: number,
+): boolean {
+  if (row.pid === SYSTEM_PID) return false;
+  if (row.ded_mb >= MIN_VRAM_MIB) return true;
+  return lastBusyAt !== undefined && now - lastBusyAt <= BUSY_HOLD_MS;
+}
+
 /**
  * Map PDH adapter keys to NVIDIA uuids from pid overlap. A process
  * drawing on two adapters (dwm.exe, browsers) votes for both, so each
@@ -287,6 +308,7 @@ export function createPdhProcessCollector(opts: PdhProcessCollectorOptions): Pro
   // idle row doesn't flicker between "G" and blank.
   const lastType = new Map<number, GpuProcessType>();
   const prevCpu = new Map<number, { cpuS: number; ts: number }>();
+  const lastBusyAt = new Map<number, number>();
   let lastErrLogged = '';
   let inflight = false;
 
@@ -319,8 +341,12 @@ export function createPdhProcessCollector(opts: PdhProcessCollectorOptions): Pro
     const cpuThisTick = new Map<number, number | null>();
     const processes: AgentGpuProcess[] = [];
     for (const row of payload.procs) {
+      if (row.util >= MIN_BUSY_PCT) lastBusyAt.set(row.pid, now);
+    }
+    for (const row of payload.procs) {
       const uuid = uuidFor(row.key);
       if (!uuid) continue; // adapter the hub has no card for
+      if (!pdhKeepRow(row, lastBusyAt.get(row.pid), now)) continue;
       alive.add(row.pid);
       const type = pdhType(row) ?? lastType.get(row.pid) ?? null;
       if (type) lastType.set(row.pid, type);
@@ -342,6 +368,7 @@ export function createPdhProcessCollector(opts: PdhProcessCollectorOptions): Pro
     }
     for (const pid of prevCpu.keys()) if (!alive.has(pid)) prevCpu.delete(pid);
     for (const pid of lastType.keys()) if (!alive.has(pid)) lastType.delete(pid);
+    for (const [pid, at] of lastBusyAt) if (now - at > BUSY_HOLD_MS) lastBusyAt.delete(pid);
     opts.onSnapshot({ tsEpoch: Math.floor(now / 1000), processes });
   }
 

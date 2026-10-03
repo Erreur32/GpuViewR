@@ -100,6 +100,16 @@ function parseBool(name: string, fallback: boolean): boolean {
   return fallback;
 }
 
+/** Windows installers before v0.9.17 wrote FEATURES='gpu' (no process
+ *  collector existed there), and hub auto-updates only replace
+ *  agent.mjs, never agent.env.ps1. Read that exact legacy default as
+ *  "gpu,processes" so existing Windows agents get the process list. */
+export function resolveFeaturesEnv(raw: string | undefined, platform: NodeJS.Platform): string {
+  const value = raw || "gpu,system,temps,processes";
+  if (platform === "win32" && value.trim().toLowerCase() === "gpu") return "gpu,processes";
+  return value;
+}
+
 export function parseFeatures(raw: string): AgentFeatures {
   const items = raw
     .split(",")
@@ -235,7 +245,7 @@ export function loadConfig(): AgentConfig {
     // without any visible UI change on the PCIe sparkline.
     pcieTickMs: parseInt10("PCIE_TICK_MS", 5_000),
     features: parseFeatures(
-      process.env.FEATURES || "gpu,system,temps,processes",
+      resolveFeaturesEnv(process.env.FEATURES, process.platform),
     ),
     bufferPersist: parseBool("AGENT_BUFFER_PERSIST", false),
     agentLabel: process.env.AGENT_LABEL?.trim() || null,

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFeatures, parseGpuBackend, parseGpuVendor, resolveHostProc } from './config.js';
+import { parseFeatures, parseGpuBackend, parseGpuVendor, resolveFeaturesEnv, resolveHostProc } from './config.js';
 
 test('parseFeatures: parses canonical CSV', () => {
   assert.deepEqual(parseFeatures('gpu,system,temps,processes'), {
@@ -81,4 +81,16 @@ test('resolveHostProc: systemd install without /host/proc falls back to /proc', 
 
 test('resolveHostProc: empty on Windows', () => {
   assert.equal(resolveHostProc(undefined, 'win32', () => true), '');
+});
+
+test('resolveFeaturesEnv: legacy Windows installer default gains processes', () => {
+  assert.equal(resolveFeaturesEnv('gpu', 'win32'), 'gpu,processes');
+  assert.equal(resolveFeaturesEnv(' GPU ', 'win32'), 'gpu,processes');
+});
+
+test('resolveFeaturesEnv: explicit lists and other platforms are untouched', () => {
+  assert.equal(resolveFeaturesEnv('gpu', 'linux'), 'gpu');
+  assert.equal(resolveFeaturesEnv('gpu,system', 'win32'), 'gpu,system');
+  assert.equal(resolveFeaturesEnv(undefined, 'win32'), 'gpu,system,temps,processes');
+  assert.equal(resolveFeaturesEnv('', 'linux'), 'gpu,system,temps,processes');
 });
