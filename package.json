@@ -51,7 +51,7 @@
     "react-router-dom": "^7.18.4",
     "tsx": "^4.23.15",
     "uplot": "^1.6.32",
-    "ws": "^8.21.3",
+    "ws": "^8.22.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
@@ -62,7 +62,7 @@
     "@types/node": "^22.20.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@types/ws": "^8.18.1",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.6.1",
     "concurrently": "^10.0.5",
