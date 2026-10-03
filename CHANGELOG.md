@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Windows process list still empty after v0.9.17.** The Windows installer wrote `FEATURES='gpu'` to `agent.env.ps1`, so the process collector never started, and auto-updates only replace `agent.mjs`. The installer now defaults to `gpu,processes`, and the agent reads the old `gpu` value on Windows as `gpu,processes`, so existing installs pick up the feature with the next update.
+
 ## [0.9.17] - 2026-10-03
 
 ### Added

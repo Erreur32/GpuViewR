@@ -29,7 +29,7 @@ param(
   [string]$Url     = $env:GPVR_HUB_URL,
   [string]$Token   = $env:GPVR_TOKEN,
   [int]   $TickMs  = 1000,
-  [string]$Features = 'gpu',
+  [string]$Features = 'gpu,processes',
   [switch]$Uninstall
 )
 
