@@ -1,9 +1,11 @@
-release: v0.10.1 settings width, language flags, logs tab
+release: v0.10.2 LLM detection, hidden-process warning, AMD without ROCm
 
-- Changed: the Settings panel follows the Page width slider instead of
-  a fixed 1024 px.
-- Changed: Logs moved from the top nav to a Settings tab before About;
-  /logs redirects to /settings/logs.
-- Added: SVG flags next to the language choices.
-- Added: Docs/INSTALL.md section on Ollama model names (sha256 badge to
-  model:tag) for the Docker sidecar and the systemd agent.
+- Fixed: llama.cpp Vulkan server missing on AMD systemd agents; the unit
+  grants CAP_SYS_PTRACE with a seccomp filter on ptrace/process_vm_*.
+- Fixed: llama.cpp on an Ollama blob no longer labelled Ollama.
+- Fixed: installer re-run keeps hand-added env vars; ProtectHome=read-only.
+- Added: hidden GPU processes banner and model-name warning icon with
+  copyable fix steps.
+- Added: AMD process list without ROCm (DRM fdinfo only).
+- Added: Ollama names resolved with no config (blob-side manifests,
+  mountinfo host-path mapping); vllm serve, llama-cpp-python, HF cache.

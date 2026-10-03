@@ -5,6 +5,24 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-10-03
+
+### Added
+
+- **Hidden GPU processes warning.** When VRAM in use is not explained by the listed processes and the agent could not read some of them, the process table shows a banner with the fix for how the agent was installed (systemd drop-in, Docker `cap_add`, or AppArmor note). See `Docs/INSTALL.md#hidden-gpu-processes-and-model-names`.
+- **Warning icon next to unresolved model names** (`sha256:` digest, anonymous blob, no model). Hover gives the cause, click shows copyable fix steps.
+- **AMD process list without ROCm.** With only the amdgpu driver, the list now comes from DRM fdinfo (it was disabled entirely). ROCm only adds per-process CU occupancy.
+- **Ollama model names with no config.** The agent finds the manifests next to the blob a runner has open, inside its container or at the host directory a Docker bind mount points to.
+- **More LLM runtimes recognised:** `vllm serve <model>`, llama-cpp-python, Hugging Face cache blobs (shown as `org/repo`).
+- Installer flag `--no-ptrace` to install the systemd agent without the capability.
+
+### Fixed
+
+- **llama.cpp Vulkan server missing from the process list** on AMD hosts with the systemd agent. The unit now grants `CAP_SYS_PTRACE` (ambient, bounded to it) so `/proc/<pid>/fdinfo` of root and container processes is readable; a seccomp filter blocks `ptrace`, `process_vm_readv/writev` and `pidfd_getfd`, so it only serves `/proc` reads. Existing systemd agents keep their old unit: re-run the install command or apply the drop-in shown in the banner.
+- **llama.cpp loading an Ollama blob was labelled Ollama.** Ollama is now matched by its executable; the model shows the resolved Ollama name or `--alias` instead of the hash.
+- Re-running the systemd installer no longer drops variables added by hand to `/etc/gpuviewr-agent.env` (e.g. `OLLAMA_MANIFESTS_DIR`).
+- systemd unit uses `ProtectHome=read-only` instead of `true`, so model stores under `/home` are readable.
+
 ## [0.10.1] - 2026-10-03
 
 ### Added
