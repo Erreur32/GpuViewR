@@ -6,7 +6,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
 #
 # What it does:
-#   1. Detects the local GPU vendor (nvidia-smi, then rocm-smi).
+#   1. Detects the local GPU vendor (nvidia-smi + toolkit, then
+#      rocm-smi or an amdgpu card with /dev/kfd).
 #   2. Downloads docker-compose.yaml from the repo into ~/gpuviewr/.
 #   3. Generates ~/gpuviewr/.env with random JWT_SECRET + bootstrap
 #      token + LAN IP + COMPOSE_PROFILES=<vendor>.
@@ -69,17 +70,60 @@ docker compose version >/dev/null 2>&1 || {
 }
 
 # ── Vendor detection ─────────────────────────────────────────────────────────
+# AMD GPU metrics only need the amdgpu kernel driver (the agent reads
+# /sys/class/drm), ROCm is optional. Look for an amdgpu-bound card so a
+# box without ROCm still gets its sidecar.
+has_amdgpu() {
+  local u
+  for u in /sys/class/drm/card[0-9]*/device/uevent; do
+    grep -qx 'DRIVER=amdgpu' "$u" 2>/dev/null && return 0
+  done
+  return 1
+}
+
+# The nvidia sidecar uses `runtime: nvidia`, which only exists once the
+# NVIDIA Container Toolkit is registered with Docker. nvidia-smi alone
+# (driver installed) is not enough: compose would fail on "unknown runtime".
+has_nvidia_runtime() {
+  docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia":'
+}
+
 VENDOR=""
+# Vendor found on the host but whose sidecar can't start (missing toolkit
+# or /dev/kfd). Installed hub-only; used below to reset a stale profile.
+SKIPPED_VENDOR=""
+SKIPPED_HINT=""
 if command -v nvidia-smi >/dev/null 2>&1; then
-  VENDOR="nvidia"
-  echo -e "  ${G}✓${R} Detected NVIDIA GPU (nvidia-smi present)"
-elif command -v rocm-smi >/dev/null 2>&1 || [ -x /opt/rocm/bin/rocm-smi ]; then
-  VENDOR="amd"
-  echo -e "  ${G}✓${R} Detected AMD GPU (rocm-smi present)"
+  if has_nvidia_runtime; then
+    VENDOR="nvidia"
+    echo -e "  ${G}✓${R} Detected NVIDIA GPU (nvidia-smi + nvidia container runtime)"
+  else
+    SKIPPED_VENDOR="nvidia"
+    SKIPPED_HINT="Install the NVIDIA Container Toolkit (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html), run 'sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker', then re-run this script."
+    echo -e "  ${Y}!${R} NVIDIA GPU found, but Docker has no ${C}nvidia${R} runtime (NVIDIA Container Toolkit missing)."
+  fi
+elif command -v rocm-smi >/dev/null 2>&1 || [ -x /opt/rocm/bin/rocm-smi ] || has_amdgpu; then
+  if [ -e /dev/kfd ]; then
+    VENDOR="amd"
+    if command -v rocm-smi >/dev/null 2>&1 || [ -x /opt/rocm/bin/rocm-smi ]; then
+      echo -e "  ${G}✓${R} Detected AMD GPU (rocm-smi present)"
+    else
+      echo -e "  ${G}✓${R} Detected AMD GPU (amdgpu driver, no ROCm: metrics OK, process list may be partial)"
+    fi
+  else
+    SKIPPED_VENDOR="amd"
+    SKIPPED_HINT="The AMD sidecar maps /dev/kfd: load the amdgpu driver with KFD support (any recent distro kernel), then re-run this script."
+    echo -e "  ${Y}!${R} AMD GPU found, but ${C}/dev/kfd${R} is missing (amdgpu KFD not available)."
+  fi
 else
-  echo -e "  ${Y}○${R} No nvidia-smi or rocm-smi found on this host."
+  echo -e "  ${Y}○${R} No NVIDIA or AMD GPU found on this host."
+fi
+if [ -z "$VENDOR" ]; then
   echo -e "  ${Y}○${R} Installing in aggregator-only mode (hub-only, no local GPU)."
   echo -e "  ${Y}○${R} Remote agents can still enroll via the UI to feed this hub."
+  if [ -n "$SKIPPED_HINT" ]; then
+    echo -e "  ${Y}○${R} To monitor this host's GPU: ${SKIPPED_HINT}"
+  fi
 fi
 
 # ── Working dir ──────────────────────────────────────────────────────────────
@@ -174,6 +218,12 @@ else
       echo "COMPOSE_PROFILES=${VENDOR}" >> .env
       echo -e "  ${G}✓${R} Appended COMPOSE_PROFILES=${C}${VENDOR}${R} to .env."
     fi
+  elif [ -n "$SKIPPED_VENDOR" ] && grep -q "^COMPOSE_PROFILES=${SKIPPED_VENDOR}\$" .env 2>/dev/null; then
+    # The profile points at a sidecar that can't start on this host any
+    # more: `docker compose up` would fail for the whole stack. Fall back
+    # to hub-only; the next run restores the profile once fixed.
+    sed -i.bak "s|^COMPOSE_PROFILES=.*|COMPOSE_PROFILES=|" .env && rm -f .env.bak
+    echo -e "  ${Y}!${R} Cleared COMPOSE_PROFILES=${C}${SKIPPED_VENDOR}${R}: its sidecar can't start on this host (see above)."
   fi
 fi
 

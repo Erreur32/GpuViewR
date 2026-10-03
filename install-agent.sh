@@ -8,7 +8,8 @@
 #
 # What it does:
 #   1. Parses --hub and --token args.
-#   2. Detects local GPU vendor (nvidia-smi, then rocm-smi).
+#   2. Detects local GPU vendor (nvidia-smi + toolkit, then rocm-smi
+#      or an amdgpu card with /dev/kfd).
 #   3. Downloads docker-compose.agent.{nvidia,amd}.yaml.
 #   4. Generates .env (HUB_URL, HOST_ID, AGENT_TOKEN from --token).
 #   5. Runs `docker compose up -d` and prints the agent status.
@@ -110,16 +111,48 @@ esac
 HUB_WS="${HUB_WS//\/agent\/agent/\/agent}"
 
 # ── Vendor detection ─────────────────────────────────────────────────────────
+# AMD GPU metrics only need the amdgpu kernel driver (the agent reads
+# /sys/class/drm), ROCm is optional. Same check as the master install.sh.
+has_amdgpu() {
+  local u
+  for u in /sys/class/drm/card[0-9]*/device/uevent; do
+    grep -qx 'DRIVER=amdgpu' "$u" 2>/dev/null && return 0
+  done
+  return 1
+}
+
 VENDOR=""
 if command -v nvidia-smi >/dev/null 2>&1; then
   VENDOR=nvidia
-  echo -e "  ${G}✓${R} Detected NVIDIA GPU (nvidia-smi present)"
-elif command -v rocm-smi >/dev/null 2>&1 || [ -x /opt/rocm/bin/rocm-smi ]; then
+  # The compose GPU reservation (driver: nvidia) needs the NVIDIA
+  # Container Toolkit: Docker only offers that driver when the toolkit's
+  # hook is on PATH or the nvidia runtime is registered.
+  if ! command -v nvidia-container-runtime-hook >/dev/null 2>&1 \
+     && ! docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia":'; then
+    echo -e "${RED}Error:${R} NVIDIA GPU found, but the NVIDIA Container Toolkit is not installed."
+    echo -e "  Install it (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html),"
+    echo -e "  run ${C}sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker${R},"
+    echo -e "  then re-run this command. Or use the systemd agent install, which needs no toolkit."
+    exit 1
+  fi
+  echo -e "  ${G}✓${R} Detected NVIDIA GPU (nvidia-smi + NVIDIA Container Toolkit)"
+elif command -v rocm-smi >/dev/null 2>&1 || [ -x /opt/rocm/bin/rocm-smi ] || has_amdgpu; then
   VENDOR=amd
-  echo -e "  ${G}✓${R} Detected AMD GPU (rocm-smi present)"
+  # docker-compose.agent.amd.yaml maps /dev/kfd: without it the container
+  # can't even be created.
+  if [ ! -e /dev/kfd ]; then
+    echo -e "${RED}Error:${R} AMD GPU found, but ${C}/dev/kfd${R} is missing (amdgpu KFD not available)."
+    echo -e "  Load the amdgpu driver with KFD support, or use the systemd agent install."
+    exit 1
+  fi
+  if command -v rocm-smi >/dev/null 2>&1 || [ -x /opt/rocm/bin/rocm-smi ]; then
+    echo -e "  ${G}✓${R} Detected AMD GPU (rocm-smi present)"
+  else
+    echo -e "  ${G}✓${R} Detected AMD GPU (amdgpu driver, no ROCm: metrics OK, process list may be partial)"
+  fi
 else
-  echo -e "${RED}Error:${R} Neither nvidia-smi nor rocm-smi found on this host."
-  echo -e "  ${Y}○${R} An agent without a GPU has nothing to report — install aborted."
+  echo -e "${RED}Error:${R} No NVIDIA or AMD GPU found on this host (no nvidia-smi, rocm-smi or amdgpu card)."
+  echo -e "  ${Y}○${R} An agent without a GPU has nothing to report, install aborted."
   exit 1
 fi
 

@@ -77,24 +77,32 @@ Windows and macOS, each host with its own colour on every chart.
 
 ## Install
 
+**Requirements:** Linux (amd64 or arm64), Docker with Compose v2. For a
+local NVIDIA GPU, add the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
+AMD only needs the `amdgpu` driver.
+
+**1. Run the installer** in the directory that will hold the stack:
+
 ```bash
 mkdir -p /opt/gpuviewr && cd /opt/gpuviewr
 curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
 ```
 
-The script detects your GPU vendor, writes `docker-compose.yaml` and a
-`.env` with random secrets, and starts the stack. Open
-`http://<your-host-ip>:7510`: the first account you create is admin.
+It detects the GPU (NVIDIA, AMD or none), writes `docker-compose.yaml` and
+a `.env` with random secrets, then starts the stack. No GPU, or a missing
+toolkit: the hub still starts alone and tells you what to fix.
 
-Update: `docker compose pull && docker compose up -d`.
+**2. Open** `http://<your-host-ip>:7510` and create the first account,
+it becomes admin.
 
-Prefer writing the compose file yourself? Ready-to-use examples (hub only,
-NVIDIA, AMD) and the supported hub platforms:
-[Docs/INSTALL.md#compose-examples](Docs/INSTALL.md#compose-examples).
+**Update:** `docker compose pull && docker compose up -d`
 
-Requires Docker with Compose v2, plus the NVIDIA Container Toolkit for
-NVIDIA GPUs. Manual install, macOS (Docker Desktop), configuration and
-troubleshooting: [Docs/INSTALL.md](Docs/INSTALL.md).
+| Need | See |
+|---|---|
+| Write the compose file yourself (hub only, NVIDIA, AMD) | [Compose examples](Docs/INSTALL.md#compose-examples) |
+| Supported machines (Linux, ARM, macOS Docker Desktop) | [Supported hub platforms](Docs/INSTALL.md#supported-hub-platforms) |
+| `.env` settings, first login, troubleshooting | [Docs/INSTALL.md](Docs/INSTALL.md) |
 
 ## Add a machine
 
