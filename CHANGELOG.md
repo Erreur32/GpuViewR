@@ -5,6 +5,23 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-10-03
+
+### Added
+
+- **The agent asks the LLM servers themselves.** Ollama (`/api/ps`, `/api/show`): exact model name matched on the loaded blob, and an unload countdown. llama.cpp / vLLM (`/v1/models`): the served name for a server started without one. A llama.cpp server that released its weights (`--sleep-idle-seconds`) is shown **asleep**. 127.0.0.1 is only tried when agent and server share the host network; other servers are added per host in Settings > LLM.
+- **GTT memory per process**: system memory mapped to the GPU, shown under VRAM. On AMD APUs (Strix Halo) and Intel iGPUs model weights often live there.
+- **Intel GPUs (i915, xe), Linux.** GPU metrics and process list from sysfs and DRM fdinfo, no vendor tool. `GPU_VENDOR=intel`, detected by the installer. Not yet validated on real Intel hardware: GPU % on i915 only, no memory total.
+- **Container badge** on each process (`docker 9692a12e`), from its cgroup.
+- **Settings > LLM**: naming rules for runtimes GpuViewR doesn't know ("command contains X: runtime Y, model from flag Z"), and per-host LLM server URLs and Ollama manifests dir. Pushed to connected agents immediately.
+- **Process alerts**: *GPU memory of process* (above/below N MiB) and *Process missing* (fires while nothing matches, e.g. `llama-server`).
+- **Fleet page: LLM models** across every host, with state and memory.
+- **Top over 24 h** under the process table: peak and mean GPU memory, mean GPU %, time seen, per process or model.
+
+### Fixed
+
+- Webhook alerts on host metrics (CPU, RAM, load) printed `undefined` instead of the metric name and unit.
+
 ## [0.10.4] - 2026-10-03
 
 ### Added
