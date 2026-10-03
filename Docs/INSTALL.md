@@ -102,7 +102,7 @@ OS, Ampere, etc.).
 | Linux + AMD GPU | Yes, needs the `amdgpu` driver (ROCm for the process list) | [AMD](#amd-hub--local-gpu) |
 | Linux, no GPU | No, aggregator only | [Hub only](#hub-only-aggregator) |
 | macOS, Docker Desktop (Intel / Apple Silicon) | No, aggregator only ([details](#hub-on-macos-docker-desktop)) | [Hub only](#hub-only-aggregator) |
-| Windows | Not supported as a hub, use the Windows agent ([Remote hosts](REMOTE_HOSTS.md)) | |
+| Windows | No documented hub. Docker Desktop on WSL2 should run it as an aggregator, untested. Monitor Windows machines with the [Windows agent](REMOTE_HOSTS.md) | [Hub only](#hub-only-aggregator) |
 
 `install.sh` only covers Linux. Intel GPUs and Apple Silicon are monitored
 through agents, not the hub sidecar.

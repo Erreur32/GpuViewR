@@ -77,10 +77,22 @@ Windows and macOS, each host with its own colour on every chart.
 
 ## Install
 
-**Requirements:** Linux (amd64 or arm64), Docker with Compose v2. For a
-local NVIDIA GPU, add the
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
-AMD only needs the `amdgpu` driver.
+**Where the hub runs** (it ships as a Docker image only):
+
+- **Linux + Docker** (amd64 or arm64): full install, and the only one where
+  the hub also monitors its own GPU. Needs Docker with Compose v2, plus the
+  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+  for NVIDIA. AMD only needs the `amdgpu` driver.
+- **macOS + Docker Desktop**: aggregator only, the Mac's own GPU is not
+  seen. `install.sh` is Linux-only, set it up
+  [by hand](Docs/INSTALL.md#hub-on-macos-docker-desktop).
+- **Windows**: no documented hub. Docker Desktop on WSL2 should run it as
+  an aggregator, untested.
+
+The machines you monitor need no Docker: agents run natively on Linux,
+Windows and macOS, see [Add a machine](#add-a-machine).
+
+The steps below are for Linux.
 
 **1. Run the installer** in the directory that will hold the stack:
 
@@ -101,7 +113,7 @@ it becomes admin.
 | Need | See |
 |---|---|
 | Write the compose file yourself (hub only, NVIDIA, AMD) | [Compose examples](Docs/INSTALL.md#compose-examples) |
-| Supported machines (Linux, ARM, macOS Docker Desktop) | [Supported hub platforms](Docs/INSTALL.md#supported-hub-platforms) |
+| Platform details and detection rules | [Supported hub platforms](Docs/INSTALL.md#supported-hub-platforms) |
 | `.env` settings, first login, troubleshooting | [Docs/INSTALL.md](Docs/INSTALL.md) |
 
 ## Add a machine
