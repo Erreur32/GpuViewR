@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, ArrowUpCircle, Check, ExternalLink, Bell, BellOff } from 'lucide-react';
+import { RefreshCw, ArrowUpCircle, ExternalLink, Bell, BellOff } from 'lucide-react';
 import { useUpdateStore } from '../../store/updateStore';
 import { notify } from '../../store/toastStore';
 import { useAuthStore } from '../../store/authStore';
@@ -26,13 +26,30 @@ export default function UpdateSettings() {
     setHours(config.frequencyHours);
   }, [config]);
 
-  const save = async () => {
+  // Auto-saved: the switch on change, the frequency when the field is
+  // left (or Enter). No Save button, nothing can be left unsaved.
+  const save = async (patch: { enabled?: boolean; frequencyHours?: number }) => {
     try {
-      await saveConfig({ enabled, frequencyHours: hours });
+      await saveConfig(patch);
       notify('success', t('settings.saved'));
     } catch (err) {
       notify('error', t('common.error'), (err as Error).message);
+      if (config) {
+        setEnabled(config.enabled);
+        setHours(config.frequencyHours);
+      }
     }
+  };
+
+  const toggleEnabled = (next: boolean) => {
+    setEnabled(next);
+    void save({ enabled: next });
+  };
+
+  const commitHours = () => {
+    const next = Math.min(168, Math.max(1, hours));
+    if (next !== hours) setHours(next);
+    if (config && next !== config.frequencyHours) void save({ frequencyHours: next });
   };
 
   return (
@@ -46,7 +63,7 @@ export default function UpdateSettings() {
         <input type="checkbox"
                checked={enabled}
                disabled={!isAdmin}
-               onChange={(e) => setEnabled(e.target.checked)}
+               onChange={(e) => toggleEnabled(e.target.checked)}
                className="sr-only peer" />
         <span className="w-10 h-5 rounded-full transition-colors relative" style={{
           background: enabled ? 'var(--gv-accent)' : 'var(--gv-surface-alt)',
@@ -67,6 +84,8 @@ export default function UpdateSettings() {
           value={hours}
           disabled={!isAdmin || !enabled}
           onChange={(e) => setHours(Number.parseInt(e.target.value, 10) || 24)}
+          onBlur={commitHours}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitHours(); }}
         />
         <p className="text-xs mt-1" style={{ color: 'var(--gv-text-dim)' }}>
           {t('settings.updates_frequency_help')}
@@ -118,7 +137,7 @@ export default function UpdateSettings() {
 
       <div className="flex gap-2 pt-2">
         <button
-          className="btn-ghost"
+          className="btn-primary"
           disabled={loading}
           onClick={async () => {
             // Use the value freshly returned by check(); reading the
@@ -145,12 +164,6 @@ export default function UpdateSettings() {
           <RefreshCw className={'w-4 h-4 ' + (loading ? 'animate-spin' : '')} />
           {t('updates.recheck')}
         </button>
-        {isAdmin && (
-          <button className="btn-primary" onClick={save}>
-            <Check className="w-4 h-4" />
-            {t('common.save')}
-          </button>
-        )}
       </div>
     </section>
 

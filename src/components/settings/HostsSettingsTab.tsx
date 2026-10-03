@@ -16,6 +16,7 @@ import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
 import { copyText } from '../../lib/clipboard';
+import { isUnitOutdated } from '../../lib/hostUnit';
 import { HOST_PALETTE, resolveHostColor } from '../../lib/hostColors';
 import { useDropdown } from '../../lib/useDropdown';
 import StatusPill from '../fleet/StatusPill';
@@ -221,6 +222,7 @@ function HostRow({
           isLocal={isLocal}
           agentVersion={host.agent_version}
           installMode={host.install_mode}
+          unitOutdated={isUnitOutdated(host.capabilities, host.install_mode)}
           kind={host.kind}
           t={t}
         />
@@ -456,11 +458,13 @@ function InstallTypeCell({
 // (local hub / agent with reported version / agent without one) read
 // more clearly as guarded early returns.
 function VersionCell({
-  isLocal, agentVersion, installMode, kind, t,
+  isLocal, agentVersion, installMode, unitOutdated, kind, t,
 }: Readonly<{
   isLocal: boolean;
   agentVersion: string | null;
   installMode: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown' | null;
+  /** systemd unit predates CAP_SYS_PTRACE, see lib/hostUnit.ts. */
+  unitOutdated: boolean;
   kind: string;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }>) {
@@ -470,7 +474,12 @@ function VersionCell({
   if (agentVersion) {
     const outdated = isAgentOutdated(agentVersion, HUB_VERSION);
     if (!outdated) {
-      return <span title={t('hosts.agent_version_help')}>v{agentVersion}</span>;
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <span title={t('hosts.agent_version_help')}>v{agentVersion}</span>
+          {unitOutdated && <UnitUpgradeButton t={t} />}
+        </span>
+      );
     }
     return (
       <span className="inline-flex items-center gap-1.5">
@@ -554,6 +563,37 @@ function AgentUpdateButton({
     >
       <AlertTriangle className="w-2.5 h-2.5" />
       {t('hosts.agent_outdated_pill')}
+    </button>
+  );
+}
+
+/** Shown when the agent is current but its systemd unit is not (no
+ *  CAP_SYS_PTRACE: GPU processes of root or of containers stay hidden on
+ *  AMD). Auto-update can't fix it: the unit is root's, so the badge hands
+ *  over the one root command that does. Click copies it. */
+function UnitUpgradeButton({ t }: Readonly<{ t: (key: string, opts?: Record<string, unknown>) => string }>) {
+  const hubOrigin = typeof globalThis.window === 'object' ? globalThis.location.origin : '';
+  const cmd = pickUpdateCmd('systemd', hubOrigin).primary;
+  const onClick = async () => {
+    const ok = await copyText(cmd);
+    if (ok) notify('success', t('hosts.unit_outdated_copied'), cmd);
+    else notify('error', t('hosts.copy_failed'), t('hosts.copy_failed_hint'));
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={t('hosts.unit_outdated_help', { cmd })}
+      aria-label={t('hosts.unit_outdated_badge')}
+      className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider"
+      style={{
+        color: 'var(--gv-warn)',
+        background: 'color-mix(in srgb, var(--gv-warn) 14%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--gv-warn) 35%, transparent)',
+      }}
+    >
+      <AlertTriangle className="w-2.5 h-2.5" />
+      {t('hosts.unit_outdated_pill')}
     </button>
   );
 }

@@ -54,7 +54,7 @@ interface HelloFrame {
   protocol_ver?: number;
   hostname?: string;
   install_mode?: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown';
-  capabilities?: { gpu?: boolean; system?: boolean; temps?: boolean; processes?: boolean };
+  capabilities?: { gpu?: boolean; system?: boolean; temps?: boolean; processes?: boolean; ptrace?: string };
 }
 
 interface SampleFrame {
