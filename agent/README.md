@@ -97,13 +97,17 @@ AGENT_TOKEN=... \
 npm start
 ```
 
-For a long-running install, wrap it in a systemd unit (sample under `Docs/MULTI_HOST_PLAN.md` §15.2 mode 3).
+For a long-running install, use the installer instead (`install.sh` from the hub, see [Docs/REMOTE_HOSTS.md](../Docs/REMOTE_HOSTS.md#linux-systemd)): it writes the systemd unit for you.
 
-## Windows (NVIDIA only, GPU stats only)
+## Windows (NVIDIA, AMD, Intel)
 
 The agent runs on Windows 10/11. NVIDIA cards are read through `nvidia-smi.exe`, exactly like on Linux; AMD and Intel GPUs (or NVIDIA without driver tools) fall back to the Windows PDH performance counters (utilization + VRAM only). The process list comes from the per-process PDH counters Task Manager uses, for every vendor: GPU %, dedicated VRAM, CPU %, executable and command line per process.
 
-PowerShell as **Administrator**:
+**Recommended**: the one-line installer from the hub's Add host modal
+(Windows tab), see [Docs/REMOTE_HOSTS.md](../Docs/REMOTE_HOSTS.md#windows). It
+registers a Scheduled Task, a supervising launcher and log rotation.
+
+Manual setup, PowerShell as **Administrator**:
 
 ```powershell
 # 1. Install Node 22+ from https://nodejs.org (msi installer)
@@ -184,7 +188,7 @@ The plist lists the processes running at that moment (names and pids, no
 command lines or file contents). Remove any line you'd rather not share
 before attaching it.
 
-## Configuration — environment variables
+## Configuration: environment variables
 
 ### Required
 
@@ -239,7 +243,7 @@ The Dockerfile expects the **project root** as its build context (not `agent/`),
 docker build -f agent/Dockerfile -t gpuviewr-agent:dev .
 ```
 
-The final image is ~70 MB compressed: distroless Node 22 + a single bundled `agent.mjs` + the `ws` library. No shell, no nvidia-smi inside (it comes from the host via the Container Toolkit).
+The image is `node:22-trixie-slim` (Debian) with a single bundled `agent.mjs` and the `ws` library, plus the few packages `rocm-smi` needs (`python3`, `procps`, `libdrm-amdgpu1`). No nvidia-smi or rocm-smi inside: `nvidia-smi` comes from the host through the NVIDIA Container Toolkit, `rocm-smi` from a `/opt/rocm` bind-mount.
 
 ## Versioning
 

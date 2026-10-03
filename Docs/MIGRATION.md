@@ -11,7 +11,7 @@ Simplest path. Stop the old container, start GpuViewR, register the first user.
 # stop old
 docker compose -f /path/to/old/gpu-monitor/docker-compose.yml down
 
-# start new — see README Quick start for the curl recipe matching
+# start new: see Docs/INSTALL.md for the curl recipe matching
 # your GPU vendor (NVIDIA / AMD / aggregator-only)
 cd ~/GpuViewR
 docker compose up -d
@@ -57,7 +57,7 @@ Then start GpuViewR: your old history is now visible in the dashboard.
 ## v0.2.x → v0.3.x : multi-host migration
 
 v0.3.0 introduces the [multi-host architecture](MULTI_HOST_PLAN.md). The
-upgrade is **zero-touch for the database** — the boot-time migration
+upgrade is **zero-touch for the database**: the boot-time migration
 backfills every existing `gpu_metrics` / `gpu_devices` / `alert_events`
 row with `host_id='local'` and seeds the `hosts` table with a row for
 the hub itself. Your history is preserved.
@@ -115,7 +115,7 @@ multi-host alerts with the host id so you know which machine is hot.
 ### Alert rules
 
 Every alert rule gained an optional `host_id` field. `NULL` (the
-default) means "applies to every host" — symmetric with the existing
+default) means "applies to every host", symmetric with the existing
 `gpu_index NULL = all GPUs` convention. Set it to a specific host id
 to scope a rule.
 
@@ -127,11 +127,11 @@ to scope a rule.
 | No auth | First user becomes admin (set `JWT_SECRET` in `.env`) |
 | `./history`, `./logs` volumes | `./data` (single volume) |
 | Bash + Python | Node 22 (TypeScript) |
-| Polling 5–30 s | WebSocket streaming 1 s |
+| Polling 5 to 30 s | WebSocket streaming 1 s |
 
 ## v0.4.x → v0.5.x
 
-v0.5.0 drops the hub-local GPU collector — local GPU monitoring goes
+v0.5.0 drops the hub-local GPU collector: local GPU monitoring goes
 through a sidecar agent in the same docker compose stack. The
 auto-migration renames the DB row `id='local'` (kind='local') to
 `id='local-sidecar-{hostname}'` (kind='agent') on first boot and
@@ -145,4 +145,8 @@ rm -rf ./data
 docker compose up -d
 ```
 
-See [`V0_5_PLAN.md`](V0_5_PLAN.md) §8 for the migration details.
+The migration is idempotent (safe to re-run after a crash) and runs
+before the hub accepts agent connections. One known edge case: if the
+machine was renamed between v0.4 and v0.5, the history stays under the old
+`local-sidecar-{old-hostname}` row and the sidecar enrolls as a second
+host. Delete the stale one from Settings → Hosts.

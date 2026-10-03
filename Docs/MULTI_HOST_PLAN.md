@@ -1,69 +1,74 @@
-# Plan d'architecture — GpuViewR Multi-Machine Viewer
+# Architecture plan: GpuViewR Multi-Machine Viewer
 
-> **STATUT : HISTORIQUE (v0.3.0 shipped).**
+> **Status: implemented in v0.3.0, kept as the design rationale.**
 >
-> Ce document est le plan d'origine qui a accouché du multi-host en v0.3.0 puis du support AMD/ROCm en v0.4.0. Il reste utile comme référence de design (D1-D9, schéma DB, contrat WS) mais ne reflète plus l'architecture courante.
+> This is the original plan behind the multi-host architecture shipped in v0.3.0. It remains the reference for decisions D1-D9, the DB schema, the auth model and the WS contract (code comments cite it, e.g. D4 in `alertService.ts`, §3 and §13.1.1 in `agentIngestWS.ts`). Later changes that supersede parts of it (see `CHANGELOG.md`):
 >
-> **Pour l'architecture en cours et la cible v0.5.0** (hub vendor-neutral + sidecar agent + multi-hub) → voir [`V0_5_PLAN.md`](V0_5_PLAN.md).
+> - **v0.3.1 / v0.4.0**: AMD / ROCm support, first in the agent (`GPU_VENDOR=auto|nvidia|amd`, v0.3.1), then in the hub (v0.4.0). The plan assumed NVIDIA only.
+> - **v0.5.0**: the hub is vendor-neutral. The hub-local GPU collectors are removed; local GPUs are reported by a sidecar agent authenticated with `LOCAL_AGENT_BOOTSTRAP` (`HOST_ID=local`). One agent can also push to several hubs (`HUB_URLS` / `HOST_IDS` / `AGENT_TOKENS`).
+> - **v0.5.3**: opt-in agent auto-update over the WS (`agent_update` frame, `hosts.auto_update` toggle), first for systemd agents, later Windows (v0.6.7) and macOS (v0.9.0).
+> - **v0.6.7**: native Windows agent (`install.ps1`, Scheduled Task); AMD / Intel on Windows via PDH counters in v0.7.0.
+> - **v0.9.0**: macOS agent (Apple Silicon, `powermetrics`).
+> - Bare-metal agents ship as an `agent.mjs` bundle run by Node 22 and installed by the hub-served `install.sh` (since v0.3.0), not as a Node SEA binary.
 >
 > ---
 >
-> Objet (à l'époque) : passer GpuViewR (v0.2.5, mono-host) à un mode où **un dashboard central agrège les métriques GPU/système de N hôtes NVIDIA**, sans casser le déploiement zero-config existant. Cible : v0.3.x.
+> Purpose (at the time): move GpuViewR (v0.2.5, single host) to a mode where **a central dashboard aggregates GPU/system metrics from N NVIDIA hosts**, without breaking the existing zero-config deployment. Target: v0.3.x.
 >
-> Ce qui sort du scope (assumé) : tout rendu UI multi-host, dashboards visuels par host, RBAC multi-organisation, sharding de la base SQLite, alerting cross-host transactionnel. La présente note couvre la dorsale et le contrat d'API/transport.
+> Out of scope (by choice): any multi-host UI rendering, per-host visual dashboards, multi-organization RBAC, SQLite sharding, transactional cross-host alerting. This note covers the backbone and the API/transport contract.
 
-## Décisions arrêtées (avant implémentation)
+## Decisions taken (before implementation)
 
-| # | Sujet | Décision | Cf. |
+| # | Topic | Decision | See |
 |---|---|---|---|
-| D1 | Approche transport | Agent push WebSocket sortant | §1 |
-| D2 | Localisation agent | Sous-package `/agent` du même repo, TypeScript Node 22 | §5 |
-| D3 | Label Prometheus | `host="<id>"` (UUID stable) **+** métrique annexe `gpuviewr_host_info{host=<id>, label=<nom>, hostname=<os>} 1` pour le join Grafana | §7, §10 |
-| D4 | Portée règles d'alerte | `alert_rules.host_id NULL` = global (wildcard), comme `gpu_index NULL`. `host_id='<id>'` = ciblé | §10 |
-| D5 | Buffer agent | RAM only par défaut (ring 3 600 entrées). Persistance disque via `AGENT_BUFFER_PERSIST=1` opt-in | §4, §9 |
-| D6 | TLS | Délégué au reverse-proxy (`wss://`). Pas de mTLS ni cert pinning en v0.3 | §3 |
-| D7 | Token agent | Opaque random 32+ bytes, bcrypt-hash côté hub. **Pas** un JWT. Espace d'auth disjoint de `JWT_SECRET` | §3 |
-| D8 | Identité host | UUIDv4 stable (`host.id`), hostname rapporté informatif uniquement | §2, §10 |
-| D9 | Stream WS frontal | Un seul stream multiplexé avec `host_id` dans l'enveloppe. Filtrage `?hosts=A,B` optionnel | §6 |
+| D1 | Transport approach | Agent pushes over an outbound WebSocket | §1 |
+| D2 | Agent location | `/agent` sub-package in the same repo, TypeScript Node 22 | §5 |
+| D3 | Prometheus label | `host="<id>"` (stable UUID) **+** side metric `gpuviewr_host_info{host=<id>, label=<name>, hostname=<os>} 1` for the Grafana join | §7, §10 |
+| D4 | Alert rule scope | `alert_rules.host_id NULL` = global (wildcard), like `gpu_index NULL`. `host_id='<id>'` = targeted | §10 |
+| D5 | Agent buffer | RAM only by default (ring of 3,600 entries). Disk persistence via opt-in `AGENT_BUFFER_PERSIST=1` | §4, §9 |
+| D6 | TLS | Delegated to the reverse proxy (`wss://`). No mTLS or cert pinning in v0.3 | §3 |
+| D7 | Agent token | Opaque random 32+ bytes, bcrypt-hashed on the hub. **Not** a JWT. Auth space disjoint from `JWT_SECRET` | §3 |
+| D8 | Host identity | Stable UUIDv4 (`host.id`), reported hostname is informational only | §2, §10 |
+| D9 | Front-end WS stream | A single multiplexed stream with `host_id` in the envelope. Optional `?hosts=A,B` filtering | §6 |
 
 ---
 
-## 1. Arbitrage entre les approches viables — recommandation explicite
+## 1. Trade-offs between the viable approaches, explicit recommendation
 
-| # | Approche | Réseau requis | Install user | Robustesse offline | Maintenance | Aligne avec l'existant |
+| # | Approach | Network required | User install | Offline robustness | Maintenance | Fit with existing code |
 |---|---|---|---|---|---|---|
-| **(a)** | **Agent push WS** : binaire/container léger sur chaque hôte, ouvre une WS sortante vers le hub | **Sortant uniquement** (NAT-friendly) | 1 container ou 1 service systemd + 1 URL + 1 token | Buffer local sur l'agent, replay au reconnect | Faible : un binaire, un protocole | **Très fort** — calque sur `gpuStreamWS.ts` interne |
-| (b) | Hub pull (HTTP `/metrics` ou SSH `nvidia-smi`) | Port à ouvrir côté nœud (ou clé SSH partagée) | Plus lourd : exposer un port + ACL ou clé SSH | Hub doit gérer le timeout — pas de buffer côté nœud | Moyen : la conf réseau retombe sur l'utilisateur | Faible — change le sens du flux |
-| (c) | Fédération de peers (chaque hôte = GpuViewR complet) | Bidirectionnel, ports HTTP+WS | Très lourd : SQLite + frontend + auth sur chaque nœud | Très bon localement, redondant | **Lourd** : N stacks à updater | Moyen — mais chaque nœud paie le coût d'un dashboard complet pour rien |
-| (d) | DCGM exporter + Prometheus + GpuViewR scrape Prom | Port DCGM + Prometheus | Doit déjà avoir Prom dans l'infra | Excellent (Prom gère lui-même) | Délègue à l'écosystème Prom, mais **fait perdre l'identité produit** | Faible — GpuViewR devient un skin sur Prom |
+| **(a)** | **Agent push WS**: lightweight binary/container on each host, opens an outbound WS to the hub | **Outbound only** (NAT-friendly) | 1 container or 1 systemd service + 1 URL + 1 token | Local buffer on the agent, replay on reconnect | Low: one binary, one protocol | **Very strong**: mirrors the internal `gpuStreamWS.ts` |
+| (b) | Hub pull (HTTP `/metrics` or SSH `nvidia-smi`) | Port to open on the node (or shared SSH key) | Heavier: expose a port + ACL or SSH key | Hub must handle the timeout, no buffer on the node | Medium: network config falls on the user | Weak: reverses the data flow |
+| (c) | Peer federation (each host = full GpuViewR) | Bidirectional, HTTP+WS ports | Very heavy: SQLite + frontend + auth on every node | Very good locally, redundant | **Heavy**: N stacks to update | Medium, but every node pays for a full dashboard for nothing |
+| (d) | DCGM exporter + Prometheus + GpuViewR scrapes Prom | DCGM + Prometheus ports | Must already have Prom in the infra | Excellent (Prom handles it) | Delegates to the Prom ecosystem, but **loses the product identity** | Weak: GpuViewR becomes a skin over Prom |
 
-### Recommandation : **(a) Agent push WebSocket**
+### Recommendation: **(a) Agent push WebSocket**
 
-Justifications décisives :
+Deciding reasons:
 
-1. **Cohérence architecturale** : `gpuCollector` émet déjà via `EventEmitter`, `gpuStreamWS` ne fait que router ce flux vers les clients. Un agent qui produit le même type `GpuSample` et se connecte au hub via WS réutilise littéralement le pipeline existant — la mutation du hub se limite à "injecter dans l'event bus comme si c'était un collecteur local".
-2. **Friction utilisateur minimale** : aucun port à ouvrir côté nœud, ce qui est crucial en home-lab / labos universitaires derrière NAT. Un `docker run` ou un `systemctl start` suffit.
-3. **Robustesse aux nœuds offline** : l'agent peut buffer en RAM (ou sur disque pour les longues coupures) et rejouer à la reconnexion. C'est plus simple à implémenter dans un sens qu'un sens où le hub devrait deviner que le nœud existe.
-4. **Solo open-source** : un protocole, un binaire à packager, pas de service discovery, pas de DNS, pas de mTLS obligatoire — le ratio valeur/maintenance est imbattable.
+1. **Architectural consistency**: `gpuCollector` already emits through an `EventEmitter`, and `gpuStreamWS` only routes that flow to clients. An agent that produces the same `GpuSample` type and connects to the hub over WS literally reuses the existing pipeline. The hub change boils down to "inject into the event bus as if it were a local collector".
+2. **Minimal user friction**: no port to open on the node, which is crucial in home labs and university labs behind NAT. A `docker run` or a `systemctl start` is enough.
+3. **Robustness to offline nodes**: the agent can buffer in RAM (or on disk for long outages) and replay on reconnect. This is simpler to implement in this direction than one where the hub would have to guess that the node exists.
+4. **Solo open source**: one protocol, one binary to package, no service discovery, no DNS, no mandatory mTLS. The value/maintenance ratio is unbeatable.
 
-Mention pragmatique : pour les utilisateurs qui ont déjà Prometheus, on peut **garder le mode (d) comme chemin "byo-telemetry" optionnel** plus tard (un host de type `prometheus` qui scrape un endpoint Prom au lieu d'avoir un agent WS). Ce n'est **pas** dans le scope v0.3.0 mais le schéma DB doit le permettre via une colonne `kind` sur la table `hosts`.
+Pragmatic note: for users who already run Prometheus, **mode (d) can be kept as an optional "byo-telemetry" path** later (a host of kind `prometheus` that scrapes a Prom endpoint instead of having a WS agent). It is **not** in the v0.3.0 scope, but the DB schema must allow it through a `kind` column on the `hosts` table.
 
-Les approches (b) et (c) sont éliminées : (b) renverse le contrôle réseau dans le mauvais sens, (c) multiplie les surfaces d'attaque et la dette d'update.
+Approaches (b) and (c) are rejected: (b) reverses network control in the wrong direction, (c) multiplies the attack surface and the update debt.
 
 ---
 
-## 2. Impact sur le schéma DB
+## 2. DB schema impact
 
-### Nouvelle table `hosts`
+### New `hosts` table
 
 ```
 hosts (
-  id            TEXT PRIMARY KEY,        -- UUIDv4 généré au enrollment
-  label         TEXT NOT NULL,           -- nom humain ("rtx-rig", "lab-3")
-  hostname      TEXT,                    -- os.hostname() rapporté par l'agent
-  kind          TEXT NOT NULL,           -- 'local' | 'agent' | 'prometheus' (réservé)
-  endpoint      TEXT,                    -- pour kind='prometheus' plus tard
-  token_hash    TEXT NOT NULL,           -- bcrypt du secret d'enrollment
+  id            TEXT PRIMARY KEY,        -- UUIDv4 generated at enrollment
+  label         TEXT NOT NULL,           -- human name ("rtx-rig", "lab-3")
+  hostname      TEXT,                    -- os.hostname() reported by the agent
+  kind          TEXT NOT NULL,           -- 'local' | 'agent' | 'prometheus' (reserved)
+  endpoint      TEXT,                    -- for kind='prometheus' later
+  token_hash    TEXT NOT NULL,           -- bcrypt of the enrollment secret
   capabilities  TEXT,                    -- JSON: { gpu:true, system:true, processes:true, temps:true }
   agent_version TEXT,
   protocol_ver  INTEGER NOT NULL DEFAULT 1,
@@ -73,621 +78,627 @@ hosts (
 )
 ```
 
-`id` est un **UUID stable** (pas le hostname), généré au moment du `POST /api/hosts/enroll`. Le hostname peut changer (rename d'une box, conteneur recréé) sans casser la corrélation historique — c'est crucial (cf. §10).
+`id` is a **stable UUID** (not the hostname), generated at `POST /api/hosts/enroll` time. The hostname can change (box renamed, container recreated) without breaking historical correlation. This is crucial (see §10).
 
-### Mutation des tables existantes — ajout de `host_id`
+### Changes to existing tables: adding `host_id`
 
-Tous les modèles métriques portent un `host_id TEXT NOT NULL` :
+All metric models carry a `host_id TEXT NOT NULL`:
 
-- `gpu_metrics` : `host_id TEXT NOT NULL DEFAULT 'local'`
-- `gpu_devices` : la PK passe de `(gpu_index)` à `(host_id, gpu_index)` ; `uuid` reste secondaire (deux hôtes peuvent avoir des UUID NVIDIA distincts pour la même position d'index)
-- `alert_events` : `host_id TEXT NOT NULL DEFAULT 'local'` — l'événement appartient à un host
-- `alert_rules` : `host_id TEXT NULL` — `NULL` = règle globale s'appliquant à tous les hosts, `'<id>'` = ciblée
+- `gpu_metrics`: `host_id TEXT NOT NULL DEFAULT 'local'`
+- `gpu_devices`: the PK changes from `(gpu_index)` to `(host_id, gpu_index)`; `uuid` stays secondary (two hosts can have distinct NVIDIA UUIDs at the same index position)
+- `alert_events`: `host_id TEXT NOT NULL DEFAULT 'local'`, the event belongs to a host
+- `alert_rules`: `host_id TEXT NULL`, `NULL` = global rule applying to all hosts, `'<id>'` = targeted
 
-### Fichiers concernés
+### Files involved
 
-- `server/database/connection.ts` (lignes 35-73) — DDL initial + bloc de migration. Suivre le pattern existant déjà utilisé pour la migration `utilization NOT NULL` (l.78-111) : détecter via `PRAGMA table_info('gpu_metrics')` la présence de la colonne `host_id`, et faire la migration `CREATE NEW / INSERT … 'local' / DROP / RENAME` dans une transaction. Recréer les index avec préfixe `host_id` : `idx_gpu_metrics_host_gpu_epoch ON gpu_metrics(host_id, gpu_index, timestamp_epoch)`.
-- `server/database/models/GpuMetric.ts` — toutes les méthodes (`insert`, `insertMany`, `history`, `historyDownsampled`, `historyIterate`, `stats`, `pruneOlderThan`) prennent un `host_id` en premier argument. **Compat** : conserver une signature legacy `(gpu_index, …)` qui pré-remplit `'local'` pour ne pas casser le hub mono-host pendant la migration interne.
-- `server/database/models/Alert.ts` — `gpu_index INTEGER NOT NULL` reste, on ajoute `host_id` dans `AlertEvent` et optionnellement dans `AlertRule`. La clé de state map de `alertService.ts:91` (`${rule.id}:${sample.gpu_index}`) devient `${rule.id}:${host_id}:${gpu_index}`.
-- **Nouveau** : `server/database/models/Host.ts` — repo CRUD + helpers `markSeen(id)`, `setStatus(id, status)`, `findByTokenHash(hash)`.
+- `server/database/connection.ts` (lines 35-73): initial DDL + migration block. Follow the existing pattern already used for the `utilization NOT NULL` migration (l.78-111): detect the `host_id` column via `PRAGMA table_info('gpu_metrics')`, and run the `CREATE NEW / INSERT … 'local' / DROP / RENAME` migration inside a transaction. Recreate the indexes with a `host_id` prefix: `idx_gpu_metrics_host_gpu_epoch ON gpu_metrics(host_id, gpu_index, timestamp_epoch)`.
+- `server/database/models/GpuMetric.ts`: every method (`insert`, `insertMany`, `history`, `historyDownsampled`, `historyIterate`, `stats`, `pruneOlderThan`) takes a `host_id` as first argument. **Compat**: keep a legacy `(gpu_index, …)` signature that pre-fills `'local'` so the single-host hub does not break during the internal migration.
+- `server/database/models/Alert.ts`: `gpu_index INTEGER NOT NULL` stays, `host_id` is added to `AlertEvent` and optionally to `AlertRule`. The state map key in `alertService.ts:91` (`${rule.id}:${sample.gpu_index}`) becomes `${rule.id}:${host_id}:${gpu_index}`.
+- **New**: `server/database/models/Host.ts`: CRUD repo + helpers `markSeen(id)`, `setStatus(id, status)`, `findByTokenHash(hash)`.
 
-### Migration des données existantes
+### Migrating existing data
 
-Au premier boot v0.3.x sur une base v0.2.5 :
+On the first v0.3.x boot on a v0.2.5 database:
 
-1. Détecter l'absence de la table `hosts` → c'est une install legacy.
+1. Detect that the `hosts` table is missing → this is a legacy install.
 2. `INSERT INTO hosts (id, label, kind, …) VALUES ('local', 'local', 'local', …, 'online')`.
-3. Migrer `gpu_metrics`/`gpu_devices`/`alert_events` en ajoutant `host_id='local'` pour toutes les lignes existantes (idempotent, pas de perte).
-4. Le `gpuCollector` interne continue à écrire avec `host_id='local'` (cf. §6).
+3. Migrate `gpu_metrics`/`gpu_devices`/`alert_events` by adding `host_id='local'` to every existing row (idempotent, no loss).
+4. The internal `gpuCollector` keeps writing with `host_id='local'` (see §6).
 
-L'utilisateur final ne fait **rien** : son install se met à jour, ses graphes historiques sont préservés, et le bouton "Ajouter un host" devient simplement disponible.
+The end user does **nothing**: the install updates itself, historical charts are preserved, and the "Add host" button simply becomes available.
 
 ---
 
-## 3. Auth & sécurité entre nœuds
+## 3. Auth and security between nodes
 
-### Modèle de token par hôte
+### Per-host token model
 
-Pas de JWT partagé global. Chaque agent dispose d'un **token d'enrollment** distinct (long, ≥ 32 octets random), stocké **haché bcrypt** côté hub (réutiliser `authService.hashPassword` / `verifyPassword` cf. `authService.ts:16-22`). Le token clair n'existe que :
+No global shared JWT. Each agent has its own **enrollment token** (long, ≥ 32 random bytes), stored **bcrypt-hashed** on the hub (reuse `authService.hashPassword` / `verifyPassword`, see `authService.ts:16-22`). The clear token only exists:
 
-- chez l'utilisateur au moment de l'enrollment (affichage one-shot dans l'UI / réponse API),
-- dans la conf de l'agent (`AGENT_TOKEN=…` en env var).
+- with the user at enrollment time (shown once in the UI / API response),
+- in the agent config (`AGENT_TOKEN=…` as an env var).
 
-Côté agent, le token est envoyé soit en header `Authorization: Bearer <token>` lors du handshake WS, soit en query string `?token=…` (comme fait déjà `gpuStreamWS.ts:14`).
+On the agent side, the token is sent either as an `Authorization: Bearer <token>` header during the WS handshake, or as a `?token=…` query string (as `gpuStreamWS.ts:14` already does).
 
-### Workflow d'enrollment
+### Enrollment workflow
 
-1. **Admin** côté hub : `POST /api/hosts` `{ label }` → génère `id` UUID + token brut → renvoie `{ id, token }` une seule fois.
-2. Admin copie/colle la commande affichée :
+1. **Admin** on the hub: `POST /api/hosts` `{ label }` → generates a UUID `id` + raw token → returns `{ id, token }` only once.
+2. The admin copies/pastes the displayed command:
    ```
    docker run -e HUB_URL=wss://hub/agent -e AGENT_TOKEN=… -e HOST_ID=… ghcr.io/erreur32/gpuviewr-agent
    ```
-3. L'agent se connecte au hub. Le hub vérifie `bcrypt.compare(token, host.token_hash)` ET `host.id === message.host_id` (un token ne peut prouver l'identité que d'**un seul** host).
-4. La première trame valide bascule `status` en `online`, met `last_seen` à jour, écrit `agent_version` et `protocol_ver` rapportés par l'agent.
+3. The agent connects to the hub. The hub checks `bcrypt.compare(token, host.token_hash)` AND `host.id === message.host_id` (a token can only prove the identity of **a single** host).
+4. The first valid frame switches `status` to `online`, updates `last_seen`, and writes the `agent_version` and `protocol_ver` reported by the agent.
 
 ### Rotation
 
-- `POST /api/hosts/:id/rotate-token` : invalide l'ancien hash, en génère un nouveau, le retourne une fois. L'agent doit être reconfiguré (équivalent à un re-enrollment, simple).
-- Pas de rotation automatique en v0.3.x — ajoute trop de complexité pour le bénéfice. À planifier post-1.0.
+- `POST /api/hosts/:id/rotate-token`: invalidates the old hash, generates a new one, returns it once. The agent must be reconfigured (equivalent to a re-enrollment, simple).
+- No automatic rotation in v0.3.x: too much complexity for the benefit. To plan post-1.0.
 
 ### TLS
 
-- **Recommandation** : ne **pas** réimplémenter TLS dans Node. Déléguer au reverse-proxy (nginx/Caddy/Traefik) que l'utilisateur a déjà devant `PUBLIC_URL`. L'agent se connecte en `wss://`. Cert pinning : refusé pour la v0.3 — trop d'aspérités (rotation cert, Let's Encrypt 90j, etc.) pour un projet solo. Documenter dans `SECURITY.md` que le hub **doit** être derrière TLS en production multi-host.
-- En dev/local sans TLS : `ws://` autorisé si le hub écoute sur loopback ou réseau privé. Refuser explicitement `ws://` vers une IP publique via un check de config (whitelist localhost/private CIDR sinon `nodeEnv === 'production'` → erreur).
+- **Recommendation**: do **not** reimplement TLS in Node. Delegate to the reverse proxy (nginx/Caddy/Traefik) the user already runs in front of `PUBLIC_URL`. The agent connects with `wss://`. Cert pinning: rejected for v0.3, too many rough edges (cert rotation, Let's Encrypt 90 days, etc.) for a solo project. Document in `SECURITY.md` that the hub **must** be behind TLS in multi-host production.
+- In dev/local without TLS: `ws://` is allowed if the hub listens on loopback or a private network. Explicitly refuse `ws://` to a public IP through a config check (whitelist localhost/private CIDR, otherwise `nodeEnv === 'production'` → error).
 
-### Isolation : empêcher un agent compromis de polluer un autre host
+### Isolation: preventing a compromised agent from polluting another host
 
-Règle d'invariant au niveau hub : **tout `host_id` dans une trame entrante est ignoré ; le hub utilise celui authentifié par le token au handshake**. Concrètement, l'agent peut envoyer `{ type: 'sample', samples: […] }` — il **ne** déclare **pas** `host_id` dans la trame, c'est le hub qui le tague côté serveur à partir de la session WS. Ça défait l'attaque "j'ai compromis l'agent du host A, je publie sous le host_id du host B".
+Invariant rule at the hub level: **any `host_id` in an incoming frame is ignored; the hub uses the one authenticated by the token at handshake**. Concretely, the agent can send `{ type: 'sample', samples: […] }`. It does **not** declare `host_id` in the frame; the hub tags it server-side from the WS session. This defeats the "I compromised host A's agent, I publish under host B's host_id" attack.
 
-### Lien avec `JWT_SECRET` existant
+### Relation to the existing `JWT_SECRET`
 
-Le `JWT_SECRET` (cf. `config.ts:5`) reste **strictement pour les sessions utilisateurs UI**. Les tokens d'agent sont **opaques** (random 32+ bytes, pas des JWT signés). Raison : pas besoin de claims (un token = un host_id, déjà résolu en DB) ; et ça évite la confusion "qui peut signer pour qui" si jamais quelqu'un fait fuiter `JWT_SECRET`. Deux espaces d'auth strictement disjoints, c'est plus simple à raisonner.
+`JWT_SECRET` (see `config.ts:5`) remains **strictly for UI user sessions**. Agent tokens are **opaque** (random 32+ bytes, not signed JWTs). Reason: no claims are needed (one token = one host_id, already resolved in the DB), and it avoids the "who can sign for whom" confusion if `JWT_SECRET` ever leaks. Two strictly disjoint auth spaces are simpler to reason about.
+
+(Later additions: since v0.5.0 the local sidecar authenticates with the `LOCAL_AGENT_BOOTSTRAP` shared secret instead of a bcrypt token, see §10. Since v0.6.4 the token handed to the user is the `<host_id>.<secret>` bundle; only the secret half is bcrypt-hashed.)
 
 ---
 
 ## 4. Transport
 
-### Protocole recommandé : **WebSocket persistant agent → hub**
+### Recommended protocol: **persistent WebSocket agent → hub**
 
-Pas de surprise au vu de l'archi interne — réutilisation maximale.
+No surprise given the internal architecture: maximum reuse.
 
-### Format de payload (proposé, v1)
+### Payload format (proposed, v1)
 
-Frames émises par l'agent (toutes en JSON, une frame = un objet) :
+Frames sent by the agent (all JSON, one frame = one object):
 
 ```
-// 1. Handshake (premier message après connection)
+// 1. Handshake (first message after connecting)
 { "type":"hello", "host_id":"<uuid>", "agent_version":"0.3.0",
   "protocol_ver":1, "hostname":"rtx-rig", "capabilities":{ "gpu":true,"system":true,"temps":true,"processes":false } }
 
-// 2. Sample périodique (tick GPU = 1s par défaut)
-{ "type":"sample", "ts_epoch":1731600000, "samples":[ <GpuSample sans host_id> … ] }
+// 2. Periodic sample (GPU tick = 1s by default)
+{ "type":"sample", "ts_epoch":1731600000, "samples":[ <GpuSample without host_id> … ] }
 
-// 3. Snapshot host (CPU/mem/load) — moins fréquent, p.ex. toutes les 5s
+// 3. Host snapshot (CPU/mem/load), less frequent, e.g. every 5s
 { "type":"system", "ts_epoch":…, "stats": <SystemStats> }
 
-// 4. Températures hwmon
+// 4. hwmon temperatures
 { "type":"temps", "ts_epoch":…, "sensors":[…] }
 
-// 5. Processus (sur demande ou périodique selon config)
+// 5. Processes (on demand or periodic depending on config)
 { "type":"processes", "ts_epoch":…, "processes":[…] }
 
 // 6. Keep-alive
 { "type":"ping", "ts_epoch":… }
 ```
 
-Frames hub → agent :
+Hub → agent frames:
 
 ```
 { "type":"welcome", "hub_version":"0.3.0", "protocol_ver":1, "tick_ms":1000 }
-{ "type":"config", "patch":{ "tick_ms":2000 } }   // permettre au hub d'ajuster la cadence
+{ "type":"config", "patch":{ "tick_ms":2000 } }   // lets the hub adjust the cadence
 { "type":"pong", "ts_epoch":… }
 ```
 
-### Réutiliser `GpuSample` ?
+(Later addition: v0.5.3 added the hub → agent `agent_update` frame for auto-update, see §12.3.)
 
-**Oui** — c'est le type pivot. Le hub re-publie aux clients UI le même `{ type:'sample', samples:[…], host_id }` en ajoutant juste `host_id` au niveau de l'enveloppe (cf. §6). Pas de duplication de type, et le frontend gagne juste un champ `host_id` à dispatcher.
+### Reuse `GpuSample`?
 
-### Reconnexion, backpressure, time-skew
+**Yes**, it is the pivot type. The hub re-publishes to UI clients the same `{ type:'sample', samples:[…], host_id }`, just adding `host_id` at the envelope level (see §6). No type duplication, and the frontend only gains a `host_id` field to dispatch on.
 
-- **Reconnexion** : exponentiel borné côté agent (1s → 2 → 4 … capé à 30s, jitter ±20%). Au reconnect, replay du buffer local (cf. ci-dessous) puis flux normal.
-- **Backpressure** : si `ws.bufferedAmount > N` (p.ex. 1 MiB), agent passe en mode "dégradé" — il drop les trames `processes`/`temps` mais conserve les `sample` GPU (la donnée la plus précieuse). Log warn.
-- **Time-skew** : chaque trame transporte `ts_epoch` issu de l'horloge **de l'agent**. Le hub stocke **deux** epochs : `agent_ts_epoch` (rapporté) et `hub_ts_epoch` (réception). Pour les requêtes/graphes le hub utilise `hub_ts_epoch` (cohérence du flux multi-host), `agent_ts_epoch` est conservé pour diagnostic. Recommander NTP dans la doc, mais ne pas l'imposer.
-- **Buffering local agent quand le hub est down (D5)** : ring buffer en RAM (taille bornée à 3 600 entrées ≈ 1 h × 1 Hz, ~1.7 MiB pour 4 GPUs) — **mode par défaut**. Persistance disque dans `$DATA_DIR/agent-buffer.jsonl` activée uniquement via `AGENT_BUFFER_PERSIST=1` (opt-in pour les utilisateurs avec hub instable). Le buffer est **append-only**, vidé en FIFO au reconnect. Au-delà de la limite, drop des plus anciennes — métrique 1 h vieille a moins de valeur qu'1 fresh.
+### Reconnection, backpressure, time skew
 
-### Versioning du protocole
+- **Reconnection**: bounded exponential backoff on the agent (1s → 2 → 4 … capped at 30s, jitter ±20%). On reconnect, replay the local buffer (see below), then normal flow.
+- **Backpressure**: if `ws.bufferedAmount > N` (e.g. 1 MiB), the agent switches to "degraded" mode: it drops `processes`/`temps` frames but keeps GPU `sample` frames (the most valuable data). Log warn.
+- **Time skew**: every frame carries a `ts_epoch` from the **agent's** clock. The hub stores **two** epochs: `agent_ts_epoch` (reported) and `hub_ts_epoch` (received). For queries/charts the hub uses `hub_ts_epoch` (multi-host flow consistency); `agent_ts_epoch` is kept for diagnostics. Recommend NTP in the docs, but do not enforce it.
+- **Local agent buffering while the hub is down (D5)**: RAM ring buffer (bounded at 3,600 entries ≈ 1 h × 1 Hz, ~1.7 MiB for 4 GPUs), **default mode**. Disk persistence in `$DATA_DIR/agent-buffer.jsonl` enabled only through `AGENT_BUFFER_PERSIST=1` (opt-in for users with an unstable hub). The buffer is **append-only**, drained FIFO on reconnect. Past the limit, the oldest entries are dropped: a 1 h old metric is worth less than a fresh one.
 
-Champ `protocol_ver: 1` dans `hello` et `welcome`. Le hub doit accepter `protocol_ver <= MAX_KNOWN` ; un agent plus récent rétrograde proprement. Toute breaking change → bump à 2, le hub continue à supporter 1 pendant au moins deux versions mineures.
+### Protocol versioning
+
+`protocol_ver: 1` field in `hello` and `welcome`. The hub must accept `protocol_ver <= MAX_KNOWN`; a newer agent downgrades cleanly. Any breaking change → bump to 2, the hub keeps supporting 1 for at least two minor versions.
 
 ---
 
-## 5. Découpage du code — où vit l'agent ?
+## 5. Code layout: where does the agent live?
 
-### Recommandation : **sous-package `agent/` dans le même repo**, en TypeScript Node 22
+### Recommendation: **`agent/` sub-package in the same repo**, in TypeScript Node 22
 
-Choix radical et explicite : **pas de monorepo**, juste un dossier `/agent` à côté de `/server` et `/src`, avec son propre `package.json` minimal, son `Dockerfile.agent`, et un import sélectif depuis `/server` pour les types et le parsing nvidia-smi.
+Radical and explicit choice: **no monorepo**, just an `/agent` folder next to `/server` and `/src`, with its own minimal `package.json`, its `Dockerfile.agent`, and a selective import from `/server` for the types and the nvidia-smi parsing.
 
-### Justifications
+### Rationale
 
-1. **Cohérence solo-maintenu** : un seul repo = un seul cycle de release, un seul `CHANGELOG.md`, un seul flux CI. Le protocole hub/agent évolue en lockstep — pas de désync de versions.
-2. **Réutilisation directe du parsing nvidia-smi** : le code de `gpuCollector.ts` (CSV parser, PCIe parser, normalisation) **est** la valeur ajoutée du projet. Le réécrire en Go ou Python serait dupliquer la dette de parsing (qui a déjà absorbé plusieurs commits de fixes — cf. les commentaires `pcieDiagLogged`, le fallback `idx:N`, etc.). Extraire un sous-module `agent/lib/nvidiaParsers.ts` partagé.
-3. **Footprint Node** : oui Node prend ~80 MiB RSS, mais c'est acceptable même sur des nœuds bare-metal modernes ; et l'agent n'a pas besoin de `better-sqlite3` ni `express` ni `react`, juste `ws` et le runtime — `node_modules` < 10 MiB.
-4. **Empaquetage** : image Docker **alpine** ou **distroless** (~50 MiB compressé, sans dist UI) ; et pour les machines bare-metal qui ne veulent pas Docker, `node --experimental-sea-config` (Single Executable Application natif Node 22) produit un binaire statique ~50 MiB. Documenter les deux.
+1. **Solo-maintainer consistency**: one repo = one release cycle, one `CHANGELOG.md`, one CI flow. The hub/agent protocol evolves in lockstep, with no version desync.
+2. **Direct reuse of the nvidia-smi parsing**: the code in `gpuCollector.ts` (CSV parser, PCIe parser, normalization) **is** the project's added value. Rewriting it in Go or Python would duplicate the parsing debt (which has already absorbed several fix commits, see the `pcieDiagLogged` comments, the `idx:N` fallback, etc.). Extract a shared `agent/lib/nvidiaParsers.ts` sub-module.
+3. **Node footprint**: yes, Node takes ~80 MiB RSS, but that is acceptable even on modern bare-metal nodes; and the agent needs neither `better-sqlite3` nor `express` nor `react`, just `ws` and the runtime, so `node_modules` < 10 MiB.
+4. **Packaging**: **alpine** or **distroless** Docker image (~50 MiB compressed, without the UI dist); and for bare-metal machines that do not want Docker, `node --experimental-sea-config` (native Node 22 Single Executable Application) produces a static ~50 MiB binary. Document both. (Superseded in v0.3.0: bare-metal ships as the esbuild `agent.mjs` bundle run by Node 22 via `install.sh`, no SEA binary. The agent image moved from distroless to `node:22-*-slim` in v0.3.1.)
 
-### Pourquoi pas Go ou Python ?
+### Why not Go or Python?
 
-- **Go** : binaire 5 MiB, séduisant, mais on perd la réutilisation du parser TypeScript ; et il faudrait maintenir deux implémentations du parsing CSV nvidia-smi → bug surfaces × 2.
-- **Python** : runtime à packager (~30 MiB compressé via PyInstaller), parsing à refaire, gain nul.
+- **Go**: 5 MiB binary, appealing, but we lose reuse of the TypeScript parser, and we would have to maintain two implementations of the nvidia-smi CSV parsing → bug surface × 2.
+- **Python**: runtime to package (~30 MiB compressed via PyInstaller), parsing to redo, zero gain.
 
-### Arborescence cible
+### Target tree
 
 ```
 /agent
-  package.json              # dépend de "ws" uniquement (+ types depuis ../server)
+  package.json              # depends on "ws" only (+ types from ../server)
   Dockerfile
   src/
     index.ts                # bootstrap + lifecycle
     config.ts               # HUB_URL, HOST_ID, AGENT_TOKEN, TICK_MS, FEATURES
     transport.ts            # WebSocket client, reconnect, buffer
     collectors/
-      gpu.ts                # importe ../../server/services/_nvidiaParsers (factorisé)
-      system.ts             # version allégée de systemStats.ts
-      temps.ts              # version allégée de systemTemperatures.ts
-      processes.ts          # version allégée de processCollector.ts
+      gpu.ts                # imports ../../server/services/_nvidiaParsers (factored out)
+      system.ts             # lightweight version of systemStats.ts
+      temps.ts              # lightweight version of systemTemperatures.ts
+      processes.ts          # lightweight version of processCollector.ts
   README.md
 ```
 
-Factorisation côté server (à faire dans un commit préparatoire — cf. §9 jalon 1) :
+Server-side factoring (to do in a preparatory commit, see §9 milestone 1):
 
-- Extraire de `server/services/gpuCollector.ts` :
-  - `parsePciThroughput`, `normalizeBusId`, `matchKbps`, `QUERY_FIELDS`, le type `GpuSample` → fichier neutre `server/services/_nvidiaParsers.ts` (importable depuis l'agent **et** depuis gpuCollector).
-- Idem `server/services/systemStats.ts` (déjà autonome, juste à exposer publiquement) et `systemTemperatures.ts` (idem).
-
----
-
-## 6. Hub central — adaptation sans casser le mono-host
-
-### Principe : `gpuCollector` reste un fournisseur **parmi d'autres**
-
-Aujourd'hui `gpuCollector` est un singleton qui spawn nvidia-smi localement et émet `'sample'`. Demain on introduit un **niveau d'indirection** : un `MetricsBus` (event bus unique côté hub) que **tous** les producteurs alimentent. Trois producteurs possibles :
-
-1. **Local collector** (l'actuel `gpuCollector`) — tagué `host_id='local'`. Activé si et seulement si `nvidia-smi` est dispo (déjà géré par `nvidiaSmiAvailable`, l.105). Si pas de nvidia-smi local, le hub ne produit rien lui-même — il fait juste l'agrégation.
-2. **Agent ingestor** (nouveau) — accepte les WS entrantes sur `/agent` (et **uniquement** pour les hôtes enrôlés avec un token valide). Pour chaque trame `sample` reçue, tag avec `host_id` issu de la session, ré-émission sur le `MetricsBus`.
-3. (Réservé) **Prometheus scraper** — futur.
-
-### Patch concret
-
-- `server/services/metricsBus.ts` (nouveau) — un `EventEmitter` typé exposant `emit('sample', { host_id, samples })`, `emit('system', …)`, etc. Tous les abonnés actuels de `gpuCollector` migrent vers ce bus.
-- `server/services/gpuCollector.ts` — le `this.emit('sample', samples)` (l.140, 301) devient `metricsBus.emit('sample', { host_id: 'local', samples })`. La signature publique du fichier ne change pas tant qu'on est en mono-host pur.
-- `server/services/agentIngestWS.ts` (nouveau) — symétrique de `gpuStreamWS.ts`, mais côté serveur. Mount sur path `/agent`. Auth = vérification du token agent (pas JWT user). Pour chaque message reçu, dispatch sur `metricsBus`.
-- `server/services/gpuStreamWS.ts` — `gpuCollector.on('sample', …)` (l.30) devient `metricsBus.on('sample', ({ host_id, samples }) => safeSend(ws, { type:'sample', host_id, samples }))`.
-- Le `snapshot` initial envoyé au client (l.23-24) doit lui aussi devenir multi-host : itérer sur les derniers samples connus de chaque host. Maintenir une `Map<host_id, GpuSample[]>` mise à jour à chaque tick — accessible via `metricsBus.getLatestPerHost()`.
-- `server/index.ts:117-119` — appeler `setupAgentIngestWS(server)` à côté de `setupGpuWebSocket(server)`. Démarrer `gpuCollector.start()` **uniquement si** nvidia-smi est dispo (le code y est déjà).
-
-### Comportement zero-config inchangé
-
-Une install fresh sur une machine avec nvidia-smi :
-- `host_id='local'` créé d'office au boot (cf. §2 migration).
-- `gpuCollector` démarre et publie.
-- Le client UI reçoit `{ type:'sample', host_id:'local', samples:[…] }` — il peut tout simplement ignorer `host_id` ou le grouper par "local" → l'UI v0.2.5 continue à fonctionner sans toucher au front (modulo un parsing tolérant du nouveau champ).
-
-### Stream multiplexé vs un stream par host
-
-**Recommandation : un seul stream WS frontal multiplexé**, avec `host_id` dans chaque enveloppe. Un client UI a souvent besoin de **tous** les hosts en même temps (tableau de bord global), et démultiplier WS côté navigateur multiplie la surface de bug pour zéro gain perf à l'échelle visée (jusqu'à ~20-50 hosts).
-
-Filtrage : le client peut demander `/ws/gpu?hosts=A,B` au handshake pour ne recevoir qu'un sous-ensemble (économie bande passante mobile). Le hub vérifie l'autorisation et filtre.
+- Extract from `server/services/gpuCollector.ts`:
+  - `parsePciThroughput`, `normalizeBusId`, `matchKbps`, `QUERY_FIELDS`, the `GpuSample` type → neutral file `server/services/_nvidiaParsers.ts` (importable from the agent **and** from gpuCollector).
+- Same for `server/services/systemStats.ts` (already self-contained, just needs to be exposed publicly) and `systemTemperatures.ts` (same).
 
 ---
 
-## 7. Surface API frontale (REST + WS)
+## 6. Central hub: adapting without breaking single-host
 
-### Nouvelles routes — fichier `server/routes/hosts.ts` (nouveau)
+### Principle: `gpuCollector` stays one provider **among others**
+
+Today `gpuCollector` is a singleton that spawns nvidia-smi locally and emits `'sample'`. Tomorrow we introduce a **level of indirection**: a `MetricsBus` (single event bus on the hub) fed by **all** producers. Three possible producers:
+
+1. **Local collector** (the current `gpuCollector`), tagged `host_id='local'`. Enabled if and only if `nvidia-smi` is available (already handled by `nvidiaSmiAvailable`, l.105). If there is no local nvidia-smi, the hub produces nothing itself and only aggregates. (Superseded in v0.5.0: the hub-local collectors were removed. Local GPUs are now reported by a sidecar agent in the same compose stack, authenticated with `LOCAL_AGENT_BOOTSTRAP` and `HOST_ID=local`, through the same `/agent` ingest as remote agents.)
+2. **Agent ingestor** (new): accepts incoming WS on `/agent` (and **only** for hosts enrolled with a valid token). For each `sample` frame received, tags it with the `host_id` from the session and re-emits it on the `MetricsBus`.
+3. (Reserved) **Prometheus scraper**: future.
+
+### Concrete patch
+
+- `server/services/metricsBus.ts` (new): a typed `EventEmitter` exposing `emit('sample', { host_id, samples })`, `emit('system', …)`, etc. All current `gpuCollector` subscribers move to this bus.
+- `server/services/gpuCollector.ts`: the `this.emit('sample', samples)` (l.140, 301) becomes `metricsBus.emit('sample', { host_id: 'local', samples })`. The file's public signature does not change as long as we are pure single-host.
+- `server/services/agentIngestWS.ts` (new): symmetric to `gpuStreamWS.ts`, but server-side. Mounted on path `/agent`. Auth = agent token check (not user JWT). Each received message is dispatched on `metricsBus`.
+- `server/services/gpuStreamWS.ts`: `gpuCollector.on('sample', …)` (l.30) becomes `metricsBus.on('sample', ({ host_id, samples }) => safeSend(ws, { type:'sample', host_id, samples }))`.
+- The initial `snapshot` sent to the client (l.23-24) must become multi-host too: iterate over the last known samples of each host. Maintain a `Map<host_id, GpuSample[]>` updated on every tick, accessible via `metricsBus.getLatestPerHost()`.
+- `server/index.ts:117-119`: call `setupAgentIngestWS(server)` next to `setupGpuWebSocket(server)`. Start `gpuCollector.start()` **only if** nvidia-smi is available (the code is already there).
+
+### Zero-config behavior unchanged
+
+A fresh install on a machine with nvidia-smi:
+- `host_id='local'` created automatically at boot (see §2 migration).
+- `gpuCollector` starts and publishes.
+- The UI client receives `{ type:'sample', host_id:'local', samples:[…] }`. It can simply ignore `host_id` or group by "local" → the v0.2.5 UI keeps working without touching the front end (apart from tolerant parsing of the new field).
+
+### Multiplexed stream vs one stream per host
+
+**Recommendation: a single multiplexed front-end WS stream**, with `host_id` in every envelope. A UI client often needs **all** hosts at once (global dashboard), and multiplying WS connections in the browser multiplies the bug surface for zero perf gain at the targeted scale (up to ~20-50 hosts).
+
+Filtering: the client can request `/ws/gpu?hosts=A,B` at handshake to receive only a subset (saves mobile bandwidth). The hub checks authorization and filters.
+
+---
+
+## 7. Front-end API surface (REST + WS)
+
+### New routes: file `server/routes/hosts.ts` (new)
 
 ```
 GET    /api/hosts                       → list (id, label, status, last_seen, agent_version, capabilities)
-POST   /api/hosts                       → admin : enroll → renvoie { id, token } une fois
-GET    /api/hosts/:id                   → détails complets
-PATCH  /api/hosts/:id                   → admin : renommer label, disable, …
-DELETE /api/hosts/:id                   → admin : retire l'enrôlement, purge optionnelle des métriques
-POST   /api/hosts/:id/rotate-token      → admin : nouvelle valeur opaque
+POST   /api/hosts                       → admin: enroll → returns { id, token } once
+GET    /api/hosts/:id                   → full details
+PATCH  /api/hosts/:id                   → admin: rename label, disable, …
+DELETE /api/hosts/:id                   → admin: removes the enrollment, optional metrics purge
+POST   /api/hosts/:id/rotate-token      → admin: new opaque value
 GET    /api/hosts/:id/status            → quick health (online/lag/last_seen seconds)
 ```
 
-### Routes existantes à étendre
+### Existing routes to extend
 
-- `server/routes/gpu.ts` :
-  - `GET /api/gpu/devices` (l.10) → accepter `?host=<id>`, défaut "tous". Réponse `{ devices: [ { host_id, gpu_index, name, … }, … ] }`.
-  - `GET /api/gpu/current` (l.14) → idem.
-  - `GET /api/gpu/history` (l.24) → param obligatoire `host` ; sinon erreur 400 (l'utilisateur doit choisir, l'agrégation N-host sur un graphe a peu de sens pour la v1).
-  - `GET /api/gpu/history.csv` (l.44) → accepter `host=<id>` ou `host=all` (cf. la convention `gpu=all` déjà en place l.45).
-  - `GET /api/gpu/stats` (l.79) → idem.
-- `server/routes/system.ts` :
-  - `GET /api/system/` (l.88) → soit reste host local par défaut, soit accepte `?host=<id>`. Le champ `host` dans la réponse devient une liste si pas de filtre.
-- `server/routes/processes.ts` :
-  - `GET /api/processes/` → accepter `?host=<id>`. Si l'agent du host n'a pas `capabilities.processes`, retourner `{ processes: [], reason: 'not-supported' }` plutôt que 404.
-- `server/routes/alerts.ts` :
-  - Les events listés portent désormais `host_id` — le front pourra grouper. Pas d'autre changement strict (cf. §10 pour la décision règles globales vs par-host).
-- `server/routes/metrics.ts` (Prometheus) — **décision D3** :
-  - Ajouter le label `host="<id>"` (UUID stable) à toutes les séries `gpuviewr_*`.
-  - Émettre **en plus** une série annexe `gpuviewr_host_info{host="<id>", label="<nom>", hostname="<os>"} 1` (pattern idiomatique cf. `node_uname_info`). Grafana joint via `* on (host) group_left (label) gpuviewr_host_info`.
-  - Avantage : renommer un host dans GpuViewR ne casse **pas** les queries Grafana de l'utilisateur (l'ID est stable).
-  - Important : ça **casse** les dashboards Prom existants en mono-host (qui n'avaient pas de label `host`) ; documenter dans le CHANGELOG.
-- `server/routes/health.ts` :
-  - Ajouter `hostsTotal`, `hostsOnline`, `hostsLagging` (last_seen > 30s).
+- `server/routes/gpu.ts`:
+  - `GET /api/gpu/devices` (l.10) → accept `?host=<id>`, default "all". Response `{ devices: [ { host_id, gpu_index, name, … }, … ] }`.
+  - `GET /api/gpu/current` (l.14) → same.
+  - `GET /api/gpu/history` (l.24) → mandatory `host` param, otherwise 400 error (the user must choose; N-host aggregation on one chart makes little sense for v1).
+  - `GET /api/gpu/history.csv` (l.44) → accept `host=<id>` or `host=all` (see the `gpu=all` convention already in place at l.45).
+  - `GET /api/gpu/stats` (l.79) → same.
+- `server/routes/system.ts`:
+  - `GET /api/system/` (l.88) → either stays on the local host by default, or accepts `?host=<id>`. The `host` field in the response becomes a list if there is no filter.
+- `server/routes/processes.ts`:
+  - `GET /api/processes/` → accept `?host=<id>`. If the host's agent does not have `capabilities.processes`, return `{ processes: [], reason: 'not-supported' }` rather than 404.
+- `server/routes/alerts.ts`:
+  - Listed events now carry `host_id`, so the front end can group them. No other strict change (see §10 for the global vs per-host rules decision).
+- `server/routes/metrics.ts` (Prometheus), **decision D3**:
+  - Add the `host="<id>"` label (stable UUID) to every `gpuviewr_*` series.
+  - **Additionally** emit a side series `gpuviewr_host_info{host="<id>", label="<name>", hostname="<os>"} 1` (idiomatic pattern, see `node_uname_info`). Grafana joins via `* on (host) group_left (label) gpuviewr_host_info`.
+  - Benefit: renaming a host in GpuViewR does **not** break the user's Grafana queries (the ID is stable).
+  - Important: this **breaks** existing single-host Prom dashboards (which had no `host` label); document it in the CHANGELOG.
+- `server/routes/health.ts`:
+  - Add `hostsTotal`, `hostsOnline`, `hostsLagging` (last_seen > 30s).
 
-### WebSocket frontal
+### Front-end WebSocket
 
-- `/ws/gpu` reste, le format évolue : chaque message `sample` porte `host_id`. Idem `alert`. Ajouter un nouveau type `host_status` `{ host_id, status:'online'|'offline'|'lagging', last_seen }` émis quand le hub détecte un changement (cf. §10 sur la détection offline).
-- Query string optionnelle `?hosts=A,B` pour filtrer.
+- `/ws/gpu` stays, the format evolves: every `sample` message carries `host_id`. Same for `alert`. Add a new `host_status` type `{ host_id, status:'online'|'offline'|'lagging', last_seen }` emitted when the hub detects a change (see §10 on offline detection).
+- Optional `?hosts=A,B` query string for filtering.
 
-### Hors scope
+### Out of scope
 
-- Pas de WebSocket dédié `/ws/hosts` — overkill, le canal `host_status` sur `/ws/gpu` suffit.
-- Pas d'API d'auto-discovery (mDNS, etc.). L'utilisateur enrolle manuellement, c'est explicite et auditable.
-
----
-
-## 8. Compat & migration v0.2.5 → v0.3.x
-
-### Stratégie zero-touch côté utilisateur mono-host
-
-1. Boot v0.3.0 sur DB v0.2.5 → migration auto (§2) qui crée `hosts` + remplit `host_id='local'`.
-2. `nvidia-smi` détecté → le collector local démarre comme avant.
-3. Le frontend v0.3.0 affiche un panneau "Hosts (1)" replié par défaut sur "local" → l'utilisateur ne voit pas de changement majeur.
-4. Bouton "Add host" visible dans Settings (admin uniquement) — c'est l'unique nouveauté visible tant que personne n'enrolle.
-
-### Versioning hub ↔ agent
-
-- **Hub** : suit le semver de `package.json` (déjà en place : 0.2.5 → 0.3.0).
-- **Agent** : même version que le hub au sein du même repo (un seul tag git → deux images : `ghcr.io/erreur32/gpuviewr:0.3.0` et `…/gpuviewr-agent:0.3.0`).
-- **Protocole** : champ `protocol_ver` séparé du semver applicatif. Démarre à 1. Le hub MAJEUR (0.4 → 0.5) peut bumper en 2 ; il continue à supporter v1 pour les agents non encore upgradés pendant un cycle. Une trame `welcome` peut renvoyer `{ deprecated:'protocol_ver=1', migrate_by:'0.5.0' }` pour avertir.
-
-### Migration des dashboards externes (Prometheus, MQTT, Influx)
-
-- Prometheus : nouvelle label `host=`. Document de migration dans `Docs/MIGRATION.md` avec un snippet PromQL d'agrégation (`sum by (gpu) (gpuviewr_gpu_power_watts)`) pour préserver les dashboards existants côté `host="local"`.
-- MQTT : ajouter un niveau de topic `gpuviewr/<host>/gpu<N>/state` (préfixe par défaut `gpuviewr/local/gpu0/state` pour rester rétrocompat sur 1 host). Mais un user multi-host **doit** mettre à jour ses templates HA Discovery. À documenter.
-- InfluxDB : ajouter tag `host=<label>` aux lignes. Existant tag `gpu_index` reste.
-
-### Cas dégradés à gérer
-
-- Base v0.2.5 sans `gpu_metrics` (install neuve) : aucune migration nécessaire, juste la création du schéma v0.3.x.
-- DB partiellement migrée (process crash en plein milieu) : la migration est transactionnelle (`BEGIN; … COMMIT;`) comme l'exemple existant l.85 — `connection.ts` doit ne réessayer que si `hosts` n'existe pas, ou détecter une migration interrompue (présence de `gpu_metrics_new` orphelin → DROP).
+- No dedicated `/ws/hosts` WebSocket: overkill, the `host_status` channel on `/ws/gpu` is enough.
+- No auto-discovery API (mDNS, etc.). The user enrolls manually, which is explicit and auditable.
 
 ---
 
-## 9. Découpage en jalons livrables
+## 8. Compat and migration v0.2.5 → v0.3.x
 
-5 jalons. Chacun = 1 PR raisonnable, mergeable, testable indépendamment. Pas de jalon UI.
+### Zero-touch strategy for single-host users
 
-### Jalon 1 — Refactor préparatoire (no-op fonctionnel)
+1. Boot v0.3.0 on a v0.2.5 DB → automatic migration (§2) that creates `hosts` + fills `host_id='local'`.
+2. `nvidia-smi` detected → the local collector starts as before. (Superseded in v0.5.0: the local sidecar agent replaces the hub-local collector, see §6.)
+3. The v0.3.0 frontend shows a "Hosts (1)" panel collapsed by default on "local" → the user sees no major change.
+4. "Add host" button visible in Settings (admin only): the only visible novelty as long as nobody enrolls.
 
-But : sortir les helpers nvidia-smi et système des modules de service pour qu'ils soient réutilisables par l'agent. Aucune feature, aucun changement de comportement.
+### Hub ↔ agent versioning
 
-- Créer `server/services/_nvidiaParsers.ts` : déplacer `QUERY_FIELDS`, `parsePciThroughput`, `normalizeBusId`, `matchKbps`, `num`, `numOrNull`, `nowTimestamp`, et le type `GpuSample`. `gpuCollector.ts` les ré-importe.
-- Créer `server/services/_metricsBus.ts` : nouvel `EventEmitter` singleton. Brancher `gpuCollector.emit('sample', …)` dessus avec `host_id='local'` en dur. `gpuStreamWS.ts`, `alertService.ts`, `exportService.ts` migrent leurs `gpuCollector.on('sample', …)` vers `metricsBus.on('sample', ({ host_id, samples }) => …)` — sur ce jalon `host_id` vaut toujours `'local'`.
-- Test : tout doit fonctionner exactement comme avant ; ajouter un test unitaire `metricsBus.test.ts`.
+- **Hub**: follows the `package.json` semver (already in place: 0.2.5 → 0.3.0).
+- **Agent**: same version as the hub within the same repo (one git tag → two images: `ghcr.io/erreur32/gpuviewr:0.3.0` and `…/gpuviewr-agent:0.3.0`).
+- **Protocol**: `protocol_ver` field separate from the application semver. Starts at 1. A MAJOR hub (0.4 → 0.5) may bump to 2; it keeps supporting v1 for agents not yet upgraded for one cycle. A `welcome` frame can return `{ deprecated:'protocol_ver=1', migrate_by:'0.5.0' }` as a warning.
 
-Fichiers : `server/services/gpuCollector.ts`, nouveaux `_nvidiaParsers.ts` + `_metricsBus.ts`, `gpuStreamWS.ts`, `alertService.ts`, `exportService.ts`.
+### Migrating external dashboards (Prometheus, MQTT, Influx)
 
-### Jalon 2 — Schéma DB multi-host + migration
+- Prometheus: new `host=` label. Migration document in `Docs/MIGRATION.md` with a PromQL aggregation snippet (`sum by (gpu) (gpuviewr_gpu_power_watts)`) to preserve existing dashboards on `host="local"`.
+- MQTT: add a topic level `gpuviewr/<host>/gpu<N>/state` (default prefix `gpuviewr/local/gpu0/state` to stay backward compatible on 1 host). But a multi-host user **must** update their HA Discovery templates. To document.
+- InfluxDB: add a `host=<label>` tag to the lines. The existing `gpu_index` tag stays.
 
-- Créer `server/database/models/Host.ts` (CRUD + helpers `markSeen`, `setStatus`).
-- Étendre `server/database/connection.ts` :
-  - DDL `CREATE TABLE hosts`.
-  - Bloc de migration `gpu_metrics`/`gpu_devices`/`alert_events` qui ajoute `host_id` avec valeur `'local'` pour les lignes existantes.
-  - Recréation des index avec préfixe `host_id`.
-  - Insertion de la ligne `hosts ('local', 'local', 'local', …, 'online')`.
-- Adapter toutes les méthodes de `GpuMetric.ts` et `Alert.ts` à `host_id` ; pour cette PR, le code applicatif passe `'local'` partout (toujours mono-host fonctionnel).
-- Vérifier via test que la migration sur une DB v0.2.5 produit la même `gpu_metrics.count()` qu'avant et que les rows ont bien `host_id='local'`.
+### Degraded cases to handle
 
-Fichiers : `server/database/connection.ts`, `server/database/models/GpuMetric.ts`, `server/database/models/Alert.ts`, **nouveau** `server/database/models/Host.ts`.
-
-### Jalon 3 — API `/api/hosts` + ingestion WS agent
-
-- `server/routes/hosts.ts` (nouveau) : CRUD + enrollment + rotate-token. `requireAdmin` partout sauf `GET /api/hosts/:id/status` (juste `requireAuth`).
-- `server/services/agentIngestWS.ts` (nouveau) : WS sur `/agent`. Authentification via token en query string + lookup `Host.findByTokenHash` + `bcrypt.compare`. Sur trame `hello`, vérifier `host_id` du message contre `host_id` de la session. Sur trame `sample`/`system`/`temps`/`processes`, ré-émettre sur `metricsBus` en taguant avec le `host_id` de la session. Marquer `last_seen` à chaque trame (avec un throttle 1 s pour ne pas marteler la DB).
-- Watchdog : tick toutes les 5 s, marque `status='offline'` les hosts dont `last_seen < now - 30s`. Émet sur `metricsBus` un événement `host_status_changed` que `gpuStreamWS` propage aux clients.
-- Test : connection bidirectionnelle locale (un client WS factice qui se présente comme agent et publie une trame `sample`) → vérification que le `metricsBus` reçoit bien le sample tagué.
-
-Fichiers : nouveaux `server/routes/hosts.ts`, `server/services/agentIngestWS.ts` ; modification `server/index.ts` (lignes 23-33 pour le mount, 117 pour le bootstrap WS).
-
-### Jalon 4 — Agent autonome packagé
-
-- Créer `/agent` avec `package.json` minimal (`ws` + `tsx`), `tsconfig.json` qui pointe `../server/services/_nvidiaParsers.ts` en path mapping.
-- `agent/src/index.ts` : config env (`HUB_URL`, `HOST_ID`, `AGENT_TOKEN`, `TICK_MS`, `FEATURES=gpu,system,temps,processes`), démarrage des collecteurs configurés, transport WS.
-- `agent/src/transport.ts` : reconnect exponentiel, ring buffer mémoire 3 600 entrées max (cf. D5), replay au reconnect, handshake `hello`/`welcome`. Si `AGENT_BUFFER_PERSIST=1`, miroir append-only dans `$DATA_DIR/agent-buffer.jsonl` avec rotation à 10 MiB.
-- `agent/Dockerfile` : multi-stage, runtime sur `node:22-alpine` ou `gcr.io/distroless/nodejs22-debian12`, taille cible < 60 MiB compressé.
-- Documenter en bonus la commande `node --experimental-sea-config` pour produire un binaire statique bare-metal.
-- Étendre `docker-compose.yml` avec un fichier d'exemple `docker-compose.agent.yml` séparé (l'utilisateur le pose **sur le nœud distant**, pas sur le hub).
-
-Fichiers : nouveau dossier `/agent/**`, nouveau `docker-compose.agent.yml`, mise à jour de `README.md` avec une section "Add a remote host".
-
-### Jalon 5 — Adaptation API frontale + Prometheus + exports
-
-- `server/routes/gpu.ts`, `system.ts`, `processes.ts` : accepter `?host=<id>` (cf. §7).
-- `server/routes/metrics.ts` et `server/services/exportService.ts` : ajouter le label `host=` à Prometheus, le tag `host=` à InfluxDB, et un niveau de topic `<host>/` à MQTT. Compat : si un seul host (`local`), garder l'ancien format pour ne pas casser les dashboards des utilisateurs mono-host.
-- `server/services/alertService.ts` : la clé d'état devient `${rule.id}:${host_id}:${gpu_index}`. Les events insérés portent `host_id`.
-- `server/routes/health.ts` : ajouter `hostsTotal`, `hostsOnline`.
-- `Docs/MIGRATION.md` : mode d'emploi v0.2.5 → v0.3.0 + nouveaux formats Prom/MQTT/Influx.
-
-Fichiers : `server/routes/gpu.ts`, `system.ts`, `processes.ts`, `metrics.ts`, `health.ts`, `alerts.ts`, `server/services/exportService.ts`, `server/services/alertService.ts`, `Docs/MIGRATION.md`, `CHANGELOG.md`.
-
-À la fin du jalon 5, on a une **instance multi-host fonctionnelle** : le hub mono-host marche pareil qu'avant, un admin peut enrôler un agent en 30 secondes, et toutes les surfaces (API, exports, alertes) sont host-aware. L'UI peut suivre dans un v0.3.1.
+- v0.2.5 DB without `gpu_metrics` (fresh install): no migration needed, just create the v0.3.x schema.
+- Partially migrated DB (process crash midway): the migration is transactional (`BEGIN; … COMMIT;`) like the existing example at l.85. `connection.ts` must only retry if `hosts` does not exist, or detect an interrupted migration (orphan `gpu_metrics_new` present → DROP).
 
 ---
 
-## 10. Risques et pièges
+## 9. Split into deliverable milestones
 
-### Boucle infinie si un GpuViewR pointe vers lui-même
+5 milestones. Each = 1 reasonable PR, mergeable and testable on its own. No UI milestone.
 
-Risque réel si quelqu'un confond `agent` et `hub` et configure un agent qui pointe `HUB_URL` vers lui-même. **Garde** : au handshake, l'agent log le `host_id` qu'il envoie ; côté hub, refuser un `host_id` qui correspond au host local (cf. §2 : `hosts` contient toujours une ligne `'local'`). Erreur explicite "host_id collides with local host". Pas une boucle vraie (les messages remontent puis sont ignorés), mais on évite la confusion.
+### Milestone 1: preparatory refactor (functional no-op)
 
-### Changement de hostname
+Goal: move the nvidia-smi and system helpers out of the service modules so the agent can reuse them. No feature, no behavior change.
 
-`os.hostname()` peut changer (renommage, reconstruction Docker). C'est pour ça que `host.id` est un **UUID stable**, pas le hostname. Le `hostname` rapporté par l'agent est juste **informatif** (affiché dans l'UI, mis à jour à chaque `hello`). Toute la corrélation historique en DB se fait sur `host_id`.
+- Create `server/services/_nvidiaParsers.ts`: move `QUERY_FIELDS`, `parsePciThroughput`, `normalizeBusId`, `matchKbps`, `num`, `numOrNull`, `nowTimestamp`, and the `GpuSample` type. `gpuCollector.ts` re-imports them.
+- Create `server/services/_metricsBus.ts`: new singleton `EventEmitter`. Wire `gpuCollector.emit('sample', …)` onto it with a hardcoded `host_id='local'`. `gpuStreamWS.ts`, `alertService.ts`, `exportService.ts` move their `gpuCollector.on('sample', …)` to `metricsBus.on('sample', ({ host_id, samples }) => …)`. In this milestone `host_id` is always `'local'`.
+- Test: everything must work exactly as before; add a `metricsBus.test.ts` unit test.
 
-### Cohérence des alerts : globales ou par host ?
+Files: `server/services/gpuCollector.ts`, new `_nvidiaParsers.ts` + `_metricsBus.ts`, `gpuStreamWS.ts`, `alertService.ts`, `exportService.ts`.
 
-**Décision retenue (D4)** : `alert_rules.host_id NULL` = règle globale (s'applique à tous les hosts, comme aujourd'hui `gpu_index NULL` = toutes les GPU), `host_id='<id>'` = règle ciblée. Les events insèrent toujours le `host_id` qui a déclenché. L'état de hystérésis dans `alertService.ts` est keyé par `(rule_id, host_id, gpu_index)` — donc une règle globale peut firer indépendamment sur le host A et le host B (c'est ce qu'on veut). Symétrie complète avec le pattern `gpu_index` existant. Documenter explicitement dans `Docs/MIGRATION.md`.
+### Milestone 2: multi-host DB schema + migration
+
+- Create `server/database/models/Host.ts` (CRUD + helpers `markSeen`, `setStatus`).
+- Extend `server/database/connection.ts`:
+  - `CREATE TABLE hosts` DDL.
+  - Migration block for `gpu_metrics`/`gpu_devices`/`alert_events` that adds `host_id` with value `'local'` for existing rows.
+  - Recreate the indexes with a `host_id` prefix.
+  - Insert the `hosts ('local', 'local', 'local', …, 'online')` row.
+- Adapt every method of `GpuMetric.ts` and `Alert.ts` to `host_id`; for this PR, application code passes `'local'` everywhere (still functional single-host).
+- Check via a test that the migration on a v0.2.5 DB yields the same `gpu_metrics.count()` as before and that the rows have `host_id='local'`.
+
+Files: `server/database/connection.ts`, `server/database/models/GpuMetric.ts`, `server/database/models/Alert.ts`, **new** `server/database/models/Host.ts`.
+
+### Milestone 3: `/api/hosts` API + agent WS ingest
+
+- `server/routes/hosts.ts` (new): CRUD + enrollment + rotate-token. `requireAdmin` everywhere except `GET /api/hosts/:id/status` (just `requireAuth`).
+- `server/services/agentIngestWS.ts` (new): WS on `/agent`. Authentication via the token in the query string + `Host.findByTokenHash` lookup + `bcrypt.compare`. On a `hello` frame, check the message's `host_id` against the session's `host_id`. On `sample`/`system`/`temps`/`processes` frames, re-emit on `metricsBus` tagged with the session's `host_id`. Update `last_seen` on every frame (with a 1 s throttle so as not to hammer the DB).
+- Watchdog: ticks every 5 s, marks `status='offline'` the hosts whose `last_seen < now - 30s`. Emits a `host_status_changed` event on `metricsBus` that `gpuStreamWS` forwards to clients.
+- Test: local bidirectional connection (a fake WS client presenting itself as an agent and publishing a `sample` frame) → check that `metricsBus` receives the tagged sample.
+
+Files: new `server/routes/hosts.ts`, `server/services/agentIngestWS.ts`; change `server/index.ts` (lines 23-33 for the mount, 117 for the WS bootstrap).
+
+### Milestone 4: packaged standalone agent
+
+- Create `/agent` with a minimal `package.json` (`ws` + `tsx`), a `tsconfig.json` pointing to `../server/services/_nvidiaParsers.ts` through path mapping.
+- `agent/src/index.ts`: env config (`HUB_URL`, `HOST_ID`, `AGENT_TOKEN`, `TICK_MS`, `FEATURES=gpu,system,temps,processes`), start the configured collectors, WS transport.
+- `agent/src/transport.ts`: exponential reconnect, in-memory ring buffer of 3,600 entries max (see D5), replay on reconnect, `hello`/`welcome` handshake. If `AGENT_BUFFER_PERSIST=1`, append-only mirror in `$DATA_DIR/agent-buffer.jsonl` with rotation at 10 MiB.
+- `agent/Dockerfile`: multi-stage, runtime on `node:22-alpine` or `gcr.io/distroless/nodejs22-debian12`, target size < 60 MiB compressed.
+- As a bonus, document the `node --experimental-sea-config` command to produce a static bare-metal binary.
+- Extend `docker-compose.yml` with a separate example file `docker-compose.agent.yml` (the user drops it **on the remote node**, not on the hub).
+
+Files: new `/agent/**` folder, new `docker-compose.agent.yml`, update `README.md` with an "Add a remote host" section.
+
+### Milestone 5: front-end API + Prometheus + exports
+
+- `server/routes/gpu.ts`, `system.ts`, `processes.ts`: accept `?host=<id>` (see §7).
+- `server/routes/metrics.ts` and `server/services/exportService.ts`: add the `host=` label to Prometheus, the `host=` tag to InfluxDB, and a `<host>/` topic level to MQTT. Compat: if there is a single host (`local`), keep the old format so as not to break single-host users' dashboards.
+- `server/services/alertService.ts`: the state key becomes `${rule.id}:${host_id}:${gpu_index}`. Inserted events carry `host_id`.
+- `server/routes/health.ts`: add `hostsTotal`, `hostsOnline`.
+- `Docs/MIGRATION.md`: v0.2.5 → v0.3.0 how-to + new Prom/MQTT/Influx formats.
+
+Files: `server/routes/gpu.ts`, `system.ts`, `processes.ts`, `metrics.ts`, `health.ts`, `alerts.ts`, `server/services/exportService.ts`, `server/services/alertService.ts`, `Docs/MIGRATION.md`, `CHANGELOG.md`.
+
+At the end of milestone 5 we have a **working multi-host instance**: the single-host hub works as before, an admin can enroll an agent in 30 seconds, and every surface (API, exports, alerts) is host-aware. The UI can follow in a v0.3.1.
+
+---
+
+## 10. Risks and pitfalls
+
+### Infinite loop if a GpuViewR points to itself
+
+A real risk if someone mixes up `agent` and `hub` and configures an agent whose `HUB_URL` points to itself. **Guard**: at handshake, the agent logs the `host_id` it sends; on the hub side, refuse a `host_id` that matches the local host (see §2: `hosts` always contains a `'local'` row). Explicit error "host_id collides with local host". Not a true loop (messages go up and are then ignored), but it avoids confusion. (Superseded in v0.5.0: `local` is now claimed by the sidecar agent, accepted only with the `LOCAL_AGENT_BOOTSTRAP` shared secret; a regular enrolled token still cannot claim `local`.)
+
+### Hostname change
+
+`os.hostname()` can change (rename, Docker rebuild). That is why `host.id` is a **stable UUID**, not the hostname. The `hostname` reported by the agent is only **informational** (shown in the UI, updated on every `hello`). All historical correlation in the DB is done on `host_id`.
+
+### Alert consistency: global or per host?
+
+**Decision taken (D4)**: `alert_rules.host_id NULL` = global rule (applies to all hosts, just as `gpu_index NULL` = all GPUs today), `host_id='<id>'` = targeted rule. Events always record the `host_id` that triggered them. The hysteresis state in `alertService.ts` is keyed by `(rule_id, host_id, gpu_index)`, so a global rule can fire independently on host A and host B (which is what we want). Full symmetry with the existing `gpu_index` pattern. Document explicitly in `Docs/MIGRATION.md`.
 
 ### Exports (Prometheus/MQTT/Influx/Webhook)
 
-- Prom : nouvelle label `host=` ⇒ **breaking change** Grafana. À annoncer fort dans le CHANGELOG.
-- MQTT : nouveau préfixe `gpuviewr/<host>/…`. Idem.
-- Webhooks (Discord/Telegram) : la signature `formatAlert` doit injecter le label du host dans le titre. Sinon un user reçoit "GPU #0 temperature firing" sans savoir laquelle de ses 5 machines râle.
+- Prom: new `host=` label ⇒ Grafana **breaking change**. Announce it loudly in the CHANGELOG.
+- MQTT: new `gpuviewr/<host>/…` prefix. Same.
+- Webhooks (Discord/Telegram): the `formatAlert` signature must inject the host label in the title. Otherwise a user receives "GPU #0 temperature firing" without knowing which of their 5 machines is complaining.
 
-### Agent qui spam le hub
+### Agent spamming the hub
 
-Un agent buggé / compromis pourrait envoyer 10k samples/s. **Garde** : rate-limit au niveau de la session WS — p.ex. `100 messages/s` max via une fenêtre glissante. Au-delà, log warn + déconnexion forcée + cooldown reconnect.
+A buggy or compromised agent could send 10k samples/s. **Guard**: rate limit at the WS session level, e.g. `100 messages/s` max through a sliding window. Beyond that, log warn + forced disconnect + reconnect cooldown.
 
-### Time-skew massif (NTP désactivé)
+### Massive time skew (NTP disabled)
 
-Si l'agent a 10 min de retard, ses `sample.ts_epoch` polluent les graphes. Décision : le hub stocke `hub_ts_epoch` comme `timestamp_epoch` faisant foi (cf. §4). Le diagnostic du skew est exposé via `GET /api/hosts/:id/status` (`time_skew_seconds`).
+If the agent is 10 min behind, its `sample.ts_epoch` values pollute the charts. Decision: the hub stores `hub_ts_epoch` as the authoritative `timestamp_epoch` (see §4). The skew diagnostic is exposed via `GET /api/hosts/:id/status` (`time_skew_seconds`).
 
-### Drift de schéma agent ↔ hub
+### Agent ↔ hub schema drift
 
-Si l'agent envoie un `GpuSample` avec un champ inconnu (parce qu'il est en avance sur le hub), le hub doit **ignorer** silencieusement (forward-compat). Si à l'inverse il manque un champ que le hub attend, le champ est `null`. Pas d'erreur fatale au unmarshal.
+If the agent sends a `GpuSample` with an unknown field (because it is ahead of the hub), the hub must silently **ignore** it (forward compat). Conversely, if a field the hub expects is missing, the field is `null`. No fatal error on unmarshal.
 
-### Cohérence WAL SQLite sous charge multi-host
+### SQLite WAL consistency under multi-host load
 
-20 hosts × 1 Hz × 4 GPU = 80 inserts/s. La logique de batch existante (`buffer.push` + flush toutes les 60 s, cf. `gpuCollector.ts:85`) reste pertinente — agréger côté hub avant flush, même origine que le code mono-host. Tester avec un script de charge synthétique (mock-agent) avant release.
+20 hosts × 1 Hz × 4 GPUs = 80 inserts/s. The existing batch logic (`buffer.push` + flush every 60 s, see `gpuCollector.ts:85`) stays relevant: aggregate on the hub before flushing, same origin as the single-host code. Test with a synthetic load script (mock agent) before release.
 
-### Le hub n'est plus juste un dashboard
+### The hub is no longer just a dashboard
 
-Multi-host = le hub devient un point de défaillance critique. Documenter que la DB SQLite reste un single-file (pas de cluster), et que la stratégie de backup recommandée (`data/gpuviewr.db` + WAL) reste valide mais doit être plus assidue. Pas de HA dans le scope.
+Multi-host = the hub becomes a critical point of failure. Document that the SQLite DB remains a single file (no cluster), and that the recommended backup strategy (`data/gpuviewr.db` + WAL) remains valid but must be followed more diligently. No HA in scope.
 
-### Permissions Docker socket
+### Docker socket permissions
 
-Aucune. L'agent ne touche **pas** au Docker socket. Il invoque `nvidia-smi` comme le fait le hub aujourd'hui. Bonus collatéral : l'agent peut tourner non-root si nvidia-smi est lisible.
-
----
-
-## Hors scope explicite
-
-- Pas d'UI multi-host dans ces PRs ("affichage, on verra plus tard"). Le frontend `src/` n'est pas touché par les jalons 1-5 sauf pour rester tolérant à la présence du champ `host_id` (peut être fait dans un mini-commit séparé : un parser tolérant qui ignore `host_id` en attendant).
-- Pas de RBAC inter-organisation (tous les users admin du hub peuvent gérer tous les hosts).
-- Pas d'auto-discovery (mDNS/Consul).
-- Pas de mTLS / cert pinning (déléguer TLS au reverse-proxy).
-- Pas de sharding ou de réplication SQLite.
-- Pas d'agrégation de séries cross-host dans `/api/gpu/history` (un graphe = un host à la fois en v1).
+None. The agent does **not** touch the Docker socket. It invokes `nvidia-smi` just like the hub does today. Side bonus: the agent can run as non-root if nvidia-smi is readable.
 
 ---
 
-## 11. Affichage (UI multi-host) — design proposé
+## Explicitly out of scope
 
-Cible : v0.3.1, après le backbone multi-host (jalons 1-5). Pattern : **hybride** (vue flotte + drill-down host), comme Tailscale / Portainer / Coolify.
+- No multi-host UI in these PRs ("display, we'll see later"). The `src/` frontend is not touched by milestones 1-5 except to stay tolerant of the `host_id` field (can be done in a separate mini commit: a tolerant parser that ignores `host_id` in the meantime).
+- No cross-organization RBAC (every admin user of the hub can manage every host).
+- No auto-discovery (mDNS/Consul).
+- No mTLS / cert pinning (TLS delegated to the reverse proxy).
+- No SQLite sharding or replication.
+- No cross-host series aggregation in `/api/gpu/history` (one chart = one host at a time in v1).
 
-### 11.1 Trois nouvelles routes / vues
+---
 
-1. **`/fleet` — Vue Fleet (nouvelle)** — première chose qu'un admin voit après login si plus d'un host existe.
-   - Bandeau du haut : 3 chiffres agrégés — `Online: 4/5`, `GPUs: 12`, `Power: 1.2 kW`.
-   - Grid responsive de cards (1 col mobile / 2 tablet / 3-4 desktop).
-   - 1 card = 1 host : label, dot status (vert/jaune/rouge), hostname dim, nb GPUs, GPU la plus chaude (sparkline 60s), power total, last_seen relatif.
-   - Clic carte → `/host/:id` (drill-down).
-   - Cards offline grisées, badge "offline 6m" sur la dot.
+## 11. Display (multi-host UI): proposed design
 
-2. **`/host/:id` — Vue Host (Dashboard actuel rebranché)** — c'est `src/components/dashboard/Dashboard.tsx` tel quel, mais bound à un `host_id` via router param.
-   - Le `useGpuStream()` filtre sur `host_id` à la souscription WS.
-   - Breadcrumb `Fleet > rtx-rig` pour remonter.
-   - Sélecteur GPU existant gagne un sélecteur Host à sa gauche (un combo "host · gpu" cohérent).
-   - Si `host.status === 'offline'`, overlay non-bloquant "Host offline — last seen 6m ago" mais on continue d'afficher les dernières données connues + bouton "View history".
+Target: v0.3.1, after the multi-host backbone (milestones 1-5). Pattern: **hybrid** (fleet view + host drill-down), like Tailscale / Portainer / Coolify.
 
-3. **`/settings/hosts` — Settings → Hosts (admin only)**
-   - Table : Label / Status pill / GPUs / Agent version / Last seen / Actions (rename, rotate token, disable, delete).
-   - Bouton `+ Add host` ouvre la modal d'enrollment :
-     - Champ unique `label` à remplir.
-     - Submit → `POST /api/hosts` → la modal mute en "Token (copy now, shown once)" + snippet `docker run …` cliquable copy-to-clipboard.
-     - Warning fort en rouge avant la fermeture.
-   - Modal "Rotate token" : confirmation + nouveau token affiché une fois.
+### 11.1 Three new routes / views
 
-### 11.2 Header global — indicateur permanent
+1. **`/fleet`: Fleet view (new)**, the first thing an admin sees after login if more than one host exists.
+   - Top banner: 3 aggregated figures, `Online: 4/5`, `GPUs: 12`, `Power: 1.2 kW`.
+   - Responsive grid of cards (1 col mobile / 2 tablet / 3-4 desktop).
+   - 1 card = 1 host: label, status dot (green/yellow/red), dimmed hostname, GPU count, hottest GPU (60s sparkline), total power, relative last_seen.
+   - Click a card → `/host/:id` (drill-down).
+   - Offline cards greyed out, "offline 6m" badge on the dot.
 
-`src/components/layout/Header.tsx` (déjà existant) gagne un mini-widget cliquable à droite du logo :
+2. **`/host/:id`: Host view (current Dashboard rewired)**. This is `src/components/dashboard/Dashboard.tsx` as is, but bound to a `host_id` via a router param.
+   - `useGpuStream()` filters on `host_id` at WS subscription.
+   - `Fleet > rtx-rig` breadcrumb to go back up.
+   - The existing GPU selector gains a Host selector on its left (a consistent "host · gpu" combo).
+   - If `host.status === 'offline'`, a non-blocking overlay "Host offline, last seen 6m ago", but the last known data keeps being displayed + a "View history" button.
+
+3. **`/settings/hosts`: Settings → Hosts (admin only)**
+   - Table: Label / Status pill / GPUs / Agent version / Last seen / Actions (rename, rotate token, disable, delete).
+   - The `+ Add host` button opens the enrollment modal:
+     - A single `label` field to fill in.
+     - Submit → `POST /api/hosts` → the modal turns into "Token (copy now, shown once)" + a `docker run …` snippet with click-to-copy.
+     - Strong red warning before closing.
+   - "Rotate token" modal: confirmation + new token shown once.
+
+### 11.2 Global header: permanent indicator
+
+`src/components/layout/Header.tsx` (already existing) gains a clickable mini widget right of the logo:
 
 ```
 [●] Fleet 4/5
 ```
 
-- Dot agrégé : vert si all online, jaune si ≥1 lagging, rouge si ≥1 offline.
-- Clic → `/fleet`.
-- Caché si un seul host (`local`) existe — l'utilisateur mono-host ne voit aucune nouveauté visuelle.
+- Aggregated dot: green if all online, yellow if ≥1 lagging, red if ≥1 offline.
+- Click → `/fleet`.
+- Hidden if only one host (`local`) exists: the single-host user sees no visual change.
 
-### 11.3 Composants à créer
+### 11.3 Components to create
 
-| Composant | Rôle | Notes |
+| Component | Role | Notes |
 |---|---|---|
-| `src/components/fleet/FleetView.tsx` | Page `/fleet` | Layout + agrégats + grid |
-| `src/components/fleet/HostCard.tsx` | 1 card host | Inclut sparkline temp, status pill |
-| `src/components/fleet/StatusPill.tsx` | Dot + label "Online 3s / Lagging 47s / Offline 6m" | Réutilisé partout |
-| `src/components/fleet/FleetIndicator.tsx` | Mini widget header | Réagit aux events `host_status` WS |
-| `src/components/settings/HostsTable.tsx` | Table dans Settings | Pagination si > 50 hosts |
-| `src/components/settings/EnrollHostModal.tsx` | Modal d'enrollment + token display | Copy-to-clipboard avec masque |
-| `src/components/settings/RotateTokenModal.tsx` | Confirmation + nouveau token | Pareil que enroll mais sans nouvelle row |
+| `src/components/fleet/FleetView.tsx` | `/fleet` page | Layout + aggregates + grid |
+| `src/components/fleet/HostCard.tsx` | 1 host card | Includes temp sparkline, status pill |
+| `src/components/fleet/StatusPill.tsx` | Dot + label "Online 3s / Lagging 47s / Offline 6m" | Reused everywhere |
+| `src/components/fleet/FleetIndicator.tsx` | Header mini widget | Reacts to `host_status` WS events |
+| `src/components/settings/HostsTable.tsx` | Table in Settings | Pagination if > 50 hosts |
+| `src/components/settings/EnrollHostModal.tsx` | Enrollment modal + token display | Copy-to-clipboard with mask |
+| `src/components/settings/RotateTokenModal.tsx` | Confirmation + new token | Same as enroll but without a new row |
 
 ### 11.4 Store / data flow
 
-- Nouveau store Zustand `useHostsStore` (cf. pattern existant dans `src/store/`) : `hosts: Host[]`, `status: Map<host_id, HostStatus>`, `selectedHostId: string | null`.
-- Hydratation initiale via `GET /api/hosts` au boot de l'app.
-- Souscription WS `/ws/gpu` reçoit désormais des messages `{type:'host_status', host_id, status, last_seen}` qui mutent le store.
-- `Dashboard.tsx` lit `selectedHostId` du store ou du router param.
+- New Zustand store `useHostsStore` (see the existing pattern in `src/store/`): `hosts: Host[]`, `status: Map<host_id, HostStatus>`, `selectedHostId: string | null`.
+- Initial hydration via `GET /api/hosts` at app boot.
+- The `/ws/gpu` WS subscription now receives `{type:'host_status', host_id, status, last_seen}` messages that mutate the store.
+- `Dashboard.tsx` reads `selectedHostId` from the store or the router param.
 
-### 11.5 Comportement zero-config mono-host (préservé)
+### 11.5 Zero-config single-host behavior (preserved)
 
-Si `GET /api/hosts` renvoie un seul host avec `kind='local'` :
-- Header `FleetIndicator` masqué.
-- `/fleet` toujours accessible mais redirige vers `/host/local` (i.e. `/`).
-- Aucun "Add host" visible tant que l'utilisateur n'est pas admin (déjà la sémantique actuelle pour Settings).
+If `GET /api/hosts` returns a single host with `kind='local'`:
+- Header `FleetIndicator` hidden.
+- `/fleet` still reachable but redirects to `/host/local` (i.e. `/`).
+- No "Add host" visible unless the user is an admin (already the current semantics for Settings).
 
 ### 11.6 Mobile
 
-- Cards `/fleet` : grid 1 col, scroll vertical.
-- Header `FleetIndicator` : juste la dot + chiffre, pas de mot "Fleet".
-- Modal d'enrollment plein écran.
-- Drill-down host inchangé (le Dashboard est déjà responsive).
+- `/fleet` cards: 1-col grid, vertical scroll.
+- Header `FleetIndicator`: just the dot + figure, no "Fleet" word.
+- Full-screen enrollment modal.
+- Host drill-down unchanged (the Dashboard is already responsive).
 
-### 11.7 Hors scope UI (v0.3.1)
+### 11.7 UI out of scope (v0.3.1)
 
-- Pas de mode "Compare hosts" (overlay multi-séries cross-host) — réservé v0.4.
-- Pas de notification toast "host went offline" — c'est un changement de dot, suffisant pour v0.3.
-- Pas de groupes / tags de hosts — flat list.
-- Pas de carte géo / réseau visualization.
+- No "Compare hosts" mode (cross-host multi-series overlay), reserved for v0.4.
+- No "host went offline" toast notification: a dot change is enough for v0.3.
+- No host groups / tags: flat list.
+- No geo map / network visualization.
 
 ---
 
-## 12. Options de l'agent — env vars supportées
+## 12. Agent options: supported env vars
 
-Surface minimale et stable. Tout est documenté dans `agent/README.md`.
+Minimal and stable surface. Everything is documented in `agent/README.md`.
 
-### 12.1 Variables requises (handshake)
+### 12.1 Required variables (handshake)
 
-| Variable | Rôle | Notes |
+| Variable | Role | Notes |
 |---|---|---|
-| `HUB_URL` | URL du hub, ex. `wss://hub.example.com/agent` | `ws://` autorisé seulement vers loopback / RFC1918 (cf. §3). Erreur fatale au boot sinon. |
-| `HOST_ID` | UUID donné par le hub à l'enrollment | Stable, jamais re-généré. Doit matcher la ligne `hosts` côté hub. |
-| `AGENT_TOKEN` | Secret opaque donné par le hub à l'enrollment | Une seule chance de le copier. Comparé via `bcrypt.compare` côté hub. |
+| `HUB_URL` | Hub URL, e.g. `wss://hub.example.com/agent` | `ws://` allowed only to loopback / RFC1918 (see §3). Fatal error at boot otherwise. |
+| `HOST_ID` | UUID given by the hub at enrollment | Stable, never regenerated. Must match the `hosts` row on the hub. |
+| `AGENT_TOKEN` | Opaque secret given by the hub at enrollment | Only one chance to copy it. Compared via `bcrypt.compare` on the hub. |
 
-### 12.2 Variables optionnelles (comportement)
+(Later addition: since v0.5.0 the plural `HUB_URLS` / `HOST_IDS` / `AGENT_TOKENS` let one agent report to several hubs; the singular forms still work.)
 
-| Variable | Défaut | Rôle |
+### 12.2 Optional variables (behavior)
+
+| Variable | Default | Role |
 |---|---|---|
-| `TICK_MS` | `1000` | Cadence du collecteur GPU. Le hub peut le surcharger via trame `config`. |
-| `FEATURES` | `gpu,system,temps,processes` | Liste CSV des collecteurs actifs. Désactiver `processes` sur les machines sans `/proc` partagé. |
-| `AGENT_BUFFER_PERSIST` | `0` | Cf. D5. Si `1` : miroir append-only dans `$DATA_DIR/agent-buffer.jsonl`, rotation 10 MiB. |
-| `AGENT_LABEL` | (none) | Label initial proposé au hub via `hello`. Si le hub a déjà un label défini par admin, le sien gagne. |
-| `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`. Aligné sur le logger du hub. |
-| `NVIDIA_SMI_PATH` | `nvidia-smi` | Override si binaire dans un path exotique. Utile WSL2, bare-metal sans `/usr/bin` standard. |
-| `HOST_PROC` | `/host/proc` | Résolution noms process sans `pid: host`. Idem hub aujourd'hui. |
-| `RECONNECT_MAX_MS` | `30000` | Cap du backoff exponentiel. Min implicite = 1 s, jitter ±20%. |
-| `TLS_INSECURE` | `0` | Skip cert verify (dev uniquement). Log `warn` permanent si actif. |
-| `HTTPS_PROXY` / `HTTP_PROXY` | (none) | Proxy d'entreprise. Standard Node `undici`, gratis. |
+| `TICK_MS` | `1000` | GPU collector cadence. The hub can override it through a `config` frame. |
+| `FEATURES` | `gpu,system,temps,processes` | CSV list of active collectors. Disable `processes` on machines without a shared `/proc`. |
+| `AGENT_BUFFER_PERSIST` | `0` | See D5. If `1`: append-only mirror in `$DATA_DIR/agent-buffer.jsonl`, 10 MiB rotation. |
+| `AGENT_LABEL` | (none) | Initial label proposed to the hub via `hello`. If the hub already has an admin-defined label, the hub's wins. |
+| `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`. Aligned with the hub logger. |
+| `NVIDIA_SMI_PATH` | `nvidia-smi` | Override if the binary is in an unusual path. Useful on WSL2, bare metal without a standard `/usr/bin`. |
+| `HOST_PROC` | `/host/proc` | Process name resolution without `pid: host`. Same as the hub today. |
+| `RECONNECT_MAX_MS` | `30000` | Exponential backoff cap. Implicit min = 1 s, jitter ±20%. |
+| `TLS_INSECURE` | `0` | Skip cert verification (dev only). Permanent `warn` log if active. |
+| `HTTPS_PROXY` / `HTTP_PROXY` | (none) | Corporate proxy. Standard Node `undici`, free. |
 
-### 12.3 Choix volontaires d'absence
+### 12.3 Deliberately absent
 
-- Pas de `JWT_SECRET` côté agent (D7 : auth opaque, espace disjoint).
-- Pas de `RETENTION_DAYS` / `DATA_DIR` côté agent sauf si `AGENT_BUFFER_PERSIST=1` — c'est le hub qui stocke.
-- Pas d'auto-update : l'utilisateur fait `docker pull` puis `restart`.
-- Pas de switch "dev mode" — soit l'agent tourne, soit il tourne pas.
+- No `JWT_SECRET` on the agent (D7: opaque auth, disjoint space).
+- No `RETENTION_DAYS` / `DATA_DIR` on the agent unless `AGENT_BUFFER_PERSIST=1`: the hub does the storage.
+- No auto-update: the user runs `docker pull` then `restart`. (Superseded in v0.5.3: opt-in auto-update over the WS via the `agent_update` frame for bare-metal agents; Docker agents still update by pulling the image.)
+- No "dev mode" switch: either the agent runs or it does not.
 
-### 12.4 Comportements implicites au démarrage (non configurables, documentés)
+### 12.4 Implicit startup behaviors (not configurable, documented)
 
-- Si `nvidia-smi` absent → fatal, exit 1 (pas de mode silencieux qui fait croire que tout va bien).
-- Si la trame `hello` est rejetée (token invalide, host_id collision) → exit 1, **pas** de retry boucle infinie.
-- Si le hub renvoie `protocol_ver` supérieur au `MAX_KNOWN` agent → exit 1, message "upgrade agent".
-- Tous les signaux SIGTERM / SIGINT → flush buffer en RAM, ferme proprement WS avec code 1000, exit 0.
-
----
-
-## 13. Pré-implémentation — vérifications restantes
-
-Triage des "open questions" qui méritent un check avant d'attaquer le jalon 1.
-
-### 13.1 Bloquants (à confirmer avant d'écrire la première ligne)
-
-1. **Performance bcrypt à l'accueil de N agents** — si 20 agents redémarrent simultanément après une panne hub, on enchaîne 20 `bcrypt.compare` synchrones. À ~80 ms chacun = 1.6 s de blocage event loop.
-   - Action : bench rapide + cache LRU `token_hash → host_id` après première compare réussie (TTL 1 h, invalidé sur `rotate-token`).
-   - Fichier : à ajouter dans `server/services/agentIngestWS.ts` (jalon 3).
-
-2. **`EXPLAIN QUERY PLAN` sur l'index `(host_id, gpu_index, timestamp_epoch)`** — vérifier que les requêtes legacy `WHERE gpu_index=? AND timestamp_epoch>?` (sans `host_id` explicite) gardent un coût acceptable post-migration.
-   - Action : passer le suite de tests existante avec `EXPLAIN QUERY PLAN` activé, comparer pré/post-migration sur une DB de prod.
-   - Sinon : garder un index secondaire `(gpu_index, timestamp_epoch)` OU injecter `host_id='local'` côté code legacy (mono-host) systématiquement.
-
-3. **Migration idempotente sous crash** — la migration `gpu_metrics → gpu_metrics_new` peut crasher entre les étapes.
-   - Action : au boot, DROP `gpu_metrics_new` orphelin avant de retenter. Tester avec `kill -9` simulé en plein milieu.
-   - Fichier : `server/database/connection.ts` (jalon 2).
-
-### 13.2 À benchmarker (pas bloquant mais à mesurer avant release)
-
-4. **20 hosts × 4 GPUs × 1 Hz inserts SQLite** — la logique de batch existante (`flushIntervalMs=60s`) doit tenir.
-   - Action : mock-agent qui simule 20 hosts. Sinon : `INSERT OR IGNORE` + WAL checkpoint plus agressif.
-
-5. **Bande passante WS** — théorique = ~4 KB/s/host. Confirmer que la sérialisation JSON ne fait pas exploser ça (les floats peuvent prendre 8-10 chars vs 4 octets binaires).
-   - Optionnel post-v0.3 : passer en CBOR / MessagePack si > 10 KB/s/host observé.
-
-6. **Footprint mémoire de l'agent** — objectif < 100 MiB RSS. Si > 150 MiB → `--max-old-space-size=80`.
-
-### 13.3 À décider à mi-parcours (pas avant jalon 3)
-
-7. **Capabilities négociées dynamiquement** — un agent peut-il changer `capabilities` en cours de session ?
-   - Décision proposée : NON. Figé au `hello`, l'agent reconnecte si ça change. Plus simple.
-
-8. **Comportement quand un host est supprimé côté hub mais que son agent est encore connecté** — fermer net ou laisser tourner ?
-   - Décision proposée : fermer net, code `1008 Policy Violation`, l'agent log et exit.
-
-9. **Composition GPU qui change sur un host** (ajout / retrait carte) — `gpu_devices` upsert ou DELETE ?
-   - Décision proposée : marquer `removed_at` plutôt que DELETE. Conservation historique. À documenter au jalon 2.
-
-### 13.4 À documenter avant release
-
-10. **Pré-requis hôte distant** — NVIDIA Container Toolkit + `nvidia-smi` + port sortant atteignable. Section README.
-11. **Single binary via Node SEA** — vérifier sur Node 22.19+ que `--experimental-sea-config` produit un binaire utilisable sur Debian 12 / Ubuntu 22+. Si ça casse, retomber sur image Docker seule.
-12. **Compat reverse-proxy** — nginx/Caddy/Traefik passent les WS upgrades par défaut, mais certains setups custom non. Snippet de config dans la doc.
-13. **CI** — ajouter `agent/Dockerfile` à la matrix Snyk Container. Ajouter le typecheck/build de `/agent` à `CI / build`.
-
-### 13.5 Risques résiduels non bloquants (CHANGELOG)
-
-14. Breaking Prom : nouveau label `host=` → dashboards Grafana mono-host à migrer (snippet PromQL dans `Docs/MIGRATION.md`).
-15. Breaking MQTT : préfixe `gpuviewr/<host>/...` → templates HA Discovery à recréer.
-16. Webhooks Discord/Telegram : titre d'alerte doit injecter le label host. Sinon un user reçoit "GPU #0 temperature firing" sans savoir laquelle de ses 5 machines râle.
+- If `nvidia-smi` is missing → fatal, exit 1 (no silent mode pretending everything is fine). (Superseded in v0.3.1: `GPU_VENDOR=auto` probes `nvidia-smi` and `rocm-smi`; later Windows PDH and macOS `powermetrics` collectors were added.)
+- If the `hello` frame is rejected (invalid token, host_id collision) → exit 1, **no** infinite retry loop.
+- If the hub returns a `protocol_ver` higher than the agent's `MAX_KNOWN` → exit 1, message "upgrade agent".
+- All SIGTERM / SIGINT signals → flush the RAM buffer, close the WS cleanly with code 1000, exit 0.
 
 ---
 
-## 14. Intégration du preview multi-host dans l'app réelle
+## 13. Pre-implementation: remaining checks
 
-Cible : v0.3.1, **après** les jalons 1-5 du backbone. Le preview (`src/preview-multi/`, `index.preview.html`, `vite.preview.config.ts`) est un sandbox déconnecté. Pour le brancher pour de vrai, 7 étapes ordonnées par dépendance.
+Triage of the "open questions" that deserve a check before starting milestone 1.
 
-### 14.1 Backbone d'abord
+### 13.1 Blockers (to confirm before writing the first line)
 
-Le preview suppose l'existence de : table `hosts`, `GET /api/hosts`, messages WS `{ type:'host_status', host_id, status }`. Tout ça arrive aux jalons 2-3. **Aucune intégration UI tant que ces APIs ne sont pas là.**
+1. **bcrypt performance when N agents connect**: if 20 agents restart simultaneously after a hub outage, we chain 20 synchronous `bcrypt.compare` calls. At ~80 ms each = 1.6 s of event loop blocking.
+   - Action: quick bench + LRU cache `token_hash → host_id` after the first successful compare (TTL 1 h, invalidated on `rotate-token`).
+   - File: to add in `server/services/agentIngestWS.ts` (milestone 3).
 
-### 14.2 Migration 1-pour-1 des composants
+2. **`EXPLAIN QUERY PLAN` on the `(host_id, gpu_index, timestamp_epoch)` index**: check that legacy `WHERE gpu_index=? AND timestamp_epoch>?` queries (without explicit `host_id`) keep an acceptable cost after migration.
+   - Action: run the existing test suite with `EXPLAIN QUERY PLAN` enabled, compare pre/post migration on a production DB.
+   - Otherwise: keep a secondary `(gpu_index, timestamp_epoch)` index OR systematically inject `host_id='local'` in legacy (single-host) code.
 
-| Preview (sandbox) | Production (vraie app) |
+3. **Idempotent migration under crash**: the `gpu_metrics → gpu_metrics_new` migration can crash between steps.
+   - Action: at boot, DROP an orphan `gpu_metrics_new` before retrying. Test with a simulated `kill -9` midway.
+   - File: `server/database/connection.ts` (milestone 2).
+
+### 13.2 To benchmark (not blocking but to measure before release)
+
+4. **20 hosts × 4 GPUs × 1 Hz SQLite inserts**: the existing batch logic (`flushIntervalMs=60s`) must hold.
+   - Action: mock agent simulating 20 hosts. Otherwise: `INSERT OR IGNORE` + more aggressive WAL checkpoint.
+
+5. **WS bandwidth**: theoretical = ~4 KB/s/host. Confirm that JSON serialization does not blow this up (floats can take 8-10 chars vs 4 binary bytes).
+   - Optional post-v0.3: switch to CBOR / MessagePack if > 10 KB/s/host is observed.
+
+6. **Agent memory footprint**: target < 100 MiB RSS. If > 150 MiB → `--max-old-space-size=80`.
+
+### 13.3 To decide midway (not before milestone 3)
+
+7. **Dynamically negotiated capabilities**: can an agent change `capabilities` mid-session?
+   - Proposed decision: NO. Frozen at `hello`, the agent reconnects if it changes. Simpler.
+
+8. **Behavior when a host is deleted on the hub but its agent is still connected**: close immediately or let it run?
+   - Proposed decision: close immediately, code `1008 Policy Violation`, the agent logs and exits.
+
+9. **GPU composition changing on a host** (card added / removed): `gpu_devices` upsert or DELETE?
+   - Proposed decision: mark `removed_at` rather than DELETE. Keeps history. To document at milestone 2.
+
+### 13.4 To document before release
+
+10. **Remote host prerequisites**: NVIDIA Container Toolkit + `nvidia-smi` + reachable outbound port. README section.
+11. **Single binary via Node SEA**: check on Node 22.19+ that `--experimental-sea-config` produces a usable binary on Debian 12 / Ubuntu 22+. If it breaks, fall back to the Docker image only. (Superseded in v0.3.0: SEA was not adopted, bare metal uses `install.sh` + the `agent.mjs` bundle.)
+12. **Reverse proxy compat**: nginx/Caddy/Traefik pass WS upgrades by default, but some custom setups do not. Config snippet in the docs.
+13. **CI**: add `agent/Dockerfile` to the Snyk Container matrix. Add the `/agent` typecheck/build to `CI / build`.
+
+### 13.5 Residual non-blocking risks (CHANGELOG)
+
+14. Prom breaking change: new `host=` label → single-host Grafana dashboards to migrate (PromQL snippet in `Docs/MIGRATION.md`).
+15. MQTT breaking change: `gpuviewr/<host>/...` prefix → HA Discovery templates to recreate.
+16. Discord/Telegram webhooks: the alert title must inject the host label. Otherwise a user receives "GPU #0 temperature firing" without knowing which of their 5 machines is complaining.
+
+---
+
+## 14. Integrating the multi-host preview into the real app
+
+Target: v0.3.1, **after** backbone milestones 1-5. The preview (`src/preview-multi/`, `index.preview.html`, `vite.preview.config.ts`) is a disconnected sandbox. To wire it for real, 7 steps ordered by dependency.
+
+### 14.1 Backbone first
+
+The preview assumes the existence of: the `hosts` table, `GET /api/hosts`, WS messages `{ type:'host_status', host_id, status }`. All of these arrive in milestones 2-3. **No UI integration until these APIs exist.**
+
+### 14.2 1-to-1 component migration
+
+| Preview (sandbox) | Production (real app) |
 |---|---|
 | `src/preview-multi/components/StatusPill.tsx` | `src/components/fleet/StatusPill.tsx` |
 | `src/preview-multi/components/HostCard.tsx` | `src/components/fleet/HostCard.tsx` |
-| `src/preview-multi/components/FleetIndicator.tsx` | `src/components/layout/FleetIndicator.tsx` (injecté dans `Header.tsx`) |
-| `src/preview-multi/components/Sparkline.tsx` | **supprimer** — réutiliser `src/components/dashboard/Sparkline.tsx` qui existe déjà |
+| `src/preview-multi/components/FleetIndicator.tsx` | `src/components/layout/FleetIndicator.tsx` (injected into `Header.tsx`) |
+| `src/preview-multi/components/Sparkline.tsx` | **delete**: reuse the existing `src/components/dashboard/Sparkline.tsx` |
 | `src/preview-multi/components/EnrollHostModal.tsx` | `src/components/settings/EnrollHostModal.tsx` |
 | `src/preview-multi/pages/FleetView.tsx` | `src/components/fleet/FleetPage.tsx` |
 | `src/preview-multi/pages/HostsSettings.tsx` | `src/components/settings/HostsSettingsTab.tsx` |
 
-Le code est ~90% transposable tel quel — il respecte déjà les tokens CSS existants (`--gv-*`, `.card`, `.btn-primary`).
+The code is ~90% transposable as is: it already follows the existing CSS tokens (`--gv-*`, `.card`, `.btn-primary`).
 
-### 14.3 Nouveau store Zustand `useHostsStore`
+### 14.3 New Zustand store `useHostsStore`
 
-Fichier : `src/store/hostsStore.ts` (~80 lignes). Pattern aligné sur les stores existants.
+File: `src/store/hostsStore.ts` (~80 lines). Pattern aligned with the existing stores.
 
-État :
-- `hosts: Host[]` — hydraté au boot via `fetch('/api/hosts')`
-- `liveSamples: Map<host_id, GpuSample[]>` — alimenté par le hook WS existant
-- `selectedHostId: string | null` — pour le drill-down
+State:
+- `hosts: Host[]`: hydrated at boot via `fetch('/api/hosts')`
+- `liveSamples: Map<host_id, GpuSample[]>`: fed by the existing WS hook
+- `selectedHostId: string | null`: for the drill-down
 - `status: Map<host_id, HostStatus>`
 
-Actions : `refresh()`, `enroll(label)`, `rotate(id)`, `rename(id, label)`, `remove(id, purgeMetrics)`.
+Actions: `refresh()`, `enroll(label)`, `rotate(id)`, `rename(id, label)`, `remove(id, purgeMetrics)`.
 
-### 14.4 Routes React Router
+### 14.4 React Router routes
 
-`src/App.tsx` gagne :
+`src/App.tsx` gains:
 
 ```
 <Route path="/fleet"          element={<FleetPage/>} />
@@ -695,92 +706,92 @@ Actions : `refresh()`, `enroll(label)`, `rotate(id)`, `rename(id, label)`, `remo
 <Route path="/settings/hosts" element={<Settings tab="hosts"/>} />
 ```
 
-`Dashboard.tsx` lit `useParams().id` (ou `useHostsStore(s => s.selectedHostId)`) et passe ce `host_id` aux APIs GPU.
+`Dashboard.tsx` reads `useParams().id` (or `useHostsStore(s => s.selectedHostId)`) and passes this `host_id` to the GPU APIs.
 
-### 14.5 Comportement mono-host (zero-touch)
+### 14.5 Single-host behavior (zero-touch)
 
 ```
 const hostCount = useHostsStore(s => s.hosts.length);
-if (hostCount <= 1) return null;            // header indicator caché
-// router : /fleet redirige vers /host/local si un seul host
+if (hostCount <= 1) return null;            // header indicator hidden
+// router: /fleet redirects to /host/local if there is a single host
 ```
 
-L'utilisateur mono-host **ne voit aucune nouveauté** : pas d'indicateur, pas d'onglet Fleet visible. Accessible uniquement si URL tapée à la main.
+The single-host user **sees nothing new**: no indicator, no visible Fleet tab. Reachable only by typing the URL by hand.
 
 ### 14.6 i18n
 
-L'app utilise `react-i18next`. Toutes les chaînes du preview (~30 strings) doivent passer par `t()` et atterrir dans `src/i18n/locales/{en,fr,...}.json`. Travail mécanique mais à ne pas oublier.
+The app uses `react-i18next`. All preview strings (~30 strings) must go through `t()` and land in `src/i18n/locales/{en,fr,...}.json`. Mechanical work, but not to be forgotten.
 
 ### 14.7 Permissions
 
-`EnrollHostModal`, rotate, delete : visibles seulement si `user.role === 'admin'`. Wrapper standard :
+`EnrollHostModal`, rotate, delete: visible only if `user.role === 'admin'`. Standard wrapper:
 
 ```
 const isAdmin = useAuthStore(s => s.user?.role === 'admin');
 if (!isAdmin) return <Redirect to="/" />;
 ```
 
-### 14.8 Sort du sandbox après v0.3.1
+### 14.8 Leaving the sandbox after v0.3.1
 
-**Décision proposée : supprimer** `src/preview-multi/` + `index.preview.html` + `vite.preview.config.ts` + scripts `dev:preview`/`build:preview` une fois la v0.3.1 sortie. Moins de surface à maintenir, le sandbox aura servi.
+**Proposed decision: delete** `src/preview-multi/` + `index.preview.html` + `vite.preview.config.ts` + the `dev:preview`/`build:preview` scripts once v0.3.1 is out. Less surface to maintain, the sandbox will have served its purpose.
 
-Option alternative (à réévaluer en v0.3.1) : garder comme outil d'itération design pour évolutions futures sans backend up.
+Alternative option (to reassess in v0.3.1): keep it as a design iteration tool for future changes without a running backend.
 
 ---
 
-## 15. Installation des agents (côté utilisateur final)
+## 15. Agent installation (end-user side)
 
-Mode d'emploi cible pour `agent/README.md` et la section "Add a remote host" du README principal.
+Target how-to for `agent/README.md` and the "Add a remote host" section of the main README.
 
-### 15.0 OS supportés
+### 15.0 Supported OSes
 
-**Pré-requis communs** : NVIDIA drivers installés + `nvidia-smi` accessible (chemin configurable via `NVIDIA_SMI_PATH`), sortant TCP vers le hub.
+**Common prerequisites**: NVIDIA drivers installed + `nvidia-smi` reachable (path configurable via `NVIDIA_SMI_PATH`), outbound TCP to the hub.
 
-| OS | Arch | Mode | Statut |
+| OS | Arch | Mode | Status |
 |---|---|---|---|
-| Linux glibc (Debian 11+/Ubuntu 22+/RHEL 9+/Rocky/Alma/Fedora 38+/openSUSE) | x86_64 | Docker **ou** systemd binaire SEA | Tier 1 |
-| Linux glibc Jetson / Grace | arm64 | Docker **ou** systemd binaire SEA | Tier 1 |
-| Windows + WSL2 (driver NVIDIA WSL ≥ 470) | x86_64 | Agent dans WSL2, **pas natif Windows** | Tier 1 |
-| Linux musl (Alpine bare-metal) | x86_64 | Docker uniquement (conteneur glibc OK sur hôte musl) | Tier 2 |
+| Linux glibc (Debian 11+/Ubuntu 22+/RHEL 9+/Rocky/Alma/Fedora 38+/openSUSE) | x86_64 | Docker **or** systemd SEA binary | Tier 1 |
+| Linux glibc Jetson / Grace | arm64 | Docker **or** systemd SEA binary | Tier 1 |
+| Windows + WSL2 (NVIDIA WSL driver ≥ 470) | x86_64 | Agent inside WSL2, **not native Windows** | Tier 1 |
+| Linux musl (Alpine bare metal) | x86_64 | Docker only (glibc container OK on a musl host) | Tier 2 |
 
-**Pas supporté en v0.3** : Windows natif (pas de NVIDIA Container Toolkit, `/proc` absent → processCollector cassé, Service Manager ≠ systemd). macOS (Apple Silicon n'a pas de NVIDIA, support Mac post-Mojave abandonné par NVIDIA).
+**Not supported in v0.3**: native Windows (no NVIDIA Container Toolkit, no `/proc` → processCollector broken, Service Manager ≠ systemd). macOS (Apple Silicon has no NVIDIA, NVIDIA dropped post-Mojave Mac support). (Superseded: native Windows agent in v0.6.7 (Scheduled Task, `install.ps1`), with AMD / Intel via PDH in v0.7.0 and a process list in v0.9.17; macOS Apple Silicon agent via `powermetrics` in v0.9.0. AMD / ROCm on Linux since v0.3.1.)
 
-**Détails techniques** :
-- Image Docker multi-arch `linux/amd64` + `linux/arm64`, base distroless ou `node:22-alpine`, taille ~50-60 MiB compressé.
-- Binaire SEA prébuilt pour `linux-x64` et `linux-arm64-gnu`, lié glibc 2.31+ (Debian 11 / Ubuntu 22 / RHEL 9).
-- L'agent **ne dépend pas** de `better-sqlite3` (pas de SQLite côté agent) — pas de compilation native obligatoire, le binaire SEA est portable entre distros glibc sans rebuild.
-- `--gpus all` est obligatoire côté Docker, sinon `nvidia-smi: command not found` dans le conteneur (erreur #1 attendue).
+**Technical details**:
+- Multi-arch Docker image `linux/amd64` + `linux/arm64`, distroless or `node:22-alpine` base, ~50-60 MiB compressed.
+- Prebuilt SEA binary for `linux-x64` and `linux-arm64-gnu`, linked against glibc 2.31+ (Debian 11 / Ubuntu 22 / RHEL 9).
+- The agent **does not depend** on `better-sqlite3` (no SQLite on the agent): no mandatory native compilation, the SEA binary is portable across glibc distros without a rebuild.
+- `--gpus all` is mandatory with Docker, otherwise `nvidia-smi: command not found` inside the container (expected error #1).
 
-### 15.1 Côté admin (hub) — 3 clics
+### 15.1 Admin side (hub): 3 clicks
 
-1. **Settings → Hosts** dans l'UI GpuViewR.
-2. **+ Add host**, taper un label (ex. `rtx-rig`), valider.
-3. Le hub affiche **une seule fois** : Host ID (UUID), Agent token (secret), snippet `docker run` prêt à coller.
+1. **Settings → Hosts** in the GpuViewR UI.
+2. **+ Add host**, type a label (e.g. `rtx-rig`), confirm.
+3. The hub shows **only once**: Host ID (UUID), Agent token (secret), ready-to-paste `docker run` snippet.
 
-Modal fermée = token définitivement perdu côté hub (seul son hash bcrypt subsiste). Si perdu : bouton `Rotate token` génère un nouveau secret, l'agent doit être reconfiguré.
+Modal closed = token permanently lost on the hub (only its bcrypt hash remains). If lost: the `Rotate token` button generates a new secret, and the agent must be reconfigured.
 
-### 15.2 Côté nœud distant — 3 modes d'install
+### 15.2 Remote node side: 3 install modes
 
-**Mode 1 : Docker (recommandé, 95% des cas)**
+**Mode 1: Docker (recommended, 95% of cases)**
 
 ```bash
 docker run -d --name gpuviewr-agent \
   --gpus all \
   --restart unless-stopped \
   -e HUB_URL=wss://gpu.example.com/agent \
-  -e HOST_ID=550e8400-e29b-41d4-a716-446655440042 \
+  -e HOST_ID="<host-uuid>" \
   -e AGENT_TOKEN=gpvr_<long-token> \
   ghcr.io/erreur32/gpuviewr-agent:latest
 ```
 
-Pré-requis hôte :
-- NVIDIA Container Toolkit installé (`nvidia-ctk --version`)
-- Sortant TCP 443 (ou port custom) vers le hub
-- `nvidia-smi` fonctionnel dans un conteneur de test (`docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi`)
+Host prerequisites:
+- NVIDIA Container Toolkit installed (`nvidia-ctk --version`)
+- Outbound TCP 443 (or custom port) to the hub
+- `nvidia-smi` working in a test container (`docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi`)
 
-**Mode 2 : Docker Compose**
+**Mode 2: Docker Compose**
 
-Fichier `docker-compose.agent.yml` distribué avec le projet :
+`docker-compose.agent.yml` file distributed with the project:
 
 ```yaml
 services:
@@ -800,14 +811,16 @@ services:
       FEATURES: gpu,system,temps,processes
 ```
 
-Workflow : `.env` + `docker compose -f docker-compose.agent.yml up -d`. Config en clair, redémarrage facile.
+Workflow: `.env` + `docker compose -f docker-compose.agent.yml up -d`. Plain-text config, easy restart.
 
-**Mode 3 : systemd bare-metal (Node SEA binaire)**
+**Mode 3: systemd bare metal (Node SEA binary)**
 
-Pour les nœuds sans Docker (HPC universitaire, vieilles box bare-metal) :
+(Superseded in v0.3.0: no SEA binary was shipped. Bare-metal installs use the hub-served `install.sh` (`curl … | bash`), which installs Node 22 and the `agent.mjs` bundle under `/opt/gpuviewr-agent/` with a systemd unit. The recipe below is kept as the original design.)
+
+For nodes without Docker (university HPC, old bare-metal boxes):
 
 ```bash
-# 1. Télécharger le binaire (~50 MiB)
+# 1. Download the binary (~50 MiB)
 curl -L -o /usr/local/bin/gpuviewr-agent \
   https://github.com/Erreur32/GpuViewR/releases/download/v0.3.0/gpuviewr-agent-linux-x64
 chmod +x /usr/local/bin/gpuviewr-agent
@@ -820,7 +833,7 @@ AGENT_TOKEN=gpvr_...
 EOF
 chmod 600 /etc/gpuviewr-agent.env
 
-# 3. Service systemd
+# 3. systemd service
 cat > /etc/systemd/system/gpuviewr-agent.service <<EOF
 [Unit]
 Description=GpuViewR Agent
@@ -842,27 +855,27 @@ systemctl daemon-reload
 systemctl enable --now gpuviewr-agent
 ```
 
-À fournir au release : binaire Node SEA prébuilt pour `linux/amd64`, `linux/arm64`. Pas mac/windows (usage rare pour GPUs distants).
+To provide at release: prebuilt Node SEA binary for `linux/amd64`, `linux/arm64`. No mac/windows (rare use case for remote GPUs).
 
-### 15.3 Vérification de connexion
+### 15.3 Connection check
 
-Côté admin : la card du nouveau host passe en vert "Online" dans 1-3 s. Si reste rouge "Offline" :
+Admin side: the new host's card turns green "Online" within 1-3 s. If it stays red "Offline":
 
-- Logs agent : `docker logs gpuviewr-agent` ou `journalctl -u gpuviewr-agent -f`
-- Erreurs typiques :
-  - `ECONNREFUSED` → URL hub fausse ou hub down
-  - `1008 Policy Violation` → token invalide ou host_id mismatch → rotate côté admin + reconfigurer
-  - `nvidia-smi not found` → NVIDIA Container Toolkit pas installé sur l'hôte
-  - `1006 abnormal closure` répété → TLS / proxy bloque les WS upgrades → config reverse-proxy à revoir
+- Agent logs: `docker logs gpuviewr-agent` or `journalctl -u gpuviewr-agent -f`
+- Typical errors:
+  - `ECONNREFUSED` → wrong hub URL or hub down
+  - `1008 Policy Violation` → invalid token or host_id mismatch → rotate on the admin side + reconfigure
+  - `nvidia-smi not found` → NVIDIA Container Toolkit not installed on the host
+  - repeated `1006 abnormal closure` → TLS / proxy blocks WS upgrades → review the reverse proxy config
 
-### 15.4 Mise à jour
+### 15.4 Updating
 
-- Docker : `docker pull ghcr.io/erreur32/gpuviewr-agent:latest && docker restart gpuviewr-agent`
-- systemd : télécharger le nouveau binaire, `systemctl restart gpuviewr-agent`
+- Docker: `docker pull ghcr.io/erreur32/gpuviewr-agent:latest && docker restart gpuviewr-agent`
+- systemd: download the new binary, `systemctl restart gpuviewr-agent`
 
-Pas d'auto-update intégré (cf. §12.3).
+No built-in auto-update (see §12.3). (Superseded in v0.5.3: bare-metal agents can be auto-updated by the hub over the WS, opt-in per host; Windows since v0.6.7, macOS since v0.9.0.)
 
-### 15.5 Suppression
+### 15.5 Removal
 
-1. Côté nœud : `docker rm -f gpuviewr-agent` (ou `systemctl disable --now gpuviewr-agent`).
-2. Côté admin UI : Settings → Hosts → ligne → `🗑 Delete` (avec checkbox "purger l'historique").
+1. Node side: `docker rm -f gpuviewr-agent` (or `systemctl disable --now gpuviewr-agent`).
+2. Admin UI: Settings → Hosts → row → `🗑 Delete` (with a "purge history" checkbox).

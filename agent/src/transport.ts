@@ -11,7 +11,7 @@
 // A single-hub config (legacy HUB_URL/HOST_ID/AGENT_TOKEN) is just
 // the array-of-1 case — no special path.
 //
-// Design notes (cf. Docs/V0_5_PLAN.md §7, MULTI_HOST_PLAN.md §4):
+// Design notes (cf. Docs/MULTI_HOST_PLAN.md §4; multi-hub since v0.5.0):
 //  - Reconnect uses exponential backoff (1s → 30s) with ±20% jitter
 //    so N agents redialing after a hub restart don't thunder-herd.
 //  - Outbound samples while disconnected go into a ring buffer
