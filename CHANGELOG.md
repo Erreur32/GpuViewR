@@ -5,6 +5,16 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **GPU process list on Windows agents.** It was disabled until now (the Linux collector reads `/proc` and `nvidia-smi pmon`, neither exists on Windows). The agent now reads the per-process PDH counters Task Manager uses: GPU %, dedicated VRAM, type (graphics/compute), CPU %, executable and command line per process, for NVIDIA, AMD and Intel. With `nvidia-smi`, processes are attached to the right card by matching their PIDs against `nvidia-smi -q -d PIDS`.
+
+### Fixed
+
+- Windows PDH GPU collector (AMD/Intel): utilization likely stayed at 0 %, because the regex expected `luid_…` engine counters while Windows names them `pid_<pid>_luid_…`. The load is now summed per engine across processes, like Task Manager.
+
 ## [0.9.16] - 2026-10-02
 
 ### Security

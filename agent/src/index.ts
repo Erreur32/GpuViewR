@@ -20,6 +20,7 @@ import {
   type ProcessCollectorHandle,
 } from "./collectors/processes.js";
 import { createRocmProcessCollector } from "./collectors/processesRocm.js";
+import { createPdhProcessCollector } from "./collectors/processesWindowsPdh.js";
 import {
   createOllamaResolver,
   type OllamaResolver,
@@ -60,6 +61,9 @@ transport.start();
 let mockTimer: NodeJS.Timeout | null = null;
 let gpuHandle: GpuCollectorHandle | null = null;
 let processHandle: ProcessCollectorHandle | null = null;
+// Windows: true when GPU samples come from PDH counters rather than
+// nvidia-smi. Decides which uuids the PDH process collector reports.
+let windowsPdhGpu = process.platform === "win32" && vendor !== "nvidia";
 
 // LLM-aware resolvers — wired into the process collector so the
 // classifier can translate Ollama blob digests to friendly model
@@ -71,6 +75,11 @@ const ollamaRefreshTimer = setInterval(
   5 * 60_000,
 );
 ollamaRefreshTimer.unref();
+// Resolvers are stable for the lifetime of the agent; the classifier
+// only sees this thin callback shape, not the refresh schedule.
+const llmResolvers = {
+  ollamaModelByDigest: (digest: string) => ollamaResolver.resolve(digest),
+};
 
 if (config.features.gpu) {
   if (config.mockGpu) {
@@ -114,6 +123,7 @@ if (config.features.gpu) {
           tickMs: config.tickMs,
           onSample: (samples) => transport.enqueueSample(samples),
         });
+        windowsPdhGpu = true;
         if (gpuHandle.available()) {
           gpuHandle.start();
         } else {
@@ -138,40 +148,38 @@ if (config.features.gpu) {
 
 // Process collector runs alongside the GPU collector when the smi
 // binary is available. Skipped under MOCK_GPU=1 because synthetic
-// samples don't have real PIDs to enrich. Also skipped on Windows —
-// the collector reads /proc/<pid>/{stat,cmdline} which is Linux-only,
-// and nvidia-smi pmon (used for GPU SM% per pid) isn't supported on
-// the Windows WDDM driver model anyway. Same story on macOS: no /proc,
-// and per-PID GPU usage would need the private Metal Performance
-// Shaders Counter API (cf. Docs/MACOS_AGENT.md §2.4, deferred to a
-// future `--samplers tasks` follow-up).
-if (process.platform === "win32" && config.features.processes) {
-  logger.warn(
-    "boot",
-    "process collector disabled on Windows (no /proc; nvidia-smi pmon unsupported). GPU samples will still stream normally.",
-  );
-}
+// samples don't have real PIDs to enrich. Windows has no /proc and
+// no nvidia-smi pmon under WDDM, so it uses the per-process PDH
+// counters instead (cf. processesWindowsPdh.ts). macOS stays without:
+// no /proc, and per-PID GPU usage would need the private Metal
+// Performance Shaders Counter API (cf. Docs/MACOS_AGENT.md §2.4,
+// deferred to a future `--samplers tasks` follow-up).
 if (process.platform === "darwin" && config.features.processes) {
   logger.warn(
     "boot",
     "process collector disabled on macOS (no /proc, no per-PID GPU API). GPU samples will still stream normally.",
   );
 }
-if (
-  config.features.processes &&
-  !config.mockGpu &&
-  process.platform !== "win32" &&
-  process.platform !== "darwin"
-) {
-  processHandle = buildProcessCollector(vendor, config);
-  if (processHandle.available()) {
+if (config.features.processes && !config.mockGpu) {
+  if (process.platform === "win32") {
+    processHandle = createPdhProcessCollector({
+      tickMs: config.processesTickMs,
+      nvidiaSmiPath: windowsPdhGpu ? undefined : config.nvidiaSmiPath,
+      onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
+      llmResolvers,
+    });
     processHandle.start();
-  } else {
-    logger.warn(
-      "boot",
-      `process collector disabled (${vendor} smi unavailable)`,
-    );
-    processHandle = null;
+  } else if (process.platform !== "darwin") {
+    processHandle = buildProcessCollector(vendor, config);
+    if (processHandle.available()) {
+      processHandle.start();
+    } else {
+      logger.warn(
+        "boot",
+        `process collector disabled (${vendor} smi unavailable)`,
+      );
+      processHandle = null;
+    }
   }
 }
 
@@ -322,13 +330,6 @@ function buildProcessCollector(
   v: GpuVendor,
   cfg: AgentConfig,
 ): ProcessCollectorHandle {
-  // Resolvers are stable for the lifetime of the agent — we
-  // instantiate them at module scope and pass a thin callback
-  // shape so the classifier doesn't need to know about the
-  // resolver's refresh schedule.
-  const llmResolvers = {
-    ollamaModelByDigest: (digest: string) => ollamaResolver.resolve(digest),
-  };
   if (v === "amd") {
     return createRocmProcessCollector({
       rocmSmiPath: cfg.rocmSmiPath,

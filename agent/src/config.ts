@@ -71,8 +71,8 @@ export function resolveHostProc(
   exists: (path: string) => boolean = existsSync,
 ): string {
   if (raw) return raw;
-  // On Windows we don't read /proc at all (process collector is
-  // skipped); empty string keeps the path out of log lines.
+  // On Windows we don't read /proc at all (the process collector uses
+  // PDH counters); empty string keeps the path out of log lines.
   if (platform === "win32") return "";
   return exists("/host/proc") ? "/host/proc" : "/proc";
 }
