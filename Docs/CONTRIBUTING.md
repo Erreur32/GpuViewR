@@ -15,13 +15,26 @@ npm run dev
 
 ## Project structure
 
-- `server/`: Express + WebSocket backend (TypeScript, run via `tsx`)
-- `src/`: React 19 frontend
-- `Dockerfile` / `docker-entrypoint.sh` / `docker-compose*.yaml` (vendor-neutral, nvidia, amd, plus the two agent variants)
+- `server/`: hub backend, Express + WebSocket (TypeScript, run via `tsx`)
+- `src/`: React 19 frontend; `src/lib/demo/` is the in-browser fake backend of the public demo
+- `agent/`: the agent (Linux systemd / Docker, Windows, macOS), bundled into a single `agent.mjs`; installers in `agent/install*.tpl`
+- `Dockerfile` / `docker-entrypoint.sh` / `docker-compose*.yaml` (hub with optional sidecar profiles, plus the NVIDIA and AMD agent variants)
 - `scripts/`
-  - `update-version.sh`: bump version across the repo (with optional tag-push)
+  - `update-version.sh`: bump the version across the repo
   - `check-docker-build.js`: local sanity build of the Docker image
-- `Docs/`: extra documentation
+- `Docs/`: extra documentation, see [`Docs/README.md`](README.md)
+
+## Checks before opening a PR
+
+```bash
+npx tsc --noEmit && npm run build && npm test          # hub + frontend
+npm run typecheck --prefix agent && npm test --prefix agent && npm run build --prefix agent
+npm run dev:mock     # synthetic GPUs, no hardware needed
+npm run dev:demo     # the public demo build (fake backend in the browser)
+```
+
+CI runs the build, CodeQL, SonarCloud and Snyk on every PR. Keep the
+SonarCloud quality gate green.
 
 ## Conventions
 
@@ -33,53 +46,50 @@ npm run dev
 
 ## Releasing a new version
 
-The release flow is automated by `scripts/update-version.sh`. From the repo root:
-
-### Quick path: bump + commit + tag + push in one command
-
-```bash
-./scripts/update-version.sh 0.2.0 --tag-push
-```
-
-The script will:
-
-1. Update the version in `package.json`, `package-lock.json`,
-   `src/components/layout/Header.tsx`, and any matching badges/links in
-   `README.md`.
-2. Create a `commit-message.txt` template (or warn if it exists but doesn't
-   mention the new version).
-3. `git add -A`, commit (using `commit-message.txt` if it mentions the new
-   version, else a generic `release: vX.Y.Z` fallback).
-4. Create the annotated tag `vX.Y.Z`.
-5. Push both the branch and the tag to `origin`.
-
-### Manual path: bump first, then commit / tag / push yourself
+Changes land on `main` through pull requests, release commits included.
+Docs-only changes need no version bump.
 
 ```bash
-./scripts/update-version.sh 0.2.0
-# ↑ updates files and generates commit-message.txt
-
-# 1. Edit commit-message.txt with the actual changes for this version.
-# 2. Add a new section in CHANGELOG.md.
-# 3. Commit + tag + push:
-git add -A
-git commit -F commit-message.txt
-git push
-git tag -a v0.2.0 -m "Release v0.2.0"
-git push origin v0.2.0
+git checkout -b release/vX.Y.Z
+./scripts/update-version.sh X.Y.Z
 ```
 
-Pushing a `v*.*.*` tag triggers the `docker-publish.yml` workflow which
-builds and pushes the multi-arch image to GHCR. End users running an older
-version will then see the in-app update banner and can run the standard
-Docker Compose update command (`docker compose pull && docker compose up -d`).
+The script updates the version in `package.json`, `package-lock.json`,
+`agent/package.json`, `agent/package-lock.json`, `README.md` and
+`sonar-project.properties`, and prepares `commit-message.txt`. The UI
+reads its version from `package.json` at build time (`__APP_VERSION__`),
+never hardcode it.
 
-### Convenience npm scripts
+Then:
+
+1. Add the `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` (the GitHub
+   Release body is extracted from it, a missing section means an empty
+   release).
+2. Edit `commit-message.txt`.
+3. Run `npm ci` at the root and in `agent/` to catch lockfile drift, plus
+   the checks above.
+4. `git add -A && git commit -F commit-message.txt`, push the branch, open
+   the PR.
+5. Once merged and SonarCloud is green on `main`, tag the merge commit:
 
 ```bash
-npm run version:bump 0.2.0             # same as ./scripts/update-version.sh 0.2.0
-npm run version:tag-push 0.2.0 -- --tag-push   # auto commit + tag + push
+git tag -a vX.Y.Z -m "Release vX.Y.Z" <merge-commit>
+git push origin vX.Y.Z
 ```
+
+What runs where:
+
+- **Push to `main`**: `docker-publish.yml` publishes `ghcr.io/erreur32/gpuviewr:latest`
+  and `ghcr.io/erreur32/gpuviewr-agent:latest`. Hubs that pull `:latest`
+  then push the new agent bundle to connected agents (`agent_update` over
+  the WebSocket), so agents usually update before the tag exists.
+- **Tag `vX.Y.Z`**: `docker-publish.yml` adds the `:X.Y.Z` image tags and
+  `release.yml` creates the GitHub Release from the CHANGELOG section.
+  Users on an older version see the in-app update banner
+  (`docker compose pull && docker compose up -d`).
+
+`./scripts/update-version.sh X.Y.Z --tag-push` still exists (bump, commit,
+tag and push in one go) but skips the PR, keep it for emergencies.
 
 ## Credits
 

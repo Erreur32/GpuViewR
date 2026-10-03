@@ -59,7 +59,7 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
-  # Base Docker images (Node 22 Alpine). LTS pin: do not auto-bump majors.
+  # Base Docker images (node:22-trixie-slim). LTS pin: do not auto-bump majors.
   - package-ecosystem: docker
     directory: /
     schedule:

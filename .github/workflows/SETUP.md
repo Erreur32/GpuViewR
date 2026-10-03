@@ -17,7 +17,7 @@ will open pull requests for:
 
 - npm dependencies: weekly Monday 06:00 Europe/Paris (minor + patch grouped)
 - GitHub Actions: weekly Monday 06:30 Europe/Paris
-- Docker base image (Node 22 Alpine): weekly Monday 06:45 Europe/Paris
+- Docker base images (`node:22-trixie-slim`, Debian): weekly Monday 06:45 Europe/Paris
 
 ### Enable security updates
 

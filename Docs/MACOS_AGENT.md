@@ -1,93 +1,108 @@
-# Plan d'intégration: agent GpuViewR sur macOS / Apple Silicon (Metal)
+# Integration plan: GpuViewR agent on macOS / Apple Silicon (Metal)
 
-> Statut (mis à jour 2026-09-14): **PR1 à PR4 implémentés** (collector
-> `powermetrics` + tests, branchement boot/install_mode, `install.sh.mac.tpl`
-> + route hub `/install.mac.sh`, UI hub: icône macOS, 4e mode dans
-> `InstallModePicker`, label mémoire "Unified"). PR5 (doc + README + CI
-> `macos-14` optionnel) en cours. QA visuelle en navigateur pas encore faite.
-> Rédigé le 2026-05-25 par l'agent Plan, complété par implémentation directe
-> à partir du 2026-09-14 (pas de relecture/validation préalable séparée,
-> plan suivi tel quel).
+> **Status (updated 2026-10-03, current release v0.9.18)**: implemented and
+> shipped in **v0.9.0** (2026-09-14): `powermetrics` collector
+> (`agent/src/collectors/gpuMacosPowermetrics.ts`, with `plist.ts` and
+> `macosSysctl.ts`), `install_mode` `macos` in the agent
+> (`agent/src/transport.ts`) and the hub (auto-update included),
+> `agent/install.sh.mac.tpl` served at `/install.mac.sh`, and the hub UI
+> (macOS icon, 4th tab in `InstallModePicker`, "Unified" memory label).
+> The optional `macos-14` CI job was not added. The GPU process list is
+> still not collected on macOS (on hold, see §2.4).
+>
+> **Not validated on real hardware**: the collector has only been tested
+> against synthetic plist fixtures built from public documentation, never
+> against a real `powermetrics` capture. The install script has never run
+> on a real Mac either. If you have an Apple Silicon Mac, see
+> [Help the macOS agent](../agent/README.md#help-the-macos-agent).
+>
+> This document is the original pre-implementation plan, written on
+> 2026-05-25 by the Plan agent and followed as-is from 2026-09-14 (no
+> separate review beforehand). File and line references describe the code
+> base at the time of writing unless marked as updated.
 
-## 0. Recommandations stratégiques préliminaires (à valider avant d'écrire du code)
+## 0. Preliminary strategic recommendations (to settle before writing code)
 
-**À DÉCIDER 1, Scope matériel**: viser **uniquement Apple Silicon (M1+, arm64)**.
-Couvrir les Intel Mac avec dGPU AMD est techniquement faisable
-(`powermetrics --samplers gpu_power` fonctionne aussi) mais le marché est résiduel
-(Mac Pro 2019, iMac Pro), Apple a coupé NVIDIA après 10.14, et l'architecture
-mémoire est différente (VRAM dédiée vs unified). Recommandation: **darwin-arm64
-seulement** pour la v1, ouvrir darwin-x64 plus tard si demande utilisateur.
-Tous les paths ci-dessous supposent ce choix.
+**TO DECIDE 1, Hardware scope**: target **Apple Silicon only (M1+, arm64)**.
+Covering Intel Macs with an AMD dGPU is technically feasible
+(`powermetrics --samplers gpu_power` works there too) but the market is marginal
+(Mac Pro 2019, iMac Pro), Apple dropped NVIDIA after 10.14, and the memory
+architecture is different (dedicated VRAM vs unified). Recommendation: **darwin-arm64
+only** for v1, open darwin-x64 later if users ask for it.
+All paths below assume this choice.
 
-**À DÉCIDER 2, Privilèges**: voir §3. Recommandation forte: **sudoers NOPASSWD
-ciblé sur `/usr/bin/powermetrics`** plutôt que LaunchDaemon root.
+**TO DECIDE 2, Privileges**: see §3. Strong recommendation: **targeted sudoers
+NOPASSWD on `/usr/bin/powermetrics`** rather than a root LaunchDaemon.
 
-**À DÉCIDER 3, Distribution**: garder le modèle "bundle unique `agent.mjs`
-exécuté par Node système" (cohérent avec Linux/Windows). Pas de binaire
-`pkg`/`sea`/`bun compile`. Voir §7.
+**TO DECIDE 3, Distribution**: keep the "single `agent.mjs` bundle run by the
+system Node" model (consistent with Linux/Windows). No
+`pkg`/`sea`/`bun compile` binary. See §7.
 
 ---
 
-## 1. Architecture cible
+## 1. Target architecture
 
-### 1.1 Détection de plateforme
+### 1.1 Platform detection
 
-Le sélecteur actuel `process.platform === 'win32'` dans
-`agent/src/index.ts:78,109,112,165,173` doit être complété par
-`process.platform === 'darwin'`. Approche: introduire dans `agent/src/index.ts`
-une constante locale `IS_DARWIN`/`IS_WIN`/`IS_LINUX` calculée une fois,
-et brancher `resolveVendor` + `buildGpuCollector` dessus.
+The current `process.platform === 'win32'` selector in
+`agent/src/index.ts` must be extended with
+`process.platform === 'darwin'`. Approach: introduce in `agent/src/index.ts`
+a local `IS_DARWIN`/`IS_WIN`/`IS_LINUX` constant computed once,
+and branch `resolveVendor` + `buildGpuCollector` on it.
 
-### 1.2 Nouveau collector
+### 1.2 New collector
 
-Fichier: `agent/src/collectors/gpuMacosPowermetrics.ts`
+File: `agent/src/collectors/gpuMacosPowermetrics.ts`
 
-Même contrat que les 4 collectors existants (`gpu.ts`, `gpuRocm.ts`,
-`gpuAmdgpuSysfs.ts`, `gpuWindowsPdh.ts`), càd export d'un
-`createMacosPowermetricsCollector(opts)` retournant
-`{ start, stop, available }: GpuCollectorHandle`. Pattern à mimer le plus proche:
-**`gpuWindowsPdh.ts`** car même topologie (spawn long-running d'un helper natif
-qui pousse du JSON sur stdout que Node parse ligne-par-ligne) plutôt que le
-modèle "spawn par tick" de `gpu.ts`. Important car `powermetrics` a un coût de
-warmup de ~500ms-1s pour initialiser les samplers et faire un spawn par tick
-mangerait toute la batterie d'un laptop.
+Same contract as the 4 existing collectors (`gpu.ts`, `gpuRocm.ts`,
+`gpuAmdgpuSysfs.ts`, `gpuWindowsPdh.ts`), i.e. export a
+`createMacosPowermetricsCollector(opts)` returning
+`{ start, stop, available }: GpuCollectorHandle`. Closest pattern to copy:
+**`gpuWindowsPdh.ts`**, because it has the same topology (long-running spawn of a
+native helper that pushes JSON on stdout, which Node parses line by line) rather than
+the "spawn per tick" model of `gpu.ts`. This matters because `powermetrics` has a
+warmup cost of ~500ms-1s to initialize its samplers, and spawning once per tick
+would drain a laptop's battery.
 
-### 1.3 Branchement dans `resolveVendor` et `buildGpuCollector`
+### 1.3 Wiring into `resolveVendor` and `buildGpuCollector`
 
-Dans `agent/src/index.ts`:
+In `agent/src/index.ts`:
 
-- Introduire un type `GpuVendor` étendu à `'auto' | 'nvidia' | 'amd' | 'apple'`
-  dans `agent/src/config.ts:12`. Le parser `parseGpuVendor` (ligne 48-52)
-  reconnaît la valeur `apple`.
-- `resolveVendor()` (ligne 150-166): ajouter
-  `if (process.platform === 'darwin') return 'apple';` juste après le retour
-  explicite de `cfg.gpuVendor`. Apple Silicon n'a pas d'autre GPU pertinent
-  à probe; le retour `'apple'` est sûr.
-- `buildGpuCollector()` (ligne 168-185): nouvelle branche
+- Introduce a `GpuVendor` type extended to `'auto' | 'nvidia' | 'amd' | 'apple'`
+  in `agent/src/config.ts`. The `parseGpuVendor` parser
+  recognizes the value `apple`.
+- `resolveVendor()`: add
+  `if (process.platform === 'darwin') return 'apple';` right after the explicit
+  return of `cfg.gpuVendor`. Apple Silicon has no other relevant GPU
+  to probe; returning `'apple'` is safe.
+- `buildGpuCollector()`: new branch
   `if (v === 'apple') return createMacosPowermetricsCollector(...)`.
-- Le collector de processus (`processes.ts`) est aujourd'hui condamné par
-  `process.platform === 'win32'` ligne 109-110 et 112; remplacer la garde
-  par `if (process.platform !== 'linux' && config.features.processes)` avec
-  un message adapté ("processes disabled on macOS: no /proc, no nvidia-smi
-  pmon. GPU sampling continues."). Voir §2.4 pour la stratégie processes Mac.
+- The process collector (`processes.ts`) is currently blocked by
+  `process.platform === 'win32'`; replace the guard
+  with `if (process.platform !== 'linux' && config.features.processes)` with
+  a suitable message ("processes disabled on macOS: no /proc, no nvidia-smi
+  pmon. GPU sampling continues."). See §2.4 for the Mac process strategy.
+  (Update, v0.9.17: Windows now has its own process collector, so the
+  guard in `index.ts` is darwin-specific: a warning is logged and no
+  process collector is started on macOS.)
 
 ### 1.4 Install mode
 
-Dans `agent/src/transport.ts:34,40-63`, étendre le type `InstallMode` à
-`'docker' | 'systemd' | 'windows' | 'macos' | 'unknown'` et faire que
-`detectInstallMode` retourne `'macos'` quand `process.platform === 'darwin'`.
-Côté hub, `server/database/models/Host.ts:23` doit accepter la même valeur.
-Le typecheck va déjà crier aux 3 endroits où `install_mode` est testé côté hub
-(`server/services/agentIngestWS.ts:271,317`); les mettre à jour pour autoriser
-auto-update sur macOS (cf. §8).
+In `agent/src/transport.ts`, extend the `InstallMode` type to
+`'docker' | 'systemd' | 'windows' | 'macos' | 'unknown'` and make
+`detectInstallMode` return `'macos'` when `process.platform === 'darwin'`.
+On the hub side, `server/database/models/Host.ts:23` must accept the same value.
+The typecheck will already complain at the places where `install_mode` is tested on the hub
+(`server/services/agentIngestWS.ts`); update them to allow
+auto-update on macOS (see §8).
 
 ---
 
-## 2. Stratégie de collection des métriques
+## 2. Metrics collection strategy
 
-### 2.1 Commande powermetrics à utiliser
+### 2.1 powermetrics command to use
 
-Forme recommandée pour le long-running spawn:
+Recommended form for the long-running spawn:
 
 ```
 sudo powermetrics --samplers gpu_power,smc -i 1000 -f plist
@@ -95,190 +110,209 @@ sudo powermetrics --samplers gpu_power,smc -i 1000 -f plist
 
 Notes:
 
-- `-f plist` (alias `--format plist`) pousse un plist XML par sample, séparé
-  par `\x00` (`NUL`). C'est le format documenté et stable. JSON n'est **pas**
-  un format de sortie supporté par powermetrics jusqu'à macOS 14. **Ne pas**
-  parser le format texte humain, il a déjà changé entre macOS 12 et 14.
-- `-i 1000` = interval ms. Aligné sur `config.tickMs`.
-- `--samplers gpu_power` donne: util GPU (`GPU active residency` %),
-  fréquence (`GPU HW active frequency`), énergie (`GPU Power` mW). Sur
-  M1/M2/M3/M4 la liste exacte de clés varie un poil (M3+ ajoute des résidences
-  par cluster); le parser doit être tolérant.
-- `--samplers smc` donne les sondes SMC (température CPU/GPU package). Sur M1
-  c'est limité, sur M2+/M3+ ça expose `GPU die temperature`.
-- **Pas** d'option `-n` pour le long-running; on veut un flux continu, pas N
-  samples puis exit.
+- `-f plist` (alias `--format plist`) pushes one XML plist per sample, separated
+  by `\x00` (`NUL`). This is the documented and stable format. JSON is **not**
+  an output format supported by powermetrics up to macOS 14. **Do not**
+  parse the human text format, it already changed between macOS 12 and 14.
+- `-i 1000` = interval in ms. Aligned with `config.tickMs`.
+- `--samplers gpu_power` gives: GPU utilization (`GPU active residency` %),
+  frequency (`GPU HW active frequency`), energy (`GPU Power` mW). On
+  M1/M2/M3/M4 the exact list of keys varies slightly (M3+ adds per-cluster
+  residencies); the parser must be tolerant.
+- `--samplers smc` gives the SMC probes (CPU/GPU package temperature). On M1
+  it is limited, on M2+/M3+ it exposes `GPU die temperature`.
+- **No** `-n` option for the long-running spawn; we want a continuous stream, not N
+  samples then exit.
 
-Le parser plist côté Node: utiliser `node:stream` + un buffer délimité sur
-`\x00`, puis un mini-parser plist. Ne **pas** dépendre d'un package npm
-(la règle implicite du repo est zéro deps autres que `ws`, cf.
-`agent/package.json:18-20`). Plist Apple est XML, un parser regex naïf sur
-`<key>...</key><integer>...</integer>` couvre les besoins, et est testable
-avec fixtures (cf. §11). Sinon ajouter une dep `fast-plist` ou équivalent
-(~30 KB) **est acceptable si justifié** mais demande discussion.
+Node-side plist parser: use `node:stream` + a buffer delimited on
+`\x00`, then a mini plist parser. Do **not** depend on an npm package
+(the implicit repo rule is zero deps other than `ws`, see
+`agent/package.json:18-20`). Apple plist is XML; a naive regex parser on
+`<key>...</key><integer>...</integer>` covers the needs and is testable
+with fixtures (see §11). Otherwise adding a `fast-plist` dependency or equivalent
+(~30 KB) **is acceptable if justified** but needs discussion.
+(Update: implemented as a dependency-free parser in
+`agent/src/collectors/plist.ts`.)
 
-### 2.2 Mapping vers le schéma `GpuSample`
+### 2.2 Mapping to the `GpuSample` schema
 
-Le contrat est `server/services/parsers/nvidia.ts:26-48`. Mapping recommandé:
+The contract is `server/services/parsers/nvidia.ts:26-48`. Recommended mapping:
 
-| Champ `GpuSample` | Source macOS | Note |
+| `GpuSample` field | macOS source | Note |
 |---|---|---|
-| `gpu_index` | `0` | un seul GPU intégré, toujours 0 |
-| `name` | `sysctl -n machdep.cpu.brand_string` ou `system_profiler SPDisplaysDataType` | one-shot au boot du collector; ex: "Apple M2 Max" |
-| `uuid` | `null` | pas de notion d'UUID GPU sur Apple Silicon |
-| `driver_version` | version macOS via `sw_vers -productVersion` | proxy raisonnable, le "driver" c'est le kernel |
-| `temperature` | clé `GPU die temperature` du sampler `smc` | en °C; `0` si non dispo (M1, voir §2.3) |
-| `utilization` | `100 - (GPU idle residency)` ou `GPU active residency` selon le sampler | en %; entier 0-100 |
-| `memory_used` | **À DÉCIDER 4** (voir §2.3) | en MiB |
-| `memory_total` | `sysctl hw.memsize` (RAM totale en bytes) / 1024 / 1024 | unified memory: tout est partagé |
-| `power` | `GPU Power` du sampler `gpu_power` | mW vers W (diviser par 1000) |
-| `fan_speed` | `null` | iMac/Mac Studio ont des ventilos mais pas exposés via powermetrics; SMC oui mais hors scope v1 |
+| `gpu_index` | `0` | single integrated GPU, always 0 |
+| `name` | `sysctl -n machdep.cpu.brand_string` or `system_profiler SPDisplaysDataType` | one-shot when the collector boots; e.g. "Apple M2 Max" |
+| `uuid` | `null` | no GPU UUID concept on Apple Silicon |
+| `driver_version` | macOS version via `sw_vers -productVersion` | reasonable proxy, the "driver" is the kernel |
+| `temperature` | `GPU die temperature` key from the `smc` sampler | in °C; `0` if unavailable (M1, see §2.5) |
+| `utilization` | `100 - (GPU idle residency)` or `GPU active residency` depending on the sampler | in %; integer 0-100 |
+| `memory_used` | **TO DECIDE 4** (see §2.3) | in MiB |
+| `memory_total` | `sysctl hw.memsize` (total RAM in bytes) / 1024 / 1024 | unified memory: everything is shared |
+| `power` | `GPU Power` from the `gpu_power` sampler | mW to W (divide by 1000) |
+| `fan_speed` | `null` | iMac/Mac Studio have fans but they are not exposed via powermetrics; SMC does expose them but out of scope for v1 |
 | `clock_graphics` | `GPU HW active frequency` | MHz |
-| `clock_memory` | `null` | unified memory pas de clock séparé |
-| `pci_bus_id`, `pcie_*` | `null` | non applicable (GPU sur le SoC) |
+| `clock_memory` | `null` | unified memory has no separate clock |
+| `pci_bus_id`, `pcie_*` | `null` | not applicable (GPU on the SoC) |
 
-### 2.3 Question "VRAM" sur unified memory, À DÉCIDER 4
+### 2.3 The "VRAM" question on unified memory, TO DECIDE 4
 
-C'est la décision design la plus subtile. Trois options:
+This is the most subtle design decision. Three options:
 
-**Option A (recommandée)**: `memory_total` = RAM totale du Mac, `memory_used`
-= **memory pressure × total** dérivée de `vm_stat` (les pages "wired" +
-"compressed" ne sont pas un bon proxy pour la "VRAM utilisée par le GPU").
-Inconvénient: la jauge va monter aussi à cause des process CPU, pas seulement
-GPU. L'UI montre "Memory" pas "VRAM"; doc claire qu'on parle de la pression
-mémoire système.
+**Option A (recommended)**: `memory_total` = total Mac RAM, `memory_used`
+= **memory pressure × total** derived from `vm_stat` (the "wired" +
+"compressed" pages are not a good proxy for "VRAM used by the GPU").
+Downside: the gauge will also rise because of CPU processes, not only
+GPU. The UI shows "Memory", not "VRAM"; clear docs that this is system
+memory pressure.
+(Update: implemented in `macosSysctl.ts` as active + wired + compressor
+pages from `vm_stat`, capped at total RAM.)
 
-**Option B**: `memory_total = memory_used = 0` (null), l'UI affiche déjà
-`'N/A'` (cf. `HostCard.tsx:248`, `GpuMiniTile.tsx:87`). Plus honnête mais perd
-100% de la jauge mémoire sur Mac.
+**Option B**: `memory_total = memory_used = 0` (null), the UI already shows
+`'N/A'` (see `HostCard.tsx`, `GpuMiniTile.tsx`). More honest but loses
+100% of the memory gauge on Mac.
 
-**Option C**: utiliser `ioreg -r -c IOAccelerator` + clé `Device Utilization %`
-pour la mémoire GPU réservée; gros boulot de parsing et pas toujours présent.
-Skip pour v1.
+**Option C**: use `ioreg -r -c IOAccelerator` + the `Device Utilization %` key
+for reserved GPU memory; heavy parsing work and not always present.
+Skip for v1.
 
-**Recommandation: A**, et côté UI ajouter un badge "Unified" sur les hosts
-dont `install_mode === 'macos'` ou dont la capabilities contient un flag
-`unified_memory: true` (à ajouter dans le hello, voir §5).
+**Recommendation: A**, and on the UI side add a "Unified" badge on hosts
+whose `install_mode === 'macos'` or whose capabilities contain an
+`unified_memory: true` flag (to be added to the hello, see §5).
 
 ### 2.4 Processes
 
-Sur macOS, sans accès Metal Performance Shaders Counter (privé Apple, non
-utilisable sans signature), on ne peut **pas** lister les PIDs qui utilisent
-le GPU avec précision. Options:
+On macOS, without access to the Metal Performance Shaders Counter API (Apple private, not
+usable without signing), we **cannot** accurately list the PIDs that use
+the GPU. Options:
 
-- **Option A**: laisser `processes` désactivé sur macOS, exactement comme sur
-  Windows aujourd'hui (cf. `agent/src/index.ts:109-111`). Recommandée v1.
-- **Option B**: `powermetrics --samplers tasks` donne par-PID GPU ms/s et "GPU
-  work time"; format plist également. Faisable mais ajoute beaucoup de
-  parsing, et la liste est de toute façon polluée par chaque process qui touche
-  WindowServer. À déférer.
+- **Option A**: leave `processes` disabled on macOS, exactly like on
+  Windows today (see `agent/src/index.ts`). Recommended for v1.
+  (Update, v0.9.17: no longer true for Windows, which has had a GPU
+  process list since v0.9.17 via per-process PDH counters,
+  `agent/src/collectors/processesWindowsPdh.ts`. macOS remains disabled.)
+- **Option B**: `powermetrics --samplers tasks` gives per-PID GPU ms/s and "GPU
+  work time"; plist format as well. Feasible but adds a lot of
+  parsing, and the list is polluted anyway by every process that touches
+  WindowServer. To be deferred.
 
-**Recommandation: A pour v1.** Le `processHandle = null` + log warn suffit, le
-hub gère déjà l'absence (cf. `agentIngestWS.ts:466-468`).
+**Recommendation: A for v1.** `processHandle = null` + a warn log is enough, the
+hub already handles the absence (see `agentIngestWS.ts`).
 
-### 2.5 Température si pas de SMC
+(Update, 2026-10-03: the macOS process list is **on hold** until a real
+`powermetrics` capture from an Apple Silicon Mac is available; the README
+asks users for one, see
+[Help the macOS agent](../agent/README.md#help-the-macos-agent). Planned
+approach when resumed: add the `tasks` sampler (`--show-process-gpu`) to
+the existing powermetrics spawn instead of a second process, report no
+per-PID VRAM (unified memory, no meaningful per-process figure), and keep
+only PIDs that were recently GPU-busy.)
 
-Sur M1 (premier Apple Silicon), `--samplers smc` ne sort souvent rien.
-Acceptable: `temperature = 0` (le schéma exige `number not null`, cf.
-`nvidia.ts:31`), pas idéal mais aligné avec `gpuWindowsPdh.ts:188` qui hardcode
-aussi `temperature: 0` quand PDH ne le donne pas. Documenter que sur M1 la
-temp affiche "0°C" et que c'est attendu.
+### 2.5 Temperature without SMC
+
+On M1 (the first Apple Silicon), `--samplers smc` often outputs nothing.
+Acceptable: `temperature = 0` (the schema requires `number not null`, see
+`nvidia.ts:31`), not ideal but consistent with `gpuWindowsPdh.ts:203`, which also hardcodes
+`temperature: 0` when PDH does not provide it. Document that on M1 the
+temperature shows "0°C" and that this is expected.
 
 ---
 
-## 3. Question sudo, privilèges
+## 3. sudo question, privileges
 
-`powermetrics` requiert root (capability `task_for_pid` + accès SMC). Deux
+`powermetrics` requires root (`task_for_pid` capability + SMC access). Two
 options:
 
-### Option (a), Agent en root via LaunchDaemon
+### Option (a), Agent as root via LaunchDaemon
 
-Fichier: `/Library/LaunchDaemons/com.gpuviewr.agent.plist`. Tourne sous uid 0
-dès le boot, avant login utilisateur. Simple côté script powermetrics (juste
-spawner). Inconvénient: l'**agent entier** tourne en root. Lit du JSON depuis
-un hub WebSocket distant en root, mauvaise surface d'attaque. Le bundle peut
-être hot-replacé par `agent_update` (cf. `transport.ts:278`), un hub compromis
-exécute du code arbitraire en root sur tous les Mac.
+File: `/Library/LaunchDaemons/com.gpuviewr.agent.plist`. Runs as uid 0
+from boot, before user login. Simple for the powermetrics side (just
+spawn it). Downside: the **whole agent** runs as root. It reads JSON from
+a remote WebSocket hub as root, a bad attack surface. The bundle can
+be hot-replaced by `agent_update` (see `transport.ts`), so a compromised hub
+runs arbitrary code as root on every Mac.
 
-### Option (b), Sudoers NOPASSWD ciblé
+### Option (b), Targeted sudoers NOPASSWD
 
-L'agent tourne en **user** via LaunchAgent (`~/Library/LaunchAgents/`). Au
-démarrage il spawne `sudo -n /usr/bin/powermetrics ...`. Le fichier
-`/etc/sudoers.d/gpuviewr-agent` créé par l'installer:
+The agent runs as a **user** via LaunchAgent (`~/Library/LaunchAgents/`). At
+startup it spawns `sudo -n /usr/bin/powermetrics ...`. The file
+`/etc/sudoers.d/gpuviewr-agent` created by the installer:
 
 ```
 Cmnd_Alias GPUVIEWR_PMETRICS = /usr/bin/powermetrics --samplers gpu_power* --samplers gpu_power\,smc*
 %staff ALL=(root) NOPASSWD: GPUVIEWR_PMETRICS
 ```
 
-Ou plus strict, réservé à un utilisateur dédié `_gpuviewr` créé par l'installer
-(mimique du `gpuviewr-agent` Linux dans `install.sh.tpl:32-33,183-185`).
+Or stricter, restricted to a dedicated `_gpuviewr` user created by the installer
+(mirroring the Linux `gpuviewr-agent` user in `install.sh.tpl`).
+(Update: the shipped installer writes a single-user rule instead,
+`${USER} ALL=(root) NOPASSWD: /usr/bin/powermetrics`, with no argument
+restriction and no dedicated user.)
 
-**Recommandation: (b)**. Surface root limitée à `powermetrics` lui-même
-(binaire Apple signé), agent reste user. Pattern classique sur macOS (cf. ce
-que fait `iStat Menus` et `stats` open source). L'installer doit `visudo -c`
-pour valider la syntaxe avant install.
+**Recommendation: (b)**. Root surface limited to `powermetrics` itself
+(a signed Apple binary), the agent stays a user process. A classic pattern on macOS (see
+what `iStat Menus` and the open source `stats` do). The installer must run `visudo -c`
+to validate the syntax before installing.
 
-Côté code agent: spawn devient
-`spawn('sudo', ['-n', '/usr/bin/powermetrics', ...args])`. Le `-n`
-(non-interactive) fait que si sudoers est mal configuré, sudo échoue
-immédiatement au lieu de prompter (qui ne marcherait pas dans un LaunchAgent
-headless). Le collector doit détecter ce cas dans `available()` en faisant un
-`sudo -n /usr/bin/powermetrics -h` au boot (exit 0 = ok, exit non-zéro avec
-stderr contenant "askpass" ou "password is required" = tomber sur un log
-error explicite et stopper le collector, comme `gpu.ts:101-103`).
+Agent code side: the spawn becomes
+`spawn('sudo', ['-n', '/usr/bin/powermetrics', ...args])`. The `-n`
+(non-interactive) means that if sudoers is misconfigured, sudo fails
+immediately instead of prompting (which would not work in a headless
+LaunchAgent). The collector must detect this case in `available()` by running
+`sudo -n /usr/bin/powermetrics -h` at boot (exit 0 = ok, non-zero exit with
+stderr containing "askpass" or "password is required" = log an
+explicit error and stop the collector, like `gpu.ts`).
 
 ---
 
-## 4. Script d'installation
+## 4. Install script
 
 ### 4.1 Structure
 
-Nouveau fichier: `agent/install.sh.mac.tpl` (le `.mac.` pour le distinguer
-de l'existant qui est Linux-only, cf. `install.sh.tpl:61` qui die explicitement
-sur non-Linux).
+New file: `agent/install.sh.mac.tpl` (the `.mac.` distinguishes it
+from the existing Linux-only one, see `install.sh.tpl:64`, which explicitly dies
+on non-Linux).
 
-**Alternative discutée**: étendre `install.sh.tpl` avec un branch
-`case "$(uname -s)" in Linux) ... ;; Darwin) ... ;; esac` au lieu d'un fichier
-séparé. Mon avis: **fichier séparé** car le flow est très différent
+**Alternative discussed**: extend `install.sh.tpl` with a
+`case "$(uname -s)" in Linux) ... ;; Darwin) ... ;; esac` branch instead of a
+separate file. My view: **separate file**, because the flow is very different
 (LaunchAgent vs systemd, brew vs apt/dnf, sudoers vs systemd hardening).
-L'unifier coûte plus en lisibilité qu'il rapporte. La route hub
-`agentDistribution.ts` peut servir les deux sous des URLs distinctes
+Unifying them costs more in readability than it brings. The hub route
+`agentDistribution.ts` can serve both under distinct URLs
 (`/install.sh` Linux, `/install.mac.sh` macOS).
 
-### 4.2 Étapes du script
+### 4.2 Script steps
 
-S'inspirer fortement de `install.sh.tpl:24-275` et `install.ps1.tpl` pour le
-pattern Windows (re-install lifecycle, kill old launcher avant re-register,
-pattern documenté implicitement dans `install.ps1.tpl:343-367`).
+Draw heavily on `install.sh.tpl` and on `install.ps1.tpl` for the
+Windows pattern (re-install lifecycle, kill the old launcher before re-registering,
+a pattern implicitly documented in `install.ps1.tpl`).
 
 ```
 1. set -euo pipefail
 2. [[ "$(uname -s)" == "Darwin" ]] || die "macOS only. Use install.sh for Linux."
 3. ARCH=$(uname -m); [[ "$ARCH" == "arm64" ]] || warn "Intel Mac: powermetrics works, but unified-memory mapping assumes Apple Silicon."
-4. Parse --url --token --interval --features --uninstall, same flags shape as install.sh.tpl:48-58.
-5. Uninstall path FIRST (à la install.ps1.tpl:68-84):
+4. Parse --url --token --interval --features --uninstall, same flags shape as install.sh.tpl.
+5. Uninstall path FIRST (as in install.ps1.tpl):
      launchctl unload ~/Library/LaunchAgents/com.gpuviewr.agent.plist 2>/dev/null
      rm -f ~/Library/LaunchAgents/com.gpuviewr.agent.plist
-     rm -rf /usr/local/var/gpuviewr-agent  # ou ${HOME}/Library/Application Support/GpuViewR-Agent
+     rm -rf /usr/local/var/gpuviewr-agent  # or ${HOME}/Library/Application Support/GpuViewR-Agent
      sudo rm -f /etc/sudoers.d/gpuviewr-agent
      exit 0
-6. Token parsing: identique au Linux (install.sh.tpl:90-96).
-7. Pre-flight Node 22: command -v node, check major. Si absent, suggérer `brew install node@22`. NE PAS auto-installer brew (intrusif, brew install demande sudo password, gère mal le non-interactif).
-8. Pre-flight powermetrics: command -v powermetrics, sinon die.
-9. Création du dossier d'install: ${HOME}/Library/Application\ Support/GpuViewR-Agent/ (convention macOS user-scope) OU /usr/local/var/gpuviewr-agent si on veut un install system-wide. Recommandation user-scope car le LaunchAgent tourne sous l'user.
-10. Téléchargement du bundle: curl -fsSL "${HTTP_URL%/}/agent.mjs" -o "$INSTALL_DIR/agent.mjs" (identique install.sh.tpl:200).
-11. Écriture du sudoers (avec visudo -c en validation):
+6. Token parsing: identical to Linux (install.sh.tpl).
+7. Node 22 pre-flight: command -v node, check major. If missing, suggest `brew install node@22`. Do NOT auto-install brew (intrusive, brew install asks for the sudo password, handles non-interactive mode poorly).
+8. powermetrics pre-flight: command -v powermetrics, otherwise die.
+9. Create the install dir: ${HOME}/Library/Application\ Support/GpuViewR-Agent/ (macOS user-scope convention) OR /usr/local/var/gpuviewr-agent for a system-wide install. Recommend user-scope since the LaunchAgent runs as the user.
+10. Download the bundle: curl -fsSL "${HTTP_URL%/}/agent.mjs" -o "$INSTALL_DIR/agent.mjs" (identical to install.sh.tpl).
+11. Write the sudoers file (validated with visudo -c):
        echo "..." | sudo tee /etc/sudoers.d/gpuviewr-agent
        sudo visudo -c -f /etc/sudoers.d/gpuviewr-agent || (sudo rm /etc/sudoers.d/gpuviewr-agent; die "sudoers invalid")
        sudo chmod 0440 /etc/sudoers.d/gpuviewr-agent
-12. Écriture de l'env file: $INSTALL_DIR/agent.env (KEY=VALUE plain, chmod 600). Le .plist le source via EnvironmentVariables.
-13. Génération du .plist (template inline; voir §4.3).
-14. launchctl unload (best-effort, ignore-erreur, comme install.ps1.tpl:73) + launchctl load -w ~/Library/LaunchAgents/com.gpuviewr.agent.plist.
-15. Print les commandes de tail logs et uninstall (à la install.sh.tpl:271-275).
+12. Write the env file: $INSTALL_DIR/agent.env (plain KEY=VALUE, chmod 600). The .plist sources it via EnvironmentVariables.
+13. Generate the .plist (inline template; see §4.3).
+14. launchctl unload (best effort, ignore errors, as in install.ps1.tpl) + launchctl load -w ~/Library/LaunchAgents/com.gpuviewr.agent.plist.
+15. Print the log tail and uninstall commands (as in install.sh.tpl).
 ```
 
-### 4.3 Template LaunchAgent
+### 4.3 LaunchAgent template
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -309,15 +343,15 @@ pattern documenté implicitement dans `install.ps1.tpl:343-367`).
 </plist>
 ```
 
-Note: `KeepAlive=true` est l'équivalent de `Restart=always` (cf.
-`install.sh.tpl:242`). Si l'agent quitte volontairement après un `agent_update`
-(cf. `transport.ts:368-369`), launchd le relancera dans la seconde, bon match.
+Note: `KeepAlive=true` is the equivalent of `Restart=always` (see
+`install.sh.tpl:273`). If the agent exits on purpose after an `agent_update`
+(see `transport.ts`), launchd restarts it within a second, a good match.
 
-### 4.4 Lifecycle re-install
+### 4.4 Re-install lifecycle
 
-Comme sur Windows (`install.ps1.tpl:343-367`), il faut `launchctl unload` avant
-de réécrire le `.plist`, sinon le nouveau token n'est jamais pris en compte
-(le processus existant continue avec l'ancien env). Pattern:
+As on Windows (`install.ps1.tpl`), `launchctl unload` must run before
+rewriting the `.plist`, otherwise the new token is never picked up
+(the existing process keeps running with the old env). Pattern:
 
 ```
 launchctl bootout gui/$(id -u)/com.gpuviewr.agent 2>/dev/null || true
@@ -327,129 +361,130 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.gpuviewr.agent.plist
 launchctl kickstart -k gui/$(id -u)/com.gpuviewr.agent
 ```
 
-Le `kickstart -k` force un restart même si le service est déjà running,
-équivalent du `Restart-ScheduledTask` Windows ou `systemctl restart` Linux.
+`kickstart -k` forces a restart even if the service is already running,
+the equivalent of Windows `Restart-ScheduledTask` or Linux `systemctl restart`.
 
-Pour les pièges du flow Linux (voir mémoire `reference_install_quirks`):
-retenir au minimum (a) bug du token sans `.` (cf. `install.sh.tpl:90-96`),
-(b) tolérance du préfixe `gpvr_` (ligne 94), (c) normalisation `http→ws` et
-inverse (ligne 194-195 et 209-210). À répliquer **à l'identique** dans le
-script Mac.
+For the pitfalls of the Linux flow (see memory `reference_install_quirks`):
+keep at least (a) the token-without-`.` bug, (b) tolerance of the
+`gpvr_` prefix, (c) `http→ws` normalization and the reverse (all in
+`install.sh.tpl`). Replicate them **identically** in the
+Mac script.
 
-### 4.5 Distribution depuis le hub
+### 4.5 Distribution from the hub
 
-Le hub sert aujourd'hui `/install.sh` via `server/routes/agentDistribution.ts`.
-Ajouter `/install.mac.sh` qui sert le template `agent/install.sh.mac.tpl` avec
-la même substitution `__HUB_URL__`. Le hub UI
-(`src/components/settings/HostsSettingsTab.tsx`) doit montrer les **trois**
-one-liners maintenant (Linux / macOS / Windows). Voir §6.
+The hub currently serves `/install.sh` via `server/routes/agentDistribution.ts`.
+Add `/install.mac.sh`, which serves the `agent/install.sh.mac.tpl` template with
+the same `__HUB_URL__` substitution. The hub UI
+(`src/components/settings/HostsSettingsTab.tsx`) must now show the **three**
+one-liners (Linux / macOS / Windows). See §6.
 
 ---
 
-## 5. Schéma DB et payload wire
+## 5. DB schema and wire payload
 
-### 5.1 État actuel
+### 5.1 Current state
 
-Le contrat `GpuSample` (`server/services/parsers/nvidia.ts:26-48`) a 21
-champs. Tous sont nullables sauf `gpu_index`, `name`, `temperature`,
-`memory_used`, `power`, `timestamp`, `timestamp_epoch`. Le persistor
-(`server/services/agentMetricsPersistor.ts:56-69`) écrit dans `gpu_metrics`
-(schema `connection.ts:34-48`), 11 colonnes physiques, le reste (pcie, fan,
-uuid) est purement transitoire pour le live.
+The `GpuSample` contract (`server/services/parsers/nvidia.ts:26-48`) has 21
+fields. All are nullable except `gpu_index`, `name`, `temperature`,
+`memory_used`, `power`, `timestamp`, `timestamp_epoch`. The persistor
+(`server/services/agentMetricsPersistor.ts`) writes to `gpu_metrics`
+(schema in `connection.ts`), 11 physical columns; the rest (pcie, fan,
+uuid) is purely transient for the live view.
 
-### 5.2 Ce que l'agent macOS peut renvoyer
+### 5.2 What the macOS agent can return
 
-| Champ | Mac arm64 fournit ? |
+| Field | Provided by Mac arm64? |
 |---|---|
-| `gpu_index` | oui (0) |
-| `name` | oui (ex: "Apple M2 Max") |
-| `uuid` | non (null) |
-| `driver_version` | proxy (version macOS) |
-| `temperature` | oui sur M2+/M3+, 0 sur M1 |
-| `utilization` | oui |
-| `memory_used` | oui (selon option §2.3) |
-| `memory_total` | oui (hw.memsize) |
-| `power` | oui |
-| `fan_speed` | non (null) |
-| `clock_graphics` | oui |
-| `clock_memory` | non (null) |
-| `pci_*` | non (null) |
+| `gpu_index` | yes (0) |
+| `name` | yes (e.g. "Apple M2 Max") |
+| `uuid` | no (null) |
+| `driver_version` | proxy (macOS version) |
+| `temperature` | yes on M2+/M3+, 0 on M1 |
+| `utilization` | yes |
+| `memory_used` | yes (depending on the §2.3 option) |
+| `memory_total` | yes (hw.memsize) |
+| `power` | yes |
+| `fan_speed` | no (null) |
+| `clock_graphics` | yes |
+| `clock_memory` | no (null) |
+| `pci_*` | no (null) |
 
-**Aucun nouveau champ n'est strictement nécessaire dans `GpuSample`**. Le
-schéma actuel suffit; tout ce qui n'existe pas reste `null`, et le persistor
-accepte déjà `null` partout (cf. `GpuMetric.ts:24,48`, seuls `memory_used` et
-`power` sont NOT NULL DB-side et l'agent les fournit).
+**No new field is strictly required in `GpuSample`**. The
+current schema is enough; anything that does not exist stays `null`, and the persistor
+already accepts `null` everywhere (see `GpuMetric.ts`; only `memory_used` and
+`power` are NOT NULL on the DB side, and the agent provides them).
 
-**Pas de migration DB nécessaire.**
+**No DB migration needed.**
 
 ### 5.3 Capabilities / hello frame
 
-Pour permettre à l'UI de distinguer un host Mac et afficher "Unified Memory"
-plutôt que "VRAM" (voir §6), étendre le hello.capabilities. Aujourd'hui
-(`transport.ts:230-237`):
+To let the UI tell a Mac host apart and show "Unified Memory"
+rather than "VRAM" (see §6), extend hello.capabilities. Today
+(`transport.ts:305-310`):
 
 ```
 capabilities: { gpu, system, temps, processes }
 ```
 
-Proposition d'ajout:
+Proposed addition:
 
 ```
 capabilities: { gpu, system, temps, processes, unified_memory?: boolean, gpu_arch?: 'cuda' | 'rocm' | 'metal' | 'wddm' }
 ```
 
-Le hub stocke déjà ça en string JSON dans `hosts.capabilities`
-(`Host.ts:34,84`), donc pas de migration DB. Côté ingest,
-`agentIngestWS.ts:497` re-sérialise tel quel. L'UI lit la chaîne et parse au
-besoin.
+The hub already stores this as a JSON string in `hosts.capabilities`
+(`Host.ts:34,90`), so no DB migration. On the ingest side,
+`agentIngestWS.ts:556` re-serializes it as-is. The UI reads the string and parses it
+when needed.
 
-**Alternative plus simple**: utiliser uniquement `install_mode === 'macos'`
-(voir §1.4) comme proxy pour "afficher Unified". Moins flexible mais zéro
-changement de schéma. **Recommandation: cette alternative pour v1.**
+**Simpler alternative**: use only `install_mode === 'macos'`
+(see §1.4) as a proxy for "show Unified". Less flexible but zero
+schema change. **Recommendation: this alternative for v1.** (Update:
+this is what shipped; `capabilities` is unchanged.)
 
 ---
 
-## 6. Affichage côté hub
+## 6. Hub display
 
-### 6.1 Fichiers à modifier
+### 6.1 Files to modify
 
-Tous calculent un ratio `memory_used / memory_total` et l'affichent comme
-"VRAM" / "Memory". À Mac-aware-iser:
+All of them compute a `memory_used / memory_total` ratio and display it as
+"VRAM" / "Memory". To make Mac-aware:
 
-- `src/components/fleet/HostCard.tsx:140-184,229-253`, agrège
-  `vramUsed/vramTotal` au niveau host. Label `fleet.aggregate_vram`. Sur host
-  macOS, devrait afficher "Unified" ou un suffixe.
-- `src/components/fleet/GpuMiniTile.tsx:26-27,87`, arc gauge "memory".
-- `src/components/fleet/FleetPage.tsx:31-32,188,195`, agrégat fleet.
-- `src/components/dashboard/Dashboard.tsx:84,149-156`, gauge mémoire
-  principale.
-- `src/components/dashboard/AllGpusGrid.tsx:39,93`, tile par GPU.
-- `src/components/dashboard/MultiGpuChart.tsx:162-163`, chart multi-GPU.
-- `src/components/dashboard/LiveChart.tsx:218-295`, courbe historique mémoire.
-- `src/components/dashboard/StatsSection.tsx:65-95`, section stats.
-- `src/components/dashboard/GpuProcessesTable.tsx:121`, colonne VRAM des
-  processes (sera vide sur Mac, OK).
-- `src/components/system/SystemPage.tsx:30-31,249-250,343-344`, page system.
+- `src/components/fleet/HostCard.tsx`, aggregates
+  `vramUsed/vramTotal` at host level. Label `fleet.aggregate_vram`. On a
+  macOS host, it should show "Unified" or a suffix.
+- `src/components/fleet/GpuMiniTile.tsx`, "memory" arc gauge.
+- `src/components/fleet/FleetPage.tsx`, fleet aggregate.
+- `src/components/dashboard/Dashboard.tsx`, main memory
+  gauge.
+- `src/components/dashboard/AllGpusGrid.tsx`, per-GPU tile.
+- `src/components/dashboard/MultiGpuChart.tsx`, multi-GPU chart.
+- `src/components/dashboard/LiveChart.tsx`, memory history curve.
+- `src/components/dashboard/StatsSection.tsx`, stats section.
+- `src/components/dashboard/GpuProcessesTable.tsx`, the processes' VRAM
+  column (will be empty on Mac, OK).
+- `src/components/system/SystemPage.tsx`, system page.
 
-### 6.2 Patron suggéré
+### 6.2 Suggested pattern
 
-Plutôt que de toucher 10 composants un par un, introduire un **helper unique**
-`src/lib/memoryFormat.ts` (ou étendre un existant) exportant
-`formatMemoryLabel(host: HostRecord)` qui retourne `"VRAM"` par défaut,
-`"Unified"` si `host.install_mode === 'macos'`. Les composants importent ce
-helper et remplacent leur string label hardcodée.
+Rather than touching 10 components one by one, introduce a **single helper**
+`src/lib/memoryFormat.ts` (or extend an existing one) exporting
+`formatMemoryLabel(host: HostRecord)`, which returns `"VRAM"` by default and
+`"Unified"` if `host.install_mode === 'macos'`. Components import this
+helper and replace their hardcoded label string.
 
-Pour le store frontend (`src/store/gpuStore.ts` probablement, à confirmer), il
-faut savoir le `install_mode` du host pour chaque sample affiché, déjà dispo
-via `/api/hosts` qui est typé `HostRecord`. Plomberie minimale.
+For the frontend store (`src/store/gpuStore.ts` probably, to be confirmed), we
+need the host's `install_mode` for each displayed sample, already available
+via `/api/hosts`, which is typed `HostRecord`. Minimal plumbing.
 
-Côté i18n (`src/i18n/locales/fr.json`, `en.json`): ajouter `"unified_memory"`
-et `"unified_memory_hint"`. Pas urgent v1; on peut passer "Unified" tel quel.
+On the i18n side (`src/i18n/locales/fr.json`, `en.json`): add `"unified_memory"`
+and `"unified_memory_hint"`. Not urgent for v1; "Unified" can be passed as-is.
 
 ### 6.3 Settings UI
 
-`src/components/settings/HostsSettingsTab.tsx` montre aujourd'hui les recettes
-d'install Linux + Docker + Windows. Ajouter macOS:
+`src/components/settings/HostsSettingsTab.tsx` currently shows the Linux + Docker +
+Windows install recipes. Add macOS:
 
 ```bash
 curl -fsSL https://gpu.example.com/install.mac.sh | bash -s -- \
@@ -457,291 +492,305 @@ curl -fsSL https://gpu.example.com/install.mac.sh | bash -s -- \
   --token <host_id>.<secret>
 ```
 
-Le composant a déjà la logique multi-recette (cf. clé i18n
-`agent_outdated_help_both` dans `fr.json:496`). Étendre l'enum à 4 cases.
+The component already has the multi-recipe logic (see the i18n key
+`agent_outdated_help_both` in `fr.json:505`). Extend the enum to 4 cases.
 
 ---
 
-## 7. Build et distribution
+## 7. Build and distribution
 
-### 7.1 État actuel
+### 7.1 Current state
 
-`agent/scripts/build.mjs` bundle `agent/src/index.ts` en un **single
-`agent.mjs`** via esbuild en mode `platform: node, target: node22, format: esm`.
-Le résultat est ~215 KB (cf. `agentIngestWS.ts:179-180`). **Le bundle est
-platform-agnostic**, c'est juste du JS qui appelle `spawn(...)`. **Aucun
-rebuild par OS n'est nécessaire.**
+`agent/scripts/build.mjs` bundles `agent/src/index.ts` into a **single
+`agent.mjs`** via esbuild in `platform: node, target: node22, format: esm` mode.
+The result is ~215 KB (see `agentIngestWS.ts`). **The bundle is
+platform-agnostic**, it is just JS that calls `spawn(...)`. **No
+per-OS rebuild is needed.**
 
-Le CI actuel (`.github/workflows/ci.yml`, `docker-publish.yml`) build seulement
-les images Docker (linux/amd64 + linux/arm64). Le `agent.mjs` est inclus dans
-l'image hub et servi via `/agent.mjs` (cf. `BUNDLE_PATH`
-`agentIngestWS.ts:180`).
+The current CI (`.github/workflows/ci.yml`, `docker-publish.yml`) only builds
+the Docker images (linux/amd64 + linux/arm64). `agent.mjs` is included in
+the hub image and served via `/agent.mjs` (see `BUNDLE_PATH`,
+`agentIngestWS.ts:185`).
 
-### 7.2 Conséquence pour macOS
+### 7.2 Consequence for macOS
 
-**Rien à faire côté build CI**. Le même `agent.mjs` que les Linux/Windows
-téléchargent sera téléchargé par les Mac. Seule la **runtime detection**
-(`process.platform`) trie qui appelle `nvidia-smi` vs `powermetrics`.
+**Nothing to do on the CI build side**. The same `agent.mjs` that Linux/Windows
+download will be downloaded by Macs. Only the **runtime detection**
+(`process.platform`) decides who calls `nvidia-smi` vs `powermetrics`.
 
-C'est un avantage énorme du design existant: pas de matrice darwin-arm64 /
-darwin-x64 / linux-x64 / linux-arm64 / win-x64 à gérer.
+This is a huge advantage of the existing design: no darwin-arm64 /
+darwin-x64 / linux-x64 / linux-arm64 / win-x64 matrix to manage.
 
-### 7.3 Nuance: Node 22 doit être installé sur le Mac
+### 7.3 Caveat: Node 22 must be installed on the Mac
 
-Le `agent.mjs` est du JS bundle, il faut Node 22 system. L'installer Mac doit
-(a) détecter Node, (b) si manquant, le pointer vers `brew install node@22` ou
-`https://nodejs.org/dist/v22.x/node-v22.x.x.pkg`. Pas d'auto-install via
-Homebrew (intrusif, demande mot de passe sudo en interactif).
+`agent.mjs` is a JS bundle, so it needs a system Node 22. The Mac installer must
+(a) detect Node, (b) if missing, point to `brew install node@22` or
+`https://nodejs.org/dist/v22.x/node-v22.x.x.pkg`. No auto-install via
+Homebrew (intrusive, asks for the sudo password interactively).
 
-### 7.4 Test build sur Mac
+### 7.4 Build test on Mac
 
-Aucune CI runner macOS dans le projet aujourd'hui. **Optionnel**: ajouter un
-job `build-darwin` dans `.github/workflows/ci.yml` qui tourne sur
-`runs-on: macos-14` et fait `cd agent && npm ci && npm run build && node dist/agent.mjs --version`
-(vérifie juste que le bundle se charge sur Mac). Coût: minutes GitHub Mac × 10
-minutes par PR. **Pas critique v1.**
+No macOS CI runner in the project today. **Optional**: add a
+`build-darwin` job to `.github/workflows/ci.yml` that runs on
+`runs-on: macos-14` and does `cd agent && npm ci && npm run build && node dist/agent.mjs --version`
+(only checks that the bundle loads on Mac). Cost: GitHub Mac minutes × 10
+minutes per PR. **Not critical for v1.** (Update: still not added as of
+v0.9.18.)
 
 ---
 
 ## 8. Auto-update
 
-### 8.1 État actuel
+### 8.1 Current state
 
-`transport.ts:278-370` (`applyAgentUpdate`) fait un atomic swap du bundle puis
-exit(0). Deux paths:
+`transport.ts` (`applyAgentUpdate`) does an atomic swap of the bundle then
+exit(0). Two paths:
 
-- Linux: `writeFileSync(.new) + fsync + rename(.new vers target) + exit(0)`,
+- Linux: `writeFileSync(.new) + fsync + rename(.new to target) + exit(0)`,
   systemd restart.
-- Windows: `writeFileSync(.pending) + fsync + exit(0)`, `launcher.ps1` swap au
-  prochain tour de boucle.
+- Windows: `writeFileSync(.pending) + fsync + exit(0)`, `launcher.ps1` swaps on
+  the next loop iteration.
 
-### 8.2 Path macOS
+### 8.2 macOS path
 
-LaunchAgent avec `KeepAlive=true` relance le binaire au `exit(0)` dans la
-seconde. Le path **Linux** marche tel quel:
-`writeFileSync(.new) + fsync + rename(.new vers target) + exit(0)`. Atomic
-rename(2) marche sur APFS (le FS macOS) comme sur ext4.
+A LaunchAgent with `KeepAlive=true` restarts the binary on `exit(0)` within
+a second. The **Linux** path works as-is:
+`writeFileSync(.new) + fsync + rename(.new to target) + exit(0)`. Atomic
+rename(2) works on APFS (the macOS filesystem) as on ext4.
 
-**Modification code agent**: dans `transport.ts:344`
-(`const isWin = process.platform === 'win32'`), pas de changement, Mac tombe
-dans la branche Linux. Bon par défaut.
+**Agent code change**: in `transport.ts:439`
+(`const isWin = process.platform === 'win32'`), no change, Mac falls
+into the Linux branch. Good by default.
 
-**Modification code hub**: `agentIngestWS.ts:271,317` gate l'auto-update à
-`install_mode === 'systemd' || 'windows'`. Étendre à `'macos'`:
+**Hub code change**: `agentIngestWS.ts` gates auto-update to
+`install_mode === 'systemd' || 'windows'`. Extend to `'macos'`:
 
 ```
 if (host.install_mode !== 'systemd' && host.install_mode !== 'windows' && host.install_mode !== 'macos') return;
 ```
 
-### 8.3 Gatekeeper et auto-update
+(Update: done in `agentIngestWS.ts:278,339` and in the periodic scheduler
+`agentUpdateScheduler.ts:54`, which also used to skip Windows hosts, fixed
+in v0.9.0.)
 
-L'agent self-réécrit son fichier `.mjs`. Pas de signature à valider (c'est du
-JS, pas un binaire Mach-O). Gatekeeper ne s'en mêle pas pour les `.mjs`
-exécutés via `node`. **Pas de friction**.
+### 8.3 Gatekeeper and auto-update
+
+The agent rewrites its own `.mjs` file. There is no signature to validate (it is
+JS, not a Mach-O binary). Gatekeeper does not interfere with `.mjs` files
+run via `node`. **No friction**.
 
 ---
 
-## 9. Sécurité, Gatekeeper, sudoers, sandbox
+## 9. Security, Gatekeeper, sudoers, sandbox
 
 ### 9.1 Gatekeeper
 
-L'agent étant du **JS exécuté par le binaire `node` du système**, Gatekeeper
-ne bloque rien (c'est `node` qui est exécuté, et lui est déjà autorisé). Si
-l'utilisateur installe Node depuis nodejs.org (.pkg), le pkg est notarisé
-Apple. Brew compile localement, donc Gatekeeper-clean.
+Since the agent is **JS run by the system `node` binary**, Gatekeeper
+blocks nothing (it is `node` that is executed, and it is already allowed). If
+the user installs Node from nodejs.org (.pkg), the pkg is notarized by
+Apple. Brew builds locally, so it is Gatekeeper-clean.
 
-**Aucune signature ad-hoc nécessaire** pour `agent.mjs`.
+**No ad-hoc signing needed** for `agent.mjs`.
 
 ### 9.2 TCC (Transparency, Consent and Control)
 
-Sur Mac récent (Ventura+), l'accès aux capteurs SMC via `powermetrics` peut
-prompter une fenêtre "powermetrics wants to monitor X". Cela arrive UNE FOIS,
-la première fois, et seulement si l'agent tourne sous LaunchAgent (user
-session). Si on passe par sudo (donc root), pas de prompt TCC.
+On a recent Mac (Ventura+), access to SMC sensors via `powermetrics` may
+show a "powermetrics wants to monitor X" prompt. This happens ONCE,
+the first time, and only if the agent runs under a LaunchAgent (user
+session). Going through sudo (hence root) means no TCC prompt.
 
-**Note d'installation**: au premier lancement de l'agent, l'utilisateur
-**peut** voir un prompt système. L'installer doit le mentionner explicitement
-dans son output final ("If you see a TCC prompt, click Allow.").
+**Install note**: on the agent's first launch, the user
+**may** see a system prompt. The installer must mention it explicitly
+in its final output ("If you see a TCC prompt, click Allow.").
 
 ### 9.3 sudoers
 
-Cf. §3. Le fichier `/etc/sudoers.d/gpuviewr-agent` doit être chmod 0440
-root:wheel, validé via `visudo -c -f`. L'installer doit refuser d'écrire un
-sudoers invalide (sinon plus aucune commande sudo ne marche sur la machine,
-catastrophe documentée du sudoers cassé).
+See §3. The `/etc/sudoers.d/gpuviewr-agent` file must be chmod 0440
+root:wheel and validated with `visudo -c -f`. The installer must refuse to write an
+invalid sudoers file (otherwise no sudo command works on the machine any more,
+the well-documented broken sudoers disaster).
 
 ### 9.4 Network sandbox
 
-Aucun. L'agent ouvre un WS sortant. macOS Application Firewall demande
-l'autorisation au premier outbound de Node, si l'utilisateur n'est pas devant
-l'écran (Mac mini headless), la connexion peut être bloquée. Workaround:
-l'installer peut faire `socketfilterfw --add /usr/local/bin/node` (besoin
-sudo). Documenter dans le README, ne pas auto-fixer (intrusif).
+None. The agent opens an outbound WS. The macOS Application Firewall asks for
+permission on Node's first outbound connection; if the user is not in front of
+the screen (headless Mac mini), the connection may be blocked. Workaround:
+the installer can run `socketfilterfw --add /usr/local/bin/node` (needs
+sudo). Document it in the README, do not auto-fix (intrusive).
 
-### 9.5 Recommandation
+### 9.5 Recommendation
 
-**v1**: ne pas signer Apple Developer ID (~99 $/an + complexité), ne pas
-tenter de notariser, ne pas toucher au firewall. Doc claire dans le README
-qu'on est en mode "self-hosted, expect 1 TCC prompt, expect to allow node in
-Firewall once". **À DÉCIDER 5**: confirmer que l'utilisateur accepte ce niveau
-de friction "first launch".
+**v1**: do not sign with an Apple Developer ID (~$99/year + complexity), do not
+try to notarize, do not touch the firewall. Clear docs in the README
+that this is "self-hosted, expect 1 TCC prompt, expect to allow node in
+Firewall once". **TO DECIDE 5**: confirm that the user accepts this level
+of "first launch" friction.
 
 ---
 
-## 10. Découpage en PRs
+## 10. PR breakdown
 
-**PR1, Collector pur + tests unitaires (1-1.5 j)** — fait, 2026-09-14
+**PR1, Pure collector + unit tests (1-1.5 d)**: done, 2026-09-14
 
 - `agent/src/collectors/gpuMacosPowermetrics.ts`
-- `agent/src/collectors/gpuMacosPowermetrics.test.ts` avec fixtures plist
-  (powermetrics output capturé manuellement sur un Mac)
-- `agent/src/collectors/macosSysctl.ts` (helpers `hw.memsize`,
-  `machdep.cpu.brand_string`)
-- Pas encore de branchement dans `index.ts`. Le collector est isolé, testable
-  sur Linux CI via fixtures.
+- `agent/src/collectors/gpuMacosPowermetrics.test.ts` with plist fixtures
+  (powermetrics output captured manually on a Mac). (Update: no Mac was
+  available; the fixtures are synthetic, reconstructed from public docs,
+  and inlined in the test file.)
+- `agent/src/collectors/macosSysctl.ts` (`hw.memsize`,
+  `machdep.cpu.brand_string` helpers)
+- No wiring into `index.ts` yet. The collector is isolated and testable
+  on Linux CI via fixtures.
 
-**PR2, Branchement boot + install_mode (0.5 j)** — fait, 2026-09-14
+**PR2, Boot wiring + install_mode (0.5 d)**: done, 2026-09-14
 
-- `agent/src/config.ts`: ajouter `'apple'` au type `GpuVendor`.
-- `agent/src/index.ts`: ajouter `'darwin'` dans `resolveVendor`,
-  `buildGpuCollector`, et désactiver process collector.
-- `agent/src/transport.ts`: ajouter `'macos'` à `InstallMode` + détection.
-- `server/database/models/Host.ts`: étendre `InstallMode`.
-- `server/services/agentIngestWS.ts`: autoriser auto-update pour macOS.
-- Smoke test manuel: `MOCK_GPU=1 node agent.mjs` sur Mac doit booter sans
-  crash.
+- `agent/src/config.ts`: add `'apple'` to the `GpuVendor` type.
+- `agent/src/index.ts`: add `'darwin'` to `resolveVendor`,
+  `buildGpuCollector`, and disable the process collector.
+- `agent/src/transport.ts`: add `'macos'` to `InstallMode` + detection.
+- `server/database/models/Host.ts`: extend `InstallMode`.
+- `server/services/agentIngestWS.ts`: allow auto-update for macOS.
+- Manual smoke test: `MOCK_GPU=1 node agent.mjs` on a Mac must boot without
+  crashing.
 
-**PR3, Script d'installation Mac (1-1.5 j)** — fait, 2026-09-14
+**PR3, Mac install script (1-1.5 d)**: done, 2026-09-14
 
 - `agent/install.sh.mac.tpl`
-- `server/routes/agentDistribution.ts`: nouvelle route `/install.mac.sh`.
-- Tests E2E manuels sur un Mac de dev (uninstall + install + tail logs +
-  uninstall): **pas encore faits**, pas de Mac réel disponible dans cette
-  session. `tsc --noEmit` + `npm test` (agent) passent, mais le script n'a
-  jamais tourné sur un vrai macOS.
+- `server/routes/agentDistribution.ts`: new `/install.mac.sh` route.
+- Manual E2E tests on a dev Mac (uninstall + install + tail logs +
+  uninstall): **not done yet**, no real Mac available in that
+  session. `tsc --noEmit` + `npm test` (agent) pass, but the script has
+  never run on a real macOS.
 
-**PR4, Hub UI (1 j)** — fait, 2026-09-14, avec un écart volontaire sur le
-scope mémoire (voir ci-dessous)
+**PR4, Hub UI (1 d)**: done, 2026-09-14, with a deliberate deviation on the
+memory scope (see below)
 
-- `src/lib/memoryFormat.ts` helper: fait.
-- 10 fichiers `src/components/...` à toucher pour le label "VRAM" vers
-  conditional: **réduit à 2** (`HostCard.tsx`, `Dashboard.tsx`), les 8 autres
-  utilisaient déjà un label générique déjà traduit ("Memory"/"Mémoire", pas
-  littéralement "VRAM"), donc zéro changement visible et zéro prop-drilling
-  à ajouter pour eux. Conforme à l'allowance du plan lui-même ("pas urgent
-  v1, on peut passer 'Unified' tel quel"). À reconsidérer si l'utilisateur
-  veut le traitement complet des 10 fichiers.
-- `src/components/settings/HostsSettingsTab.tsx`: recette macOS ajoutée.
-- `src/i18n/locales/fr.json` + `en.json`: clés `type_macos*`, `macos_cmd`,
-  `install_mode_macos`, `install_macos_hint` ajoutées.
-- QA visuelle navigateur (icône, label "Unified", 4e onglet du picker) pas
-  encore faite, extension Chrome indisponible au moment de l'implémentation.
+- `src/lib/memoryFormat.ts` helper: done.
+- 10 `src/components/...` files to touch to turn the "VRAM" label into a
+  conditional: **reduced to 2** (`HostCard.tsx`, `Dashboard.tsx`); the other 8
+  already used a generic, already translated label ("Memory"/"Mémoire", not
+  literally "VRAM"), so zero visible change and no prop drilling
+  to add for them. This matches the plan's own allowance ("not urgent
+  for v1, 'Unified' can be passed as-is"). To revisit if the user
+  wants the full treatment of all 10 files.
+- `src/components/settings/HostsSettingsTab.tsx`: macOS recipe added.
+- `src/i18n/locales/fr.json` + `en.json`: keys `type_macos*`, `macos_cmd`,
+  `install_mode_macos`, `install_macos_hint` added.
+- Visual browser QA (icon, "Unified" label, 4th picker tab) not
+  done yet, the Chrome extension was unavailable at implementation time.
 
-**PR5, Doc + CI sanity (0.5 j)** — en cours, 2026-09-14
+**PR5, Docs + CI sanity (0.5 d)**: docs done in v0.9.0, 2026-09-14
 
-- Mise à jour `agent/README.md` section "macOS".
-- Mise à jour `README.md` racine pour supprimer le "Local GPU monitoring is
-  not possible on macOS" (devient possible bare-metal, reste impossible en
+- Update the "macOS" section of `agent/README.md`.
+- Update the root `README.md` to remove "Local GPU monitoring is
+  not possible on macOS" (now possible bare-metal, still impossible in
   Docker).
-- `Docs/MACOS_AGENT.md` (ce fichier) à promouvoir en "implementé" + journal
-  des écarts vs plan.
-- **Optionnel**: job CI `build-darwin` sur macos-14.
+- Promote `Docs/MACOS_AGENT.md` (this file) to "implemented" + log
+  of deviations from the plan.
+- **Optional**: `build-darwin` CI job on macos-14. (Not done.)
 
-**Optionnel PR6, Processes via `--samplers tasks` (0.5-1 j)** différable, hors
-v1.
+**Optional PR6, Processes via `--samplers tasks` (0.5-1 d)**: deferrable, out of
+v1. (Update: on hold until a real capture is available, see §2.4.)
 
 ---
 
-## 11. Stratégie de tests sans Mac
+## 11. Testing strategy without a Mac
 
-### 11.1 Tests unitaires
+### 11.1 Unit tests
 
-Le pattern existant `agent/src/collectors/gpuAmdgpuSysfs.test.ts` est la
-référence: lit des **fixtures** texte capturées une fois, vérifie le parsing en
-pur.
+The existing `agent/src/collectors/gpuAmdgpuSysfs.test.ts` pattern is the
+reference: it reads text **fixtures** captured once and checks the parsing
+in isolation.
 
-Pour macOS:
+For macOS:
 
-- Capturer manuellement (sur un Mac de dev) 3-5 outputs
-  `powermetrics --samplers gpu_power,smc -i 1000 -n 1 --format plist`, stocker
-  sous `agent/src/collectors/__fixtures__/powermetrics-m1.plist`,
+- Manually capture (on a dev Mac) 3-5 outputs of
+  `powermetrics --samplers gpu_power,smc -i 1000 -n 1 --format plist`, store them
+  under `agent/src/collectors/__fixtures__/powermetrics-m1.plist`,
   `powermetrics-m2max.plist`, `powermetrics-m3pro.plist`.
-- Tests: passer chaque fixture au parser, asserter les champs extraits.
-- Couvrir aussi les edge cases: fixture sans clé `GPU die temperature` (M1),
-  fixture avec valeur `<integer>` vs `<real>`.
+- Tests: feed each fixture to the parser, assert the extracted fields.
+- Also cover the edge cases: a fixture without the `GPU die temperature` key (M1),
+  a fixture with an `<integer>` vs `<real>` value.
 
-### 11.2 Tests d'intégration boot
+(Update: no real captures exist yet. The shipped tests use synthetic
+fixtures inlined in `gpuMacosPowermetrics.test.ts`, covering two plausible
+key shapes and the M1 no-temperature case; there is no `__fixtures__`
+directory.)
 
-Mock `child_process.spawn` pour simuler `powermetrics` qui pousse une fixture
-sur stdout. Vérifier que `createMacosPowermetricsCollector` appelle bien
-`onSample` avec un `GpuSample[]` bien-formé.
+### 11.2 Boot integration tests
 
-Suivre le pattern du test `agentIngestWS.test.ts` pour le wiring WS.
+Mock `child_process.spawn` to simulate `powermetrics` pushing a fixture
+on stdout. Check that `createMacosPowermetricsCollector` does call
+`onSample` with a well-formed `GpuSample[]`.
+
+Follow the pattern of the `agentIngestWS.test.ts` test for the WS wiring.
 
 ### 11.3 CI
 
-`npm test` actuel (`agent/package.json:15`, `tsx --test src/**/*.test.ts`)
-tourne sur Ubuntu. Les tests fixture-based passent partout. **Pas besoin de
-runner macOS** pour la PR1 et la PR2.
+The current `npm test` (`agent/package.json:15`, `tsx --test src/**/*.test.ts`)
+runs on Ubuntu. Fixture-based tests pass everywhere. **No need for a
+macOS runner** for PR1 and PR2. (Update, v0.9.0: the script is now
+`tsx --test $(find src -name '*.test.ts')`, because the glob silently
+skipped top-level test files.)
 
-Le runner macOS n'est nécessaire que pour valider l'install.sh.mac.tpl
-bout-en-bout. Faisable manuellement en début + après chaque release; on peut
-s'en passer en CI.
+The macOS runner is only needed to validate install.sh.mac.tpl
+end to end. That can be done manually at the start + after each release; it
+can be left out of CI.
 
-### 11.4 Validation finale
+### 11.4 Final validation
 
-Côté humain: avoir 1 Mac Apple Silicon (M1/M2/M3 ou M4) sous la main pour les
-PR3-PR5. Si pas dispo, deuxième best: GitHub Actions `runs-on: macos-14` ARM
-(gratuit pour public repos, $0.16/min sinon, exposable seulement via
+Human side: have 1 Apple Silicon Mac (M1/M2/M3 or M4) at hand for
+PR3-PR5. If none is available, second best: GitHub Actions `runs-on: macos-14` ARM
+(free for public repos, $0.16/min otherwise, only exposable via a
 workflow).
 
 ---
 
-## 12. Estimation grossière
+## 12. Rough estimate
 
-| PR | Description | Estimation (j-h, dev seul rapide) |
+| PR | Description | Estimate (person-days, fast solo dev) |
 |---|---|---|
-| PR1 | Collector + tests fixtures | 1 à 1.5 |
-| PR2 | Branchement boot, install_mode | 0.5 |
-| PR3 | install.sh.mac.tpl + sudoers + LaunchAgent | 1 à 1.5 |
-| PR4 | Hub UI (label memory, settings recette) | 1 |
-| PR5 | Doc + cleanup README + CI optionnel | 0.5 |
-| **Total v1 (Apple Silicon, sans processes)** | | **~4 à 5 j-homme** |
-| PR6 (optionnel) | processes via `--samplers tasks` | +0.5 à 1 |
+| PR1 | Collector + fixture tests | 1 to 1.5 |
+| PR2 | Boot wiring, install_mode | 0.5 |
+| PR3 | install.sh.mac.tpl + sudoers + LaunchAgent | 1 to 1.5 |
+| PR4 | Hub UI (memory label, settings recipe) | 1 |
+| PR5 | Docs + README cleanup + optional CI | 0.5 |
+| **Total v1 (Apple Silicon, no processes)** | | **~4 to 5 person-days** |
+| PR6 (optional) | processes via `--samplers tasks` | +0.5 to 1 |
 
-Risques susceptibles d'inflater l'estimation:
+Risks likely to inflate the estimate:
 
-- Parser plist robuste (si on refuse une dep tierce): +0.5 j sur PR1.
-- Bug TCC ou sudoers découvert sur un Mac réel: +0.5 j sur PR3.
-- Refactor du store frontend pour propager `install_mode` aux composants
-  memory: +0.5 j sur PR4.
+- Robust plist parser (if a third-party dep is refused): +0.5 d on PR1.
+- TCC or sudoers bug discovered on a real Mac: +0.5 d on PR3.
+- Refactor of the frontend store to propagate `install_mode` to the memory
+  components: +0.5 d on PR4.
 
-Plancher réaliste: **4 j**. Plafond: **6 j**.
-
----
-
-## Points "À DÉCIDER" remontés
-
-1. **Scope**: darwin-arm64 seul vs darwin-arm64 + darwin-x64. Reco: arm64
-   seul.
-2. **Privilèges**: LaunchDaemon root vs LaunchAgent + sudoers NOPASSWD. Reco:
-   sudoers ciblé.
-3. **Distribution**: rester sur bundle `agent.mjs` unique vs binaire signé.
-   Reco: bundle.
-4. **Mapping unified memory**: Option A (pression mémoire via vm_stat) vs B
-   (null) vs C (ioreg). Reco: A, avec UI claire.
-5. **Friction "first launch"**: accepter prompt TCC + Firewall macOS au
-   premier run, ou tenter de scripter? Reco: documenter, ne pas scripter.
-6. **CI runner macOS**: ajouter macos-14 job ou pas? Reco: pas en v1.
-7. **Processes Mac**: déférer à PR6 ou skip définitivement? Reco: déférer.
+Realistic floor: **4 d**. Ceiling: **6 d**.
 
 ---
 
-## Fichiers critiques pour l'implémentation
+## "TO DECIDE" items raised
+
+1. **Scope**: darwin-arm64 only vs darwin-arm64 + darwin-x64. Rec: arm64
+   only.
+2. **Privileges**: root LaunchDaemon vs LaunchAgent + sudoers NOPASSWD. Rec:
+   targeted sudoers.
+3. **Distribution**: stay on a single `agent.mjs` bundle vs a signed binary.
+   Rec: bundle.
+4. **Unified memory mapping**: Option A (memory pressure via vm_stat) vs B
+   (null) vs C (ioreg). Rec: A, with a clear UI.
+5. **"First launch" friction**: accept the TCC prompt + macOS Firewall on the
+   first run, or try to script around them? Rec: document, do not script.
+6. **macOS CI runner**: add a macos-14 job or not? Rec: not in v1.
+7. **Mac processes**: defer to PR6 or skip for good? Rec: defer.
+
+---
+
+## Critical files for the implementation
 
 - `agent/src/index.ts`
-- `agent/src/collectors/gpuWindowsPdh.ts` (pattern de référence pour le
+- `agent/src/collectors/gpuWindowsPdh.ts` (reference pattern for the
   long-running spawn)
-- `agent/install.sh.tpl` (pattern installer Linux à transposer)
-- `agent/install.ps1.tpl` (pattern lifecycle re-install à transposer)
-- `server/services/agentIngestWS.ts` (gates auto-update à étendre)
+- `agent/install.sh.tpl` (Linux installer pattern to transpose)
+- `agent/install.ps1.tpl` (re-install lifecycle pattern to transpose)
+- `server/services/agentIngestWS.ts` (auto-update gates to extend)
