@@ -88,6 +88,10 @@ The script detects your GPU vendor, writes `docker-compose.yaml` and a
 
 Update: `docker compose pull && docker compose up -d`.
 
+Prefer writing the compose file yourself? Ready-to-use examples (hub only,
+NVIDIA, AMD) and the supported hub platforms:
+[Docs/INSTALL.md#compose-examples](Docs/INSTALL.md#compose-examples).
+
 Requires Docker with Compose v2, plus the NVIDIA Container Toolkit for
 NVIDIA GPUs. Manual install, macOS (Docker Desktop), configuration and
 troubleshooting: [Docs/INSTALL.md](Docs/INSTALL.md).
