@@ -1,8 +1,8 @@
-release: v0.9.16 proxy-addr security fix
+release: v0.9.17 GPU process list on Windows agents
 
-- Security: proxy-addr 2.0.7 -> 2.0.8 (via Express), critical
-  SNYK-JS-PROXYADDR-19812342 user impersonation.
-- Fixed: 8 lockfile entries with versions corrupted to 0.7.0 by an old
-  release-script bug, restored so scanners read the real versions.
-- Changed: Snyk CI jobs fail when a scan yields no SARIF; Snyk Code job
-  removed (not enabled on the org, CodeQL covers SAST).
+- Added: Windows agents report the GPU process list from the per-process
+  PDH counters (GPU %, dedicated VRAM, type, CPU %, command line), for
+  NVIDIA, AMD and Intel. With nvidia-smi, processes are attached to the
+  right card by matching pids against nvidia-smi -q -d PIDS.
+- Fixed: PDH GPU utilization (AMD/Intel on Windows) likely stuck at 0 %,
+  the engine counter regex missed the pid_<pid>_ prefix.
