@@ -33,7 +33,7 @@ import {
   type CustomLLMRule,
   type OllamaDigestContext,
 } from "./collectors/llmClassifier.js";
-import { createLlmProbe } from "./collectors/llmProbe.js";
+import { createLlmProbe, readDefaultGateway } from "./collectors/llmProbe.js";
 import type { ProcessSnapshot } from "./collectors/processes.js";
 import { buildMockSamples } from "./mock.js";
 
@@ -88,8 +88,12 @@ ollamaRefreshTimer.unref();
 // Resolvers are stable for the lifetime of the agent; the classifier
 // only sees this thin callback shape, not the refresh schedule.
 // Asks Ollama / llama.cpp / vLLM themselves (loaded models, state).
-// 127.0.0.1 is the host's own loopback only outside a container.
-const llmProbe = createLlmProbe({ hostNetwork: INSTALL_MODE !== "docker" });
+// 127.0.0.1 is the host's own loopback only outside a container; a
+// Docker agent also reaches a host-published Ollama on its gateway.
+const llmProbe = createLlmProbe({
+  hostNetwork: INSTALL_MODE !== "docker",
+  gateway: INSTALL_MODE === "docker" ? readDefaultGateway() : null,
+});
 const llmResolvers = {
   ollamaModelByDigest: (digest: string, ctx?: OllamaDigestContext) =>
     ollamaResolver.resolve(digest, ctx) ?? llmProbe.ollamaNameByDigest(digest),

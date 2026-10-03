@@ -69,7 +69,7 @@ Windows and macOS, each host with its own colour on every chart.
 
 - **NVIDIA, AMD, Intel**: auto-detected, multi-GPU per host
 - **Multi-host**: one hub, lightweight agents on Linux (systemd or Docker), Windows and macOS; an agent can also report to several hubs
-- **Per-process view**: VRAM, GPU and CPU per process, with LLM runtime and model detection
+- **LLM-aware process view**: Ollama, llama.cpp, vLLM and more, model name and state (loaded / asleep / unload countdown) asked from the servers themselves, VRAM + GTT, container, "LLM only" filter, top over 24 h, process alerts
 - **Alerts**: sustain + cooldown, Discord / Telegram / MQTT / webhook
 - **Exports**: Prometheus, InfluxDB, MQTT
 - **Agent auto-update** from the hub, opt-in per host
@@ -153,6 +153,7 @@ what you see, even "it works".
 | Hub on macOS (Docker Desktop) | In development, aggregator only | Report whether it starts and receives agents |
 | Hub on Windows (Docker Desktop / WSL2) | In development, untested | Same |
 | AMD without ROCm (v0.10.0) | New, tested on simulated hosts only | Report the installer output |
+| Intel GPUs on Linux, i915 / xe (v0.11.0) | New, tested on fixtures only | Report GPU %, memory and the process list |
 | Filesystem handshake (replaces the sidecar bootstrap secret) | Planned | |
 | Roles and permissions (RBAC) | Planned | |
 

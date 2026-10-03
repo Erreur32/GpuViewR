@@ -531,11 +531,13 @@ The process table shows, for local LLM servers:
   Intel iGPUs the weights often live there, so VRAM alone undercounts;
 - the **container** (`docker 9692a12e`), from the process cgroup.
 
-The agent asks Ollama on `127.0.0.1:11434`, and a llama.cpp / vLLM server
-on `127.0.0.1:<--port>` only when both share the host network (systemd
-agent, server not in a container): a container's port is usually published
-under another number. For the other cases, add the server URL in
-**Settings > LLM** (per host, e.g. `http://192.168.1.10:8081`).
+The agent asks Ollama on `127.0.0.1:11434`; a Docker agent (whose
+127.0.0.1 is its own container) also tries its default gateway on `:11434`,
+which reaches an Ollama whose port is published on the host. A llama.cpp /
+vLLM server is asked on `127.0.0.1:<--port>` only when both share the host
+network (systemd agent, server not in a container): a container's port is
+usually published under another number. For the other cases, add the
+server URL in **Settings > LLM** (per host, e.g. `http://192.168.1.10:8081`).
 
 **Settings > LLM** also holds **naming rules**, for a runtime GpuViewR does
 not know: "command line contains X → runtime label Y, model from flag Z (or
