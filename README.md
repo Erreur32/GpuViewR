@@ -433,11 +433,23 @@ Common cases:
 
 ## Roadmap
 
-- v0.6: filesystem handshake to replace the bootstrap shared-secret (one-shot token file, no secret in `.env`)
-- ~~v0.6: macOS install script~~ done: `install.mac.sh`, see [Add a remote host](#add-a-remote-host)
-- v0.7: ARM agent native binary (no Docker on the remote side)
-- ~~v0.7: Multi-card AMD process attribution~~ done: per-process attribution now cross-references the kernel's DRM fdinfo interface (not `--showpidgpus` — upstream rocm-smi's `--json` mode drops that data)
+**Help wanted**
+
+- **macOS agent validation**: the Apple Silicon collector has only been tested against synthetic data, and the macOS process list is on hold until a real `powermetrics` capture is available. Got an M-series Mac? See [Help the macOS agent](agent/README.md#help-the-macos-agent).
+- **Windows AMD / Intel GPU utilization**: the PDH counter fix shipped in v0.9.17 is confirmed on NVIDIA only. If you run the agent on a Radeon or Intel GPU under Windows, please report whether GPU % moves under load.
+
+**Planned**
+
+- Filesystem handshake to replace the local sidecar's bootstrap shared secret (one-shot token file, no secret in `.env`)
+- macOS GPU process list (once a real capture is available, see above)
 - Later: RBAC, organisation scoping
+
+**Done**
+
+- ~~macOS install script~~: `install.mac.sh`, see [Add a remote host](#add-a-remote-host)
+- ~~Native agent without Docker~~: systemd install on Linux x86_64 and arm64, Scheduled Task on Windows, LaunchAgent on macOS
+- ~~Multi-card AMD process attribution~~: per-process attribution cross-references the kernel's DRM fdinfo interface (upstream rocm-smi's `--json` mode drops `--showpidgpus` data)
+- ~~Windows process list~~ (v0.9.18): per-process PDH counters, filtered to what actually loads the GPU
 
 ---
 
