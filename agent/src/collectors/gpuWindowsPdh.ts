@@ -27,10 +27,10 @@
 // pass can read HKLM\SYSTEM\...\Class\{4d36e968-...}\HardwareInformation
 // .qwMemorySize (QWORD) for accurate totals.
 
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { GpuSample } from '../../../server/services/parsers/nvidia.js';
 import { nowTimestamp } from '../../../server/services/parsers/nvidia.js';
 import { logger } from '../logger.js';
+import { createPsLoop } from './_psLoop.js';
 
 export type PdhGpuCollectorOptions = Readonly<{
   tickMs: number;
@@ -81,23 +81,33 @@ function Emit-Snapshot {
 
   $byAdapter = @{}
 
+  # Engine instances are per process ("pid_<pid>_luid_..._eng_<n>_engtype_<t>"),
+  # so an engine's load is the sum over its pids; the adapter shows the
+  # busiest engine, which is what Task Manager graphs. The pid prefix is
+  # optional in the regex in case a driver ever reports adapter-wide rows.
   if ($engines) {
+    $engSum = @{}
     foreach ($e in $engines) {
-      if ($e.Name -match '^luid_([0-9a-fA-Fx_]+)_phys_(\d+)_eng_(\d+)_engtype_(\w+)$') {
-        $key = "$($matches[1])_phys_$($matches[2])"
+      if ($e.Name -match '^(?:pid_\d+_)?(luid_0x[0-9a-fA-F]+_0x[0-9a-fA-F]+_phys_\d+)_eng_(\d+)_') {
+        $key = $matches[1]
         if (-not $byAdapter.ContainsKey($key)) {
           $byAdapter[$key] = [ordered]@{ Util = 0; DedicatedMB = 0; SharedMB = 0; TotalMB = $null }
         }
-        $u = [int]$e.UtilizationPercentage
-        if ($u -gt $byAdapter[$key].Util) { $byAdapter[$key].Util = $u }
+        $ek = "$key|$($matches[2])"
+        $engSum[$ek] = [int]$engSum[$ek] + [int]$e.UtilizationPercentage
       }
+    }
+    foreach ($ek in $engSum.Keys) {
+      $key = $ek.Split('|')[0]
+      $u = [math]::Min(100, $engSum[$ek])
+      if ($u -gt $byAdapter[$key].Util) { $byAdapter[$key].Util = $u }
     }
   }
 
   if ($mem) {
     foreach ($m in $mem) {
-      if ($m.Name -match '^luid_([0-9a-fA-Fx_]+)_phys_(\d+)$') {
-        $key = "$($matches[1])_phys_$($matches[2])"
+      if ($m.Name -match '^(luid_0x[0-9a-fA-F]+_0x[0-9a-fA-F]+_phys_\d+)$') {
+        $key = $matches[1]
         if (-not $byAdapter.ContainsKey($key)) {
           $byAdapter[$key] = [ordered]@{ Util = 0; DedicatedMB = 0; SharedMB = 0; TotalMB = $null }
         }
@@ -119,6 +129,7 @@ function Emit-Snapshot {
     $driver = if ($i -lt $controllers.Count) { $controllers[$i].DriverVersion } else { $null }
     [void]$list.Add([ordered]@{
       idx          = $i
+      key          = $key
       name         = $name
       util         = $a.Util
       dedicated_mb = $a.DedicatedMB
@@ -144,6 +155,7 @@ while ($true) {
 
 interface PsAdapter {
   idx: number;
+  key?: string;
   name: string;
   util: number;
   dedicated_mb: number;
@@ -157,10 +169,15 @@ interface PsPayload {
   err?: string;
 }
 
+/** Synthetic per-adapter uuid ("PDH-luid_0x…_0x…_phys_0"), shared with
+ *  the PDH process collector so the hub can attribute processes to a
+ *  card. The LUID is reassigned at boot, which is fine: samples and
+ *  process snapshots are always produced against the same boot. */
+export function pdhAdapterUuid(key: string): string {
+  return `PDH-${key}`;
+}
+
 export function createPdhGpuCollector(opts: PdhGpuCollectorOptions): PdhGpuCollectorHandle {
-  let child: ChildProcessWithoutNullStreams | null = null;
-  let started = false;
-  let buf = '';
   let lastErrLogged = '';
 
   function handleLine(line: string): void {
@@ -181,7 +198,7 @@ export function createPdhGpuCollector(opts: PdhGpuCollectorOptions): PdhGpuColle
     const samples: GpuSample[] = payload.adapters.map((a, i) => ({
       gpu_index: typeof a.idx === 'number' ? a.idx : i,
       name: a.name || `GPU ${i}`,
-      uuid: null,
+      uuid: a.key ? pdhAdapterUuid(a.key) : null,
       driver_version: a.driver || null,
       temperature: 0,
       utilization: Number.isFinite(a.util) ? Math.round(a.util) : null,
@@ -205,44 +222,12 @@ export function createPdhGpuCollector(opts: PdhGpuCollectorOptions): PdhGpuColle
     if (samples.length > 0) opts.onSample(samples);
   }
 
-  function spawnPs(): void {
-    const script = PS_SCRIPT_TEMPLATE.replace('__TICK_MS__', String(opts.tickMs));
-    try {
-      child = spawn('powershell.exe', [
-        '-NoProfile',
-        '-NonInteractive',
-        '-ExecutionPolicy', 'Bypass',
-        '-Command', script,
-      ], { windowsHide: true });
-    } catch (err) {
-      logger.error('gpu', `pdh: powershell spawn threw: ${(err as Error).message}`);
-      return;
-    }
-
-    child.stdout.setEncoding('utf8');
-    child.stdout.on('data', (chunk: string) => {
-      buf += chunk;
-      let nl = buf.indexOf('\n');
-      while (nl >= 0) {
-        const line = buf.slice(0, nl).trim();
-        buf = buf.slice(nl + 1);
-        if (line) handleLine(line);
-        nl = buf.indexOf('\n');
-      }
-    });
-    child.stderr.on('data', (d) => {
-      const msg = d.toString('utf8').trim();
-      if (msg) logger.debug('gpu', `pdh stderr: ${msg.slice(0, 200)}`);
-    });
-    child.on('error', (err) => logger.error('gpu', `pdh: powershell error: ${err.message}`));
-    child.on('close', (code) => {
-      child = null;
-      if (started) {
-        logger.warn('gpu', `pdh: powershell exited (code=${code}), respawning in 3 s`);
-        setTimeout(() => { if (started) spawnPs(); }, 3_000).unref();
-      }
-    });
-  }
+  const loop = createPsLoop({
+    tag: 'gpu',
+    label: 'pdh',
+    script: PS_SCRIPT_TEMPLATE.replace('__TICK_MS__', String(opts.tickMs)),
+    onLine: handleLine,
+  });
 
   return {
     available(): boolean {
@@ -253,18 +238,11 @@ export function createPdhGpuCollector(opts: PdhGpuCollectorOptions): PdhGpuColle
       return process.platform === 'win32';
     },
     start(): void {
-      if (started) return;
-      started = true;
       logger.success('gpu', `PDH collector started (tick=${opts.tickMs}ms, Windows performance counters)`);
-      spawnPs();
+      loop.start();
     },
     stop(): void {
-      started = false;
-      if (child) {
-        try { child.kill(); } catch { /* already gone */ }
-        child = null;
-      }
-      buf = '';
+      loop.stop();
     },
   };
 }
