@@ -5,7 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.0] - 2026-10-03
+
+### Added
+
+- **Install docs per platform.** `Docs/INSTALL.md` now lists where the hub runs (Linux amd64/arm64, macOS Docker Desktop as aggregator, Windows) and gives a ready-to-use compose file for each case: hub only, NVIDIA, AMD. All three pass `docker compose config`. The README Install section is reorganized around it.
+- **Demo**: a Windows host, and an empty process list on the macOS host (matching the real agent).
+
+### Changed
+
+- All docs in English, shorter README with a `Docs/` index.
+- `ws` 8.21.3 to 8.22.0.
 
 ### Fixed
 

@@ -1,9 +1,12 @@
-release: v0.9.18 Windows process list enabled and filtered
+release: v0.10.0 installer GPU detection and install docs
 
-- Fixed: Windows process list stayed empty after v0.9.17, the installer
-  wrote FEATURES='gpu' and auto-update never rewrites agent.env.ps1. The
-  installer now defaults to gpu,processes and the agent reads the legacy
-  'gpu' value on Windows as gpu,processes.
-- Fixed: Windows process list listed every desktop window. Only rows
-  with >= 256 MiB dedicated VRAM or GPU activity in the last 30 s are
-  kept; the System pseudo-process is hidden.
+- Fixed: installers now detect AMD GPUs without ROCm (amdgpu card in
+  /sys/class/drm; Docker paths also need /dev/kfd).
+- Fixed: NVIDIA without the NVIDIA Container Toolkit no longer breaks the
+  Docker installs: install.sh starts the hub alone with the fix command
+  and clears a stale COMPOSE_PROFILES=nvidia; install-agent.sh stops with
+  a clear hint.
+- Added: supported hub platforms and compose examples (hub only, NVIDIA,
+  AMD) in Docs/INSTALL.md, reorganized README Install section.
+- Changed: English-only docs with a Docs/ index, ws 8.22.0, demo gains a
+  Windows host.
