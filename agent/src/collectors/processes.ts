@@ -13,7 +13,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { basename } from 'node:path';
 import { logger } from '../logger.js';
 import { createCpuSampler, readCmdline, resolveProcessName } from './_procTicks.js';
-import { classifyLLM, type LLMResolvers } from './llmClassifier.js';
+import { classifyLLM, type LLMHint, type LLMResolvers } from './llmClassifier.js';
 
 export type GpuProcessType = 'C' | 'G' | 'G+C' | null;
 
@@ -32,11 +32,25 @@ export interface AgentGpuProcess {
   // Both null when the cmdline doesn't match any known pattern.
   llm_runtime?: string | null;
   llm_model?: string | null;
+  /** Why llm_model is missing or not human-friendly (see LLMHint). */
+  llm_hint?: LLMHint | null;
+}
+
+/** How much of the host the process collector can actually see. Only
+ *  sent by collectors that can miss GPU clients (AMD fdinfo scan). */
+export interface ProcessVisibility {
+  /** Long-lived pids whose /proc/<pid>/fdinfo was refused. A GPU client
+   *  among them is missing from the list. */
+  denied_pids: number;
+  /** Agent holds CAP_SYS_PTRACE: denials then come from AppArmor (Docker
+   *  agent vs host processes), not from a missing capability. */
+  has_ptrace: boolean;
 }
 
 export interface ProcessSnapshot {
   tsEpoch: number;
   processes: AgentGpuProcess[];
+  visibility?: ProcessVisibility;
 }
 
 export type ProcessCollectorOptions = Readonly<{
@@ -142,7 +156,7 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
       const enriched: AgentGpuProcess[] = procs.map((p) => {
         const pmon = pmonByPid.get(p.pid);
         const command = readCmdline(p.pid, opts.hostProc);
-        const llm = classifyLLM(command, opts.llmResolvers);
+        const llm = classifyLLM(command, opts.llmResolvers, p.pid);
         return {
           ...p,
           type: pmon?.type ?? smiTypeByPid.get(p.pid) ?? (command ? 'C' : null),
@@ -151,6 +165,7 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
           gpu_pct: pmon?.gpuPct ?? null,
           llm_runtime: llm.runtime,
           llm_model: llm.model,
+          llm_hint: llm.hint,
         };
       });
       cpuSampler.retain(new Set(procs.map((p) => p.pid)));

@@ -25,6 +25,7 @@ import {
   createOllamaResolver,
   type OllamaResolver,
 } from "./collectors/ollamaManifests.js";
+import type { OllamaDigestContext } from "./collectors/llmClassifier.js";
 import { buildMockSamples } from "./mock.js";
 
 const config = loadConfig();
@@ -69,7 +70,7 @@ let windowsPdhGpu = process.platform === "win32" && vendor !== "nvidia";
 // classifier can translate Ollama blob digests to friendly model
 // names. Lifetime matches the agent process; refreshed periodically
 // so newly-pulled models become resolvable without an agent restart.
-const ollamaResolver: OllamaResolver = createOllamaResolver();
+const ollamaResolver: OllamaResolver = createOllamaResolver(config.hostProc);
 const ollamaRefreshTimer = setInterval(
   () => ollamaResolver.refresh(),
   5 * 60_000,
@@ -78,7 +79,8 @@ ollamaRefreshTimer.unref();
 // Resolvers are stable for the lifetime of the agent; the classifier
 // only sees this thin callback shape, not the refresh schedule.
 const llmResolvers = {
-  ollamaModelByDigest: (digest: string) => ollamaResolver.resolve(digest),
+  ollamaModelByDigest: (digest: string, ctx?: OllamaDigestContext) =>
+    ollamaResolver.resolve(digest, ctx),
 };
 
 if (config.features.gpu) {
@@ -165,7 +167,7 @@ if (config.features.processes && !config.mockGpu) {
     processHandle = createPdhProcessCollector({
       tickMs: config.processesTickMs,
       nvidiaSmiPath: windowsPdhGpu ? undefined : config.nvidiaSmiPath,
-      onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
+      onSnapshot: (snap) => transport.enqueueProcesses(snap.processes, snap.visibility),
       llmResolvers,
     });
     processHandle.start();
@@ -333,9 +335,10 @@ function buildProcessCollector(
   if (v === "amd") {
     return createRocmProcessCollector({
       rocmSmiPath: cfg.rocmSmiPath,
+      sysClassDrm: cfg.sysClassDrm,
       tickMs: cfg.processesTickMs,
       hostProc: cfg.hostProc,
-      onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
+      onSnapshot: (snap) => transport.enqueueProcesses(snap.processes, snap.visibility),
       llmResolvers,
     });
   }
@@ -343,7 +346,7 @@ function buildProcessCollector(
     nvidiaSmiPath: cfg.nvidiaSmiPath,
     tickMs: cfg.processesTickMs,
     hostProc: cfg.hostProc,
-    onSnapshot: (snap) => transport.enqueueProcesses(snap.processes),
+    onSnapshot: (snap) => transport.enqueueProcesses(snap.processes, snap.visibility),
     llmResolvers,
   });
 }

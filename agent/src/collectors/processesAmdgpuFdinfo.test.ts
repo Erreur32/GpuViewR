@@ -8,6 +8,7 @@ import {
   createFdinfoScanState,
   FDINFO_MIN_AGE_MS,
   type FdinfoScanState,
+  hasPtraceCap,
   scanAmdgpuFdinfo,
 } from "./processesAmdgpuFdinfo.js";
 
@@ -343,3 +344,18 @@ test(
     }
   },
 );
+
+test("hasPtraceCap: reads bit 19 of CapEff", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gv-caps-"));
+  const status = join(dir, "status");
+  // Docker agent: node binary with the file cap cap_sys_ptrace.
+  await writeFile(status, "Name:\tnode\nCapEff:\t0000000000080000\n");
+  assert.equal(hasPtraceCap(status), true);
+  // systemd agent without AmbientCapabilities.
+  await writeFile(status, "Name:\tnode\nCapEff:\t0000000000000000\n");
+  assert.equal(hasPtraceCap(status), false);
+  // root with the full set.
+  await writeFile(status, "CapEff:\t000001ffffffffff\n");
+  assert.equal(hasPtraceCap(status), true);
+  assert.equal(hasPtraceCap(join(dir, "missing")), false);
+});

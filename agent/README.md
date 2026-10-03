@@ -214,7 +214,7 @@ before attaching it.
 | `MOCK_GPU`             | `0`                          | Emit synthetic samples instead of calling `nvidia-smi`. Useful for hub-side end-to-end testing without a real GPU.                                                                                                                                                       |
 | `HOSTNAME`             | _(none)_                     | Standard; whatever Docker / systemd / the OS sets. Sent informationally in hello.                                                                                                                                                                                        |
 | `HEARTBEAT_FILE`       | `/tmp/.gpuviewr-agent-alive` | Path touched on every successful WS frame send. The compose `healthcheck:` block reads this file's mtime via `node -e`. Override only if you also update the matching path in the compose healthcheck command, the two must stay in sync.                                |
-| `OLLAMA_MANIFESTS_DIR` | _auto_ | Ollama manifests directory, used to show model names (`llama3.1:8b`) instead of `sha256:` digests. Auto-detects `/host/ollama`, `/usr/share/ollama/.ollama`, `~/.ollama`, `/root/.ollama`. See [Ollama model names](../Docs/INSTALL.md#ollama-model-names). |
+| `OLLAMA_MANIFESTS_DIR` | _auto_ | Ollama manifests directory, used to show model names (`llama3.1:8b`) instead of `sha256:` digests. Auto-detects `/host/ollama`, `/usr/share/ollama/.ollama`, `~/.ollama`, `/root/.ollama`, then the dir next to each runner's blob (needs `CAP_SYS_PTRACE`). See [Ollama model names](../Docs/INSTALL.md#ollama-model-names). |
 
 ## Verifying the connection
 

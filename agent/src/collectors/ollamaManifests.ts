@@ -42,10 +42,20 @@
 //   4. $HOME/.ollama/models/manifests (per-user install)
 //   5. /root/.ollama/models/manifests (root user, ollama-as-root install)
 // Each root is also tried without the `models/` segment.
+//
+// That static dir misses Ollama running in its own container, or with
+// a custom OLLAMA_MODELS. So on a digest miss, resolve() also looks
+// next to the blob itself: `<models>/blobs/sha256-…` sits beside
+// `<models>/manifests`. Tried through `<hostProc>/<pid>/root` (the
+// runner's own mount namespace, needs ptrace access like fdinfo), then
+// mapped to our namespace via mountinfo (a Docker bind mount of
+// ~/.ollama resolves to its host dir, which unlike the container's
+// /root is usually readable), then as a plain path.
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, posix } from 'node:path';
 import { logger } from '../logger.js';
+import type { OllamaDigestContext } from './llmClassifier.js';
 
 interface OllamaManifestLayer {
   mediaType?: string;
@@ -59,8 +69,9 @@ interface OllamaManifest {
 export interface OllamaResolver {
   /** Look up a `sha256:<hex>` digest. Returns a friendly model name
    *  like `llama3.1:8b` when known, null when the digest doesn't
-   *  match any manifest (or no manifests dir was found). */
-  resolve(digest: string): string | null;
+   *  match any manifest (or no manifests dir was found). `ctx` enables
+   *  the lookup next to the blob (see header). */
+  resolve(digest: string, ctx?: OllamaDigestContext): string | null;
   /** Force a re-scan. The collector lifecycle in index.ts calls
    *  this on startup once, then a setInterval keeps it warm. */
   refresh(): void;
@@ -106,7 +117,15 @@ function discover(): string | null {
  *  model / tag). We don't enforce a fixed depth in case Ollama
  *  changes the layout — just keep recursing until we hit a regular
  *  file. */
-function walkTagFiles(root: string, acc: string[] = []): string[] {
+// Bounds for the walk. The blob-side lookup walks a dir taken from a
+// process command line, which any local user can craft: no symlink
+// following (loops), and caps on depth, file count and file size.
+const WALK_MAX_DEPTH = 6;
+const WALK_MAX_FILES = 5_000;
+const MANIFEST_MAX_BYTES = 256 * 1024;
+
+function walkTagFiles(root: string, acc: string[] = [], depth = 0): string[] {
+  if (depth > WALK_MAX_DEPTH) return acc;
   let entries: string[];
   try {
     entries = readdirSync(root);
@@ -114,16 +133,17 @@ function walkTagFiles(root: string, acc: string[] = []): string[] {
     return acc;
   }
   for (const name of entries) {
+    if (acc.length >= WALK_MAX_FILES) break;
     const full = join(root, name);
     let st;
     try {
-      st = statSync(full);
+      st = lstatSync(full);
     } catch {
       continue;
     }
     if (st.isDirectory()) {
-      walkTagFiles(full, acc);
-    } else if (st.isFile()) {
+      walkTagFiles(full, acc, depth + 1);
+    } else if (st.isFile() && st.size <= MANIFEST_MAX_BYTES) {
       acc.push(full);
     }
   }
@@ -196,14 +216,132 @@ function buildIndex(root: string): Map<string, string> {
   return idx;
 }
 
-export function createOllamaResolver(): OllamaResolver {
+/** Min delay before re-reading the manifests next to a blob that
+ *  missed a digest (fresh `ollama pull`, or the dirs were unreadable). */
+const BLOB_DIR_RETRY_MS = 60_000;
+/** Blob-side indexes unused for this long are dropped on refresh(). The
+ *  runner pid changes on every model load, so old entries pile up. */
+const BLOB_DIR_MAX_IDLE_MS = 10 * 60_000;
+
+interface BlobDirIndex {
+  index: Map<string, string>;
+  builtAt: number;
+  usedAt: number;
+}
+
+interface MountEntry {
+  dev: string;
+  root: string;
+  mountPoint: string;
+}
+
+/** mountinfo escapes space, tab, newline and backslash as octal. */
+function unescapeMount(path: string): string {
+  return path.replaceAll(/\\([0-7]{3})/g, (_, oct: string) => String.fromCodePoint(Number.parseInt(oct, 8)));
+}
+
+/** Parse /proc/<pid>/mountinfo: `id parent major:minor root mountpoint ...`. */
+export function parseMountinfo(text: string): MountEntry[] {
+  const out: MountEntry[] = [];
+  for (const line of text.split('\n')) {
+    const f = line.split(' ');
+    if (f.length < 5) continue;
+    out.push({ dev: f[2], root: unescapeMount(f[3]), mountPoint: unescapeMount(f[4]) });
+  }
+  return out;
+}
+
+/** `path` equals `prefix` or sits under it. */
+function under(path: string, prefix: string): boolean {
+  return prefix === '/' ? path.startsWith('/') : path === prefix || path.startsWith(`${prefix}/`);
+}
+
+function strip(path: string, prefix: string): string {
+  return prefix === '/' ? path : path.slice(prefix.length);
+}
+
+/** Translate a path seen inside another mount namespace (a container)
+ *  into the same file as seen from ours, by matching the filesystem
+ *  device: their mount gives the path inside the device, ours gives
+ *  where that device is mounted here. Docker bind mounts of
+ *  `~/.ollama` resolve this way without any config. */
+export function translatePath(path: string, theirs: MountEntry[], ours: MountEntry[]): string | null {
+  const longest = <T extends MountEntry>(list: T[], key: (e: T) => string) =>
+    list.reduce<T | null>((best, e) => (best && key(best).length >= key(e).length ? best : e), null);
+  const src = longest(theirs.filter((e) => under(path, e.mountPoint)), (e) => e.mountPoint);
+  if (!src) return null;
+  const onDevice = posix.join(src.root, strip(path, src.mountPoint));
+  const dst = longest(ours.filter((e) => e.dev === src.dev && under(onDevice, e.root)), (e) => e.root);
+  if (!dst) return null;
+  return posix.join(dst.mountPoint, strip(onDevice, dst.root));
+}
+
+function readMountinfo(path: string): MountEntry[] {
+  try {
+    return parseMountinfo(readFileSync(path, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+/** Manifests dirs to try for a blob path, most specific first:
+ *  through the runner's own root, the same dir mapped to our mount
+ *  namespace, then the path as is (runner on this host). */
+function manifestsDirsForBlob(hostProc: string | undefined, ctx: OllamaDigestContext): string[] {
+  const at = ctx.blobPath.search(/[\\/]blobs[\\/]/);
+  if (at < 0) return [];
+  const modelsDir = ctx.blobPath.slice(0, at);
+  const sep = ctx.blobPath[at];
+  const out: string[] = [];
+  if (hostProc && ctx.pid !== undefined && modelsDir.startsWith('/')) {
+    const manifests = `${modelsDir}/manifests`;
+    out.push(`${hostProc}/${ctx.pid}/root${manifests}`);
+    const mapped = translatePath(
+      manifests,
+      readMountinfo(`${hostProc}/${ctx.pid}/mountinfo`),
+      readMountinfo('/proc/self/mountinfo'),
+    );
+    if (mapped) out.push(mapped);
+  }
+  out.push(`${modelsDir}${sep}manifests`);
+  return [...new Set(out)];
+}
+
+function isDir(dir: string): boolean {
+  try {
+    return statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** Index of the first readable manifests dir among the candidates. */
+function indexNearBlob(hostProc: string | undefined, ctx: OllamaDigestContext): Map<string, string> {
+  for (const candidate of manifestsDirsForBlob(hostProc, ctx)) {
+    if (!isDir(candidate)) continue;
+    const idx = buildIndex(candidate);
+    if (idx.size === 0) continue;
+    logger.debug('ollama', `${idx.size} manifest(s) indexed next to the blob in ${candidate}`);
+    return idx;
+  }
+  return new Map();
+}
+
+export function createOllamaResolver(hostProc?: string): OllamaResolver {
   let dir = discover();
   let index: Map<string, string> = new Map();
+  // Keyed by pid + blob path: all the I/O for a runner (mountinfo,
+  // stat, manifests walk) happens at most once per BLOB_DIR_RETRY_MS.
+  const blobDirs = new Map<string, BlobDirIndex>();
 
   const doRefresh = (): void => {
     // Re-run discovery in case the user fixed a missing mount
     // mid-flight, or migrated ollama between installs.
     dir = discover();
+    const now = Date.now();
+    for (const [key, entry] of blobDirs) {
+      if (now - entry.usedAt > BLOB_DIR_MAX_IDLE_MS) blobDirs.delete(key);
+    }
     if (!dir) {
       index = new Map();
       return;
@@ -215,16 +353,29 @@ export function createOllamaResolver(): OllamaResolver {
     }
   };
 
+  const resolveNearBlob = (digest: string, ctx: OllamaDigestContext): string | null => {
+    const now = Date.now();
+    const key = `${ctx.pid ?? ''}|${ctx.blobPath}`;
+    let entry = blobDirs.get(key);
+    if (!entry || (!entry.index.has(digest) && now - entry.builtAt > BLOB_DIR_RETRY_MS)) {
+      entry = { index: indexNearBlob(hostProc, ctx), builtAt: now, usedAt: now };
+      blobDirs.set(key, entry);
+    }
+    entry.usedAt = now;
+    return entry.index.get(digest) ?? null;
+  };
+
   doRefresh();
 
   if (dir) {
     logger.info('ollama', `model resolver active — ${index.size} manifest(s) indexed from ${dir}`);
   } else {
-    logger.debug('ollama', 'no ollama manifests dir found; runner badges will show sha256 prefix only. Set OLLAMA_MANIFESTS_DIR or bind-mount ~/.ollama into the container to enable.');
+    logger.debug('ollama', 'no static ollama manifests dir found; names are looked up next to each runner blob instead. Set OLLAMA_MANIFESTS_DIR to pin one.');
   }
 
   return {
-    resolve: (digest: string) => index.get(digest) ?? null,
+    resolve: (digest: string, ctx?: OllamaDigestContext) =>
+      index.get(digest) ?? (ctx ? resolveNearBlob(digest, ctx) : null),
     refresh: doRefresh,
     size: () => index.size,
     manifestsDir: () => dir,

@@ -7,12 +7,14 @@
 // Hub-local processes live in processCollector.ts and bypass this
 // store entirely (the route reads them directly).
 
-import type { GpuProcess } from './_processTypes.js';
+import type { GpuProcess, ProcessVisibility } from './_processTypes.js';
 
 export interface RemoteProcessSnapshot {
   /** Wall-clock epoch (seconds) the snapshot landed at the hub. */
   ts: number;
   processes: GpuProcess[];
+  /** Present when the agent could not read every pid (see ProcessVisibility). */
+  visibility?: ProcessVisibility;
 }
 
 // Treat a snapshot older than 30s as stale and return empty. Agents

@@ -18,6 +18,8 @@
 #   --features LIST    CSV of gpu,system,temps,processes (default all)
 #   --uninstall        stop the service, remove the systemd unit + env + binary
 #   --force            skip the cross-mode guard (Docker agent already on this host)
+#   --no-ptrace        don't grant CAP_SYS_PTRACE (AMD: GPU processes owned by
+#                      other users, e.g. root containers, won't be listed)
 #
 # Distro support: Debian 11+ / Ubuntu 22+ / Rocky/Alma/RHEL 9+ / Fedora 38+.
 # Anything else exits 1 with a hint — install Node 22 manually then re-run.
@@ -30,6 +32,7 @@ INTERVAL_MS=1000
 FEATURES="gpu,system,temps,processes"
 UNINSTALL=0
 FORCE=0
+PTRACE=1
 
 SERVICE_USER="gpuviewr-agent"
 INSTALL_DIR="/opt/gpuviewr-agent"
@@ -55,7 +58,8 @@ while [[ $# -gt 0 ]]; do
     --features)   FEATURES="$2"; shift 2 ;;
     --uninstall)  UNINSTALL=1; shift ;;
     --force)      FORCE=1; shift ;;
-    -h|--help)    sed -n '2,22p' "$0" | sed 's/^# //; s/^#//'; exit 0 ;;
+    --no-ptrace)  PTRACE=0; shift ;;
+    -h|--help)    sed -n '2,24p' "$0" | sed 's/^# //; s/^#//'; exit 0 ;;
     *)            die "Unknown flag: $1" ;;
   esac
 done
@@ -70,6 +74,7 @@ if [[ $UNINSTALL -eq 1 ]]; then
   say "Uninstalling gpuviewr-agent..."
   systemctl disable --now gpuviewr-agent 2>/dev/null || true
   rm -f "$SVC_FILE" "$ENV_FILE"
+  rm -rf "${SVC_FILE}.d"
   rm -rf "$INSTALL_DIR"
   id -u "$SERVICE_USER" >/dev/null 2>&1 && userdel "$SERVICE_USER" 2>/dev/null || true
   systemctl daemon-reload
@@ -145,7 +150,7 @@ elif grep -qsx 'DRIVER=amdgpu' /sys/class/drm/card[0-9]*/device/uevent; then
   # No ROCm: the agent reads GPU metrics from /sys/class/drm directly
   # and the process list from DRM fdinfo, so the amdgpu driver is enough.
   VENDOR_BIN="amdgpu-sysfs"
-  say "AMD GPU detected (amdgpu driver, no ROCm: metrics OK, process list may be partial)."
+  say "AMD GPU detected (amdgpu driver, no ROCm: metrics OK, process list from DRM fdinfo)."
 else
   die "No NVIDIA or AMD GPU found (no nvidia-smi, rocm-smi or amdgpu card). Install the vendor driver then re-run."
 fi
@@ -231,6 +236,13 @@ chown "$SERVICE_USER:$SERVICE_USER" "$BIN_PATH"
 WS_URL="${HUB_URL/#http:/ws:}"
 WS_URL="${WS_URL/#https:/wss:}"
 umask 077
+# Keep variables the operator added by hand (OLLAMA_MANIFESTS_DIR,
+# LOG_LEVEL=debug, ...): a re-run rewrites the managed keys only.
+MANAGED_KEYS='^(HUB_URL|HOST_ID|AGENT_TOKEN|TICK_MS|FEATURES|LOG_LEVEL|GPU_VENDOR|ROCM_SMI_PATH)='
+EXTRA_ENV=""
+if [[ -f "$ENV_FILE" ]]; then
+  EXTRA_ENV="$(grep -Ev "$MANAGED_KEYS" "$ENV_FILE" | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' || true)"
+fi
 cat > "$ENV_FILE" <<EOF
 HUB_URL=${WS_URL%/}/agent
 HOST_ID=${HOST_ID}
@@ -255,6 +267,7 @@ elif [[ "$VENDOR_BIN" == "amdgpu-sysfs" ]]; then
 else
   echo "GPU_VENDOR=nvidia" >> "$ENV_FILE"
 fi
+[[ -n "$EXTRA_ENV" ]] && printf '%s\n' "$EXTRA_ENV" >> "$ENV_FILE"
 chmod 0600 "$ENV_FILE"
 chown root:root "$ENV_FILE"
 
@@ -262,6 +275,24 @@ chown root:root "$ENV_FILE"
 # systemd unit
 # ──────────────────────────────────────────────────────────────────────
 NODE_BIN="$(command -v node)"
+# CAP_SYS_PTRACE lets the agent read /proc/<pid>/fdinfo and
+# /proc/<pid>/root of processes owned by other users (root containers
+# such as Ollama or a llama.cpp Vulkan server). On AMD, fdinfo is the
+# only way to see GPU clients that skip /dev/kfd, and /proc/<pid>/root
+# is where a containerised Ollama keeps the manifests naming its models.
+# Ambient so the unprivileged service user gets it; bounded to that one
+# capability. The capability alone would also allow ptrace(ATTACH) on
+# root processes, so the syscalls that act on another process (attach,
+# memory read/write, fd theft) are filtered out: only the /proc read
+# checks remain. --no-ptrace skips all of it.
+PTRACE_UNIT=""
+if [[ $PTRACE -eq 1 ]]; then
+  PTRACE_UNIT="AmbientCapabilities=CAP_SYS_PTRACE
+CapabilityBoundingSet=CAP_SYS_PTRACE
+SystemCallArchitectures=native
+SystemCallFilter=~ptrace process_vm_readv process_vm_writev pidfd_getfd
+SystemCallErrorNumber=EPERM"
+fi
 cat > "$SVC_FILE" <<EOF
 [Unit]
 Description=GpuViewR Agent
@@ -283,15 +314,19 @@ RestartSec=5
 # Hardening — agent only needs network out + read /proc + spawn nvidia-smi.
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
+# read-only, not true: model stores often live under /home (Ollama's
+# Docker bind mount of ~/.ollama). Unix permissions still apply, the
+# service user only reads what any local user can.
+ProtectHome=read-only
 PrivateTmp=true
 # Carved out from ProtectSystem=strict so hub-pushed agent_update frames
 # can atomically swap agent.mjs (writeFileSync + renameSync). Without it,
 # every update attempt EROFSes and spams the journal every welcome.
 # The dir is chown'd to the service user above; no other path is writable.
 ReadWritePaths=${INSTALL_DIR}
-# /proc is needed for the (eventual) processes feature; keep it readable.
+# /proc is needed for the processes feature; keep it readable.
 ProcSubset=all
+${PTRACE_UNIT}
 
 [Install]
 WantedBy=multi-user.target

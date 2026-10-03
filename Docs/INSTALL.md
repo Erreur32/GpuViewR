@@ -16,6 +16,7 @@ same compose stack. To monitor other machines, see
 - [First login](#first-login)
 - [Configuration](#configuration)
 - [Ollama model names](#ollama-model-names)
+- [Hidden GPU processes and model names](#hidden-gpu-processes-and-model-names)
 - [Troubleshooting](#troubleshooting)
 
 ## Quick install
@@ -100,7 +101,7 @@ OS, Ampere, etc.).
 | Host | Local GPU monitoring | Compose example |
 |---|---|---|
 | Linux + NVIDIA GPU | Yes, needs the NVIDIA Container Toolkit | [NVIDIA](#nvidia-hub--local-gpu) |
-| Linux + AMD GPU | Yes, needs the `amdgpu` driver (ROCm for the process list) | [AMD](#amd-hub--local-gpu) |
+| Linux + AMD GPU | Yes, needs the `amdgpu` driver (ROCm optional) | [AMD](#amd-hub--local-gpu) |
 | Linux, no GPU | No, aggregator only | [Hub only](#hub-only-aggregator) |
 | macOS, Docker Desktop (Intel / Apple Silicon) | No, aggregator only ([details](#hub-on-macos-docker-desktop)) | [Hub only](#hub-only-aggregator) |
 | Windows | No documented hub. Docker Desktop on WSL2 should run it as an aggregator, untested. Monitor Windows machines with the [Windows agent](REMOTE_HOSTS.md) | [Hub only](#hub-only-aggregator) |
@@ -253,7 +254,8 @@ networks:
 ### AMD hub + local GPU
 
 Requires the `amdgpu` driver. Without ROCm at `/opt/rocm`, drop that volume:
-GPU metrics still work, only the process list is lost. If
+GPU metrics and the process list still work (the list then comes from DRM
+fdinfo only, without per-process CU occupancy). If
 `getent group video render` does not show `44` / `109`, set `VIDEO_GID` /
 `RENDER_GID` in `.env`.
 
@@ -336,8 +338,9 @@ networks:
 
 - Docker Engine 23+ with the Compose v2 plugin
 - **NVIDIA**: [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
-- **AMD**: amdgpu kernel driver loaded. ROCm at `/opt/rocm` is only needed
-  for the process list (the GPU metrics read `/sys/class/drm/` directly)
+- **AMD**: amdgpu kernel driver loaded. ROCm at `/opt/rocm` is optional: it
+  adds per-process CU occupancy to the process list (GPU metrics and the
+  list itself read `/sys/class/drm/` and DRM fdinfo directly)
 
 ## Hub on macOS (Docker Desktop)
 
@@ -419,10 +422,19 @@ Agent-side variables are listed in [`agent/README.md`](../agent/README.md#config
 
 ## Ollama model names
 
-In the process table, an Ollama runner shows a badge like
-`sha256:c8985d236593` by default: the runner command line only holds the
-weights blob digest. To show the real name (`llama3.1:8b`), the agent reads
-the Ollama manifests and maps each digest to its `model:tag`.
+An Ollama runner command line only holds the weights blob digest
+(`sha256:c8985d236593`). To show the real name (`llama3.1:8b`), the agent
+reads the Ollama manifests and maps each digest to its `model:tag`.
+
+Most setups need nothing: the agent looks for the manifests next to the blob
+the runner has open, inside the runner's container and at the matching host
+directory (a Docker bind mount of `~/.ollama` is followed through
+`/proc/<pid>/mountinfo`), so an Ollama in its own container or with a custom
+`OLLAMA_MODELS` is found too. That needs `CAP_SYS_PTRACE`, granted by the
+systemd installer and the Docker compose files, and a manifests directory
+readable by the agent user. The steps below are only for when the badge
+still shows a digest with a warning icon (typically a Docker agent with
+Ollama outside its container, or Ollama data in a Docker named volume).
 
 Find the Ollama directory on the host (the one holding `models/manifests`):
 
@@ -450,17 +462,54 @@ Find the Ollama directory on the host (the one holding `models/manifests`):
 For a standalone agent compose file (`docker-compose.agent.*.yaml`), add both
 the volume and `OLLAMA_MANIFESTS_DIR: /host/ollama/models/manifests` yourself.
 
-**systemd agent**: `/usr/share/ollama/.ollama` is tried automatically, no
-change needed if it is readable. The agent runs as the `gpuviewr-agent`
-user, so `~/.ollama` of another user or `/root/.ollama` are not found or not
-readable. For those, add `OLLAMA_MANIFESTS_DIR=<dir>/models/manifests` to
-`/etc/gpuviewr-agent.env`, give `gpuviewr-agent` read access to that
-directory, then `systemctl restart gpuviewr-agent`.
+**systemd agent**: the agent runs as the `gpuviewr-agent` user, so the
+manifests directory must be readable by it (`/root/.ollama` or a private
+home are not). If auto-detection misses it, add
+`OLLAMA_MANIFESTS_DIR=<dir>/models/manifests` to `/etc/gpuviewr-agent.env`,
+give `gpuviewr-agent` read access to that directory, then
+`systemctl restart gpuviewr-agent`. Variables added there survive a re-run
+of the installer.
 
-**Check**: the badge shows the name after the next refresh. The manifest
-index is rebuilt every 5 minutes, so a model pulled just now can show its
-digest for a few minutes. With no readable manifests, the agent keeps
-showing the digest, nothing else breaks.
+**Check**: the badge shows the name after the next refresh. A model pulled
+just now is retried within a minute. With no readable manifests, the agent
+keeps showing the digest, nothing else breaks.
+
+## Hidden GPU processes and model names
+
+The process table flags two situations with a warning icon. Click it for
+the fix matching the host.
+
+**"N MiB of VRAM in use are not explained by the processes below"**: the
+card has memory in use that no listed process accounts for, and the agent
+was refused some `/proc/<pid>/fdinfo` reads. On AMD, fdinfo is the only way
+to see GPU clients that don't use ROCm (`/dev/kfd`), such as a llama.cpp
+Vulkan server: `rocm-smi` never lists them.
+
+| Agent | Cause | Fix |
+|---|---|---|
+| systemd, installed before this release | no `CAP_SYS_PTRACE`, processes of root or of containers are unreadable | re-run the install command, or add the drop-in below |
+| Docker | `cap_add: [SYS_PTRACE]` missing | add it to the agent service, `docker compose up -d` |
+| Docker, capability present | AppArmor blocks processes started directly on the host | use the systemd agent on that host |
+
+Drop-in for an existing systemd agent (no token needed):
+
+```bash
+sudo mkdir -p /etc/systemd/system/gpuviewr-agent.service.d
+printf '[Service]\nAmbientCapabilities=CAP_SYS_PTRACE\nProtectHome=read-only\nSystemCallArchitectures=native\nSystemCallFilter=~ptrace process_vm_readv process_vm_writev pidfd_getfd\nSystemCallErrorNumber=EPERM\n' | sudo tee /etc/systemd/system/gpuviewr-agent.service.d/ptrace.conf
+sudo systemctl daemon-reload && sudo systemctl restart gpuviewr-agent
+```
+
+`CAP_SYS_PTRACE` lets the agent read other users' `/proc` entries (including
+their environment). The unit filters out the syscalls that would let it act
+on another process (`ptrace`, `process_vm_*`, `pidfd_getfd`). To install
+without the capability, pass `--no-ptrace` to the installer: the agent then
+lists only GPU processes it can read.
+
+**Warning icon next to a model name**:
+
+- `sha256:...`: Ollama model not resolved, see [Ollama model names](#ollama-model-names).
+- Anonymous blob or no model: the command line carries no readable name.
+  For llama.cpp, add `--alias <name>` or load a named `.gguf` with `-m`.
 
 ## Troubleshooting
 

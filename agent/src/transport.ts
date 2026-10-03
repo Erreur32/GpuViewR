@@ -39,7 +39,7 @@ import { createHash } from "node:crypto";
 import { WebSocket } from "ws";
 import { logger } from "./logger.js";
 import type { GpuSample } from "../../server/services/parsers/nvidia.js";
-import type { AgentGpuProcess } from "./collectors/processes.js";
+import type { AgentGpuProcess, ProcessVisibility } from "./collectors/processes.js";
 import type { AgentConfig, HubTarget } from "./config.js";
 
 export type InstallMode = "docker" | "systemd" | "windows" | "macos" | "unknown";
@@ -135,6 +135,7 @@ interface ProcessFrame {
   type: "processes";
   ts_epoch: number;
   processes: AgentGpuProcess[];
+  visibility?: ProcessVisibility & { install_mode: InstallMode };
 }
 
 type BufferableFrame = SampleFrame | ProcessFrame;
@@ -151,7 +152,7 @@ export interface Transport {
   start(): void;
   stop(): void;
   enqueueSample(samples: GpuSample[]): void;
-  enqueueProcesses(processes: AgentGpuProcess[]): void;
+  enqueueProcesses(processes: AgentGpuProcess[], visibility?: ProcessVisibility): void;
 }
 
 interface HubConnection {
@@ -622,13 +623,15 @@ export function createTransport(config: AgentConfig): Transport {
         samples,
       });
     },
-    enqueueProcesses(processes: AgentGpuProcess[]): void {
+    enqueueProcesses(processes: AgentGpuProcess[], visibility?: ProcessVisibility): void {
       // Empty snapshots are meaningful — they signal "no procs right
-      // now" so a stale list clears. Don't drop them.
+      // now" so a stale list clears. Don't drop them. install_mode lets
+      // the UI print the fix matching how this agent was installed.
       broadcast({
         type: "processes",
         ts_epoch: Math.floor(Date.now() / 1000),
         processes,
+        ...(visibility ? { visibility: { ...visibility, install_mode: INSTALL_MODE } } : {}),
       });
     },
   };

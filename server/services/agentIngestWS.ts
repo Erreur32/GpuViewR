@@ -27,6 +27,7 @@ import { hostHostname } from '../utils/hostHostname.js';
 import type { GpuSample } from './parsers/nvidia.js';
 import { agentProcessStore } from './agentProcessStore.js';
 import type { GpuProcess } from './_processTypes.js';
+import { parseVisibility } from './processVisibility.js';
 import { recordRejection, type RejectionReason } from './agentRejections.js';
 
 const RATE_LIMIT_PER_SEC = 100;
@@ -71,6 +72,7 @@ interface ProcessFrame {
   type: 'processes';
   ts_epoch?: number;
   processes: GpuProcess[];
+  visibility?: unknown;
 }
 
 type IncomingFrame = HelloFrame | SampleFrame | PingFrame | ProcessFrame | { type: string; [k: string]: unknown };
@@ -539,9 +541,11 @@ function handleProcesses(host: HostRecord, frame: ProcessFrame): void {
   if (!Array.isArray(frame.processes)) return;
   // Empty list is a legitimate signal ("no GPU processes right now") —
   // we keep it so a stale snapshot clears as soon as the host idles.
+  const visibility = parseVisibility(frame.visibility);
   agentProcessStore.set(host.id, {
     ts: frame.ts_epoch ?? Math.floor(Date.now() / 1000),
     processes: frame.processes,
+    ...(visibility ? { visibility } : {}),
   });
 }
 
