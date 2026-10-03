@@ -5,6 +5,16 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-10-04
+
+### Fixed
+
+- **No Ollama unload countdown on hubs fed by a Docker agent.** A Docker agent's 127.0.0.1 is its own container, so it never reached the host's Ollama API. It now also asks its default gateway on `:11434`, which reaches an Ollama whose port is published on the host, with no configuration. systemd agents are unchanged.
+
+### Changed
+
+- README: the feature list describes the LLM-aware process view; the roadmap lists Intel GPUs on Linux (tested on fixtures only).
+
 ## [0.11.1] - 2026-10-04
 
 ### Added

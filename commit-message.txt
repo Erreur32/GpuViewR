@@ -1,9 +1,5 @@
-release: v0.11.1 LLM-only switch, small-process filter, honest GPU %
+release: v0.11.2 Ollama API reached from Docker agents
 
-- Added: "LLM only" switch next to Top over 24 h, LLMs listed first;
-  hide-small-processes filter (table header + Settings > General);
-  embedding badge.
-- Changed: hover colour on the Top over 24 h link.
-- Fixed: per-process GPU % no longer copies the card's value on every
-  row (ROCm has no per-process source); fdinfo engine time only used
-  when present.
+- Fixed: a Docker agent now also asks its default gateway on :11434, so
+  hubs fed by a Docker sidecar get the Ollama unload countdown.
+- Changed: README feature list and roadmap (Intel GPUs).
