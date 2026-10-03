@@ -47,7 +47,7 @@ docker run -d --name gpuviewr-agent \
   --gpus all \
   --restart unless-stopped \
   -e HUB_URL=wss://gpu.example.com/agent \
-  -e HOST_ID=550e8400-e29b-41d4-a716-446655440042 \
+  -e HOST_ID="<host-uuid>" \
   -e AGENT_TOKEN=gpvr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
   ghcr.io/erreur32/gpuviewr-agent:latest
 ```
@@ -66,7 +66,7 @@ A drop-in `docker-compose.agent.nvidia.yaml` lives at the project root. Copy it 
 
 ```env
 HUB_URL=wss://gpu.example.com/agent
-HOST_ID=550e8400-e29b-41d4-a716-446655440042
+HOST_ID=<host-uuid>
 AGENT_TOKEN=gpvr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
@@ -101,7 +101,7 @@ For a long-running install, wrap it in a systemd unit (sample under `Docs/MULTI_
 
 ## Windows (NVIDIA only, GPU stats only)
 
-The agent runs on Windows 10/11 with the standard NVIDIA driver — GPU samples stream to the hub exactly like on Linux. Process list and CPU stats are **not** collected (no `/proc`, and `nvidia-smi pmon` isn't supported on the WDDM driver model). AMD on Windows is not supported (no `rocm-smi` equivalent).
+The agent runs on Windows 10/11. NVIDIA cards are read through `nvidia-smi.exe`, exactly like on Linux; AMD and Intel GPUs (or NVIDIA without driver tools) fall back to the Windows PDH performance counters (utilization + VRAM only). The process list comes from the per-process PDH counters Task Manager uses, for every vendor: GPU %, dedicated VRAM, CPU %, executable and command line per process.
 
 PowerShell as **Administrator**:
 
