@@ -21,4 +21,13 @@ export interface GpuProcess {
   // tooltip when present.
   llm_runtime?: string | null;   // 'ollama' | 'llamacpp' | 'vllm' | …
   llm_model?: string | null;     // best-effort model id (path basename or sha256:prefix)
+  llm_hint?: 'ollama_manifests' | 'blob' | 'no_model' | null; // why llm_model isn't friendly
+}
+
+/** Agent-reported process visibility (AMD fdinfo scan). See
+ *  agent/src/collectors/processes.ts ProcessVisibility. */
+export interface ProcessVisibility {
+  denied_pids: number;
+  has_ptrace: boolean;
+  install_mode: string;
 }

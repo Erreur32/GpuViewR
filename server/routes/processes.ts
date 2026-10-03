@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { type GpuProcess } from '../services/_processTypes.js';
+import { type GpuProcess, type ProcessVisibility } from '../services/_processTypes.js';
 import { agentProcessStore } from '../services/agentProcessStore.js';
+import { hiddenProcesses } from '../services/processVisibility.js';
 import { metricsBus } from '../services/_metricsBus.js';
 import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import type { GpuSample } from '../services/parsers/nvidia.js';
@@ -22,10 +23,12 @@ router.get('/', async (req, res) => {
   let tsEpoch = Math.floor(Date.now() / 1000);
   let samples: GpuSample[] = [];
   let reason: string | undefined;
+  let visibility: ProcessVisibility | undefined;
 
   const snap = agentProcessStore.get(host);
   if (snap) {
     processes = snap.processes;
+    visibility = snap.visibility;
     tsEpoch = snap.ts;
     samples = metricsBus.getLatestByHost(host);
   } else {
@@ -48,12 +51,16 @@ router.get('/', async (req, res) => {
   }));
 
   let filtered = enriched;
+  let gpuIdx: number | null = null;
   if (typeof filterRaw === 'string' && filterRaw !== '') {
     const idx = Number.parseInt(filterRaw, 10);
     if (Number.isFinite(idx)) {
+      gpuIdx = idx;
       filtered = enriched.filter((p) => p.gpu_index === idx);
     }
   }
+
+  const hidden = visibility ? hiddenProcesses(visibility, samples, filtered, gpuIdx) : null;
 
   res.json({
     host,
@@ -61,6 +68,7 @@ router.get('/', async (req, res) => {
     count: filtered.length,
     processes: filtered,
     ...(reason ? { reason } : {}),
+    ...(hidden ? { hidden } : {}),
   });
 });
 

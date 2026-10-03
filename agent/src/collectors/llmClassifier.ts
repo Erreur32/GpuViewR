@@ -6,8 +6,8 @@
 // Designed to be cheap (regex-only) and additive — never throws,
 // always returns an object with nullable fields. The agent feeds this
 // to every GPU process it sees; processes that don't match any runtime
-// get `{ runtime: null, model: null }` and the UI renders nothing
-// extra.
+// get `{ runtime: null, model: null, hint: null }` and the UI renders
+// nothing extra.
 //
 // Coverage focus: the most common local-inference stacks that show up
 // on a GPU. ML workloads we deliberately DON'T try to classify
@@ -20,12 +20,20 @@
 // that are launched via wrapper scripts (Python venv, npx, etc.).
 //
 // Model extraction strategy varies per runtime — see each branch's
-// comment for what we look at. For Ollama specifically, models live in
-// content-addressed blob files; the raw cmdline gives us the sha256
-// hash, not the friendly model name. We surface the hash truncated to
-// 12 chars as a placeholder; resolving it to "llama3.1:8b" would
-// require reading the host's `~/.ollama/manifests/` tree, which we
-// don't currently have access to from the agent container.
+// comment for what we look at. Ollama models (and llama.cpp pointed at
+// Ollama's store) are content-addressed blob files: the cmdline only
+// carries the sha256, the friendly name comes from the resolver in
+// ollamaManifests.ts. When a name can't be produced, `hint` tells the
+// UI why so it can show the operator what to change.
+
+/** Why the model name shown is not a friendly one. Rendered by the UI
+ *  as a warning icon with a "how to fix" tooltip.
+ *  - ollama_manifests: Ollama blob digest not found in any manifests
+ *    dir the agent could read.
+ *  - blob: model loaded from an anonymous content-addressed file
+ *    (not an Ollama one), no alias given.
+ *  - no_model: runtime recognised but its cmdline names no model. */
+export type LLMHint = 'ollama_manifests' | 'blob' | 'no_model';
 
 export interface LLMClassification {
   /** Detected runtime ('ollama', 'llamacpp', 'vllm', etc.) or null
@@ -33,13 +41,21 @@ export interface LLMClassification {
   runtime: string | null;
   /** Best-effort model identifier. For most runtimes this is the
    *  value of the `--model` / `-m` flag (typically a file path or
-   *  HF-style id). For Ollama, the resolver tries to translate the
-   *  blob's sha256 digest to a friendly name (`llama3.1:8b`) by
-   *  reading the ollama manifests dir — see ollamaManifests.ts.
-   *  Falls back to `sha256:<prefix>` when no resolver is wired or
-   *  the digest isn't in any indexed manifest. Null when no model
-   *  info is present in the cmdline at all. */
+   *  HF-style id). Blob digests go through the Ollama resolver and
+   *  fall back to `sha256:<prefix>`. Null when no model info is
+   *  present in the cmdline at all. */
   model: string | null;
+  /** Set when `model` is missing or not human-friendly. */
+  hint: LLMHint | null;
+}
+
+/** Where a digest was seen, so the resolver can look for the
+ *  manifests next to the blob (inside the owning container). */
+export interface OllamaDigestContext {
+  /** Full blob path from the cmdline (`.../models/blobs/sha256-<hex>`). */
+  blobPath: string;
+  /** Process holding the blob, when known. */
+  pid?: number;
 }
 
 /** Pluggable resolvers — let the classifier translate cryptic ids
@@ -50,19 +66,24 @@ export interface LLMClassification {
 export interface LLMResolvers {
   /** Map a sha256 digest (`sha256:<hex>`) to an ollama model tag
    *  like `llama3.1:8b`. Return null when unknown. */
-  ollamaModelByDigest?: (digest: string) => string | null;
+  ollamaModelByDigest?: (digest: string, ctx?: OllamaDigestContext) => string | null;
+}
+
+interface ModelInfo {
+  model: string | null;
+  hint: LLMHint | null;
 }
 
 interface Pattern {
   runtime: string;
   /** Predicate: does this command line belong to this runtime? */
   matches: (cmd: string) => boolean;
-  /** Pull the model id out of the command line. Returns null when
-   *  no model is named (e.g. `ollama serve` with no model argument).
-   *  May consult resolvers for cryptic-id → friendly-name lookups
-   *  (Ollama blob digests today). */
-  model: (cmd: string, resolvers?: LLMResolvers) => string | null;
+  /** Pull the model id out of the command line. May consult resolvers
+   *  for cryptic-id → friendly-name lookups (blob digests). */
+  model: (cmd: string, resolvers?: LLMResolvers, pid?: number) => ModelInfo;
 }
+
+const NONE: ModelInfo = { model: null, hint: null };
 
 // ---------- model extractors ----------
 
@@ -81,19 +102,15 @@ function flagValue(cmd: string, flags: readonly string[]): string | null {
   return null;
 }
 
-/** Ollama models live at `.../models/blobs/sha256-<hex>`. The cmdline
- *  contains the path; we extract the FULL digest (for the resolver
- *  lookup) and return either the resolved friendly name when known,
- *  or the truncated `sha256:<prefix>` form as a fallback. */
-function ollamaModelFromBlobPath(path: string, resolvers?: LLMResolvers): string | null {
-  // Match the full sha256 hex run (>=12 chars; ollama uses 64-char
-  // hex but we tolerate truncations seen in some logs).
-  const m = /sha256-([0-9a-f]{12,})/i.exec(path);
-  if (!m) return null;
-  const fullDigest = `sha256:${m[1]}`;
-  const resolved = resolvers?.ollamaModelByDigest?.(fullDigest);
-  if (resolved) return resolved;
-  return `sha256:${m[1].slice(0, 12)}`;
+/** Executable of a cmdline: the leading quoted path (Windows command
+ *  lines quote paths with spaces) or the first token. */
+function executable(cmd: string): string {
+  const trimmed = cmd.trimStart();
+  if (trimmed.startsWith('"')) {
+    const end = trimmed.indexOf('"', 1);
+    return end > 0 ? trimmed.slice(1, end) : trimmed.slice(1);
+  }
+  return trimmed.split(/\s+/, 1)[0] ?? '';
 }
 
 /** llama.cpp / llama-server / koboldcpp accept `-m <path>` or
@@ -106,62 +123,98 @@ function modelBasename(value: string | null): string | null {
   return name || null;
 }
 
+/** Ollama blob file name: `sha256-<hex>` (>=12 hex tolerated). */
+const OLLAMA_BLOB_RE = /sha256-([0-9a-f]{12,})/i;
+/** Hugging Face cache blob: bare 64-char hex file name. */
+const HF_BLOB_RE = /^[0-9a-f]{64}$/i;
+/** `org/repo` from a `.../models--<org>--<repo>/...` Hugging Face cache
+ *  path. Plain split, no regex backtracking on long paths. */
+function hfCacheRepo(path: string): string | null {
+  const segment = path.split(/[\\/]/).find((s) => s.startsWith('models--'));
+  const parts = segment?.slice('models--'.length).split('--') ?? [];
+  return parts.length >= 2 && parts[0] && parts[1] ? `${parts[0]}/${parts.slice(1).join('--')}` : null;
+}
+
+/** Resolve an Ollama blob path. `hit` is the friendly name when the
+ *  resolver knows the digest, `short` the `sha256:<prefix>` fallback.
+ *  Null when the path isn't an Ollama blob. */
+function ollamaBlob(
+  path: string,
+  resolvers: LLMResolvers | undefined,
+  pid: number | undefined,
+): { hit: string | null; short: string } | null {
+  const m = OLLAMA_BLOB_RE.exec(path);
+  if (!m) return null;
+  const hit = resolvers?.ollamaModelByDigest?.(`sha256:${m[1]}`, { blobPath: path, pid }) ?? null;
+  return { hit, short: `sha256:${m[1].slice(0, 12)}` };
+}
+
 // ---------- runtime patterns ----------
 //
 // Order matters: more specific patterns first. The classifier
-// short-circuits on the first hit so e.g. `python -m vllm.something`
-// is caught by the vllm branch before the generic python fallback
-// (we currently have no generic python branch — kept for future).
+// short-circuits on the first hit.
+
+/** Ollama is identified by its executable, not by the word appearing
+ *  anywhere: a standalone llama.cpp loading a blob out of Ollama's
+ *  store has `ollama` in its model path but is not Ollama. Matches
+ *  `ollama`, `ollama.exe`, and binaries shipped under an `ollama/`
+ *  dir (`/usr/lib/ollama/llama-server`, the per-model runner). */
+function isOllamaExecutable(cmd: string): boolean {
+  const exe = executable(cmd);
+  return /(?:^|[\\/])ollama(?:\.exe)?$/i.test(exe) || /[\\/]ollama[\\/]/i.test(exe);
+}
 
 const PATTERNS: readonly Pattern[] = [
   // Ollama — two flavours:
   //   1. The user-visible CLI: `ollama serve` / `ollama run llama3:8b`
   //   2. The internal runner the daemon spawns per loaded model:
-  //      `/usr/bin/ollama runner --ollama-engine --model <blob-path>`
-  // The runner is what actually holds the GPU memory and shows up in
-  // nvidia-smi / rocm-smi, so the blob-path branch is the common case.
+  //      `/usr/bin/ollama runner --model <blob-path>` or the bundled
+  //      `/usr/lib/ollama/llama-server --model <blob-path>`.
+  // The runner is what actually holds the GPU memory, so the blob-path
+  // branch is the common case.
   {
     runtime: 'ollama',
-    matches: (cmd) => /\bollama\b/i.test(cmd),
-    model: (cmd, resolvers) => {
-      // Runner form first — blob path with sha256.
+    matches: isOllamaExecutable,
+    model: (cmd, resolvers, pid) => {
       const modelFlag = flagValue(cmd, ['--model', '-m']);
       if (modelFlag) {
-        const fromBlob = ollamaModelFromBlobPath(modelFlag, resolvers);
-        if (fromBlob) return fromBlob;
-        return modelBasename(modelFlag);
+        const blob = ollamaBlob(modelFlag, resolvers, pid);
+        if (blob) return blob.hit ? { model: blob.hit, hint: null } : { model: blob.short, hint: 'ollama_manifests' };
+        return { model: modelBasename(modelFlag), hint: null };
       }
-      // CLI form: `ollama run <model>` — the model is the second token
-      // after the binary.
-      const m = /\bollama\s+(?:run|pull|show)\s+(\S+)/i.exec(cmd);
-      return m ? m[1] : null;
+      // CLI form: `ollama run <model>`. `ollama serve` names no model
+      // and holds no GPU memory, so no hint either.
+      const m = /\bollama(?:\.exe)?\s+(?:run|pull|show)\s+(\S+)/i.exec(cmd);
+      return { model: m ? m[1] : null, hint: null };
     },
   },
 
-  // vLLM — typically launched as `python -m vllm.entrypoints.openai.api_server
-  // --model meta-llama/Llama-3-8B-Instruct ...`
+  // vLLM — `vllm serve <model>` (current CLI) or the legacy
+  // `python -m vllm.entrypoints.openai.api_server --model <id>`.
   {
     runtime: 'vllm',
-    matches: (cmd) => /\bvllm[._]/i.test(cmd) || /\bvllm\b.*--model\b/i.test(cmd),
-    model: (cmd) => flagValue(cmd, ['--model']),
+    matches: (cmd) => /\bvllm[._]/i.test(cmd)
+      || /(?:^|[\\/])vllm$/i.test(executable(cmd))
+      || /\bvllm\s+serve\b/i.test(cmd),
+    model: (cmd) => {
+      const model = flagValue(cmd, ['--model'])
+        ?? /\bvllm\s+serve\s+([^-\s]\S*)/i.exec(cmd)?.[1]
+        ?? null;
+      return { model, hint: model ? null : 'no_model' };
+    },
   },
 
-  // llama.cpp / llama-server. The official binary names are
-  // `llama-server`, `llama-cli`, `main`, `server` (older builds), and
-  // `llama-bench`. We match on the binary name plus an `-m` or
-  // `--model` flag to avoid catching unrelated `main` binaries.
+  // llama.cpp: `llama-server`, `llama-cli`, `llamafile`, older builds
+  // named `main` / `server`, and the llama-cpp-python server
+  // (`python -m llama_cpp.server`). Bare `main`/`server` need a
+  // `-m xxx.gguf` to avoid catching unrelated binaries.
   {
     runtime: 'llamacpp',
     matches: (cmd) => /\b(llama-server|llama-cli|llamafile)\b/i.test(cmd)
       || (/\bllama\.cpp\b/i.test(cmd))
+      || (/\bllama_cpp\.server\b/i.test(cmd))
       || (/\b(?:main|server)\b.*(?:^|\s)-m\s+\S+\.gguf\b/i.test(cmd)),
-    // -m is a local file; -hf pulls from Hugging Face (`org/repo:quant`)
-    // and --alias is the served name, the only hint left otherwise.
-    model: (cmd) => modelBasename(
-      flagValue(cmd, ['-m', '--model'])
-        ?? flagValue(cmd, ['-hf', '--hf-repo'])
-        ?? flagValue(cmd, ['-a', '--alias']),
-    ),
+    model: llamacppModel,
   },
 
   // KoboldCpp — Python launcher (`koboldcpp.py --model <path>`) or the
@@ -169,7 +222,7 @@ const PATTERNS: readonly Pattern[] = [
   {
     runtime: 'koboldcpp',
     matches: (cmd) => /\bkoboldcpp\b/i.test(cmd),
-    model: (cmd) => modelBasename(flagValue(cmd, ['--model'])),
+    model: (cmd) => ({ model: modelBasename(flagValue(cmd, ['--model'])), hint: null }),
   },
 
   // text-generation-webui (oobabooga). Entry point is `server.py`
@@ -179,7 +232,7 @@ const PATTERNS: readonly Pattern[] = [
     matches: (cmd) => /text-generation-webui/i.test(cmd)
       || /oobabooga/i.test(cmd)
       || /\bserver\.py\b.*--model\b/i.test(cmd),
-    model: (cmd) => flagValue(cmd, ['--model']),
+    model: (cmd) => ({ model: flagValue(cmd, ['--model']), hint: null }),
   },
 
   // ComfyUI — `main.py` inside a ComfyUI checkout. The runtime doesn't
@@ -188,7 +241,7 @@ const PATTERNS: readonly Pattern[] = [
   {
     runtime: 'comfyui',
     matches: (cmd) => /comfyui/i.test(cmd),
-    model: () => null,
+    model: () => NONE,
   },
 
   // Automatic1111 Stable Diffusion WebUI — `webui.py` or `launch.py`
@@ -198,7 +251,7 @@ const PATTERNS: readonly Pattern[] = [
     runtime: 'sdwebui',
     matches: (cmd) => /stable-diffusion-webui/i.test(cmd)
       || (/\bwebui\.py\b/i.test(cmd) && /\bstable[-_]diffusion\b/i.test(cmd)),
-    model: () => null,
+    model: () => NONE,
   },
 
   // LM Studio backend. Ships as `lms` CLI or as the Electron app's
@@ -207,26 +260,57 @@ const PATTERNS: readonly Pattern[] = [
   {
     runtime: 'lmstudio',
     matches: (cmd) => /\blm[\s-]?studio\b/i.test(cmd) || /\blms\b.*server/i.test(cmd),
-    model: (cmd) => modelBasename(flagValue(cmd, ['--model'])),
+    model: (cmd) => ({ model: modelBasename(flagValue(cmd, ['--model'])), hint: null }),
   },
 ];
+
+/** llama.cpp model: `-m <file>` basename first. When that file is an
+ *  anonymous blob (Ollama store or Hugging Face cache), prefer in turn
+ *  the resolved Ollama name, `-hf` repo, `--alias`, the HF cache repo
+ *  dir, and only then the short digest with a hint. */
+function llamacppModel(cmd: string, resolvers?: LLMResolvers, pid?: number): ModelInfo {
+  // `python -m llama_cpp.server`: there `-m` names the Python module.
+  const fileFlags = /\bllama_cpp\.server\b/i.test(cmd) ? ['--model'] : ['-m', '--model'];
+  const file = flagValue(cmd, fileFlags);
+  const hf = modelBasename(flagValue(cmd, ['-hf', '--hf-repo']));
+  const alias = flagValue(cmd, ['-a', '--alias']);
+  const base = modelBasename(file);
+  if (!file || !base) {
+    const model = hf ?? alias;
+    return { model, hint: model ? null : 'no_model' };
+  }
+  const blob = ollamaBlob(file, resolvers, pid);
+  if (blob?.hit) return { model: blob.hit, hint: null };
+  if (!blob && !HF_BLOB_RE.test(base)) return { model: base, hint: null };
+  const named = hf ?? alias;
+  if (named) return { model: named, hint: null };
+  const cacheRepo = hfCacheRepo(file);
+  if (cacheRepo) return { model: cacheRepo, hint: null };
+  if (blob) return { model: blob.short, hint: 'ollama_manifests' };
+  return { model: `sha256:${base.slice(0, 12)}`, hint: 'blob' };
+}
 
 /**
  * Classify a GPU process command line into an LLM runtime + model.
  * Pure-ish — the function itself does no I/O; resolvers handle the
- * (cached) lookups. Every input maps to a valid LLMClassification
- * object; returns the empty result for null/empty input or for
- * command lines that don't match any pattern.
+ * (cached) lookups. `pid` is only forwarded to the resolvers. Every
+ * input maps to a valid LLMClassification object; returns the empty
+ * result for null/empty input or for command lines that don't match
+ * any pattern.
  */
-export function classifyLLM(command: string | null | undefined, resolvers?: LLMResolvers): LLMClassification {
-  if (!command) return { runtime: null, model: null };
+export function classifyLLM(
+  command: string | null | undefined,
+  resolvers?: LLMResolvers,
+  pid?: number,
+): LLMClassification {
+  if (!command) return { runtime: null, model: null, hint: null };
   for (const p of PATTERNS) {
     if (p.matches(command)) {
-      return { runtime: p.runtime, model: p.model(command, resolvers) };
+      return { runtime: p.runtime, ...p.model(command, resolvers, pid) };
     }
   }
-  return { runtime: null, model: null };
+  return { runtime: null, model: null, hint: null };
 }
 
 // Exposed for the test suite.
-export const __test = { PATTERNS, flagValue, ollamaModelFromBlobPath, modelBasename };
+export const __test = { PATTERNS, flagValue, executable, modelBasename };

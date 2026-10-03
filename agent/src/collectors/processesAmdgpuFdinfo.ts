@@ -141,6 +141,19 @@ function isKernelThread(hostProc: string, pid: number): boolean {
   }
 }
 
+const CAP_SYS_PTRACE_BIT = 19n;
+
+/** True when this process holds CAP_SYS_PTRACE in its effective set,
+ *  read from its own /proc/self/status (CapEff, hex bitmask). */
+export function hasPtraceCap(statusPath = "/proc/self/status"): boolean {
+  try {
+    const capEff = /^CapEff:\s*([0-9a-f]+)/im.exec(readFileSync(statusPath, "utf8"));
+    return capEff ? ((BigInt(`0x${capEff[1]}`) >> CAP_SYS_PTRACE_BIT) & 1n) === 1n : false;
+  } catch {
+    return false;
+  }
+}
+
 export function scanAmdgpuFdinfo(
   hostProc: string,
   state?: FdinfoScanState,

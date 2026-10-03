@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Cpu } from 'lucide-react';
 import { api } from '../../lib/api';
+import { HiddenProcessesNotice, LLM_HINTS, LlmHintIcon, LlmHintPanel, type HiddenProcesses, type LlmHint } from './ProcessHints';
 
 type GpuProcessType = 'C' | 'G' | 'G+C' | null;
 
@@ -17,6 +18,7 @@ interface GpuProcess {
   gpu_pct?: number | null;
   llm_runtime?: string | null;
   llm_model?: string | null;
+  llm_hint?: LlmHint | null;
 }
 
 interface ApiResp {
@@ -25,6 +27,8 @@ interface ApiResp {
   processes: GpuProcess[];
   /** Hub-provided hint when a remote host's snapshot is missing or stale. */
   reason?: string;
+  /** Set when VRAM in use isn't explained by the listed processes. */
+  hidden?: HiddenProcesses;
 }
 
 const REFRESH_MS = 2500;
@@ -46,6 +50,9 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
   const { t } = useTranslation();
   const [data, setData] = useState<GpuProcess[]>([]);
   const [reason, setReason] = useState<string | null>(null);
+  const [hidden, setHidden] = useState<HiddenProcesses | null>(null);
+  // Row whose model-name hint panel is expanded (`${pid}-${gpu_uuid}`).
+  const [openHint, setOpenHint] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
@@ -60,6 +67,7 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
         if (cancelled) return;
         setData(r.processes);
         setReason(r.reason ?? null);
+        setHidden(r.hidden ?? null);
         setError(false);
       } catch {
         if (!cancelled) setError(true);
@@ -98,6 +106,8 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
         <p className="text-xs" style={{ color: 'var(--gv-warn)' }}>{t('dashboard.processes_error')}</p>
       )}
 
+      {!error && hidden && <HiddenProcessesNotice hidden={hidden} />}
+
       {!error && sorted.length === 0 && !loading && (
         <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
           {reason ? t('dashboard.processes_unavailable') : t('dashboard.processes_empty')}
@@ -123,8 +133,11 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
               </tr>
             </thead>
             <tbody>
-              {sorted.map((p) => (
-                <tr key={`${p.pid}-${p.gpu_uuid}`} className="border-t align-top" style={{ borderColor: 'var(--gv-border)' }}>
+              {sorted.map((p) => {
+                const rowKey = `${p.pid}-${p.gpu_uuid}`;
+                const hint = modelHint(p);
+                return (
+                <tr key={rowKey} className="border-t align-top" style={{ borderColor: 'var(--gv-border)' }}>
                   <td className="py-1.5 pr-3 font-mono tabular-nums">{p.pid}</td>
                   <td className="py-1.5 pr-3"><TypeBadge type={p.type ?? null} /></td>
                   <td className="py-1.5 pr-3 max-w-[480px]">
@@ -142,7 +155,15 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
                           {p.llm_model}
                         </span>
                       )}
+                      {hint && (
+                        <LlmHintIcon
+                          hint={hint}
+                          open={openHint === rowKey}
+                          onToggle={() => setOpenHint(openHint === rowKey ? null : rowKey)}
+                        />
+                      )}
                     </div>
+                    {hint && openHint === rowKey && <LlmHintPanel hint={hint} />}
                     {p.command && p.command !== p.process_name && (
                       <div className="text-[10px] font-mono break-all line-clamp-2" title={p.command}>
                         <CommandLine command={p.command} />
@@ -157,7 +178,8 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
                   </td>
                   <td className="py-1.5 pr-3 font-mono tabular-nums text-right">{fmtPct(p.cpu_pct)}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -192,6 +214,14 @@ function TypeBadge({ type }: Readonly<{ type: 'C' | 'G' | 'G+C' | null }>) {
 }
 
 const MODEL_COLOR = 'var(--gv-ok)';
+
+/** Agent-provided hint, or derived for agents older than llm_hint
+ *  whose unresolved Ollama names still arrive as `sha256:<prefix>`. */
+function modelHint(p: GpuProcess): LlmHint | null {
+  // Allow-list: the value picks an i18n key, ignore anything unknown.
+  if (p.llm_hint) return LLM_HINTS.includes(p.llm_hint) ? p.llm_hint : null;
+  return p.llm_runtime && p.llm_model?.startsWith('sha256:') ? 'ollama_manifests' : null;
+}
 
 /** Flags whose value names the loaded model (llama.cpp, vLLM, ollama
  *  runner, KoboldCpp). Mirrors the agent's llmClassifier lookups. */

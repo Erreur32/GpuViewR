@@ -351,7 +351,7 @@ export function createPdhProcessCollector(opts: PdhProcessCollectorOptions): Pro
       const type = pdhType(row) ?? lastType.get(row.pid) ?? null;
       if (type) lastType.set(row.pid, type);
       const command = row.cmd || null;
-      const llm = classifyLLM(command, opts.llmResolvers);
+      const llm = classifyLLM(command, opts.llmResolvers, row.pid);
       if (!cpuThisTick.has(row.pid)) cpuThisTick.set(row.pid, cpuPct(row.pid, row.cpu_s, now));
       processes.push({
         pid: row.pid,
@@ -364,6 +364,7 @@ export function createPdhProcessCollector(opts: PdhProcessCollectorOptions): Pro
         gpu_pct: Number.isFinite(row.util) ? row.util : null,
         llm_runtime: llm.runtime,
         llm_model: llm.model,
+        llm_hint: llm.hint,
       });
     }
     for (const pid of prevCpu.keys()) if (!alive.has(pid)) prevCpu.delete(pid);

@@ -34,6 +34,7 @@
 //    to cover that case too. rocm-smi's data wins on any pid overlap.
 
 import { spawn, spawnSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import {
   parseRocmInfo,
   parseRocmPids,
@@ -53,6 +54,7 @@ import {
 import {
   createFdinfoGpuSampler,
   createFdinfoScanState,
+  hasPtraceCap,
   scanAmdgpuFdinfo,
 } from "./processesAmdgpuFdinfo.js";
 import { classifyLLM } from "./llmClassifier.js";
@@ -71,7 +73,35 @@ export type RocmProcessCollectorOptions = Omit<
   "nvidiaSmiPath"
 > & {
   rocmSmiPath: string;
+  /** /sys/class/drm, used to find the amdgpu cards when rocm-smi is
+   *  missing (fdinfo-only mode). */
+  sysClassDrm?: string;
 };
+
+/** PCI bus ids of the amdgpu cards under sysClassDrm, read from each
+ *  card's device/uevent (`DRIVER=amdgpu`, `PCI_SLOT_NAME=...`). Same
+ *  bus id the sysfs GPU collector turns into the card uuid. */
+export function amdgpuBusIds(sysClassDrm: string): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(sysClassDrm);
+  } catch {
+    return [];
+  }
+  const buses = new Set<string>();
+  for (const name of entries) {
+    if (!/^card\d+$/.test(name)) continue;
+    try {
+      const uevent = readFileSync(`${sysClassDrm}/${name}/device/uevent`, "utf8");
+      if (!/^DRIVER=amdgpu$/m.test(uevent)) continue;
+      const slot = /^PCI_SLOT_NAME=(\S+)$/m.exec(uevent)?.[1];
+      if (slot) buses.add(slot.toLowerCase());
+    } catch {
+      // card without a readable uevent: not ours to report
+    }
+  }
+  return [...buses].sort((a, b) => a.localeCompare(b));
+}
 
 export function createRocmProcessCollector(
   opts: RocmProcessCollectorOptions,
@@ -86,6 +116,16 @@ export function createRocmProcessCollector(
   // Denied pids + first-seen ages, see scanAmdgpuFdinfo.
   const fdinfoScanState = createFdinfoScanState();
   let fdinfoDeniedWarned = false;
+  // Capabilities don't change over the agent's life.
+  const ptrace = hasPtraceCap();
+  // Without rocm-smi (amdgpu driver only, no ROCm install) the list
+  // comes from the DRM fdinfo scan alone: same rows minus CU occupancy,
+  // and KFD-only clients that never opened a render node are missed.
+  let sysfsBuses: string[] | null = null;
+  const cardBuses = (): string[] => {
+    sysfsBuses ??= amdgpuBusIds(opts.sysClassDrm ?? "/sys/class/drm");
+    return sysfsBuses;
+  };
 
   function checkRocmSmi(): boolean {
     if (rocmSmiAvailable !== null) return rocmSmiAvailable;
@@ -117,16 +157,18 @@ export function createRocmProcessCollector(
     if (inflight) return;
     inflight = true;
     try {
-      const out = await spawnPidsAndBus();
+      const out = checkRocmSmi() ? await spawnPidsAndBus() : "";
       const procs = parseRocmPids(out);
       const info = parseRocmInfo(out);
 
       // Fallback uuid for a pid with zero DRM fdinfo visibility (see
       // the module header comment). Real per-card attribution below
       // comes from fdinfoRaw, not this.
-      const uuids = info.cards.map((c) => rocmUuidFromBus(c.raw["PCI Bus"]));
-      const defaultUuid = uuids[0] ?? "ROCm-unknown";
-      const isMultiCard = info.cards.length > 1;
+      const buses = info.cards.length > 0
+        ? info.cards.map((c) => c.raw["PCI Bus"])
+        : cardBuses();
+      const defaultUuid = rocmUuidFromBus(buses[0]);
+      const isMultiCard = buses.length > 1;
 
       const rocmPids = new Set(procs.map((p) => p.pid));
 
@@ -160,7 +202,7 @@ export function createRocmProcessCollector(
         ) {
           name = resolveProcessName(p.pid, opts.hostProc) ?? "";
         }
-        const llm = classifyLLM(command, opts.llmResolvers);
+        const llm = classifyLLM(command, opts.llmResolvers, p.pid);
         // Stateful (delta-based) sampler — must be called exactly once
         // per pid per tick even though a multi-card pid below produces
         // several rows, so hoist it here rather than call it per-row.
@@ -198,6 +240,7 @@ export function createRocmProcessCollector(
               gpu_pct: p.cu_occupancy,
               llm_runtime: llm.runtime,
               llm_model: llm.model,
+              llm_hint: llm.hint,
             },
           ];
         }
@@ -225,6 +268,7 @@ export function createRocmProcessCollector(
           gpu_pct: p.cu_occupancy,
           llm_runtime: llm.runtime,
           llm_model: llm.model,
+          llm_hint: llm.hint,
         }));
       });
 
@@ -238,7 +282,7 @@ export function createRocmProcessCollector(
         if (rocmPids.has(pid)) continue;
         const command = readCmdline(pid, opts.hostProc);
         const name = resolveProcessName(pid, opts.hostProc) ?? "unknown";
-        const llm = classifyLLM(command, opts.llmResolvers);
+        const llm = classifyLLM(command, opts.llmResolvers, pid);
         const cpuPct = cpuSampler.sample(pid); // once per pid per tick
         for (const usage of devices) {
           const { gpuPct, type } = fdinfoSampler.sample(pid, usage);
@@ -256,6 +300,7 @@ export function createRocmProcessCollector(
             gpu_pct: gpuPct,
             llm_runtime: llm.runtime,
             llm_model: llm.model,
+            llm_hint: llm.hint,
           });
         }
       }
@@ -266,6 +311,9 @@ export function createRocmProcessCollector(
       opts.onSnapshot({
         tsEpoch: Math.floor(Date.now() / 1000),
         processes: enriched,
+        ...(deniedCount > 0
+          ? { visibility: { denied_pids: deniedCount, has_ptrace: ptrace } }
+          : {}),
       });
     } finally {
       inflight = false;
@@ -274,21 +322,27 @@ export function createRocmProcessCollector(
 
   return {
     available(): boolean {
-      return checkRocmSmi();
+      return checkRocmSmi() || cardBuses().length > 0;
     },
     start(): void {
       if (timer) return;
-      if (!checkRocmSmi()) {
+      if (checkRocmSmi()) {
+        logger.success(
+          "proc",
+          `ROCm process collector started (tick=${tickMs}ms, hostProc=${opts.hostProc})`,
+        );
+      } else if (cardBuses().length > 0) {
+        logger.success(
+          "proc",
+          `AMD process collector started from DRM fdinfo only, rocm-smi not found at ${opts.rocmSmiPath} (tick=${tickMs}ms, hostProc=${opts.hostProc}). ROCm-only clients without a render node fd won't be listed.`,
+        );
+      } else {
         logger.warn(
           "proc",
-          `rocm-smi not available at ${opts.rocmSmiPath} — ROCm process collector disabled`,
+          `neither rocm-smi (${opts.rocmSmiPath}) nor an amdgpu card found, AMD process collector disabled`,
         );
         return;
       }
-      logger.success(
-        "proc",
-        `ROCm process collector started (tick=${tickMs}ms, hostProc=${opts.hostProc})`,
-      );
       void tick();
       timer = setInterval(() => {
         void tick();
