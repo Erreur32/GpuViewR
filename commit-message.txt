@@ -1,8 +1,9 @@
-release: v0.9.17 GPU process list on Windows agents
+release: v0.9.18 Windows process list enabled and filtered
 
-- Added: Windows agents report the GPU process list from the per-process
-  PDH counters (GPU %, dedicated VRAM, type, CPU %, command line), for
-  NVIDIA, AMD and Intel. With nvidia-smi, processes are attached to the
-  right card by matching pids against nvidia-smi -q -d PIDS.
-- Fixed: PDH GPU utilization (AMD/Intel on Windows) likely stuck at 0 %,
-  the engine counter regex missed the pid_<pid>_ prefix.
+- Fixed: Windows process list stayed empty after v0.9.17, the installer
+  wrote FEATURES='gpu' and auto-update never rewrites agent.env.ps1. The
+  installer now defaults to gpu,processes and the agent reads the legacy
+  'gpu' value on Windows as gpu,processes.
+- Fixed: Windows process list listed every desktop window. Only rows
+  with >= 256 MiB dedicated VRAM or GPU activity in the last 30 s are
+  kept; the System pseudo-process is hidden.
