@@ -487,17 +487,22 @@ Vulkan server: `rocm-smi` never lists them.
 
 | Agent | Cause | Fix |
 |---|---|---|
-| systemd, installed before this release | no `CAP_SYS_PTRACE`, processes of root or of containers are unreadable | re-run the install command, or add the drop-in below |
+| systemd, installed before v0.10.2 | no `CAP_SYS_PTRACE`, processes of root or of containers are unreadable | run `--upgrade` (below) |
 | Docker | `cap_add: [SYS_PTRACE]` missing | add it to the agent service, `docker compose up -d` |
 | Docker, capability present | AppArmor blocks processes started directly on the host | use the systemd agent on that host |
 
-Drop-in for an existing systemd agent (no token needed):
+Refresh an existing systemd agent (bundle + unit). It reads
+`/etc/gpuviewr-agent.env`, so the host keeps its identity and settings and
+no token is needed:
 
 ```bash
-sudo mkdir -p /etc/systemd/system/gpuviewr-agent.service.d
-printf '[Service]\nAmbientCapabilities=CAP_SYS_PTRACE\nProtectHome=read-only\nSystemCallArchitectures=native\nSystemCallFilter=~ptrace process_vm_readv process_vm_writev pidfd_getfd\nSystemCallErrorNumber=EPERM\n' | sudo tee /etc/systemd/system/gpuviewr-agent.service.d/ptrace.conf
-sudo systemctl daemon-reload && sudo systemctl restart gpuviewr-agent
+curl -fsSL http://<hub>:7510/install.sh | sudo bash -s -- --upgrade
 ```
+
+The agent's auto-update only replaces its bundle, so this is the way unit
+changes reach installs made with an older installer. Add `--url <hub>` to
+point the agent at another hub. An install made with `--no-ptrace` stays
+without the capability.
 
 `CAP_SYS_PTRACE` lets the agent read other users' `/proc` entries (including
 their environment). The unit filters out the syscalls that would let it act

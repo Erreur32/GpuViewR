@@ -497,7 +497,9 @@ function pickUpdateCmd(installMode: 'docker' | 'systemd' | 'windows' | 'macos' |
   /** Non-null when we are guessing — UI shows both recipes in the tooltip. */
   secondary: string | null;
 } {
-  const systemdCmd = `sudo curl -fsSL ${hubOrigin}/agent.mjs -o /opt/gpuviewr-agent/agent.mjs && sudo systemctl restart gpuviewr-agent`;
+  // --upgrade refreshes the bundle and the systemd unit from the host's
+  // existing env file (no token), so unit changes reach old installs too.
+  const systemdCmd = `curl -fsSL ${hubOrigin}/install.sh | sudo bash -s -- --upgrade`;
   const dockerCmd = 'cd ~/gpuviewr-agent-* && docker compose pull && docker compose up -d';
   // Windows: hub-pushed auto-update is the path of least friction (the
   // launcher.ps1 supervisor swaps agent.mjs.pending → agent.mjs on the

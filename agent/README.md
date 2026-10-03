@@ -30,6 +30,14 @@ Tail the agent's connect handshake:
 journalctl -u gpuviewr-agent -f
 ```
 
+Refresh the install later (bundle + systemd unit, keeps the host identity,
+no token). Auto-update only replaces the bundle, so this is how unit changes
+reach older installs:
+
+```bash
+curl -fsSL https://gpu.example.com/install.sh | sudo bash -s -- --upgrade
+```
+
 Uninstall later:
 
 ```bash

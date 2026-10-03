@@ -16,13 +16,12 @@ export interface HiddenProcesses {
 
 const DOCS_URL = 'https://github.com/Erreur32/GpuViewR/blob/main/Docs/INSTALL.md#hidden-gpu-processes-and-model-names';
 
-/** Grants CAP_SYS_PTRACE to an already installed systemd agent without
- *  re-running the installer (which needs the token). */
-const SYSTEMD_PTRACE_CMD = [
-  'sudo mkdir -p /etc/systemd/system/gpuviewr-agent.service.d',
-  "printf '[Service]\\nAmbientCapabilities=CAP_SYS_PTRACE\\nProtectHome=read-only\\nSystemCallArchitectures=native\\nSystemCallFilter=~ptrace process_vm_readv process_vm_writev pidfd_getfd\\nSystemCallErrorNumber=EPERM\\n' | sudo tee /etc/systemd/system/gpuviewr-agent.service.d/ptrace.conf",
-  'sudo systemctl daemon-reload && sudo systemctl restart gpuviewr-agent',
-].join('\n');
+/** Refreshes an installed systemd agent (bundle + unit, which grants
+ *  CAP_SYS_PTRACE) from its existing env file, no token needed. */
+function systemdUpgradeCmd(): string {
+  const hub = typeof globalThis.window === 'object' ? globalThis.location.origin : '<hub-url>';
+  return `curl -fsSL ${hub}/install.sh | sudo bash -s -- --upgrade`;
+}
 
 const DOCKER_PTRACE_SNIPPET = 'cap_add:\n  - SYS_PTRACE';
 
@@ -111,7 +110,7 @@ function HiddenFix({ hidden }: Readonly<{ hidden: HiddenProcesses }>) {
     return (
       <>
         <p>{t('dashboard.hidden_fix_systemd')}</p>
-        <CommandBlock text={SYSTEMD_PTRACE_CMD} />
+        <CommandBlock text={systemdUpgradeCmd()} />
       </>
     );
   }
@@ -169,7 +168,7 @@ export function LlmHintPanel({ hint }: Readonly<{ hint: LlmHint }>) {
       {hint === 'ollama_manifests' ? (
         <>
           <p>{t('dashboard.llm_fix_ollama_systemd')}</p>
-          <CommandBlock text={SYSTEMD_PTRACE_CMD} />
+          <CommandBlock text={systemdUpgradeCmd()} />
           <p>{t('dashboard.llm_fix_ollama_systemd_env')}</p>
           <CommandBlock text={SYSTEMD_OLLAMA_ENV} />
           <p>{t('dashboard.llm_fix_ollama_docker')}</p>
