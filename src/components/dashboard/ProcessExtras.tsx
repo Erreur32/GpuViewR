@@ -217,11 +217,12 @@ export function ProcessFilter({ hiddenCount }: Readonly<{ hiddenCount: number }>
         )}
       </button>
       {open && (
-        <div
-          role="dialog"
+        // Non-modal <dialog open>: reset the UA styles (centered, margin, colours).
+        <dialog
+          open
           aria-label={t('dashboard.filter_title')}
-          className="absolute right-0 top-full mt-1 z-20 w-64 p-3 rounded-lg text-xs space-y-2"
-          style={{ background: 'var(--gv-bg2)', border: '1px solid var(--gv-border)', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}
+          className="absolute right-0 left-auto top-full m-0 mt-1 z-20 w-64 p-3 rounded-lg text-xs space-y-2"
+          style={{ color: 'inherit', background: 'var(--gv-bg2)', border: '1px solid var(--gv-border)', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}
         >
           <div className="font-semibold" style={{ color: 'var(--gv-text)' }}>{t('dashboard.filter_title')}</div>
           <p style={{ color: 'var(--gv-text-dim)' }}>{t('dashboard.filter_help')}</p>
@@ -253,9 +254,9 @@ export function ProcessFilter({ hiddenCount }: Readonly<{ hiddenCount: number }>
               value={threshold}
               onChange={(e) => setMinMib(Number.parseInt(e.target.value, 10) || 0)}
             />
-            MiB
+            <span>MiB</span>
           </label>
-        </div>
+        </dialog>
       )}
     </div>
   );

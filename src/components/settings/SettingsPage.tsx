@@ -860,7 +860,7 @@ function ProcessFilterSection() {
           value={minMib}
           onChange={(e) => setMinMib(Number.parseInt(e.target.value, 10) || 0)}
         />
-        MiB
+        <span>MiB</span>
       </label>
     </section>
   );
