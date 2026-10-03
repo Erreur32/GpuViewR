@@ -20,6 +20,8 @@
 #   --force            skip the cross-mode guard (Docker agent already on this host)
 #   --no-ptrace        don't grant CAP_SYS_PTRACE (AMD: GPU processes owned by
 #                      other users, e.g. root containers, won't be listed)
+#   --upgrade          refresh an existing install (bundle + systemd unit) from
+#                      its /etc/gpuviewr-agent.env, no token needed
 #
 # Distro support: Debian 11+ / Ubuntu 22+ / Rocky/Alma/RHEL 9+ / Fedora 38+.
 # Anything else exits 1 with a hint — install Node 22 manually then re-run.
@@ -33,6 +35,7 @@ FEATURES="gpu,system,temps,processes"
 UNINSTALL=0
 FORCE=0
 PTRACE=1
+UPGRADE=0
 
 SERVICE_USER="gpuviewr-agent"
 INSTALL_DIR="/opt/gpuviewr-agent"
@@ -59,7 +62,8 @@ while [[ $# -gt 0 ]]; do
     --uninstall)  UNINSTALL=1; shift ;;
     --force)      FORCE=1; shift ;;
     --no-ptrace)  PTRACE=0; shift ;;
-    -h|--help)    sed -n '2,24p' "$0" | sed 's/^# //; s/^#//'; exit 0 ;;
+    --upgrade)    UPGRADE=1; shift ;;
+    -h|--help)    sed -n '2,26p' "$0" | sed 's/^# //; s/^#//'; exit 0 ;;
     *)            die "Unknown flag: $1" ;;
   esac
 done
@@ -83,8 +87,39 @@ if [[ $UNINSTALL -eq 1 ]]; then
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# Validate required flags
+# Upgrade path: reuse the identity and settings of the existing install
 # ──────────────────────────────────────────────────────────────────────
+# Value of KEY in the env file (last occurrence), empty if absent. Read,
+# never sourced: only the keys we need come out of it.
+env_get() {
+  local line
+  line="$(grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -n 1 || true)"
+  printf '%s' "${line#*=}"
+}
+
+if [[ $UPGRADE -eq 1 ]]; then
+  [[ -f "$ENV_FILE" ]] || die "--upgrade: no ${ENV_FILE}, the agent is not installed here. Use the install command from the hub UI (Add host)."
+  [[ -z "$TOKEN" ]] || die "--upgrade keeps the current identity, don't pass --token (use the full install command to re-enroll)."
+  HOST_ID="$(env_get HOST_ID)"
+  SECRET="$(env_get AGENT_TOKEN)"
+  [[ -n "$HOST_ID" && -n "$SECRET" ]] || die "--upgrade: HOST_ID or AGENT_TOKEN missing from ${ENV_FILE}. Re-run the full install command from the hub UI."
+  # The env file holds the agent's ws(s)://host/agent URL; --url wins.
+  if [[ -z "$HUB_URL" ]]; then
+    HUB_URL="$(env_get HUB_URL)"
+    HUB_URL="${HUB_URL%/agent}"
+  fi
+  [[ -n "$HUB_URL" ]] || die "--upgrade: HUB_URL missing from ${ENV_FILE}, pass --url."
+  INTERVAL_MS="$(env_get TICK_MS)"; INTERVAL_MS="${INTERVAL_MS:-1000}"
+  FEATURES_ENV="$(env_get FEATURES)"; FEATURES="${FEATURES_ENV:-$FEATURES}"
+  # An install made with --no-ptrace stays without it.
+  [[ "$(env_get GPUVIEWR_NO_PTRACE)" != "1" ]] || PTRACE=0
+fi
+LOG_LEVEL_VALUE="$(env_get LOG_LEVEL)"; LOG_LEVEL_VALUE="${LOG_LEVEL_VALUE:-info}"
+
+# ──────────────────────────────────────────────────────────────────────
+# Validate required flags (fresh install)
+# ──────────────────────────────────────────────────────────────────────
+if [[ $UPGRADE -eq 0 ]]; then
 [[ -n "$HUB_URL" ]] || die "Missing --url (use the one printed by the hub UI)."
 [[ -n "$TOKEN"   ]] || die "Missing --token (printed once by the hub on enrollment)."
 
@@ -102,6 +137,7 @@ SECRET="${TOKEN#*.}"
 HOST_ID="${HOST_ID#gpvr_}"  # tolerate a "gpvr_" prefix if the user pasted whole
 [[ -n "$HOST_ID" && -n "$SECRET" && "$HOST_ID" != "$SECRET" ]] \
   || die "Invalid --token (expected <host_id>.<secret>; got: $TOKEN)"
+fi
 
 # ──────────────────────────────────────────────────────────────────────
 # Cross-mode guard — refuse if a Docker agent container is already
@@ -238,7 +274,7 @@ WS_URL="${WS_URL/#https:/wss:}"
 umask 077
 # Keep variables the operator added by hand (OLLAMA_MANIFESTS_DIR,
 # LOG_LEVEL=debug, ...): a re-run rewrites the managed keys only.
-MANAGED_KEYS='^(HUB_URL|HOST_ID|AGENT_TOKEN|TICK_MS|FEATURES|LOG_LEVEL|GPU_VENDOR|ROCM_SMI_PATH)='
+MANAGED_KEYS='^(HUB_URL|HOST_ID|AGENT_TOKEN|TICK_MS|FEATURES|LOG_LEVEL|GPU_VENDOR|ROCM_SMI_PATH|GPUVIEWR_NO_PTRACE)='
 EXTRA_ENV=""
 if [[ -f "$ENV_FILE" ]]; then
   EXTRA_ENV="$(grep -Ev "$MANAGED_KEYS" "$ENV_FILE" | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' || true)"
@@ -249,8 +285,10 @@ HOST_ID=${HOST_ID}
 AGENT_TOKEN=${SECRET}
 TICK_MS=${INTERVAL_MS}
 FEATURES=${FEATURES}
-LOG_LEVEL=info
+LOG_LEVEL=${LOG_LEVEL_VALUE}
 EOF
+# Remembered so a later --upgrade doesn't grant what was declined.
+[[ $PTRACE -eq 1 ]] || echo "GPUVIEWR_NO_PTRACE=1" >> "$ENV_FILE"
 # Pin the vendor + smi path we already detected above instead of letting
 # the agent re-probe on its own: 'rocm-smi' often only resolves via the
 # absolute /opt/rocm/bin path (not on $PATH for a systemd service's
@@ -286,6 +324,10 @@ NODE_BIN="$(command -v node)"
 # memory read/write, fd theft) are filtered out: only the /proc read
 # checks remain. --no-ptrace skips all of it.
 PTRACE_UNIT=""
+# Drop-in the v0.10.2 UI suggested before --upgrade existed: the unit
+# below now carries the same lines, and it would override --no-ptrace.
+rm -f "${SVC_FILE}.d/ptrace.conf"
+rmdir "${SVC_FILE}.d" 2>/dev/null || true
 if [[ $PTRACE -eq 1 ]]; then
   PTRACE_UNIT="AmbientCapabilities=CAP_SYS_PTRACE
 CapabilityBoundingSet=CAP_SYS_PTRACE
@@ -333,9 +375,16 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now gpuviewr-agent
+systemctl enable gpuviewr-agent
+# restart, not start: on --upgrade (or any re-run) the running agent must
+# pick up the new unit and bundle.
+systemctl restart gpuviewr-agent
 
-ok "Installed and started."
+if [[ $UPGRADE -eq 1 ]]; then
+  ok "Upgraded and restarted (same host identity)."
+else
+  ok "Installed and started."
+fi
 say "Hub URL  : ${WS_URL%/}/agent"
 say "Host ID  : ${HOST_ID}"
 say "Bundle   : ${BIN_PATH}"
@@ -344,5 +393,8 @@ say ""
 say "Watch the agent connect:"
 say "  journalctl -u gpuviewr-agent -f"
 say ""
+say "To refresh this install later (bundle + unit, no token):"
+say "  curl -fsSL ${HTTP_URL%/}/install.sh | sudo bash -s -- --upgrade"
+say ""
 say "To uninstall later:"
-say "  curl -fsSL ${HUB_URL%/}/install.sh | sudo bash -s -- --uninstall"
+say "  curl -fsSL ${HTTP_URL%/}/install.sh | sudo bash -s -- --uninstall"
