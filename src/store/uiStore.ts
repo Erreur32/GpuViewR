@@ -36,8 +36,17 @@ export type FleetView = 'simple' | 'detailed';
  *  the slider means "full width" and is stored as 0. */
 export const CONTENT_WIDTH = { min: 1200, max: 2560, step: 80, default: 1600, full: 0 } as const;
 
+/** Settings panel width at the default page width (Tailwind max-w-5xl).
+ *  It grows 1:1 with the page width above the default, so widening the
+ *  page widens the settings tabs too instead of leaving a fixed column. */
+const SETTINGS_BASE_WIDTH = 1024;
+
 function applyContentWidth(px: number): void {
-  document.documentElement.style.setProperty('--gv-content-max', px === CONTENT_WIDTH.full ? '100%' : `${px}px`);
+  const root = document.documentElement.style;
+  const full = px === CONTENT_WIDTH.full;
+  root.setProperty('--gv-content-max', full ? '100%' : `${px}px`);
+  const settings = Math.max(SETTINGS_BASE_WIDTH, px - (CONTENT_WIDTH.default - SETTINGS_BASE_WIDTH));
+  root.setProperty('--gv-settings-max', full ? '100%' : `${settings}px`);
 }
 
 function clampContentWidth(px: number): number {

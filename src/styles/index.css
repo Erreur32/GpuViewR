@@ -9,6 +9,7 @@
 :root {
   /* Page body max width, overridden by the Custom > layout slider. */
   --gv-content-max: 1600px;
+  --gv-settings-max: 1024px;
   --gv-bg: #0a1020;
   --gv-bg2: #0e1830;
   --gv-surface: rgba(15, 23, 42, 0.7);

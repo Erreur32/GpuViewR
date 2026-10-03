@@ -7,7 +7,6 @@
     "dashboard": "Dashboard",
     "alerts": "Alerts",
     "system": "Machine",
-    "logs": "Logs",
     "settings": "Settings"
   },
   "auth": {
@@ -150,7 +149,6 @@
     "events_cleared": "Events cleared"
   },
   "logs": {
-    "title": "Server logs",
     "subtitle": "Recent backend activity, filterable",
     "auto_refresh": "Auto-refresh",
     "all_scopes": "All scopes",
@@ -173,6 +171,7 @@
     "tab_hosts": "Hosts",
     "tab_database": "Database",
     "tab_updates": "Updates",
+    "tab_logs": "Logs",
     "tab_about": "About",
     "tab_custom": "Custom",
     "content_width": "Page width",
