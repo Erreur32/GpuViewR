@@ -10,6 +10,10 @@
 > - **v0.6.7**: native Windows agent (`install.ps1`, Scheduled Task); AMD / Intel on Windows via PDH counters in v0.7.0.
 > - **v0.9.0**: macOS agent (Apple Silicon, `powermetrics`).
 > - Bare-metal agents ship as an `agent.mjs` bundle run by Node 22 and installed by the hub-served `install.sh` (since v0.3.0), not as a Node SEA binary.
+> - **v0.10.2 / v0.10.3**: the systemd unit grants `CAP_SYS_PTRACE` (seccomp-filtered) for the AMD process list; `install.sh --upgrade` refreshes an install without a token.
+> - **v0.11.0**: Intel GPUs, LLM server APIs, process alerts and history, hub-pushed `config` frame (Settings > LLM).
+>
+> File references below name files only: the line numbers of the original plan pointed at v0.2.5 / v0.3.0 code and have drifted, search by symbol.
 >
 > ---
 >
@@ -93,7 +97,7 @@ All metric models carry a `host_id TEXT NOT NULL`:
 
 - `server/database/connection.ts` (lines 35-73): initial DDL + migration block. Follow the existing pattern already used for the `utilization NOT NULL` migration (l.78-111): detect the `host_id` column via `PRAGMA table_info('gpu_metrics')`, and run the `CREATE NEW / INSERT … 'local' / DROP / RENAME` migration inside a transaction. Recreate the indexes with a `host_id` prefix: `idx_gpu_metrics_host_gpu_epoch ON gpu_metrics(host_id, gpu_index, timestamp_epoch)`.
 - `server/database/models/GpuMetric.ts`: every method (`insert`, `insertMany`, `history`, `historyDownsampled`, `historyIterate`, `stats`, `pruneOlderThan`) takes a `host_id` as first argument. **Compat**: keep a legacy `(gpu_index, …)` signature that pre-fills `'local'` so the single-host hub does not break during the internal migration.
-- `server/database/models/Alert.ts`: `gpu_index INTEGER NOT NULL` stays, `host_id` is added to `AlertEvent` and optionally to `AlertRule`. The state map key in `alertService.ts:91` (`${rule.id}:${sample.gpu_index}`) becomes `${rule.id}:${host_id}:${gpu_index}`.
+- `server/database/models/Alert.ts`: `gpu_index INTEGER NOT NULL` stays, `host_id` is added to `AlertEvent` and optionally to `AlertRule`. The state map key in `alertService.ts` (`${rule.id}:${sample.gpu_index}`) becomes `${rule.id}:${host_id}:${gpu_index}`.
 - **New**: `server/database/models/Host.ts`: CRUD repo + helpers `markSeen(id)`, `setStatus(id, status)`, `findByTokenHash(hash)`.
 
 ### Migrating existing data
@@ -113,12 +117,12 @@ The end user does **nothing**: the install updates itself, historical charts are
 
 ### Per-host token model
 
-No global shared JWT. Each agent has its own **enrollment token** (long, ≥ 32 random bytes), stored **bcrypt-hashed** on the hub (reuse `authService.hashPassword` / `verifyPassword`, see `authService.ts:16-22`). The clear token only exists:
+No global shared JWT. Each agent has its own **enrollment token** (long, ≥ 32 random bytes), stored **bcrypt-hashed** on the hub (reuse `authService.hashPassword` / `verifyPassword`, see `authService.ts`). The clear token only exists:
 
 - with the user at enrollment time (shown once in the UI / API response),
 - in the agent config (`AGENT_TOKEN=…` as an env var).
 
-On the agent side, the token is sent either as an `Authorization: Bearer <token>` header during the WS handshake, or as a `?token=…` query string (as `gpuStreamWS.ts:14` already does).
+On the agent side, the token is sent either as an `Authorization: Bearer <token>` header during the WS handshake, or as a `?token=…` query string (as `gpuStreamWS.ts` already does).
 
 ### Enrollment workflow
 
@@ -146,7 +150,7 @@ Invariant rule at the hub level: **any `host_id` in an incoming frame is ignored
 
 ### Relation to the existing `JWT_SECRET`
 
-`JWT_SECRET` (see `config.ts:5`) remains **strictly for UI user sessions**. Agent tokens are **opaque** (random 32+ bytes, not signed JWTs). Reason: no claims are needed (one token = one host_id, already resolved in the DB), and it avoids the "who can sign for whom" confusion if `JWT_SECRET` ever leaks. Two strictly disjoint auth spaces are simpler to reason about.
+`JWT_SECRET` (see `config.ts`) remains **strictly for UI user sessions**. Agent tokens are **opaque** (random 32+ bytes, not signed JWTs). Reason: no claims are needed (one token = one host_id, already resolved in the DB), and it avoids the "who can sign for whom" confusion if `JWT_SECRET` ever leaks. Two strictly disjoint auth spaces are simpler to reason about.
 
 (Later additions: since v0.5.0 the local sidecar authenticates with the `LOCAL_AGENT_BOOTSTRAP` shared secret instead of a bcrypt token, see §10. Since v0.6.4 the token handed to the user is the `<host_id>.<secret>` bundle; only the secret half is bcrypt-hashed.)
 
@@ -271,7 +275,7 @@ Today `gpuCollector` is a singleton that spawns nvidia-smi locally and emits `'s
 - `server/services/agentIngestWS.ts` (new): symmetric to `gpuStreamWS.ts`, but server-side. Mounted on path `/agent`. Auth = agent token check (not user JWT). Each received message is dispatched on `metricsBus`.
 - `server/services/gpuStreamWS.ts`: `gpuCollector.on('sample', …)` (l.30) becomes `metricsBus.on('sample', ({ host_id, samples }) => safeSend(ws, { type:'sample', host_id, samples }))`.
 - The initial `snapshot` sent to the client (l.23-24) must become multi-host too: iterate over the last known samples of each host. Maintain a `Map<host_id, GpuSample[]>` updated on every tick, accessible via `metricsBus.getLatestPerHost()`.
-- `server/index.ts:117-119`: call `setupAgentIngestWS(server)` next to `setupGpuWebSocket(server)`. Start `gpuCollector.start()` **only if** nvidia-smi is available (the code is already there).
+- `server/index.ts`: call `setupAgentIngestWS(server)` next to `setupGpuWebSocket(server)`. Start `gpuCollector.start()` **only if** nvidia-smi is available (the code is already there).
 
 ### Zero-config behavior unchanged
 
@@ -459,7 +463,7 @@ If the agent sends a `GpuSample` with an unknown field (because it is ahead of t
 
 ### SQLite WAL consistency under multi-host load
 
-20 hosts × 1 Hz × 4 GPUs = 80 inserts/s. The existing batch logic (`buffer.push` + flush every 60 s, see `gpuCollector.ts:85`) stays relevant: aggregate on the hub before flushing, same origin as the single-host code. Test with a synthetic load script (mock agent) before release.
+20 hosts × 1 Hz × 4 GPUs = 80 inserts/s. The existing batch logic (`buffer.push` + flush every 60 s, see `gpuCollector.ts`) stays relevant: aggregate on the hub before flushing, same origin as the single-host code. Test with a synthetic load script (mock agent) before release.
 
 ### The hub is no longer just a dashboard
 
@@ -639,13 +643,13 @@ Triage of the "open questions" that deserve a check before starting milestone 1.
 ### 13.3 To decide midway (not before milestone 3)
 
 7. **Dynamically negotiated capabilities**: can an agent change `capabilities` mid-session?
-   - Proposed decision: NO. Frozen at `hello`, the agent reconnects if it changes. Simpler.
+   - Outcome: as proposed. Sent in `hello` and stored at each connection; they only change when the agent restarts (v0.10.4 adds the `ptrace` state).
 
 8. **Behavior when a host is deleted on the hub but its agent is still connected**: close immediately or let it run?
-   - Proposed decision: close immediately, code `1008 Policy Violation`, the agent logs and exits.
+   - Outcome: deleting a host does not close the live socket; the agent is refused with `4001` at its next connection. Disabling a host closes the socket at once with `4003`. `1008` is only used for the rate limit.
 
 9. **GPU composition changing on a host** (card added / removed): `gpu_devices` upsert or DELETE?
-   - Proposed decision: mark `removed_at` rather than DELETE. Keeps history. To document at milestone 2.
+   - Outcome: no `removed_at`. Rows are upserted per (host, GPU index); a removed card keeps its row and `last_seen`, so history is kept.
 
 ### 13.4 To document before release
 
@@ -664,7 +668,9 @@ Triage of the "open questions" that deserve a check before starting milestone 1.
 
 ## 14. Integrating the multi-host preview into the real app
 
-Target: v0.3.1, **after** backbone milestones 1-5. The preview (`src/preview-multi/`, `index.preview.html`, `vite.preview.config.ts`) is a disconnected sandbox. To wire it for real, 7 steps ordered by dependency.
+> **Done in v0.3.1.** The components now live in `src/components/fleet/` and `src/components/settings/`; the preview sandbox (`src/preview-multi/`, `index.preview.html`, `vite.preview.config.ts`) was deleted from the repo afterwards. This section is kept as the integration log.
+
+Target: v0.3.1, **after** backbone milestones 1-5. The preview was a disconnected sandbox. To wire it for real, 7 steps ordered by dependency.
 
 ### 14.1 Backbone first
 
@@ -772,6 +778,8 @@ Modal closed = token permanently lost on the hub (only its bcrypt hash remains).
 
 ### 15.2 Remote node side: 3 install modes
 
+> **Current recipes are in [`Docs/REMOTE_HOSTS.md`](REMOTE_HOSTS.md).** The examples below are the original design: the compose files are now `docker-compose.agent.nvidia.yaml` / `docker-compose.agent.amd.yaml` (they also mount `/proc` and add `SYS_PTRACE` for the process list), and bare metal uses `install.sh`.
+
 **Mode 1: Docker (recommended, 95% of cases)**
 
 ```bash
@@ -864,14 +872,14 @@ Admin side: the new host's card turns green "Online" within 1-3 s. If it stays r
 - Agent logs: `docker logs gpuviewr-agent` or `journalctl -u gpuviewr-agent -f`
 - Typical errors:
   - `ECONNREFUSED` → wrong hub URL or hub down
-  - `1008 Policy Violation` → invalid token or host_id mismatch → rotate on the admin side + reconfigure
+  - `4001` close → invalid token or host_id mismatch → rotate on the admin side + reconfigure (the plan said `1008`, now only the rate limit)
   - `nvidia-smi not found` → NVIDIA Container Toolkit not installed on the host
   - repeated `1006 abnormal closure` → TLS / proxy blocks WS upgrades → review the reverse proxy config
 
 ### 15.4 Updating
 
 - Docker: `docker pull ghcr.io/erreur32/gpuviewr-agent:latest && docker restart gpuviewr-agent`
-- systemd: download the new binary, `systemctl restart gpuviewr-agent`
+- systemd: download the new binary, `systemctl restart gpuviewr-agent` (today: auto-update, or `curl -fsSL <hub>/install.sh | sudo bash -s -- --upgrade` to refresh bundle and unit)
 
 No built-in auto-update (see §12.3). (Superseded in v0.5.3: bare-metal agents can be auto-updated by the hub over the WS, opt-in per host; Windows since v0.6.7, macOS since v0.9.0.)
 
