@@ -77,24 +77,44 @@ Windows and macOS, each host with its own colour on every chart.
 
 ## Install
 
+**Where the hub runs** (it ships as a Docker image only):
+
+- **Linux + Docker** (amd64 or arm64): full install, and the only one where
+  the hub also monitors its own GPU. Needs Docker with Compose v2, plus the
+  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+  for NVIDIA. AMD only needs the `amdgpu` driver.
+- **macOS + Docker Desktop**: aggregator only, the Mac's own GPU is not
+  seen. `install.sh` is Linux-only, set it up
+  [by hand](Docs/INSTALL.md#hub-on-macos-docker-desktop).
+- **Windows**: no documented hub. Docker Desktop on WSL2 should run it as
+  an aggregator, untested.
+
+The machines you monitor need no Docker: agents run natively on Linux,
+Windows and macOS, see [Add a machine](#add-a-machine).
+
+The steps below are for Linux.
+
+**1. Run the installer** in the directory that will hold the stack:
+
 ```bash
 mkdir -p /opt/gpuviewr && cd /opt/gpuviewr
 curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh | bash
 ```
 
-The script detects your GPU vendor, writes `docker-compose.yaml` and a
-`.env` with random secrets, and starts the stack. Open
-`http://<your-host-ip>:7510`: the first account you create is admin.
+It detects the GPU (NVIDIA, AMD or none), writes `docker-compose.yaml` and
+a `.env` with random secrets, then starts the stack. No GPU, or a missing
+toolkit: the hub still starts alone and tells you what to fix.
 
-Update: `docker compose pull && docker compose up -d`.
+**2. Open** `http://<your-host-ip>:7510` and create the first account,
+it becomes admin.
 
-Prefer writing the compose file yourself? Ready-to-use examples (hub only,
-NVIDIA, AMD) and the supported hub platforms:
-[Docs/INSTALL.md#compose-examples](Docs/INSTALL.md#compose-examples).
+**Update:** `docker compose pull && docker compose up -d`
 
-Requires Docker with Compose v2, plus the NVIDIA Container Toolkit for
-NVIDIA GPUs. Manual install, macOS (Docker Desktop), configuration and
-troubleshooting: [Docs/INSTALL.md](Docs/INSTALL.md).
+| Need | See |
+|---|---|
+| Write the compose file yourself (hub only, NVIDIA, AMD) | [Compose examples](Docs/INSTALL.md#compose-examples) |
+| Platform details and detection rules | [Supported hub platforms](Docs/INSTALL.md#supported-hub-platforms) |
+| `.env` settings, first login, troubleshooting | [Docs/INSTALL.md](Docs/INSTALL.md) |
 
 ## Add a machine
 

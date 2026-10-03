@@ -130,7 +130,7 @@ case "${ID:-}" in
 esac
 
 # ──────────────────────────────────────────────────────────────────────
-# Pre-flight: vendor smi binary (nvidia-smi or rocm-smi)
+# Pre-flight: vendor smi binary (nvidia-smi or rocm-smi), or an amdgpu card
 # ──────────────────────────────────────────────────────────────────────
 VENDOR_BIN=""
 if command -v nvidia-smi >/dev/null 2>&1; then
@@ -141,8 +141,13 @@ elif command -v rocm-smi >/dev/null 2>&1 || [[ -x /opt/rocm/bin/rocm-smi ]]; the
   ROCM_BIN="$(command -v rocm-smi || echo /opt/rocm/bin/rocm-smi)"
   AMD_GPU="$("$ROCM_BIN" --showid --json 2>/dev/null | head -1 || true)"
   say "AMD GPU detected via ${ROCM_BIN}."
+elif grep -qsx 'DRIVER=amdgpu' /sys/class/drm/card[0-9]*/device/uevent; then
+  # No ROCm: the agent reads GPU metrics from /sys/class/drm directly
+  # and the process list from DRM fdinfo, so the amdgpu driver is enough.
+  VENDOR_BIN="amdgpu-sysfs"
+  say "AMD GPU detected (amdgpu driver, no ROCm: metrics OK, process list may be partial)."
 else
-  die "Neither nvidia-smi nor rocm-smi found in PATH. Install vendor drivers (NVIDIA driver, or ROCm under /opt/rocm) then re-run."
+  die "No NVIDIA or AMD GPU found (no nvidia-smi, rocm-smi or amdgpu card). Install the vendor driver then re-run."
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -245,6 +250,8 @@ if [[ "$VENDOR_BIN" == "rocm-smi" ]]; then
     echo "GPU_VENDOR=amd"
     echo "ROCM_SMI_PATH=${ROCM_BIN}"
   } >> "$ENV_FILE"
+elif [[ "$VENDOR_BIN" == "amdgpu-sysfs" ]]; then
+  echo "GPU_VENDOR=amd" >> "$ENV_FILE"
 else
   echo "GPU_VENDOR=nvidia" >> "$ENV_FILE"
 fi

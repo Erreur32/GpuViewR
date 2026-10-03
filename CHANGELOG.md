@@ -5,6 +5,13 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **AMD GPUs without ROCm were not detected by the installers.** `install.sh` installed the hub without its local sidecar, and the agent installers (`install-agent.sh`, systemd) aborted, although GPU metrics only need the `amdgpu` driver (`/sys/class/drm`). All three now also detect an `amdgpu` card. The Docker paths additionally require `/dev/kfd`, which the AMD compose files map.
+- **NVIDIA without the NVIDIA Container Toolkit broke the Docker installs.** `install.sh` picked the `nvidia` profile and `docker compose up` failed on the missing runtime. It now installs the hub alone, prints the command to fix the toolkit, and clears a stale `COMPOSE_PROFILES=nvidia` on re-run. `install-agent.sh` stops with the same hint instead of a Docker error.
+
 ## [0.9.18] - 2026-10-03
 
 ### Fixed

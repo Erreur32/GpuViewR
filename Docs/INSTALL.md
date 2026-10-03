@@ -32,6 +32,19 @@ curl -fsSL https://raw.githubusercontent.com/Erreur32/GpuViewR/main/install.sh |
 secrets, LAN IP) and starts the stack. Open `http://<your-host-ip>:7510`,
 the first user becomes admin.
 
+Vendor detection, written to `COMPOSE_PROFILES` in `.env`:
+
+| Host | Result |
+|---|---|
+| `nvidia-smi` + NVIDIA Container Toolkit (Docker `nvidia` runtime) | `nvidia` |
+| `nvidia-smi` but no toolkit | hub only, with the command to fix it |
+| `rocm-smi`, or an `amdgpu` card without ROCm, and `/dev/kfd` | `amd` |
+| `amdgpu` card but no `/dev/kfd` | hub only, with a hint |
+| no GPU | hub only (aggregator) |
+
+Install the missing piece and re-run `install.sh`: it switches the profile
+on.
+
 - Run from a session landing dir (`/`, `$HOME`, `/root`, `/tmp`), the
   script falls back to `$HOME/gpuviewr`. Set `GPUVIEWR_INSTALL_DIR=/custom/path`
   to force a target.
@@ -89,7 +102,7 @@ OS, Ampere, etc.).
 | Linux + AMD GPU | Yes, needs the `amdgpu` driver (ROCm for the process list) | [AMD](#amd-hub--local-gpu) |
 | Linux, no GPU | No, aggregator only | [Hub only](#hub-only-aggregator) |
 | macOS, Docker Desktop (Intel / Apple Silicon) | No, aggregator only ([details](#hub-on-macos-docker-desktop)) | [Hub only](#hub-only-aggregator) |
-| Windows | Not supported as a hub, use the Windows agent ([Remote hosts](REMOTE_HOSTS.md)) | |
+| Windows | No documented hub. Docker Desktop on WSL2 should run it as an aggregator, untested. Monitor Windows machines with the [Windows agent](REMOTE_HOSTS.md) | [Hub only](#hub-only-aggregator) |
 
 `install.sh` only covers Linux. Intel GPUs and Apple Silicon are monitored
 through agents, not the hub sidecar.
@@ -411,8 +424,10 @@ docker compose logs gpuviewr-hub | grep -iE 'vendor|agent'
 docker compose logs gpuviewr-hub-agent | tail -20
 ```
 
-- `COMPOSE_PROFILES` empty in `.env`: no sidecar started. Set it to
-  `nvidia` or `amd`, or re-run `install.sh`.
+- `COMPOSE_PROFILES` empty in `.env`: no sidecar started. `install.sh`
+  leaves it empty (and clears a stale value) when the GPU's sidecar can't
+  start, see the [detection table](#quick-install). Fix what it reported,
+  then re-run `install.sh`.
 - AMD: `rocm-smi` exits 0 with empty output: permissions on `/dev/kfd` or
   `LD_LIBRARY_PATH`. The compose defaults work on Debian; override
   `VIDEO_GID` / `RENDER_GID` if `getent group video render` shows other
