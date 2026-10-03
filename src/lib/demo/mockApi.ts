@@ -1,5 +1,5 @@
 // Browser-side mock for /api/* in the public demo build.
-import { isFleetDemo, fakeFleetHosts, fakeFleetHealth } from './mockFleet';
+import { isFleetDemo, fakeFleetHosts, fakeFleetHealth, findDemoHost } from './mockFleet';
 // All write endpoints are no-ops that return shapes the UI expects, so
 // nothing leaves the tab and nothing is persisted server-side.
 import {
@@ -19,6 +19,7 @@ import {
   fakeSystem,
   fakeUpdateConfig,
   fakeUpdateResult,
+  fakeWindowsProcesses,
   rangeToSec,
   sampleAt,
   type DemoRule,
@@ -113,7 +114,7 @@ function handleHealthSystem(ctx: RouteCtx): Response | null {
     });
   }
   if (ctx.url.pathname === '/api/hosts') {
-    // Fleet demo: return the 4 fake hosts. Single demo: just the
+    // Fleet demo: return the 5 fake hosts. Single demo: just the
     // local row so the FleetIndicator stays hidden (≤1 host).
     const now = Math.floor(Date.now() / 1000);
     if (isFleetDemo()) return json({ hosts: fakeFleetHosts(), now });
@@ -165,8 +166,17 @@ function handleGpu(ctx: RouteCtx): Response | null {
   }
   if (ctx.url.pathname === '/api/processes') {
     const idx = gpuParam(ctx.url);
-    const processes = fakeProcesses(idx);
-    return json({ timestamp_epoch: Math.floor(Date.now() / 1000), count: processes.length, processes });
+    const timestamp_epoch = Math.floor(Date.now() / 1000);
+    const installMode = isFleetDemo() ? findDemoHost(ctx.url.searchParams.get('host'))?.installMode : null;
+    // macOS agents send no process snapshot yet: mirror the hub's reply.
+    if (installMode === 'macos') {
+      return json({
+        timestamp_epoch, count: 0, processes: [],
+        reason: 'no recent process snapshot from this agent (capability disabled or agent offline)',
+      });
+    }
+    const processes = installMode === 'windows' ? fakeWindowsProcesses(idx) : fakeProcesses(idx);
+    return json({ timestamp_epoch, count: processes.length, processes });
   }
   return null;
 }

@@ -58,7 +58,7 @@ export default function DemoBanner() {
             color: 'inherit',
           }}
         >
-          Multi-host (4)
+          Multi-host (5)
         </button>
       </span>
       <a href="https://github.com/Erreur32/GpuViewR" className="underline" target="_blank" rel="noreferrer noopener">
