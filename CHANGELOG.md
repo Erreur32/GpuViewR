@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] - 2026-10-03
+
+### Added
+
+- **"Unit" badge in the Hosts list.** A systemd agent now reports whether it holds `CAP_SYS_PTRACE`. When the agent is up to date but its unit predates v0.10.2, a badge next to the version explains why (auto-update only replaces the agent bundle, the unit belongs to root) and copies the `install.sh --upgrade` command. Shown whatever the VRAM use, so an idle llama.cpp no longer hides the problem. Installs made with `--no-ptrace` are not flagged.
+
+### Changed
+
+- **Settings > Updates saves on its own.** The switch is saved when toggled and the check frequency when the field is left (or Enter), clamped to 1-168 hours. The Save button is gone and the Check button is highlighted.
+
+### Fixed
+
+- Demo mode: saving the update settings failed (the mock expected `PUT`, the app sends `PATCH`).
+
 ## [0.10.3] - 2026-10-03
 
 ### Added
