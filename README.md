@@ -47,6 +47,9 @@
 **One dashboard for a mixed fleet**: NVIDIA, AMD and Intel GPUs on Linux,
 Windows and macOS, each host with its own colour on every chart.
 
+✅ **Agents used daily** on Linux (NVIDIA, AMD incl. APUs) and Windows
+(NVIDIA). Other combinations: see [what is tested](#roadmap-and-help-wanted).
+
 </div>
 
 <div align="center">
@@ -90,7 +93,7 @@ Windows and macOS, each host with its own colour on every chart.
 - **Windows**, **in development**: no documented hub yet. Docker Desktop
   on WSL2 should run it as an aggregator, untested.
 
-macOS and Windows need user feedback to be finished, see
+The hub on macOS and Windows needs user feedback to be finished, see
 [Roadmap and help wanted](#roadmap-and-help-wanted).
 
 The machines you monitor need no Docker: agents run natively on Linux,
@@ -123,7 +126,9 @@ it becomes admin.
 ## Add a machine
 
 In the hub: **Settings → Hosts → + Add host**. The dialog gives a
-ready-to-paste install command for Linux, Docker, Windows or macOS. See
+ready-to-paste install command for Linux, Docker, Windows or macOS. Linux
+(NVIDIA, AMD) and Windows (NVIDIA) agents are used daily; macOS and Intel
+still need testers. See
 [Docs/REMOTE_HOSTS.md](Docs/REMOTE_HOSTS.md) for each platform, multi-hub
 and auto-update.
 
@@ -140,20 +145,29 @@ and auto-update.
 
 ## Roadmap and help wanted
 
-Linux (NVIDIA and AMD) is stable. macOS and Windows are still in
-development: no test hardware here, so finishing them depends on your
-reports. Open an [issue](https://github.com/Erreur32/GpuViewR/issues) with
-what you see, even "it works".
+**The agents work today** on most machines: Linux with NVIDIA or AMD
+(systemd or Docker, APUs included) and Windows with NVIDIA, all running
+daily against a Linux hub, with the LLM-aware process list. What remains
+is hardware nobody has tested yet (macOS, Intel, AMD / Intel on Windows)
+and the hub outside Linux.
+
+Your reports are what moves those forward: open an
+[issue](https://github.com/Erreur32/GpuViewR/issues) with what you see, even
+"it works".
 
 | Area | Status | How you can help |
 |---|---|---|
-| macOS agent (Apple Silicon) | In development, tested on synthetic data only | Two-minute capture: [Help the macOS agent](agent/README.md#help-the-macos-agent) |
+| **Linux agent, NVIDIA** (systemd or Docker) | ✅ Works, used daily | |
+| **Linux agent, AMD** with ROCm, APUs included (Strix Halo) | ✅ Works, used daily | |
+| **Windows agent, NVIDIA** | ✅ Works, used daily on an RTX 3090 Ti gaming PC (GPU metrics and process list) | |
+| **Hub on Linux + Docker** | ✅ Works, used daily | |
+| Windows agent, AMD / Intel GPU | Works through Windows performance counters; GPU % not yet confirmed on real AMD / Intel hardware | Report whether GPU % moves under load |
+| AMD without ROCm (v0.10.0) | Tested on simulated hosts only | Report the installer output |
+| Intel GPUs on Linux, i915 / xe (v0.11.0) | Tested on fixtures only | Report GPU %, memory and the process list |
+| macOS agent (Apple Silicon) | Tested on synthetic data only, never on a real Mac | Two-minute capture: [Help the macOS agent](agent/README.md#help-the-macos-agent) |
 | macOS process list | Planned, needs a Mac to build against | Same capture as above |
-| Windows agent, AMD / Intel GPU | In development, GPU % confirmed on NVIDIA only | Report whether GPU % moves under load |
-| Hub on macOS (Docker Desktop) | In development, aggregator only | Report whether it starts and receives agents |
-| Hub on Windows (Docker Desktop / WSL2) | In development, untested | Same |
-| AMD without ROCm (v0.10.0) | New, tested on simulated hosts only | Report the installer output |
-| Intel GPUs on Linux, i915 / xe (v0.11.0) | New, tested on fixtures only | Report GPU %, memory and the process list |
+| Hub on macOS (Docker Desktop) | Aggregator only, untested | Report whether it starts and receives agents |
+| Hub on Windows (Docker Desktop / WSL2) | Untested | Same |
 | Filesystem handshake (replaces the sidecar bootstrap secret) | Planned | |
 | Roles and permissions (RBAC) | Planned | |
 
