@@ -6,7 +6,6 @@ import { useHostsStore } from './store/hostsStore';
 import LoginPage from './components/login/LoginPage';
 import Dashboard from './components/dashboard/Dashboard';
 import AlertsPage from './components/alerts/AlertsPage';
-import LogsPage from './components/logs/LogsPage';
 import SettingsPage from './components/settings/SettingsPage';
 import SystemPage from './components/system/SystemPage';
 import FleetPage from './components/fleet/FleetPage';
@@ -69,7 +68,8 @@ export default function App() {
           <Route path="/fleet" element={<FleetPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/system" element={<SystemPage />} />
-          <Route path="/logs" element={<LogsPage />} />
+          {/* Logs moved under Settings; keep old bookmarks working. */}
+          <Route path="/logs" element={<Navigate to="/settings/logs" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/:tab" element={<SettingsPage />} />
         </Route>

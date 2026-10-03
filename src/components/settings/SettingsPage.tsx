@@ -20,6 +20,7 @@ import {
   BellRing,
   Server,
   MoveHorizontal,
+  FileText,
 } from "lucide-react";
 import { useUiStore, DEFAULT_THRESHOLDS, CONTENT_WIDTH } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
@@ -31,6 +32,8 @@ import DatabaseSettings from "./DatabaseSettings";
 import ExportsSettings from "./ExportsSettings";
 import AboutSettings from "./AboutSettings";
 import HostsSettingsTab from "./HostsSettingsTab";
+import LogsPage from "../logs/LogsPage";
+import Icon, { type IconKey } from "../ui/icons/IconRegistry";
 
 type TabId =
   | "general"
@@ -39,11 +42,12 @@ type TabId =
   | "hosts"
   | "database"
   | "updates"
+  | "logs"
   | "about";
 
-const LANGUAGES = [
-  { code: "en", label: "English" },
-  { code: "fr", label: "Français" },
+const LANGUAGES: ReadonlyArray<{ code: string; label: string; flag: IconKey }> = [
+  { code: "en", label: "English", flag: "flag.gb" },
+  { code: "fr", label: "Français", flag: "flag.fr" },
 ];
 
 export default function SettingsPage() {
@@ -87,8 +91,8 @@ export default function SettingsPage() {
   const hostCount = useHostsStore((s) => s.hosts.length);
   const showHostsTab = isAdmin || hostCount > 1;
   const VALID_TABS: ReadonlyArray<TabId> = showHostsTab
-    ? ["general", "theme", "exports", "hosts", "database", "updates", "about"]
-    : ["general", "theme", "exports", "database", "updates", "about"];
+    ? ["general", "theme", "exports", "hosts", "database", "updates", "logs", "about"]
+    : ["general", "theme", "exports", "database", "updates", "logs", "about"];
   const fallback =
     (localStorage.getItem("gpuviewr.settingsTab") as TabId | null) ?? "general";
   const tab: TabId = (VALID_TABS as readonly string[]).includes(tabParam ?? "")
@@ -130,11 +134,12 @@ export default function SettingsPage() {
       : []),
     { id: "database", label: t("settings.tab_database"), icon: Database },
     { id: "updates", label: t("settings.tab_updates"), icon: RefreshCw },
+    { id: "logs", label: t("settings.tab_logs"), icon: FileText },
     { id: "about", label: t("settings.tab_about"), icon: Info },
   ];
 
   return (
-    <div className="settings-area space-y-6 max-w-5xl">
+    <div className="settings-area space-y-6 max-w-[var(--gv-settings-max)]">
       <header>
         <h1 className="text-2xl font-bold">{t("settings.title")}</h1>
         <p className="text-sm" style={{ color: "var(--gv-text-muted)" }}>
@@ -291,10 +296,11 @@ export default function SettingsPage() {
               {LANGUAGES.map((l) => (
                 <button
                   key={l.code}
-                  className="seg-btn"
+                  className="seg-btn inline-flex items-center gap-2"
                   aria-pressed={i18n.language?.startsWith(l.code)}
                   onClick={() => setLang(l.code)}
                 >
+                  <Icon name={l.flag} size={12} title={l.label} />
                   {l.label}
                 </button>
               ))}
@@ -414,6 +420,7 @@ export default function SettingsPage() {
       {tab === "hosts" && showHostsTab && <HostsSettingsTab />}
       {tab === "database" && <DatabaseSettings />}
       {tab === "updates" && <UpdateSettings />}
+      {tab === "logs" && <LogsPage />}
       {tab === "about" && <AboutSettings />}
     </div>
   );

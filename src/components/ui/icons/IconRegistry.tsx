@@ -22,7 +22,10 @@ export type IconKey =
   | 'platform.linux'
   | 'platform.macos'
   | 'platform.docker'
-  | 'platform.systemd';
+  | 'platform.systemd'
+  // Language flags (settings language switch)
+  | 'flag.gb'
+  | 'flag.fr';
 
 export interface IconProps {
   size?: number;
@@ -166,6 +169,44 @@ const Systemd = ({ size = 16, title = 'systemd', style }: IconProps) => (
   </svg>
 );
 
+// Flags are SVG rather than emoji: Windows renders flag emoji as plain
+// two-letter codes. 3:2 ratio, brand colors hardcoded like vendor logos.
+const FlagGb = ({ size = 16, title = 'English', style }: IconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 60 40"
+    width={size * 1.5}
+    height={size}
+    role="img"
+    aria-label={title}
+    style={{ ...baseStyle, borderRadius: 2, ...style }}
+  >
+    <title>{title}</title>
+    <path fill="#012169" d="M0 0h60v40H0z"/>
+    <path stroke="#fff" strokeWidth="8" d="M0 0l60 40M60 0L0 40"/>
+    <path stroke="#C8102E" strokeWidth="3" d="M0 0l60 40M60 0L0 40"/>
+    <path stroke="#fff" strokeWidth="12" d="M30 0v40M0 20h60"/>
+    <path stroke="#C8102E" strokeWidth="7" d="M30 0v40M0 20h60"/>
+  </svg>
+);
+
+const FlagFr = ({ size = 16, title = 'Français', style }: IconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 3 2"
+    width={size * 1.5}
+    height={size}
+    role="img"
+    aria-label={title}
+    style={{ ...baseStyle, borderRadius: 2, ...style }}
+  >
+    <title>{title}</title>
+    <path fill="#002395" d="M0 0h1v2H0z"/>
+    <path fill="#fff" d="M1 0h1v2H1z"/>
+    <path fill="#ED2939" d="M2 0h1v2H2z"/>
+  </svg>
+);
+
 export const Icons: Record<IconKey, React.FC<IconProps>> = {
   'vendor.nvidia': Nvidia,
   'vendor.amd': Amd,
@@ -174,6 +215,8 @@ export const Icons: Record<IconKey, React.FC<IconProps>> = {
   'platform.macos': MacOS,
   'platform.docker': Docker,
   'platform.systemd': Systemd,
+  'flag.gb': FlagGb,
+  'flag.fr': FlagFr,
 };
 
 interface IconComponentProps extends IconProps {

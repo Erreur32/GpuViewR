@@ -7,7 +7,6 @@
     "dashboard": "Tableau de bord",
     "alerts": "Alertes",
     "system": "Machine",
-    "logs": "Journaux",
     "settings": "Réglages"
   },
   "auth": {
@@ -150,7 +149,6 @@
     "events_cleared": "Événements supprimés"
   },
   "logs": {
-    "title": "Journaux serveur",
     "subtitle": "Activité récente du backend, filtrable",
     "auto_refresh": "Rafraîchissement auto",
     "all_scopes": "Tous les scopes",
@@ -173,6 +171,7 @@
     "tab_hosts": "Hôtes",
     "tab_database": "Base de données",
     "tab_updates": "Mises à jour",
+    "tab_logs": "Journaux",
     "tab_about": "À propos",
     "tab_custom": "Custom",
     "content_width": "Largeur de la page",

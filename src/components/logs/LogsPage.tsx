@@ -22,6 +22,7 @@ const LEVEL_COLOR: Record<Exclude<Level, 'all'>, string> = {
   debug: 'var(--gv-text-dim)',
 };
 
+/** Rendered as the Settings > Logs tab; the tab strip names the page, so no h1. */
 export default function LogsPage() {
   const { t } = useTranslation();
   const [level, setLevel] = useState<Level>('all');
@@ -64,7 +65,6 @@ export default function LogsPage() {
     <div className="space-y-4">
       <header className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{t('logs.title')}</h1>
           <p className="text-sm" style={{ color: 'var(--gv-text-muted)' }}>{t('logs.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
