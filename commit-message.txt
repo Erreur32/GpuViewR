@@ -1,7 +1,9 @@
-release: v0.10.4 outdated systemd unit badge, updates auto-save
+release: v0.11.0 LLM server APIs, GTT, Intel, process alerts and history
 
-- Added: Hosts list "Unit" badge when a systemd agent is current but its
-  unit predates v0.10.2 (no CAP_SYS_PTRACE); click copies --upgrade.
-- Changed: Settings > Updates auto-saves (switch on toggle, frequency on
-  blur/Enter), Save button removed, Check button highlighted.
-- Fixed: demo update settings mock answers PATCH.
+- Added: agent queries Ollama / llama.cpp / vLLM APIs (exact model, asleep
+  state, unload countdown); GTT per process; Intel i915/xe GPUs (sysfs +
+  fdinfo, unverified on real hardware); container badge.
+- Added: Settings > LLM (naming rules, per-host server URLs), pushed to
+  agents; process alerts (GPU memory, process missing); Fleet LLM models
+  card; Top over 24 h per process.
+- Fixed: webhook alerts on host metrics printed undefined.
