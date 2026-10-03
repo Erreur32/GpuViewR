@@ -1,12 +1,9 @@
-release: v0.10.0 installer GPU detection and install docs
+release: v0.10.1 settings width, language flags, logs tab
 
-- Fixed: installers now detect AMD GPUs without ROCm (amdgpu card in
-  /sys/class/drm; Docker paths also need /dev/kfd).
-- Fixed: NVIDIA without the NVIDIA Container Toolkit no longer breaks the
-  Docker installs: install.sh starts the hub alone with the fix command
-  and clears a stale COMPOSE_PROFILES=nvidia; install-agent.sh stops with
-  a clear hint.
-- Added: supported hub platforms and compose examples (hub only, NVIDIA,
-  AMD) in Docs/INSTALL.md, reorganized README Install section.
-- Changed: English-only docs with a Docs/ index, ws 8.22.0, demo gains a
-  Windows host.
+- Changed: the Settings panel follows the Page width slider instead of
+  a fixed 1024 px.
+- Changed: Logs moved from the top nav to a Settings tab before About;
+  /logs redirects to /settings/logs.
+- Added: SVG flags next to the language choices.
+- Added: Docs/INSTALL.md section on Ollama model names (sha256 badge to
+  model:tag) for the Docker sidecar and the systemd agent.

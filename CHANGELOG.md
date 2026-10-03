@@ -5,6 +5,18 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-10-03
+
+### Added
+
+- **Language flags** next to English and Français in Settings > General (SVG, emoji flags render as plain letters on Windows).
+- **Ollama model names docs.** New section in `Docs/INSTALL.md` explaining how to replace the `sha256:` badge of an Ollama runner with the model name: `OLLAMA_DIR` and the volume for the Docker sidecar, `OLLAMA_MANIFESTS_DIR` for the systemd agent. `OLLAMA_DIR` and `OLLAMA_MANIFESTS_DIR` are now in the variable tables.
+
+### Changed
+
+- **Settings panel follows the Page width slider.** It was capped at 1024 px whatever the setting; it now grows with the page width above the default and uses the full screen on Full width.
+- **Logs moved into Settings**, as a tab before About. The top nav entry is gone; `/logs` redirects to `/settings/logs`.
+
 ## [0.10.0] - 2026-10-03
 
 ### Added
