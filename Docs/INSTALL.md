@@ -15,6 +15,7 @@ same compose stack. To monitor other machines, see
 - [Hub on macOS (Docker Desktop)](#hub-on-macos-docker-desktop)
 - [First login](#first-login)
 - [Configuration](#configuration)
+- [Ollama model names](#ollama-model-names)
 - [Troubleshooting](#troubleshooting)
 
 ## Quick install
@@ -412,8 +413,54 @@ All settings are read from the `.env` next to `docker-compose.yaml`
 | `VIDEO_GID` / `RENDER_GID` | `44` / `109` | AMD only. Override if `getent group video render` shows other numbers (ROCm sometimes moves `render` to 992). |
 | `AUTO_UPDATE_CHECK_INTERVAL_MS` | 1 hour | How often the hub checks connected agents for a pending update. |
 | `AUTO_UPDATE_COOLDOWN_MS` | 5 minutes | Minimum delay between two update pushes to the same agent. |
+| `OLLAMA_DIR` | _none_ | Host Ollama directory, mounted read-only into the sidecar. See [Ollama model names](#ollama-model-names). |
 
 Agent-side variables are listed in [`agent/README.md`](../agent/README.md#configuration-environment-variables).
+
+## Ollama model names
+
+In the process table, an Ollama runner shows a badge like
+`sha256:c8985d236593` by default: the runner command line only holds the
+weights blob digest. To show the real name (`llama3.1:8b`), the agent reads
+the Ollama manifests and maps each digest to its `model:tag`.
+
+Find the Ollama directory on the host (the one holding `models/manifests`):
+
+| Ollama install | Directory |
+|---|---|
+| Official Linux script (systemd, `ollama` user) | `/usr/share/ollama/.ollama` |
+| Run as root | `/root/.ollama` |
+| Run as a normal user | `~/.ollama` |
+| `OLLAMA_MODELS` set | its parent: the manifests are in `$OLLAMA_MODELS/manifests` |
+
+**Docker sidecar (hub `docker-compose.yaml`)**
+
+1. Add the directory to `.env`:
+   ```bash
+   OLLAMA_DIR=/usr/share/ollama/.ollama
+   ```
+2. In `docker-compose.yaml`, uncomment this line under `volumes:` of your
+   sidecar (`agent-nvidia` or `agent-amd`):
+   ```yaml
+   - ${OLLAMA_DIR:-/usr/share/ollama/.ollama}:/host/ollama:ro
+   ```
+   `OLLAMA_MANIFESTS_DIR: /host/ollama/models/manifests` is already set.
+3. `docker compose up -d` to recreate the container.
+
+For a standalone agent compose file (`docker-compose.agent.*.yaml`), add both
+the volume and `OLLAMA_MANIFESTS_DIR: /host/ollama/models/manifests` yourself.
+
+**systemd agent**: `/usr/share/ollama/.ollama` is tried automatically, no
+change needed if it is readable. The agent runs as the `gpuviewr-agent`
+user, so `~/.ollama` of another user or `/root/.ollama` are not found or not
+readable. For those, add `OLLAMA_MANIFESTS_DIR=<dir>/models/manifests` to
+`/etc/gpuviewr-agent.env`, give `gpuviewr-agent` read access to that
+directory, then `systemctl restart gpuviewr-agent`.
+
+**Check**: the badge shows the name after the next refresh. The manifest
+index is rebuilt every 5 minutes, so a model pulled just now can show its
+digest for a few minutes. With no readable manifests, the agent keeps
+showing the digest, nothing else breaks.
 
 ## Troubleshooting
 
