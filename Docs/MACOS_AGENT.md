@@ -91,7 +91,7 @@ In `agent/src/index.ts`:
 In `agent/src/transport.ts`, extend the `InstallMode` type to
 `'docker' | 'systemd' | 'windows' | 'macos' | 'unknown'` and make
 `detectInstallMode` return `'macos'` when `process.platform === 'darwin'`.
-On the hub side, `server/database/models/Host.ts:23` must accept the same value.
+On the hub side, `server/database/models/Host.ts` must accept the same value.
 The typecheck will already complain at the places where `install_mode` is tested on the hub
 (`server/services/agentIngestWS.ts`); update them to allow
 auto-update on macOS (see §8).
@@ -127,7 +127,7 @@ Notes:
 Node-side plist parser: use `node:stream` + a buffer delimited on
 `\x00`, then a mini plist parser. Do **not** depend on an npm package
 (the implicit repo rule is zero deps other than `ws`, see
-`agent/package.json:18-20`). Apple plist is XML; a naive regex parser on
+`agent/package.json`). Apple plist is XML; a naive regex parser on
 `<key>...</key><integer>...</integer>` covers the needs and is testable
 with fixtures (see §11). Otherwise adding a `fast-plist` dependency or equivalent
 (~30 KB) **is acceptable if justified** but needs discussion.
@@ -136,7 +136,7 @@ with fixtures (see §11). Otherwise adding a `fast-plist` dependency or equivale
 
 ### 2.2 Mapping to the `GpuSample` schema
 
-The contract is `server/services/parsers/nvidia.ts:26-48`. Recommended mapping:
+The contract is `server/services/parsers/nvidia.ts`. Recommended mapping:
 
 | `GpuSample` field | macOS source | Note |
 |---|---|---|
@@ -211,7 +211,7 @@ only PIDs that were recently GPU-busy.)
 
 On M1 (the first Apple Silicon), `--samplers smc` often outputs nothing.
 Acceptable: `temperature = 0` (the schema requires `number not null`, see
-`nvidia.ts:31`), not ideal but consistent with `gpuWindowsPdh.ts:203`, which also hardcodes
+`nvidia.ts`), not ideal but consistent with `gpuWindowsPdh.ts`, which also hardcodes
 `temperature: 0` when PDH does not provide it. Document that on M1 the
 temperature shows "0°C" and that this is expected.
 
@@ -384,7 +384,7 @@ one-liners (Linux / macOS / Windows). See §6.
 
 ### 5.1 Current state
 
-The `GpuSample` contract (`server/services/parsers/nvidia.ts:26-48`) has 21
+The `GpuSample` contract (`server/services/parsers/nvidia.ts`) has 21
 fields. All are nullable except `gpu_index`, `name`, `temperature`,
 `memory_used`, `power`, `timestamp`, `timestamp_epoch`. The persistor
 (`server/services/agentMetricsPersistor.ts`) writes to `gpu_metrics`
@@ -420,7 +420,7 @@ already accepts `null` everywhere (see `GpuMetric.ts`; only `memory_used` and
 
 To let the UI tell a Mac host apart and show "Unified Memory"
 rather than "VRAM" (see §6), extend hello.capabilities. Today
-(`transport.ts:305-310`):
+(`transport.ts`):
 
 ```
 capabilities: { gpu, system, temps, processes }
@@ -433,8 +433,8 @@ capabilities: { gpu, system, temps, processes, unified_memory?: boolean, gpu_arc
 ```
 
 The hub already stores this as a JSON string in `hosts.capabilities`
-(`Host.ts:34,90`), so no DB migration. On the ingest side,
-`agentIngestWS.ts:556` re-serializes it as-is. The UI reads the string and parses it
+(`Host.ts`), so no DB migration. On the ingest side,
+`agentIngestWS.ts` re-serializes it as-is. The UI reads the string and parses it
 when needed.
 
 **Simpler alternative**: use only `install_mode === 'macos'`
@@ -445,6 +445,8 @@ this is what shipped; `capabilities` is unchanged.)
 ---
 
 ## 6. Hub display
+
+> **Done in v0.9.0**: `src/lib/memoryFormat.ts` (`memoryLabel`, `isUnifiedMemoryHost`) labels unified memory on macOS hosts, and the install picker has a macOS tab (`src/components/settings/_installCommands.tsx`). The lists below are the original plan.
 
 ### 6.1 Files to modify
 
@@ -474,7 +476,7 @@ Rather than touching 10 components one by one, introduce a **single helper**
 `"Unified"` if `host.install_mode === 'macos'`. Components import this
 helper and replace their hardcoded label string.
 
-For the frontend store (`src/store/gpuStore.ts` probably, to be confirmed), we
+For the frontend store (`src/store/gpuStore.ts`), we
 need the host's `install_mode` for each displayed sample, already available
 via `/api/hosts`, which is typed `HostRecord`. Minimal plumbing.
 
@@ -493,7 +495,7 @@ curl -fsSL https://gpu.example.com/install.mac.sh | bash -s -- \
 ```
 
 The component already has the multi-recipe logic (see the i18n key
-`agent_outdated_help_both` in `fr.json:505`). Extend the enum to 4 cases.
+`agent_outdated_help_both` in `fr.json`). Extend the enum to 4 cases.
 
 ---
 
@@ -510,7 +512,7 @@ per-OS rebuild is needed.**
 The current CI (`.github/workflows/ci.yml`, `docker-publish.yml`) only builds
 the Docker images (linux/amd64 + linux/arm64). `agent.mjs` is included in
 the hub image and served via `/agent.mjs` (see `BUNDLE_PATH`,
-`agentIngestWS.ts:185`).
+`agentIngestWS.ts`).
 
 ### 7.2 Consequence for macOS
 
@@ -558,7 +560,7 @@ a second. The **Linux** path works as-is:
 `writeFileSync(.new) + fsync + rename(.new to target) + exit(0)`. Atomic
 rename(2) works on APFS (the macOS filesystem) as on ext4.
 
-**Agent code change**: in `transport.ts:439`
+**Agent code change**: in `transport.ts`
 (`const isWin = process.platform === 'win32'`), no change, Mac falls
 into the Linux branch. Good by default.
 
@@ -569,8 +571,8 @@ into the Linux branch. Good by default.
 if (host.install_mode !== 'systemd' && host.install_mode !== 'windows' && host.install_mode !== 'macos') return;
 ```
 
-(Update: done in `agentIngestWS.ts:278,339` and in the periodic scheduler
-`agentUpdateScheduler.ts:54`, which also used to skip Windows hosts, fixed
+(Update: done in `agentIngestWS.ts` and in the periodic scheduler
+`agentUpdateScheduler.ts`, which also used to skip Windows hosts, fixed
 in v0.9.0.)
 
 ### 8.3 Gatekeeper and auto-update
@@ -727,7 +729,7 @@ Follow the pattern of the `agentIngestWS.test.ts` test for the WS wiring.
 
 ### 11.3 CI
 
-The current `npm test` (`agent/package.json:15`, `tsx --test src/**/*.test.ts`)
+The current `npm test` (`agent/package.json`, `tsx --test src/**/*.test.ts`)
 runs on Ubuntu. Fixture-based tests pass everywhere. **No need for a
 macOS runner** for PR1 and PR2. (Update, v0.9.0: the script is now
 `tsx --test $(find src -name '*.test.ts')`, because the glob silently
