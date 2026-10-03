@@ -208,6 +208,48 @@ export function fakeProcesses(gpuIndex: number) {
   ];
 }
 
+/** What a Windows agent reports (PDH counters, see
+ *  agent/src/collectors/processesWindowsPdh.ts): only rows with a real
+ *  VRAM footprint or recent GPU activity, desktop compositor included. */
+export function fakeWindowsProcesses(gpuIndex: number) {
+  const spec = DEMO_GPUS.find((g) => g.index === gpuIndex) ?? DEMO_GPUS[0];
+  return [
+    {
+      pid: 14132,
+      process_name: 'ollama.exe',
+      gpu_uuid: spec.uuid,
+      used_memory: 9800,
+      gpu_index: gpuIndex,
+      type: 'C' as const,
+      command: String.raw`"C:\Users\demo\AppData\Local\Programs\Ollama\ollama.exe" serve`,
+      cpu_pct: 6,
+      gpu_pct: 71,
+    },
+    {
+      pid: 2108,
+      process_name: 'dwm.exe',
+      gpu_uuid: spec.uuid,
+      used_memory: 1563,
+      gpu_index: gpuIndex,
+      type: 'G' as const,
+      command: '"dwm.exe"',
+      cpu_pct: 4,
+      gpu_pct: 3,
+    },
+    {
+      pid: 19460,
+      process_name: 'brave.exe',
+      gpu_uuid: spec.uuid,
+      used_memory: 415,
+      gpu_index: gpuIndex,
+      type: 'G' as const,
+      command: String.raw`"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe" --type=gpu-process`,
+      cpu_pct: 12,
+      gpu_pct: 2,
+    },
+  ];
+}
+
 export function fakeAlertEvents() {
   const now = Math.floor(Date.now() / 1000);
   return [

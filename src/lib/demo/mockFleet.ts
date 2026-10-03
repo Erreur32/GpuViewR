@@ -1,5 +1,5 @@
 // Fleet demo mode — activated by ?fleet=1 in the URL (persisted in
-// localStorage). The demo build is then served with 4 fake hosts
+// localStorage). The demo build is then served with 5 fake hosts
 // instead of just the local one, with periodic status transitions to
 // showcase the multi-host UI: per-host curves on the FleetChart,
 // stats grid in HostCard, lagging/offline pill changes, etc.
@@ -105,7 +105,23 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     phaseOffsetMs: 23000,
     installMode: 'macos',
   },
+  {
+    id: 'a1b2c3d4-gaming-pc-fake-uuid-0000000004',
+    label: 'gaming-pc',
+    hostname: 'GAMING-PC',
+    kind: 'agent',
+    status: 'online',
+    agent_version: '0.3.0',
+    enrolledAt: NOW - 86400 * 2,
+    gpuIndices: [0],
+    phaseOffsetMs: 31000,
+    installMode: 'windows',
+  },
 ];
+
+export function findDemoHost(id: string | null): DemoHost | undefined {
+  return DEMO_FLEET_HOSTS.find((h) => h.id === id);
+}
 
 /** Build a fake host record matching the HostRecord shape in
  *  src/store/hostsStore.ts so /api/hosts can return them as-is. */
