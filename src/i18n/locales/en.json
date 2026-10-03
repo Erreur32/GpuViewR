@@ -106,7 +106,24 @@
     "top_vram_max": "Peak memory",
     "top_vram_avg": "Mean memory",
     "top_gpu_avg": "Mean GPU",
-    "top_seen": "Seen"
+    "top_seen": "Seen",
+    "embedding": "embedding",
+    "embedding_help": "Embedding model: turns text into vectors for search and RAG (e.g. used by Open WebUI for documents), not a chat model. Small, but it still holds GPU memory while loaded.",
+    "filter_title": "Hide small processes",
+    "filter_help": "Hide processes using less GPU memory (VRAM + GTT) than this. Remembered in this browser; the count of hidden rows stays visible.",
+    "filter_off": "All",
+    "filter_active": "≥ {{mib}} MiB",
+    "filter_hidden_one": "{{count}} hidden",
+    "filter_hidden_other": "{{count}} hidden",
+    "filter_none": "Show all",
+    "filter_custom": "Custom",
+    "filter_all_hidden_one": "{{count}} process uses less than {{mib}} MiB and is hidden by the filter.",
+    "filter_all_hidden_other": "All {{count}} processes use less than {{mib}} MiB and are hidden by the filter.",
+    "llm_only": "LLM only",
+    "llm_only_help": "Show only LLM processes (Ollama, llama.cpp, vLLM...). Other GPU processes stay counted as hidden. Saved in this browser.",
+    "llm_only_empty_one": "No LLM on this GPU ({{count}} other process hidden).",
+    "llm_only_empty_other": "No LLM on this GPU ({{count}} other processes hidden).",
+    "processes_gpu_pct_unknown": "Per-process GPU % not reported by this driver (ROCm compute queues are not accounted per process), and several processes share the card, so the card's total is not shown here."
   },
   "alerts": {
     "title": "Alerts",
@@ -354,7 +371,9 @@
     "updates_enable": "Check for updates automatically",
     "updates_frequency": "Check frequency (hours)",
     "updates_frequency_help": "How often the server polls GitHub for new releases. The result is cached for this duration.",
-    "tab_llm": "LLM"
+    "tab_llm": "LLM",
+    "process_filter_help": "Process table: hide processes using less GPU memory (VRAM + GTT) than the threshold. Also switched from the toggle under the table and the filter button above it. Saved in this browser.",
+    "process_filter_threshold": "Threshold"
   },
   "updates": {
     "available_title": "GpuViewR {{version}} is available",

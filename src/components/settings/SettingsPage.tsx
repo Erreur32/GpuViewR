@@ -22,8 +22,9 @@ import {
   MoveHorizontal,
   FileText,
   Bot,
+  Filter,
 } from "lucide-react";
-import { useUiStore, DEFAULT_THRESHOLDS, CONTENT_WIDTH } from "../../store/uiStore";
+import { useUiStore, DEFAULT_THRESHOLDS, CONTENT_WIDTH, PROCESS_MIN_MIB_MAX } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
 import { useHostsStore } from "../../store/hostsStore";
 import { THEMES } from "../../lib/themes";
@@ -318,6 +319,8 @@ export default function SettingsPage() {
             soundEnabled={soundEnabled}
             setSoundEnabled={setSoundEnabled}
           />
+
+          <ProcessFilterSection />
 
           <section className="card p-5 space-y-3">
             <h2 className="font-semibold flex items-center gap-2">
@@ -823,3 +826,43 @@ function ContentWidthSection({ value, onChange }: Readonly<{
     </section>
   );
 }
+
+/** Same preference as the filter in the process table header (uiStore
+ *  processMinMib), so it can be found and reset from Settings too. */
+function ProcessFilterSection() {
+  const { t } = useTranslation();
+  const minMib = useUiStore((s) => s.processMinMib);
+  const setMinMib = useUiStore((s) => s.setProcessMinMib);
+  const on = useUiStore((s) => s.processFilterOn);
+  const setOn = useUiStore((s) => s.setProcessFilterOn);
+  return (
+    <section className="card p-5 space-y-3">
+      <h2 className="font-semibold flex items-center gap-2">
+        <Filter className="w-4 h-4" /> {t("dashboard.filter_title")}
+      </h2>
+      <p className="text-xs" style={{ color: "var(--gv-text-muted)" }}>{t("settings.process_filter_help")}</p>
+      <label className="inline-flex items-center gap-2 cursor-pointer text-sm">
+        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} className="sr-only" />
+        <span className="w-10 h-5 rounded-full transition-colors relative" style={{ background: on ? "var(--gv-accent)" : "var(--gv-surface-alt)" }}>
+          <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+                style={{ transform: on ? "translateX(20px)" : "translateX(0)" }} />
+        </span>
+        {t("dashboard.filter_title")}
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        {t("settings.process_filter_threshold")}
+        <input
+          type="number"
+          min={1}
+          max={PROCESS_MIN_MIB_MAX}
+          step={16}
+          className="input max-w-[140px] !px-2 !py-1 !rounded-md"
+          value={minMib}
+          onChange={(e) => setMinMib(Number.parseInt(e.target.value, 10) || 0)}
+        />
+        MiB
+      </label>
+    </section>
+  );
+}
+

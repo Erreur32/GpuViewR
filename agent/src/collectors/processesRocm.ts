@@ -265,7 +265,10 @@ export function createRocmProcessCollector(
         // cu_occupancy has no per-card breakdown available from
         // rocm-smi, so the same pid-wide value is repeated on every
         // row: an approximation, still strictly better than today's
-        // everything-on-card0 behaviour.
+        // everything-on-card0 behaviour. When rocm-smi reports it as
+        // UNKNOWN (most kernels / APUs), the per-card engine time from
+        // fdinfo gives the process's own GPU % instead: without it the
+        // UI fell back to the whole card's utilisation on every row.
         return devices.map((d) => ({
           pid: p.pid,
           process_name: name || "unknown",
@@ -280,7 +283,7 @@ export function createRocmProcessCollector(
           type: "C" as const,
           command,
           cpu_pct: cpuPct,
-          gpu_pct: p.cu_occupancy,
+          gpu_pct: p.cu_occupancy ?? fdinfoSampler.sample(p.pid, d).gpuPct,
           llm_runtime: llm.runtime,
           llm_model: llm.model,
           llm_hint: llm.hint,

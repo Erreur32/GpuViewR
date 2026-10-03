@@ -320,3 +320,14 @@ body {
 .u-legend th {
   font-weight: 500;
 }
+
+/* Text links / disclosure summaries: muted, accent on hover (theme-aware). */
+.gv-link-hover {
+  color: var(--gv-text-muted);
+  transition: color 120ms ease;
+}
+.gv-link-hover:hover,
+.gv-link-hover:focus-visible {
+  color: var(--gv-accent);
+}
+

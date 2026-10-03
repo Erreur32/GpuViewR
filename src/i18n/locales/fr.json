@@ -106,7 +106,24 @@
     "top_vram_max": "Mémoire max",
     "top_vram_avg": "Mémoire moyenne",
     "top_gpu_avg": "GPU moyen",
-    "top_seen": "Vu"
+    "top_seen": "Vu",
+    "embedding": "embedding",
+    "embedding_help": "Modèle d'embedding : transforme du texte en vecteurs pour la recherche et le RAG (par ex. utilisé par Open WebUI pour les documents), pas un modèle de chat. Petit, mais il occupe de la mémoire GPU tant qu'il est chargé.",
+    "filter_title": "Masquer les petits processus",
+    "filter_help": "Masque les processus qui utilisent moins de mémoire GPU (VRAM + GTT) que ce seuil. Mémorisé dans ce navigateur ; le nombre de lignes masquées reste affiché.",
+    "filter_off": "Tous",
+    "filter_active": "≥ {{mib}} Mio",
+    "filter_hidden_one": "{{count}} masqué",
+    "filter_hidden_other": "{{count}} masqués",
+    "filter_none": "Tout afficher",
+    "filter_custom": "Autre",
+    "filter_all_hidden_one": "{{count}} processus utilise moins de {{mib}} Mio et est masqué par le filtre.",
+    "filter_all_hidden_other": "Les {{count}} processus utilisent moins de {{mib}} Mio et sont masqués par le filtre.",
+    "llm_only": "LLM uniquement",
+    "llm_only_help": "N'affiche que les processus LLM (Ollama, llama.cpp, vLLM...). Les autres processus GPU restent comptés comme masqués. Mémorisé dans ce navigateur.",
+    "llm_only_empty_one": "Aucun LLM sur ce GPU ({{count}} autre processus masqué).",
+    "llm_only_empty_other": "Aucun LLM sur ce GPU ({{count}} autres processus masqués).",
+    "processes_gpu_pct_unknown": "GPU % par processus non fourni par ce driver (les files de calcul ROCm ne sont pas comptées par processus), et plusieurs processus partagent la carte : son total n'est donc pas recopié ici."
   },
   "alerts": {
     "title": "Alertes",
@@ -354,7 +371,9 @@
     "updates_enable": "Vérifier automatiquement les mises à jour",
     "updates_frequency": "Fréquence de vérification (heures)",
     "updates_frequency_help": "Intervalle entre deux interrogations de GitHub. Le résultat est mis en cache pour cette durée.",
-    "tab_llm": "LLM"
+    "tab_llm": "LLM",
+    "process_filter_help": "Tableau des processus : masque ceux qui utilisent moins de mémoire GPU (VRAM + GTT) que le seuil. Activable aussi depuis l'interrupteur sous le tableau et le bouton filtre au-dessus. Mémorisé dans ce navigateur.",
+    "process_filter_threshold": "Seuil"
   },
   "updates": {
     "available_title": "GpuViewR {{version}} est disponible",

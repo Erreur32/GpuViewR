@@ -71,6 +71,13 @@ interface UiState {
    *  per-GPU mini-tile row with util / temp / power + sparkline. */
   fleetView: FleetView;
   contentWidth: number;
+  /** Process table: threshold (MiB of VRAM + GTT) below which processes
+   *  are hidden while processFilterOn. Kept when the filter is switched
+   *  off, so the switch toggles back to the same value. */
+  processMinMib: number;
+  processFilterOn: boolean;
+  /** Process table: show only LLM processes (Ollama, llama.cpp, ...). */
+  processLlmOnly: boolean;
 
   setThemeId: (id: string) => void;
   setGaugeView: (v: GaugeView) => void;
@@ -86,6 +93,10 @@ interface UiState {
   resetChartThresholds: () => void;
   setFleetView: (v: FleetView) => void;
   setContentWidth: (px: number) => void;
+  /** Sets the threshold; 0 switches the filter off. */
+  setProcessMinMib: (mib: number) => void;
+  setProcessFilterOn: (on: boolean) => void;
+  setProcessLlmOnly: (on: boolean) => void;
 
   hydrate: () => void;
 }
@@ -104,7 +115,20 @@ const KEYS = {
   chartPaletteInitialized: 'gpuviewr.chart_palette_initialized',
   fleetView: 'gpuviewr.fleet_view',
   contentWidth: 'gpuviewr.content_width',
+  processMinMib: 'gpuviewr.process_min_mib',
+  processFilterOn: 'gpuviewr.process_filter_on',
+  processLlmOnly: 'gpuviewr.process_llm_only',
 };
+
+/** Threshold used the first time the filter is switched on. */
+const PROCESS_MIN_MIB_DEFAULT = 256;
+
+/** Allowed range for processMinMib; 0 disables the filter. */
+export const PROCESS_MIN_MIB_MAX = 100_000;
+
+function clampProcessMinMib(v: number): number {
+  return Number.isFinite(v) ? Math.min(PROCESS_MIN_MIB_MAX, Math.max(0, Math.round(v))) : 0;
+}
 
 function readLS(key: string, fallback: string): string {
   try {
@@ -156,6 +180,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   chartPaletteInitialized: false,
   fleetView: 'simple',
   contentWidth: CONTENT_WIDTH.default,
+  processMinMib: PROCESS_MIN_MIB_DEFAULT,
+  processFilterOn: false,
+  processLlmOnly: false,
 
   setThemeId: (id) => {
     const t = getTheme(id);
@@ -229,6 +256,26 @@ export const useUiStore = create<UiState>((set, get) => ({
     localStorage.setItem(KEYS.contentWidth, String(w));
     set({ contentWidth: w });
   },
+  setProcessMinMib: (mib) => {
+    const v = clampProcessMinMib(mib);
+    if (v === 0) {
+      get().setProcessFilterOn(false);
+      return;
+    }
+    try {
+      localStorage.setItem(KEYS.processMinMib, String(v));
+      localStorage.setItem(KEYS.processFilterOn, '1');
+    } catch { /* ignore */ }
+    set({ processMinMib: v, processFilterOn: true });
+  },
+  setProcessFilterOn: (on) => {
+    try { localStorage.setItem(KEYS.processFilterOn, on ? '1' : '0'); } catch { /* ignore */ }
+    set({ processFilterOn: on });
+  },
+  setProcessLlmOnly: (on) => {
+    try { localStorage.setItem(KEYS.processLlmOnly, on ? '1' : '0'); } catch { /* ignore */ }
+    set({ processLlmOnly: on });
+  },
 
   hydrate: () => {
     const themeId = readLS(KEYS.theme, 'midnight');
@@ -265,10 +312,13 @@ export const useUiStore = create<UiState>((set, get) => ({
     const fleetView: FleetView = readLS(KEYS.fleetView, 'simple') === 'detailed' ? 'detailed' : 'simple';
     const contentWidth = clampContentWidth(Number.parseInt(readLS(KEYS.contentWidth, String(CONTENT_WIDTH.default)), 10));
     applyContentWidth(contentWidth);
+    const processMinMib = clampProcessMinMib(Number.parseInt(readLS(KEYS.processMinMib, String(PROCESS_MIN_MIB_DEFAULT)), 10)) || PROCESS_MIN_MIB_DEFAULT;
+    const processFilterOn = readLS(KEYS.processFilterOn, '0') === '1';
+    const processLlmOnly = readLS(KEYS.processLlmOnly, '0') === '1';
     set({
       themeId, gaugeView, dashboardView, range, selectedGpu, soundEnabled: sound, chartColors: effectiveColors, timeFormat,
       chartThresholds, chartThresholdsEnabled, chartPaletteInitialized: initialized,
-      fleetView, contentWidth,
+      fleetView, contentWidth, processMinMib, processFilterOn, processLlmOnly,
     });
   },
 }));
