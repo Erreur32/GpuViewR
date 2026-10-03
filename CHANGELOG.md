@@ -5,6 +5,23 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-10-04
+
+### Added
+
+- **"LLM only" switch** under the process table, next to *Top over 24 h*: hides the other GPU processes (count shown). LLM processes are now always listed first.
+- **Hide small processes**: filter button above the process table (0 / 64 / 256 / 1024 MiB or custom), also in Settings > General. Saved per browser; the number of hidden rows stays visible.
+- **Embedding badge** on embedding models (`--embedding`, vLLM `--task embed`, `bge-*`, `*embed*`), to tell them from chat models.
+
+### Changed
+
+- *Top over 24 h* link highlights on hover.
+
+### Fixed
+
+- **Per-process GPU % showed the whole card's value on every row** (e.g. three Ollama runners all at `~100%`). On ROCm, compute queues are not accounted per process (KFD exposes no utilisation, fdinfo has no engine counters for them). The card value is now only shown for a process alone on its card, otherwise `-` with an explanation; the agent uses fdinfo engine time only when a process really has engine counters.
+- Demo mode: the mock now answers the v0.11.0 LLM endpoints.
+
 ## [0.11.0] - 2026-10-03
 
 ### Added
