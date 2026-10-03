@@ -1,11 +1,7 @@
-release: v0.10.2 LLM detection, hidden-process warning, AMD without ROCm
+release: v0.10.3 install.sh --upgrade for systemd agents
 
-- Fixed: llama.cpp Vulkan server missing on AMD systemd agents; the unit
-  grants CAP_SYS_PTRACE with a seccomp filter on ptrace/process_vm_*.
-- Fixed: llama.cpp on an Ollama blob no longer labelled Ollama.
-- Fixed: installer re-run keeps hand-added env vars; ProtectHome=read-only.
-- Added: hidden GPU processes banner and model-name warning icon with
-  copyable fix steps.
-- Added: AMD process list without ROCm (DRM fdinfo only).
-- Added: Ollama names resolved with no config (blob-side manifests,
-  mountinfo host-path mapping); vllm serve, llama-cpp-python, HF cache.
+- Added: install.sh --upgrade refreshes bundle + systemd unit from the
+  existing env file, keeps the host identity, no token needed. Brings the
+  v0.10.2 unit changes (CAP_SYS_PTRACE + seccomp) to older installs.
+- Changed: UI banner, model-name hint and Hosts update button show the
+  --upgrade command; the v0.10.2 ptrace.conf drop-in is removed.
