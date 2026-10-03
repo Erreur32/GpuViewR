@@ -6,7 +6,9 @@
 //   - llama.cpp and vLLM  GET /v1/models  the name the server answers to.
 //
 // Endpoints: Ollama's default http://127.0.0.1:11434 plus any URL the
-// hub sends for this host (Settings > LLM). An Ollama answer is only used
+// hub sends for this host (Settings > LLM). A Docker agent also tries its
+// default gateway on :11434: 127.0.0.1 is its own container there, while
+// an Ollama whose port is published on the host answers on the gateway. An Ollama answer is only used
 // when the blob digest matches exactly, so asking the wrong server is
 // harmless. llama.cpp / vLLM answers carry no such proof, so their
 // `--port` is only tried on 127.0.0.1 when that is the process's own
@@ -20,6 +22,7 @@
 // or a fixed POST to fixed paths, 1.5 s timeout, 256 KiB response cap,
 // JSON parsed defensively; nothing from the response is executed.
 
+import { readFileSync } from "node:fs";
 import type { AgentGpuProcess } from "./processes.js";
 import { logger } from "../logger.js";
 
@@ -141,7 +144,33 @@ function epochOrNull(iso: unknown): number | null {
 export interface LlmProbeOptions {
   /** 127.0.0.1 is the host's loopback (agent not in a container). */
   hostNetwork: boolean;
+  /** Default gateway IPv4 of the agent's network (Docker bridge = host),
+   *  tried for Ollama when !hostNetwork. */
+  gateway?: string | null;
   fetchImpl?: FetchFn;
+}
+
+/** Default IPv4 gateway from /proc/net/route ("00000000" destination,
+ *  little-endian hex gateway). Null when absent or unreadable. */
+export function parseDefaultGateway(routeTable: string): string | null {
+  for (const line of routeTable.split("\n").slice(1)) {
+    const f = line.trim().split(/\s+/);
+    if (f.length < 3 || f[1] !== "00000000" || !/^[0-9A-Fa-f]{8}$/.test(f[2])) continue;
+    const n = Number.parseInt(f[2], 16);
+    if (n === 0) continue;
+    return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, n >>> 24].join(".");
+  }
+  return null;
+}
+
+/** The agent's own default gateway (its network namespace, not
+ *  HOST_PROC). Null outside Linux or when unreadable. */
+export function readDefaultGateway(routeFile = "/proc/self/net/route"): string | null {
+  try {
+    return parseDefaultGateway(readFileSync(routeFile, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 export function createLlmProbe(opts: LlmProbeOptions): LlmProbe {
@@ -210,8 +239,10 @@ export function createLlmProbe(opts: LlmProbeOptions): LlmProbe {
     }).finally(() => inflight.delete(base));
   }
 
+  const gatewayOllama = !opts.hostNetwork && opts.gateway ? `http://${opts.gateway}:11434` : null;
+
   function ollamaBases(): string[] {
-    return [OLLAMA_DEFAULT, ...extra];
+    return [OLLAMA_DEFAULT, ...(gatewayOllama ? [gatewayOllama] : []), ...extra];
   }
 
   function findLoaded(digest: string): OllamaLoaded | null {

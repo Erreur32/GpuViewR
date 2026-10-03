@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createLlmProbe, digestFromModelfile, normalizeEndpoint, serverPort } from "./llmProbe.js";
+import { createLlmProbe, digestFromModelfile, normalizeEndpoint, parseDefaultGateway, serverPort } from "./llmProbe.js";
 import { classifyLLM, sanitizeCustomRules, setCustomLLMRules } from "./llmClassifier.js";
 import type { AgentGpuProcess } from "./processes.js";
 
@@ -178,5 +178,36 @@ test("enrich: oversized or control-character answers are ignored", async () => {
   const [a, b] = probe.enrich([r, o]);
   assert.equal(a.llm_model, null);
   assert.equal(b.llm_model, undefined);
+});
+
+test("parseDefaultGateway: /proc/net/route of the jarvis sidecar", () => {
+  const table = [
+    "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT",
+    "eth0\t00000000\t010014AC\t0003\t0\t0\t0\t00000000\t0\t0\t0",
+    "eth0\t000014AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0",
+  ].join("\n");
+  assert.equal(parseDefaultGateway(table), "172.20.0.1");
+  assert.equal(parseDefaultGateway("Iface\tDestination\tGateway\neth0\t000014AC\t00000000"), null);
+  assert.equal(parseDefaultGateway(""), null);
+});
+
+test("enrich: Docker agent finds Ollama on its gateway, never on 127.0.0.1 alone", async () => {
+  const { fn, calls } = fakeFetch({
+    "http://172.20.0.1:11434/api/ps": { models: [{ name: "hermes3:8b", expires_at: new Date(Date.now() + 12 * 60_000).toISOString() }] },
+    'http://172.20.0.1:11434/api/show {"model":"hermes3:8b"}': { modelfile: `FROM /root/.ollama/models/blobs/sha256-${BLOB}\n` },
+  });
+  const probe = createLlmProbe({ hostNetwork: false, gateway: "172.20.0.1", fetchImpl: fn });
+  const r = row({ llm_runtime: "ollama", llm_model: "hermes3:8b", command: `/usr/lib/ollama/llama-server --model /root/.ollama/models/blobs/sha256-${BLOB} --port 33097`, used_memory: 13_000 });
+  probe.enrich([r]);
+  await settle();
+  const [out] = probe.enrich([r]);
+  assert.ok(out.llm_expires_at, "unload time from the gateway Ollama");
+  assert.ok(calls.some((c) => c.startsWith("GET http://172.20.0.1:11434/api/ps")));
+  // A host-network agent does not add the gateway.
+  const { fn: fn2, calls: calls2 } = fakeFetch({});
+  const hostProbe = createLlmProbe({ hostNetwork: true, gateway: "172.20.0.1", fetchImpl: fn2 });
+  hostProbe.enrich([r]);
+  await settle();
+  assert.equal(calls2.some((c) => c.includes("172.20.0.1")), false);
 });
 
