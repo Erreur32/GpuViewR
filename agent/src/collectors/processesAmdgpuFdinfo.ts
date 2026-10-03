@@ -37,6 +37,10 @@ export interface FdinfoGpuUsage {
   gfxNs: number;
   /** Cumulative drm-engine-compute, summed across this pid's fds. */
   computeNs: number;
+  /** False when no fd reported any drm-engine-* line: the process's GPU
+   *  time is not accounted there (ROCm / KFD compute queues), so 0 ns
+   *  means "unknown", not "idle". Absent = true (older callers). */
+  hasEngine?: boolean;
 }
 
 /** Strip a trailing unit ("123 ns", "123 KiB") and parse the leading integer. */
@@ -72,8 +76,10 @@ function parseFdinfoText(text: string): {
   gttBytes: number;
   gfxNs: number;
   computeNs: number;
+  hasEngine: boolean;
 } {
   let driver: string | null = null;
+  let hasEngine = false;
   let pdev: string | null = null;
   const mem = new Map<string, number>();
   let gfxNs = 0;
@@ -85,12 +91,17 @@ function parseFdinfoText(text: string): {
     const value = line.slice(colon + 1).trim();
     if (key === "drm-driver") driver = value;
     else if (key === "drm-pdev") pdev = value;
-    else if (GFX_KEYS.has(key)) gfxNs += parseLeadingInt(value);
-    else if (key === "drm-engine-compute") computeNs = parseLeadingInt(value);
+    else if (GFX_KEYS.has(key)) {
+      gfxNs += parseLeadingInt(value);
+      hasEngine = true;
+    } else if (key === "drm-engine-compute") {
+      computeNs = parseLeadingInt(value);
+      hasEngine = true;
+    } else if (key.startsWith("drm-engine-")) hasEngine = true;
     else if (key.startsWith("drm-")) mem.set(key, parseMemBytes(value));
   }
   const first = (keys: string[]) => keys.map((k) => mem.get(k)).find((v) => v !== undefined) ?? 0;
-  return { driver, pdev, vramBytes: first(VRAM_KEYS), gttBytes: first(GTT_KEYS), gfxNs, computeNs };
+  return { driver, pdev, vramBytes: first(VRAM_KEYS), gttBytes: first(GTT_KEYS), gfxNs, computeNs, hasEngine };
 }
 
 /**
@@ -244,6 +255,7 @@ export function scanAmdgpuFdinfo(
         existing.gttBytes = Math.max(existing.gttBytes, parsed.gttBytes);
         existing.gfxNs += parsed.gfxNs;
         existing.computeNs += parsed.computeNs;
+        existing.hasEngine = existing.hasEngine || parsed.hasEngine;
       } else {
         perPid.push({
           pdev: parsed.pdev,
@@ -251,6 +263,7 @@ export function scanAmdgpuFdinfo(
           gttBytes: parsed.gttBytes,
           gfxNs: parsed.gfxNs,
           computeNs: parsed.computeNs,
+          hasEngine: parsed.hasEngine,
         });
         result.set(pid, perPid);
       }
@@ -311,6 +324,8 @@ export function createFdinfoGpuSampler(): FdinfoGpuSampler {
               ? "G"
               : null;
 
+      // No engine counters at all: nothing to measure (see hasEngine).
+      if (usage.hasEngine === false) return { gpuPct: null, type };
       const key = sampleKey(pid, usage.pdev);
       const now = Date.now();
       const before = prev.get(key);

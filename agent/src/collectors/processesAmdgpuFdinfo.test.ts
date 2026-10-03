@@ -359,3 +359,26 @@ test("hasPtraceCap: reads bit 19 of CapEff", async () => {
   assert.equal(hasPtraceCap(status), true);
   assert.equal(hasPtraceCap(join(dir, "missing")), false);
 });
+
+test("fdinfo: no drm-engine lines (ROCm / KFD) gives unknown GPU %, not 0", async () => {
+  const proc = await mkdtemp(join(tmpdir(), "gv-kfd-"));
+  await mkdir(join(proc, "50", "fdinfo"), { recursive: true });
+  // Real jarvis capture of an Ollama ROCm runner: memory only.
+  await writeFile(join(proc, "50", "fdinfo", "7"),
+    "drm-driver:\tamdgpu\ndrm-pdev:\t0000:c5:00.0\ndrm-memory-vram:\t2516 KiB\ndrm-memory-gtt: \t14324880 KiB\n");
+  await mkdir(join(proc, "60", "fdinfo"), { recursive: true });
+  await writeFile(join(proc, "60", "fdinfo", "4"),
+    "drm-driver:\tamdgpu\ndrm-pdev:\t0000:c5:00.0\ndrm-engine-gfx:\t0 ns\ndrm-engine-compute:\t0 ns\n");
+  const scan = scanAmdgpuFdinfo(proc);
+  const kfd = scan.get(50)![0];
+  const vk = scan.get(60)![0];
+  assert.equal(kfd.hasEngine, false);
+  assert.equal(kfd.gttBytes, 14324880 * 1024);
+  assert.equal(vk.hasEngine, true);
+  const sampler = createFdinfoGpuSampler();
+  sampler.sample(50, kfd);
+  sampler.sample(60, vk);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(sampler.sample(50, kfd).gpuPct, null);
+  assert.equal(sampler.sample(60, vk).gpuPct, 0);
+});

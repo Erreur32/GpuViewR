@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Cpu } from 'lucide-react';
 import { api } from '../../lib/api';
 import { HiddenProcessesNotice, LLM_HINTS, LlmHintIcon, LlmHintPanel, type HiddenProcesses, type LlmHint } from './ProcessHints';
-import { ContainerBadge, LlmStateBadge, ProcessTop, VramCell } from './ProcessExtras';
+import { ContainerBadge, EmbeddingBadge, LlmOnlySwitch, LlmStateBadge, ProcessFilter, ProcessTop, VramCell, gpuMemoryMib, isEmbeddingProcess } from './ProcessExtras';
+import { useUiStore } from '../../store/uiStore';
 
 type GpuProcessType = 'C' | 'G' | 'G+C' | null;
 
@@ -92,7 +93,24 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
     };
   }, [gpuIndex, hostId]);
 
-  const sorted = [...data].sort((a, b) => b.used_memory - a.used_memory);
+  const filterOn = useUiStore((s) => s.processFilterOn);
+  const threshold = useUiStore((s) => s.processMinMib);
+  const minMib = filterOn ? threshold : 0;
+  const llmOnly = useUiStore((s) => s.processLlmOnly);
+  // LLMs first (the point of this table), then by VRAM + GTT so APU / iGPU
+  // processes rank by what they really use.
+  const all = [...data].sort((a, b) =>
+    Number(!!b.llm_runtime) - Number(!!a.llm_runtime) || gpuMemoryMib(b) - gpuMemoryMib(a));
+  const llmRows = llmOnly ? all.filter((p) => !!p.llm_runtime) : all;
+  const sorted = minMib === 0 ? llmRows : llmRows.filter((p) => gpuMemoryMib(p) >= minMib);
+  // Each control counts what it hides, the empty-state message the total.
+  const hiddenByLlm = all.length - llmRows.length;
+  const hiddenByMemory = llmRows.length - sorted.length;
+  const hiddenSmall = all.length - sorted.length;
+  // The card's utilisation only stands in for a process's GPU % when that
+  // process is alone on the card: with several, copying it on every row
+  // (3 Ollama runners all at "~100%") says something false.
+  const cardFallback = all.length === 1 ? gpuUtilFallback : null;
 
   return (
     <div className="card p-4">
@@ -102,10 +120,13 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
           <Cpu className="w-4 h-4" />
           {t('dashboard.processes_title')}
         </h3>
-        <span className="text-[10px] px-2 py-0.5 rounded-full"
-              style={{ color: 'var(--gv-text-muted)', background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}>
-          {sorted.length} {t('dashboard.processes_count')}
-        </span>
+        <div className="flex items-center gap-2">
+          <ProcessFilter hiddenCount={hiddenByMemory} />
+          <span className="text-[10px] px-2 py-0.5 rounded-full"
+                style={{ color: 'var(--gv-text-muted)', background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}>
+            {sorted.length} {t('dashboard.processes_count')}
+          </span>
+        </div>
       </div>
 
       {error && (
@@ -114,7 +135,13 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
 
       {!error && hidden && <HiddenProcessesNotice hidden={hidden} />}
 
-      {!error && sorted.length === 0 && !loading && (
+      {!error && sorted.length === 0 && hiddenSmall > 0 && (
+        <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
+          {llmOnly ? t('dashboard.llm_only_empty', { count: hiddenSmall }) : t('dashboard.filter_all_hidden', { count: hiddenSmall, mib: minMib.toLocaleString() })}
+        </p>
+      )}
+
+      {!error && all.length === 0 && !loading && (
         <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>
           {reason ? t('dashboard.processes_unavailable') : t('dashboard.processes_empty')}
           {reason && (
@@ -161,6 +188,7 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
                           {p.llm_model}
                         </span>
                       )}
+                      {isEmbeddingProcess(p) && <EmbeddingBadge />}
                       {p.llm_runtime && <LlmStateBadge state={p.llm_state ?? null} expiresAt={p.llm_expires_at ?? null} />}
                       {p.container_id && <ContainerBadge engine={p.container_engine ?? null} id={p.container_id} />}
                       {hint && (
@@ -179,7 +207,12 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
                     )}
                   </td>
                   <td className="py-1.5 pr-3 font-mono tabular-nums text-right">
-                    <GpuPctCell value={p.gpu_pct} fallback={gpuUtilFallback} tooltip={t('dashboard.processes_gpu_pct_approx')} />
+                    <GpuPctCell
+                      value={p.gpu_pct}
+                      fallback={cardFallback}
+                      tooltip={t('dashboard.processes_gpu_pct_approx')}
+                      unknownTooltip={t('dashboard.processes_gpu_pct_unknown')}
+                    />
                   </td>
                   <td className="py-1.5 pr-3 font-mono tabular-nums text-right">
                     <VramCell vram={p.used_memory} gtt={p.gtt_memory ?? null} />
@@ -193,7 +226,10 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
         </div>
       )}
 
-      <ProcessTop hostId={hostId} gpuIndex={gpuIndex} />
+      <div className="mt-3 flex items-start justify-between gap-3 flex-wrap">
+        <ProcessTop hostId={hostId} gpuIndex={gpuIndex} />
+        <LlmOnlySwitch hiddenCount={hiddenByLlm} />
+      </div>
     </div>
   );
 }
@@ -329,10 +365,11 @@ const LLM_LABELS: Record<string, string> = {
  *  a `~` prefix and a tooltip so it's clearly distinguishable from
  *  an authoritative per-PID number. Returns "-" only when both
  *  primary AND fallback are unavailable. */
-function GpuPctCell({ value, fallback, tooltip }: Readonly<{
+function GpuPctCell({ value, fallback, tooltip, unknownTooltip }: Readonly<{
   value: number | null | undefined;
   fallback: number | null;
   tooltip: string;
+  unknownTooltip: string;
 }>) {
   const hasReal = value !== null && value !== undefined && Number.isFinite(value);
   if (hasReal) return <span>{fmtPct(value)}</span>;
@@ -347,5 +384,5 @@ function GpuPctCell({ value, fallback, tooltip }: Readonly<{
       </span>
     );
   }
-  return <span>-</span>;
+  return <span style={{ color: 'var(--gv-text-dim)' }} title={unknownTooltip}>-</span>;
 }
