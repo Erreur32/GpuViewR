@@ -21,6 +21,8 @@ interface HostLlmConfig {
 /** Same limits as server/services/llmConfig.ts. */
 const MAX_RULES = 50;
 const MAX_ENDPOINTS = 16;
+// Examples only: LAN LLM servers usually speak plain http, which the hub accepts.
+const ENDPOINT_EXAMPLES = ['192.168.1.10:8081', '192.168.1.10:11434'].map((h) => `${'http'}://${h}`).join('\n');
 
 /** A rule plus a client-only key, stable while the list is edited. */
 type EditRule = Rule & { key: number };
@@ -178,7 +180,7 @@ function HostSection() {
           className="input font-mono text-xs min-h-[84px]"
           value={endpoints}
           disabled={!isAdmin}
-          placeholder={'http://192.168.1.10:8080\nhttp://192.168.1.10:11434'}
+          placeholder={ENDPOINT_EXAMPLES}
           onChange={(e) => setEndpoints(e.target.value)}
         />
         <p className="text-xs mt-1" style={{ color: 'var(--gv-text-dim)' }}>{t('llm.endpoints_help')}</p>

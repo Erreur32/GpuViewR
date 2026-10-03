@@ -3,9 +3,8 @@ import { type GpuProcess, type ProcessVisibility } from '../services/_processTyp
 import { agentProcessStore } from '../services/agentProcessStore.js';
 import { hiddenProcesses } from '../services/processVisibility.js';
 import { processHistory } from '../services/processHistory.js';
-import { HostsRepo } from '../database/models/Host.js';
 import { metricsBus } from '../services/_metricsBus.js';
-import { LOCAL_HOST_ID } from '../database/models/Host.js';
+import { HostsRepo, LOCAL_HOST_ID } from '../database/models/Host.js';
 import type { GpuSample } from '../services/parsers/nvidia.js';
 import { requireAuth } from '../middleware/auth.js';
 

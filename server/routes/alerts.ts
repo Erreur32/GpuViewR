@@ -215,12 +215,18 @@ function validate(body: Record<string, unknown>, partial = false): string | null
   if (body.threshold !== undefined && !Number.isFinite(Number(body.threshold))) {
     return 'threshold must be a number';
   }
-  if (body.process_match !== undefined && body.process_match !== null) {
-    if (typeof body.process_match !== 'string') return 'process_match must be a string';
-    if (body.process_match.length > PROCESS_MATCH_MAX) return `process_match is longer than ${PROCESS_MATCH_MAX} characters`;
-    if (/[\u0000-\u001f\u007f]/.test(body.process_match)) return 'process_match contains control characters';
+  return validateProcessMatch(body, partial);
+}
+
+/** process_match: optional string, required for process metrics. */
+function validateProcessMatch(body: Record<string, unknown>, partial: boolean): string | null {
+  const v = body.process_match;
+  if (v !== undefined && v !== null) {
+    if (typeof v !== 'string') return 'process_match must be a string';
+    if (v.length > PROCESS_MATCH_MAX) return `process_match is longer than ${PROCESS_MATCH_MAX} characters`;
+    if (/[\u0000-\u001f\u007f]/.test(v)) return 'process_match contains control characters';
   }
-  if (!partial && PROCESS_METRICS.has(body.metric as AlertMetric) && !processMatch(body.process_match)) {
+  if (!partial && PROCESS_METRICS.has(body.metric as AlertMetric) && !processMatch(v)) {
     return 'process_match is required for process alerts';
   }
   return null;

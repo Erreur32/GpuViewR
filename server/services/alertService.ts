@@ -230,18 +230,26 @@ function buildHostSample(): HostSample {
   };
 }
 
+function readProcessMetric(sample: ProcessSample, metric: AlertMetric): number | null {
+  if (metric === 'process_vram') return sample.process_vram;
+  if (metric === 'process_absent') return sample.process_absent;
+  return null;
+}
+
+function readHostMetric(sample: HostSample, metric: AlertMetric): number | null {
+  if (metric === 'host_cpu') return sample.host_cpu;
+  if (metric === 'host_load_1m') return sample.host_load_1m;
+  if (metric === 'host_memory') return sample.host_memory;
+  return null;
+}
+
 function readMetric(sample: EvalSample, metric: AlertMetric): number | null {
-  if (isProcessSample(sample)) {
-    if (metric === 'process_vram') return sample.process_vram;
-    if (metric === 'process_absent') return sample.process_absent;
-    return null;
-  }
-  if (isHostSample(sample)) {
-    if (metric === 'host_cpu') return sample.host_cpu;
-    if (metric === 'host_load_1m') return sample.host_load_1m;
-    if (metric === 'host_memory') return sample.host_memory;
-    return null;
-  }
+  if (isProcessSample(sample)) return readProcessMetric(sample, metric);
+  if (isHostSample(sample)) return readHostMetric(sample, metric);
+  return readGpuMetric(sample, metric);
+}
+
+function readGpuMetric(sample: GpuSample, metric: AlertMetric): number | null {
   switch (metric) {
     case 'temperature': return sample.temperature;
     case 'utilization': return sample.utilization;

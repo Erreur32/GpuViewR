@@ -31,6 +31,9 @@ export interface ProcessesEvent {
 export type SampleListener = (event: SampleEvent) => void;
 export type HostStatusListener = (event: HostStatusEvent) => void;
 export type ProcessesListener = (event: ProcessesEvent) => void;
+type BusEvent = 'sample' | 'host_status' | 'processes';
+type BusListener = SampleListener | HostStatusListener | ProcessesListener;
+type BusPayload = SampleEvent | HostStatusEvent | ProcessesEvent;
 
 class MetricsBus {
   private readonly emitter = new EventEmitter();
@@ -39,7 +42,7 @@ class MetricsBus {
   on(event: 'sample', listener: SampleListener): this;
   on(event: 'host_status', listener: HostStatusListener): this;
   on(event: 'processes', listener: ProcessesListener): this;
-  on(event: 'sample' | 'host_status' | 'processes', listener: SampleListener | HostStatusListener | ProcessesListener): this {
+  on(event: BusEvent, listener: BusListener): this {
     this.emitter.on(event, listener);
     return this;
   }
@@ -47,7 +50,7 @@ class MetricsBus {
   off(event: 'sample', listener: SampleListener): this;
   off(event: 'host_status', listener: HostStatusListener): this;
   off(event: 'processes', listener: ProcessesListener): this;
-  off(event: 'sample' | 'host_status' | 'processes', listener: SampleListener | HostStatusListener | ProcessesListener): this {
+  off(event: BusEvent, listener: BusListener): this {
     this.emitter.off(event, listener);
     return this;
   }
@@ -55,7 +58,7 @@ class MetricsBus {
   emit(event: 'sample', payload: SampleEvent): boolean;
   emit(event: 'host_status', payload: HostStatusEvent): boolean;
   emit(event: 'processes', payload: ProcessesEvent): boolean;
-  emit(event: 'sample' | 'host_status' | 'processes', payload: SampleEvent | HostStatusEvent | ProcessesEvent): boolean {
+  emit(event: BusEvent, payload: BusPayload): boolean {
     if (event === 'sample') {
       const e = payload as SampleEvent;
       this.latestByHost.set(e.host_id, e.samples);

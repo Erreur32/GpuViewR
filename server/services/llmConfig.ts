@@ -71,6 +71,13 @@ export function parseRules(raw: unknown): LlmRule[] {
   });
 }
 
+/** Path without trailing slashes. Plain loop, no regex (S8786). */
+function trimTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path[end - 1] === '/') end--;
+  return path.slice(0, end);
+}
+
 /** http(s) base URL, no credentials, no query/fragment. */
 function parseEndpoint(raw: unknown, i: number): string {
   const v = text(raw, LLM_LIMITS.url, `endpoint ${i + 1}`, true) as string;
@@ -83,7 +90,7 @@ function parseEndpoint(raw: unknown, i: number): string {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new LlmConfigError(`endpoint ${i + 1} must be http or https`);
   if (url.username || url.password) throw new LlmConfigError(`endpoint ${i + 1} must not contain credentials`);
   if (url.search || url.hash) throw new LlmConfigError(`endpoint ${i + 1} must not have a query or fragment`);
-  return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`;
+  return `${url.protocol}//${url.host}${trimTrailingSlashes(url.pathname)}`;
 }
 
 export function parseHostConfig(raw: unknown): LlmHostConfig {
@@ -92,7 +99,7 @@ export function parseHostConfig(raw: unknown): LlmHostConfig {
   const list = o.endpoints ?? [];
   if (!Array.isArray(list)) throw new LlmConfigError('endpoints must be a list');
   if (list.length > LLM_LIMITS.endpoints) throw new LlmConfigError(`at most ${LLM_LIMITS.endpoints} endpoints`);
-  const endpoints = [...new Set(list.map(parseEndpoint))];
+  const endpoints = [...new Set(list.map((u, i) => parseEndpoint(u, i)))];
   const dir = text(o.ollama_manifests_dir, LLM_LIMITS.dir, 'Ollama manifests dir', false);
   if (dir && (!dir.startsWith('/') || dir.split('/').includes('..'))) {
     throw new LlmConfigError('Ollama manifests dir must be an absolute path without ..');
