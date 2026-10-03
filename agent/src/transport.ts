@@ -41,6 +41,7 @@ import { logger } from "./logger.js";
 import type { GpuSample } from "../../server/services/parsers/nvidia.js";
 import type { AgentGpuProcess, ProcessVisibility } from "./collectors/processes.js";
 import type { AgentConfig, HubTarget } from "./config.js";
+import { hasPtraceCap } from "./collectors/processesAmdgpuFdinfo.js";
 
 export type InstallMode = "docker" | "systemd" | "windows" | "macos" | "unknown";
 
@@ -49,6 +50,18 @@ export type InstallMode = "docker" | "systemd" | "windows" | "macos" | "unknown"
 // hello frame so the hub can show the *right* update command per
 // host (bare-metal curl vs `docker compose pull`).
 export const INSTALL_MODE: InstallMode = detectInstallMode();
+
+/** CAP_SYS_PTRACE state of a systemd agent, reported in hello so the hub
+ *  can flag a unit older than v0.10.2 (auto-update only swaps the
+ *  bundle, the unit needs `install.sh --upgrade`). `declined` when the
+ *  install was made with --no-ptrace (the installer writes
+ *  GPUVIEWR_NO_PTRACE=1 to the env file). Undefined elsewhere. */
+function ptraceState(): "granted" | "missing" | "declined" | undefined {
+  if (INSTALL_MODE !== "systemd") return undefined;
+  if (hasPtraceCap()) return "granted";
+  return process.env.GPUVIEWR_NO_PTRACE === "1" ? "declined" : "missing";
+}
+const PTRACE_STATE = ptraceState();
 
 function detectInstallMode(): InstallMode {
   // Windows always reports 'windows'. The install.ps1 installer
@@ -308,6 +321,7 @@ export function createTransport(config: AgentConfig): Transport {
         system: config.features.system,
         temps: config.features.temps,
         processes: config.features.processes,
+        ...(PTRACE_STATE ? { ptrace: PTRACE_STATE } : {}),
       },
     });
   }

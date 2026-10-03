@@ -256,9 +256,10 @@ function handleLogsUpdates(ctx: RouteCtx): Response | null {
   if (ctx.url.pathname === '/api/logs') return json(fakeLogs(ctx.url.searchParams));
   if (ctx.url.pathname === '/api/updates/config') {
     if (ctx.method === 'GET') return json({ config: demoUpdateConfig });
-    if (ctx.method === 'PUT') {
-      const body = (ctx.body as { config?: typeof demoUpdateConfig }) ?? {};
-      if (body.config) demoUpdateConfig = { ...demoUpdateConfig, ...body.config };
+    // Same contract as server/routes/updates.ts: PATCH with the changed fields.
+    if (ctx.method === 'PATCH') {
+      const body = (ctx.body as Partial<typeof demoUpdateConfig>) ?? {};
+      demoUpdateConfig = { ...demoUpdateConfig, ...body };
       return json({ config: demoUpdateConfig });
     }
   }
