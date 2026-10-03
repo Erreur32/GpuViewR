@@ -293,13 +293,14 @@ $env:GPVR_TOKEN   = '<host_id>.<secret>'
 iex (iwr "$env:GPVR_HUB_URL/install.ps1" -UseBasicParsing).Content
 ```
 
-Paste it in an **elevated** PowerShell. Requires Node 22+ and the
-standard NVIDIA driver (`nvidia-smi.exe`). The installer registers a
-SYSTEM-level Scheduled Task that survives reboots and supervises the
-agent in a while-loop. AMD on Windows is not supported (no
-`rocm-smi`). Process list, CPU/RAM telemetry, and the systemd-style
-auto-update *immediate-restart* are skipped for now, see
-`agent/README.md` for the long-form notes.
+Paste it in an **elevated** PowerShell. Requires Node 22+. NVIDIA
+cards are read through `nvidia-smi.exe` (ships with the driver); AMD
+and Intel GPUs fall back to the Windows PDH counters (utilization +
+VRAM only). The installer registers a SYSTEM-level Scheduled Task that
+survives reboots and supervises the agent in a while-loop. The process
+list comes from the same per-process counters as Task Manager, filtered
+to what actually loads the GPU. See `agent/README.md` for the long-form
+notes.
 
 **macOS alternative** (Apple Silicon only, GPU stats + unified
 memory, no process list yet):
@@ -317,6 +318,11 @@ Silicon GPU counters, needs `sudo`) and a per-user LaunchAgent
 so it respawns). Since Apple Silicon has no discrete VRAM, the UI
 labels its memory metric "Unified" instead of "VRAM". Intel Macs are
 not supported (no `powermetrics` GPU counters).
+
+> **Mac users wanted.** The macOS agent has only been tested against
+> synthetic data, and the process list is on hold until someone can
+> share a real capture from an Apple Silicon Mac. A two-minute command
+> is enough, see [Help the macOS agent](agent/README.md#help-the-macos-agent).
 
 **One agent → multiple hubs** (failover, shared monitoring, etc.):
 

@@ -127,8 +127,8 @@ To run on boot, register it as a Scheduled Task with trigger _At startup_, actio
 
 The agent runs on Apple Silicon (M1+) via `powermetrics`, Apple's only
 supported way to read GPU counters (no public GPU perf API on macOS). Intel
-Macs are not supported. Process list is not collected (no per-process GPU
-memory API on macOS).
+Macs are not supported. Process list is not collected yet (see
+[Help the macOS agent](#help-the-macos-agent)).
 
 ```bash
 curl -fsSL http://<your-hub>:7510/install.mac.sh | bash -s -- \
@@ -154,6 +154,35 @@ curl -fsSL http://<your-hub>:7510/install.mac.sh | bash -s -- --uninstall
 Since Apple Silicon has no discrete VRAM (the GPU shares the same physical
 RAM pool as the CPU), the hub UI labels this host's memory metric "Unified"
 instead of "VRAM".
+
+### Help the macOS agent
+
+The macOS collector was written from Apple's public documentation and has
+never run against a real `powermetrics` capture: the plist keys it reads
+may differ on your chip or macOS version, and the GPU process list is on
+hold for the same reason. If you have an Apple Silicon Mac, a real sample
+is the fastest way to move both forward.
+
+1. Start something that uses the GPU (a game, a video export, a local LLM,
+   a browser with a WebGL page).
+2. Run:
+
+   ```bash
+   sudo powermetrics --samplers tasks,gpu_power,smc --show-process-gpu -n 1 -i 1000 -f plist > ~/gpuviewr-powermetrics.plist
+   sw_vers; sysctl -n machdep.cpu.brand_string
+   ```
+
+3. [Open an issue](https://github.com/Erreur32/GpuViewR/issues/new) titled
+   "macOS powermetrics sample", attach `gpuviewr-powermetrics.plist` and
+   paste the output of the second line (macOS version + chip).
+
+If the agent is already installed, also paste the last lines of its log
+(`tail -n 50 ~/Library/Application\ Support/GpuViewR-Agent/agent.log`) and
+what the hub shows for that host (GPU %, power, unified memory).
+
+The plist lists the processes running at that moment (names and pids, no
+command lines or file contents). Remove any line you'd rather not share
+before attaching it.
 
 ## Configuration — environment variables
 
