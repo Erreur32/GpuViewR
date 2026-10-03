@@ -81,15 +81,21 @@ export interface OllamaResolver {
   /** Resolved manifests dir for the boot log, or null when none of
    *  the candidate locations existed. */
   manifestsDir(): string | null;
+  /** Dir sent by the hub, null to drop it. Re-indexes right away. */
+  setHubDir(dir: string | null): void;
 }
 
 const MODEL_MEDIA_TYPE = 'application/vnd.ollama.image.model';
+
+/** Manifests dir set from the hub (Settings > LLM), tried first. */
+let hubManifestsDir: string | null = null;
 
 /** Order matters — first existing dir wins. Tweak via env if your
  *  ollama install lives somewhere else. */
 function candidateManifestsDirs(): string[] {
   const env = process.env.OLLAMA_MANIFESTS_DIR?.trim();
   const out: string[] = [];
+  if (hubManifestsDir) out.push(hubManifestsDir);
   if (env) out.push(env);
   // Ollama keeps manifests under <home>/.ollama/models/manifests. The
   // bare <home>/.ollama/manifests forms are kept for older setups that
@@ -379,5 +385,11 @@ export function createOllamaResolver(hostProc?: string): OllamaResolver {
     refresh: doRefresh,
     size: () => index.size,
     manifestsDir: () => dir,
+    setHubDir: (next: string | null) => {
+      const clean = next && next.startsWith('/') && next.length <= 512 ? next : null;
+      if (clean === hubManifestsDir) return;
+      hubManifestsDir = clean;
+      doRefresh();
+    },
   };
 }

@@ -17,6 +17,7 @@ same compose stack. To monitor other machines, see
 - [Configuration](#configuration)
 - [Ollama model names](#ollama-model-names)
 - [Hidden GPU processes and model names](#hidden-gpu-processes-and-model-names)
+- [LLM servers](#llm-servers-v0110)
 - [Troubleshooting](#troubleshooting)
 
 ## Quick install
@@ -512,9 +513,40 @@ lists only GPU processes it can read.
 
 **Warning icon next to a model name**:
 
-- `sha256:...`: Ollama model not resolved, see [Ollama model names](#ollama-model-names).
+- `sha256:...`: Ollama model not resolved, see [Ollama model names](#ollama-model-names)
+  and [LLM servers](#llm-servers-v0110).
 - Anonymous blob or no model: the command line carries no readable name.
   For llama.cpp, add `--alias <name>` or load a named `.gguf` with `-m`.
+
+## LLM servers (v0.11.0)
+
+The process table shows, for local LLM servers:
+
+- the **model**, from the command line, or from the server itself:
+  Ollama `/api/ps` + `/api/show` (exact, matched on the blob digest),
+  llama.cpp / vLLM `/v1/models` for a server started without a model name;
+- the **state**: `asleep` when a llama.cpp server released its weights
+  (`--sleep-idle-seconds`), the unload countdown of an Ollama model;
+- **GTT**: system memory mapped to the GPU. On AMD APUs (Strix Halo...) and
+  Intel iGPUs the weights often live there, so VRAM alone undercounts;
+- the **container** (`docker 9692a12e`), from the process cgroup.
+
+The agent asks Ollama on `127.0.0.1:11434`, and a llama.cpp / vLLM server
+on `127.0.0.1:<--port>` only when both share the host network (systemd
+agent, server not in a container): a container's port is usually published
+under another number. For the other cases, add the server URL in
+**Settings > LLM** (per host, e.g. `http://192.168.1.10:8081`).
+
+**Settings > LLM** also holds **naming rules**, for a runtime GpuViewR does
+not know: "command line contains X → runtime label Y, model from flag Z (or
+a fixed name)". Rules apply to every agent and are checked before the
+built-in detection. Changes reach connected agents immediately.
+
+Other views: **Fleet** lists every LLM model across hosts; under each
+process table, **Top over 24 h** gives peak and mean GPU memory per process
+or model (one point per minute, kept as long as the GPU metrics). Alerts
+gain two process metrics: *GPU memory of process* (above / below N MiB)
+and *Process missing* (fires while nothing matches, e.g. `llama-server`).
 
 ## Troubleshooting
 

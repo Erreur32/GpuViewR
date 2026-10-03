@@ -267,7 +267,39 @@ function handleLogsUpdates(ctx: RouteCtx): Response | null {
   return null;
 }
 
-const handlers = [handleAuth, handleHealthSystem, handleGpu, handleAlerts, handleExports, handleLogsUpdates];
+// Settings > LLM and the v0.11.0 process views. Kept in memory for the tab.
+let demoLlmRules: unknown[] = [];
+const demoLlmHosts = new Map<string, unknown>();
+
+function handleLlm(ctx: RouteCtx): Response | null {
+  const p = ctx.url.pathname;
+  if (p === '/api/llm/rules') {
+    if (ctx.method === 'PUT') demoLlmRules = ((ctx.body as { rules?: unknown[] })?.rules ?? []).slice(0, 50);
+    return json({ rules: demoLlmRules });
+  }
+  const host = /^\/api\/llm\/hosts\/([^/]+)$/.exec(p);
+  if (host) {
+    if (ctx.method === 'PUT') demoLlmHosts.set(host[1], (ctx.body as { config?: unknown })?.config);
+    return json({ config: demoLlmHosts.get(host[1]) ?? { endpoints: [], ollama_manifests_dir: null } });
+  }
+  if (p === '/api/processes/history') {
+    const now = Math.floor(Date.now() / 1000);
+    return json({
+      top: [
+        { pkey: 'llamacpp:Qwen3-Coder-30B', name: 'llama-server', runtime: 'llamacpp', model: 'Qwen3-Coder-30B-A3B-Instruct-GGUF:Q5_K_M', gpu_index: null, vram_max: 26804, vram_avg: 14210, gpu_avg: 31.5, minutes: 412, last_seen: now - 60 },
+        { pkey: 'ollama:qwen3-4b-instruct:64k', name: 'llama-server', runtime: 'ollama', model: 'qwen3-4b-instruct:64k', gpu_index: null, vram_max: 13377, vram_avg: 13100, gpu_avg: 18.2, minutes: 95, last_seen: now - 60 },
+        { pkey: 'python3', name: 'python3', runtime: null, model: null, gpu_index: null, vram_max: 4416, vram_avg: 4380, gpu_avg: 57, minutes: 1440, last_seen: now - 60 },
+      ],
+    });
+  }
+  if (p === '/api/processes/llm') {
+    const procs = fakeProcesses(0).filter((x) => 'llm_runtime' in x);
+    return json({ processes: procs.map((x) => ({ ...x, host_id: 'local', host_label: 'demo', gpu_name: DEMO_GPUS[0].name })) });
+  }
+  return null;
+}
+
+const handlers = [handleAuth, handleHealthSystem, handleGpu, handleAlerts, handleExports, handleLogsUpdates, handleLlm];
 
 function parseBody(init?: RequestInit): unknown {
   if (!init || typeof init.body !== 'string') return null;

@@ -28,6 +28,7 @@ import type { GpuSample } from './parsers/nvidia.js';
 import { agentProcessStore } from './agentProcessStore.js';
 import type { GpuProcess } from './_processTypes.js';
 import { parseVisibility } from './processVisibility.js';
+import { llmConfig } from './llmConfig.js';
 import { recordRejection, type RejectionReason } from './agentRejections.js';
 
 const RATE_LIMIT_PER_SEC = 100;
@@ -316,6 +317,14 @@ export function forceAgentUpdate(
  *  the rejected auth in authenticateAgent(). Returns false if the agent
  *  wasn't connected (nothing to do, the disabled status alone already
  *  blocks its next handshake). */
+/** Re-sends the LLM config to connected agents after a change: one host,
+ *  or every agent when `hostId` is omitted (global rules). */
+export function pushLlmConfig(hostId?: string): void {
+  for (const [id, ws] of liveAgentSockets) {
+    if (hostId === undefined || id === hostId) safeSend(ws, llmConfig.frameFor(id));
+  }
+}
+
 export function disconnectAgent(hostId: string): boolean {
   const ws = liveAgentSockets.get(hostId);
   if (!ws || ws.readyState !== WebSocket.OPEN) return false;
@@ -453,6 +462,9 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion:
   liveAgentSockets.set(host.id, ws);
 
   safeSend(ws, { type: 'welcome', hub_version: hubVersion, protocol_ver: PROTOCOL_VER, tick_ms: 1000 });
+  // LLM naming rules + per-host endpoints (Settings > LLM). Older agents
+  // ignore the frame.
+  safeSend(ws, llmConfig.frameFor(host.id));
 
   HostsRepo.markSeen(host.id);
   metricsBus.emit('host_status', {
@@ -547,6 +559,7 @@ function handleProcesses(host: HostRecord, frame: ProcessFrame): void {
     processes: frame.processes,
     ...(visibility ? { visibility } : {}),
   });
+  metricsBus.emit('processes', { host_id: host.id, processes: frame.processes });
 }
 
 function handleHello(ws: WebSocket, host: HostRecord, frame: HelloFrame, hubVersion: string): void {

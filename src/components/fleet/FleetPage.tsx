@@ -8,6 +8,7 @@ import { useUiStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import HostCard from './HostCard';
 import FleetChart from './FleetChart';
+import FleetLlmCard from './FleetLlmCard';
 
 interface FleetAggregate {
   online: number;
@@ -226,6 +227,8 @@ export default function FleetPage() {
       </div>
 
       <FleetChart />
+
+      <FleetLlmCard />
 
       {/* Detailed view shows per-GPU mini-tiles, so cards are wider —
           drop to 1-2 columns. Simple view keeps the 1/2/3 column grid. */}

@@ -13,6 +13,7 @@ import { logger } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { apiLimiter, authLimiter, metricsLimiter } from './middleware/rateLimit.js';
 import { startRetentionJob } from './services/retentionJob.js';
+import { processHistory } from './services/processHistory.js';
 import { mockAgentSeeder } from './services/mockAgentSeeder.js';
 import { setupGpuWebSocket } from './services/gpuStreamWS.js';
 import { setupAgentIngestWS } from './services/agentIngestWS.js';
@@ -37,6 +38,7 @@ import metricsRoutes from './routes/metrics.js';
 import infoRoutes from './routes/info.js';
 import processesRoutes from './routes/processes.js';
 import hostsRoutes from './routes/hosts.js';
+import llmRoutes from './routes/llm.js';
 import agentDistributionRoutes from './routes/agentDistribution.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -61,6 +63,7 @@ async function bootstrap(): Promise<void> {
 
   initializeDatabase();
   alertService.init();
+  processHistory.init();
   updateService.init();
   exportService.init();
   startSystemStats();
@@ -107,6 +110,7 @@ async function bootstrap(): Promise<void> {
   app.use('/api/info', infoRoutes);
   app.use('/api/processes', processesRoutes);
   app.use('/api/hosts', hostsRoutes);
+  app.use('/api/llm', llmRoutes);
   app.use('/metrics', metricsLimiter, metricsRoutes);
   // /install.sh + /agent.mjs — unauthenticated by design, the agent
   // token itself is the auth. Mounted at root, before the SPA

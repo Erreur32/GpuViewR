@@ -21,6 +21,7 @@ import {
   Server,
   MoveHorizontal,
   FileText,
+  Bot,
 } from "lucide-react";
 import { useUiStore, DEFAULT_THRESHOLDS, CONTENT_WIDTH } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
@@ -33,6 +34,7 @@ import ExportsSettings from "./ExportsSettings";
 import AboutSettings from "./AboutSettings";
 import HostsSettingsTab from "./HostsSettingsTab";
 import LogsPage from "../logs/LogsPage";
+import LlmSettings from "./LlmSettings";
 import Icon, { type IconKey } from "../ui/icons/IconRegistry";
 
 type TabId =
@@ -40,6 +42,7 @@ type TabId =
   | "theme"
   | "exports"
   | "hosts"
+  | "llm"
   | "database"
   | "updates"
   | "logs"
@@ -91,8 +94,8 @@ export default function SettingsPage() {
   const hostCount = useHostsStore((s) => s.hosts.length);
   const showHostsTab = isAdmin || hostCount > 1;
   const VALID_TABS: ReadonlyArray<TabId> = showHostsTab
-    ? ["general", "theme", "exports", "hosts", "database", "updates", "logs", "about"]
-    : ["general", "theme", "exports", "database", "updates", "logs", "about"];
+    ? ["general", "theme", "exports", "hosts", "llm", "database", "updates", "logs", "about"]
+    : ["general", "theme", "exports", "llm", "database", "updates", "logs", "about"];
   const fallback =
     (localStorage.getItem("gpuviewr.settingsTab") as TabId | null) ?? "general";
   const tab: TabId = (VALID_TABS as readonly string[]).includes(tabParam ?? "")
@@ -132,6 +135,7 @@ export default function SettingsPage() {
     ...(showHostsTab
       ? [{ id: "hosts" as TabId, label: t("settings.tab_hosts"), icon: Server }]
       : []),
+    { id: "llm", label: t("settings.tab_llm"), icon: Bot },
     { id: "database", label: t("settings.tab_database"), icon: Database },
     { id: "updates", label: t("settings.tab_updates"), icon: RefreshCw },
     { id: "logs", label: t("settings.tab_logs"), icon: FileText },
@@ -418,6 +422,7 @@ export default function SettingsPage() {
 
       {tab === "exports" && <ExportsSettings />}
       {tab === "hosts" && showHostsTab && <HostsSettingsTab />}
+      {tab === "llm" && <LlmSettings />}
       {tab === "database" && <DatabaseSettings />}
       {tab === "updates" && <UpdateSettings />}
       {tab === "logs" && <LogsPage />}

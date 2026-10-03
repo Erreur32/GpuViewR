@@ -19,13 +19,22 @@ import {
   createProcessCollector,
   type ProcessCollectorHandle,
 } from "./collectors/processes.js";
-import { createRocmProcessCollector } from "./collectors/processesRocm.js";
+import { amdgpuBusIds, createRocmProcessCollector } from "./collectors/processesRocm.js";
+import { createIntelGpuCollector } from "./collectors/gpuIntel.js";
+import { INTEL_DRIVERS } from "./collectors/processesAmdgpuFdinfo.js";
 import { createPdhProcessCollector } from "./collectors/processesWindowsPdh.js";
 import {
   createOllamaResolver,
   type OllamaResolver,
 } from "./collectors/ollamaManifests.js";
-import type { OllamaDigestContext } from "./collectors/llmClassifier.js";
+import {
+  sanitizeCustomRules,
+  setCustomLLMRules,
+  type CustomLLMRule,
+  type OllamaDigestContext,
+} from "./collectors/llmClassifier.js";
+import { createLlmProbe } from "./collectors/llmProbe.js";
+import type { ProcessSnapshot } from "./collectors/processes.js";
 import { buildMockSamples } from "./mock.js";
 
 const config = loadConfig();
@@ -78,10 +87,47 @@ const ollamaRefreshTimer = setInterval(
 ollamaRefreshTimer.unref();
 // Resolvers are stable for the lifetime of the agent; the classifier
 // only sees this thin callback shape, not the refresh schedule.
+// Asks Ollama / llama.cpp / vLLM themselves (loaded models, state).
+// 127.0.0.1 is the host's own loopback only outside a container.
+const llmProbe = createLlmProbe({ hostNetwork: INSTALL_MODE !== "docker" });
 const llmResolvers = {
   ollamaModelByDigest: (digest: string, ctx?: OllamaDigestContext) =>
-    ollamaResolver.resolve(digest, ctx),
+    ollamaResolver.resolve(digest, ctx) ?? llmProbe.ollamaNameByDigest(digest),
 };
+
+// Settings each hub sends for this host (Settings > LLM). An agent can
+// report to several hubs: rules and endpoints are merged, the first
+// manifests dir wins.
+interface HubLlmConfig {
+  rules: CustomLLMRule[];
+  endpoints: string[];
+  manifestsDir: string | null;
+}
+const hubLlmConfigs = new Map<number, HubLlmConfig>();
+
+function applyHubLlmConfigs(): void {
+  const all = [...hubLlmConfigs.entries()].sort(([a], [b]) => a - b).map(([, c]) => c);
+  setCustomLLMRules(all.flatMap((c) => c.rules));
+  llmProbe.setEndpoints(all.flatMap((c) => c.endpoints));
+  ollamaResolver.setHubDir(all.find((c) => c.manifestsDir)?.manifestsDir ?? null);
+}
+
+transport.onHubConfig((hubIndex, payload) => {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  hubLlmConfigs.set(hubIndex, {
+    rules: sanitizeCustomRules(p.rules),
+    endpoints: Array.isArray(p.endpoints) ? p.endpoints.filter((u): u is string => typeof u === "string" && u.length <= 300).slice(0, 16) : [],
+    manifestsDir: typeof p.ollama_manifests_dir === "string" ? p.ollama_manifests_dir : null,
+  });
+  applyHubLlmConfigs();
+  const c = hubLlmConfigs.get(hubIndex);
+  logger.info("llm", `hub config: ${c?.rules.length ?? 0} naming rule(s), ${c?.endpoints.length ?? 0} endpoint(s)${c?.manifestsDir ? `, manifests ${c.manifestsDir}` : ""}`);
+});
+
+/** Collector snapshot → hub, with what the LLM servers report merged in. */
+function sendProcesses(snap: ProcessSnapshot): void {
+  transport.enqueueProcesses(llmProbe.enrich(snap.processes), snap.visibility);
+}
 
 if (config.features.gpu) {
   if (config.mockGpu) {
@@ -95,7 +141,7 @@ if (config.features.gpu) {
     // start ticking.
     gpuHandle = await buildGpuCollector(vendor, config);
     if (!gpuHandle.available()) {
-      const bin = vendor === "amd" ? config.rocmSmiPath : config.nvidiaSmiPath;
+      const bin = vendorSource(vendor, config);
       // macOS: no alternate collector to fall back to (powermetrics is
       // the only source), so a missing/broken `sudo -n powermetrics`
       // is fatal, same posture as a missing nvidia-smi on Linux. The
@@ -167,7 +213,7 @@ if (config.features.processes && !config.mockGpu) {
     processHandle = createPdhProcessCollector({
       tickMs: config.processesTickMs,
       nvidiaSmiPath: windowsPdhGpu ? undefined : config.nvidiaSmiPath,
-      onSnapshot: (snap) => transport.enqueueProcesses(snap.processes, snap.visibility),
+      onSnapshot: sendProcesses,
       llmResolvers,
     });
     processHandle.start();
@@ -195,6 +241,7 @@ function shutdown(signal: string): void {
   if (mockTimer) clearInterval(mockTimer);
   gpuHandle?.stop();
   processHandle?.stop();
+  llmProbe.stop();
   transport.stop();
   // Give the WS close() a moment to flush.
   setTimeout(() => process.exit(0), 200).unref();
@@ -205,6 +252,13 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 
 // --- vendor resolution -----------------------------------------------
 
+/** Where a vendor's GPU data comes from, for the boot error message. */
+function vendorSource(v: GpuVendor, cfg: AgentConfig): string {
+  if (v === "amd") return cfg.rocmSmiPath;
+  if (v === "intel") return cfg.sysClassDrm;
+  return cfg.nvidiaSmiPath;
+}
+
 function smiResponds(bin: string): boolean {
   try {
     return spawnSync(bin, ["--version"], { timeout: 3_000 }).status === 0;
@@ -213,10 +267,11 @@ function smiResponds(bin: string): boolean {
   }
 }
 
-function resolveVendor(cfg: AgentConfig): "nvidia" | "amd" | "apple" {
+function resolveVendor(cfg: AgentConfig): "nvidia" | "amd" | "apple" | "intel" {
   if (cfg.gpuVendor === "nvidia") return "nvidia";
   if (cfg.gpuVendor === "amd") return "amd";
   if (cfg.gpuVendor === "apple") return "apple";
+  if (cfg.gpuVendor === "intel") return "intel";
   // Apple Silicon has no other GPU worth probing — there's no
   // nvidia-smi/rocm-smi equivalent to try first, and no discrete-GPU
   // Mac scenario in scope (cf. Docs/MACOS_AGENT.md §0, arm64-only v1).
@@ -228,6 +283,12 @@ function resolveVendor(cfg: AgentConfig): "nvidia" | "amd" | "apple" {
   if (nvidia) return "nvidia";
   const amd = smiResponds(cfg.rocmSmiPath);
   if (amd) return "amd";
+  // No vendor tool: the kernel driver alone still gives AMD (sysfs) and
+  // Intel (sysfs + fdinfo) on Linux.
+  if (process.platform === "linux") {
+    if (amdgpuBusIds(cfg.sysClassDrm).length > 0) return "amd";
+    if (amdgpuBusIds(cfg.sysClassDrm, INTEL_DRIVERS).length > 0) return "intel";
+  }
   // Neither found. On Windows, returning 'amd' routes the agent to the
   // PDH collector — universal (works for AMD/Intel iGPU/NVIDIA without
   // driver tools). On Linux, leave it as nvidia so the existing error
@@ -257,6 +318,17 @@ async function buildGpuCollector(
     });
   }
   if (v === "amd") return buildAmdGpuCollector(cfg);
+  if (v === "intel") {
+    const intel = createIntelGpuCollector({
+      sysClassDrm: cfg.sysClassDrm,
+      hostProc: cfg.hostProc,
+      tickMs: cfg.tickMs,
+      onSample: (samples) => transport.enqueueSample(samples),
+    });
+    const count = await intel.discover();
+    logger.info("boot", `Intel backend: sysfs + DRM fdinfo (${count} card${count === 1 ? "" : "s"} via ${cfg.sysClassDrm})`);
+    return intel;
+  }
   return createGpuCollector({
     nvidiaSmiPath: cfg.nvidiaSmiPath,
     tickMs: cfg.tickMs,
@@ -332,13 +404,14 @@ function buildProcessCollector(
   v: GpuVendor,
   cfg: AgentConfig,
 ): ProcessCollectorHandle {
-  if (v === "amd") {
+  if (v === "amd" || v === "intel") {
     return createRocmProcessCollector({
+      family: v,
       rocmSmiPath: cfg.rocmSmiPath,
       sysClassDrm: cfg.sysClassDrm,
       tickMs: cfg.processesTickMs,
       hostProc: cfg.hostProc,
-      onSnapshot: (snap) => transport.enqueueProcesses(snap.processes, snap.visibility),
+      onSnapshot: sendProcesses,
       llmResolvers,
     });
   }
@@ -346,7 +419,7 @@ function buildProcessCollector(
     nvidiaSmiPath: cfg.nvidiaSmiPath,
     tickMs: cfg.processesTickMs,
     hostProc: cfg.hostProc,
-    onSnapshot: (snap) => transport.enqueueProcesses(snap.processes, snap.visibility),
+    onSnapshot: sendProcesses,
     llmResolvers,
   });
 }

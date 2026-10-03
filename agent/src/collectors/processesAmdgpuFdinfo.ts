@@ -23,12 +23,19 @@ import type { GpuProcessType } from "./processes.js";
 export interface FdinfoGpuUsage {
   /** drm-pdev, e.g. "0000:c5:00.0" — lowercase, as the kernel reports it. */
   pdev: string | null;
-  /** Max across this pid's amdgpu fds — avoids double-counting when a
-   *  process holds duplicate/inherited fds pointing at the same client. */
+  /** Max across this pid's fds — avoids double-counting when a process
+   *  holds duplicate/inherited fds pointing at the same client. Device
+   *  memory: amdgpu drm-memory-vram, i915 drm-resident-local0, xe
+   *  drm-resident-vram0. */
   vramBytes: number;
-  /** Cumulative drm-engine-gfx, summed across this pid's amdgpu fds. */
+  /** System memory mapped to the GPU, max across fds like vramBytes:
+   *  amdgpu drm-memory-gtt, i915 drm-resident-system0, xe drm-resident-gtt. */
+  gttBytes: number;
+  /** Cumulative graphics engine busy time (amdgpu drm-engine-gfx, i915
+   *  drm-engine-render), summed across this pid's fds. xe reports cycles,
+   *  not ns, so it stays 0 there. */
   gfxNs: number;
-  /** Cumulative drm-engine-compute, summed across this pid's amdgpu fds. */
+  /** Cumulative drm-engine-compute, summed across this pid's fds. */
   computeNs: number;
 }
 
@@ -38,16 +45,37 @@ function parseLeadingInt(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** drm-usage-stats memory value: an integer with an optional KiB/MiB/GiB
+ *  unit, bytes without one. */
+function parseMemBytes(raw: string): number {
+  const n = parseLeadingInt(raw);
+  if (raw.endsWith("GiB")) return n * 1024 ** 3;
+  if (raw.endsWith("MiB")) return n * 1024 ** 2;
+  if (raw.endsWith("KiB")) return n * 1024;
+  return n;
+}
+
+/** fdinfo key → field, per driver family. First listed key wins for
+ *  memory (resident before total). */
+const VRAM_KEYS = ["drm-memory-vram", "drm-resident-local0", "drm-resident-vram0", "drm-total-local0", "drm-total-vram0"];
+const GTT_KEYS = ["drm-memory-gtt", "drm-resident-system0", "drm-resident-gtt", "drm-total-system0", "drm-total-gtt"];
+const GFX_KEYS = new Set(["drm-engine-gfx", "drm-engine-render"]);
+
+/** DRM drivers whose fdinfo the scan keeps. */
+export const AMD_DRIVERS: ReadonlySet<string> = new Set(["amdgpu"]);
+export const INTEL_DRIVERS: ReadonlySet<string> = new Set(["i915", "xe"]);
+
 function parseFdinfoText(text: string): {
   driver: string | null;
   pdev: string | null;
   vramBytes: number;
+  gttBytes: number;
   gfxNs: number;
   computeNs: number;
 } {
   let driver: string | null = null;
   let pdev: string | null = null;
-  let vramBytes = 0;
+  const mem = new Map<string, number>();
   let gfxNs = 0;
   let computeNs = 0;
   for (const line of text.split("\n")) {
@@ -57,12 +85,12 @@ function parseFdinfoText(text: string): {
     const value = line.slice(colon + 1).trim();
     if (key === "drm-driver") driver = value;
     else if (key === "drm-pdev") pdev = value;
-    else if (key === "drm-memory-vram")
-      vramBytes = parseLeadingInt(value) * 1024;
-    else if (key === "drm-engine-gfx") gfxNs = parseLeadingInt(value);
+    else if (GFX_KEYS.has(key)) gfxNs += parseLeadingInt(value);
     else if (key === "drm-engine-compute") computeNs = parseLeadingInt(value);
+    else if (key.startsWith("drm-")) mem.set(key, parseMemBytes(value));
   }
-  return { driver, pdev, vramBytes, gfxNs, computeNs };
+  const first = (keys: string[]) => keys.map((k) => mem.get(k)).find((v) => v !== undefined) ?? 0;
+  return { driver, pdev, vramBytes: first(VRAM_KEYS), gttBytes: first(GTT_KEYS), gfxNs, computeNs };
 }
 
 /**
@@ -158,6 +186,7 @@ export function scanAmdgpuFdinfo(
   hostProc: string,
   state?: FdinfoScanState,
   now: number = Date.now(),
+  drivers: ReadonlySet<string> = AMD_DRIVERS,
 ): Map<number, FdinfoGpuUsage[]> {
   const result = new Map<number, FdinfoGpuUsage[]>();
   let pidDirs: string[];
@@ -200,7 +229,7 @@ export function scanAmdgpuFdinfo(
         continue;
       }
       const parsed = parseFdinfoText(text);
-      if (parsed.driver !== "amdgpu") continue;
+      if (!parsed.driver || !drivers.has(parsed.driver)) continue;
       const perPid = result.get(pid) ?? [];
       // Known limitation: fds with an unreadable/missing drm-pdev all
       // key as pdev===null, so they merge into a single entry here —
@@ -212,12 +241,14 @@ export function scanAmdgpuFdinfo(
       const existing = perPid.find((u) => u.pdev === parsed.pdev);
       if (existing) {
         existing.vramBytes = Math.max(existing.vramBytes, parsed.vramBytes);
+        existing.gttBytes = Math.max(existing.gttBytes, parsed.gttBytes);
         existing.gfxNs += parsed.gfxNs;
         existing.computeNs += parsed.computeNs;
       } else {
         perPid.push({
           pdev: parsed.pdev,
           vramBytes: parsed.vramBytes,
+          gttBytes: parsed.gttBytes,
           gfxNs: parsed.gfxNs,
           computeNs: parsed.computeNs,
         });

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Cpu } from 'lucide-react';
 import { api } from '../../lib/api';
 import { HiddenProcessesNotice, LLM_HINTS, LlmHintIcon, LlmHintPanel, type HiddenProcesses, type LlmHint } from './ProcessHints';
+import { ContainerBadge, LlmStateBadge, ProcessTop, VramCell } from './ProcessExtras';
 
 type GpuProcessType = 'C' | 'G' | 'G+C' | null;
 
@@ -19,6 +20,11 @@ interface GpuProcess {
   llm_runtime?: string | null;
   llm_model?: string | null;
   llm_hint?: LlmHint | null;
+  llm_state?: 'loaded' | 'idle' | null;
+  llm_expires_at?: number | null;
+  gtt_memory?: number | null;
+  container_engine?: string | null;
+  container_id?: string | null;
 }
 
 interface ApiResp {
@@ -155,6 +161,8 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
                           {p.llm_model}
                         </span>
                       )}
+                      {p.llm_runtime && <LlmStateBadge state={p.llm_state ?? null} expiresAt={p.llm_expires_at ?? null} />}
+                      {p.container_id && <ContainerBadge engine={p.container_engine ?? null} id={p.container_id} />}
                       {hint && (
                         <LlmHintIcon
                           hint={hint}
@@ -174,7 +182,7 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
                     <GpuPctCell value={p.gpu_pct} fallback={gpuUtilFallback} tooltip={t('dashboard.processes_gpu_pct_approx')} />
                   </td>
                   <td className="py-1.5 pr-3 font-mono tabular-nums text-right">
-                    {p.used_memory.toLocaleString()} <span style={{ color: 'var(--gv-text-dim)' }}>MiB</span>
+                    <VramCell vram={p.used_memory} gtt={p.gtt_memory ?? null} />
                   </td>
                   <td className="py-1.5 pr-3 font-mono tabular-nums text-right">{fmtPct(p.cpu_pct)}</td>
                 </tr>
@@ -184,6 +192,8 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
           </table>
         </div>
       )}
+
+      <ProcessTop hostId={hostId} gpuIndex={gpuIndex} />
     </div>
   );
 }

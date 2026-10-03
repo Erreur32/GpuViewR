@@ -89,3 +89,41 @@ export function readProcTicks(pid: number, hostProc: string): number | null {
     return null;
   }
 }
+
+export interface ContainerRef {
+  /** 'docker' | 'podman' | 'containerd' | 'k8s' */
+  engine: string;
+  /** First 12 hex chars of the container id, as `docker ps` shows it. */
+  id: string;
+}
+
+const CONTAINER_ID_RE = /[0-9a-f]{64}/;
+
+/** Container a pid runs in, from /proc/<pid>/cgroup (cgroup v1 and v2):
+ *  `docker-<id>.scope`, `/docker/<id>`, `libpod-<id>.scope`,
+ *  `cri-containerd-<id>.scope`, `kubepods...`. Null on the host itself or
+ *  when the file is unreadable. No Docker socket needed. */
+export function readContainer(pid: number, hostProc: string): ContainerRef | null {
+  let text: string;
+  try {
+    text = readFileSync(`${hostProc}/${pid}/cgroup`, 'utf8');
+  } catch {
+    return null;
+  }
+  return parseContainerCgroup(text);
+}
+
+export function parseContainerCgroup(text: string): ContainerRef | null {
+  for (const line of text.split('\n')) {
+    const path = line.slice(line.lastIndexOf(':') + 1);
+    const id = CONTAINER_ID_RE.exec(path)?.[0];
+    if (!id) continue;
+    let engine = 'containerd';
+    if (path.includes('kubepods')) engine = 'k8s';
+    else if (path.includes('libpod')) engine = 'podman';
+    else if (path.includes('docker')) engine = 'docker';
+    return { engine, id: id.slice(0, 12) };
+  }
+  return null;
+}
+

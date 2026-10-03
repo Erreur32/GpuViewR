@@ -8,7 +8,10 @@
 // notification reads the same as the in-app row.
 
 export type AlertLang = 'en' | 'fr';
-export type AlertMetric = 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed';
+export type AlertMetric =
+  | 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed'
+  | 'host_cpu' | 'host_load_1m' | 'host_memory'
+  | 'process_vram' | 'process_absent';
 export type AlertCondition = 'above' | 'below';
 
 export interface AlertEventLite {
@@ -18,6 +21,8 @@ export interface AlertEventLite {
   threshold: number;
   observed: number;
   state: 'firing' | 'resolved';
+  /** Process alerts: the rule's match text. */
+  process_match?: string | null;
 }
 
 interface Phrases {
@@ -25,6 +30,10 @@ interface Phrases {
   conditions: Record<AlertCondition, string>;
   observed: string;        // "(observed {v})"  / "(observée {v})"
   on_gpu: string;          // "on GPU #{i}"     / "sur GPU #{i}"
+  on_host: string;         // "on host"         / "sur l'hôte"
+  process: string;         // "process"         / "processus"
+  absent: string;          // "no process matching" / "aucun processus correspondant à"
+  back: string;            // "is back"         / "est revenu"
   resolved_to_normal: string; // "back to normal" / "revenue à la normale"
   firing_title: string;    // "Alert firing"    / "Alerte déclenchée"
   resolved_title: string;  // "Alert resolved"  / "Alerte résolue"
@@ -46,10 +55,19 @@ const I18N: Record<AlertLang, Phrases> = {
       memory: 'Memory',
       power: 'Power',
       fan_speed: 'Fan',
+      host_cpu: 'Host CPU',
+      host_load_1m: 'Host load (1 min)',
+      host_memory: 'Host RAM',
+      process_vram: 'Process GPU memory',
+      process_absent: 'Process missing',
     },
     conditions: { above: 'above', below: 'below' },
     observed: 'observed',
     on_gpu: 'on GPU',
+    on_host: 'on host',
+    process: 'process',
+    absent: 'no process matching',
+    back: 'is back',
     resolved_to_normal: 'back to normal',
     firing_title: 'Alert firing',
     resolved_title: 'Alert resolved',
@@ -62,10 +80,19 @@ const I18N: Record<AlertLang, Phrases> = {
       memory: 'Mémoire',
       power: 'Puissance',
       fan_speed: 'Ventilateur',
+      host_cpu: 'CPU hôte',
+      host_load_1m: 'Charge hôte (1 min)',
+      host_memory: 'RAM hôte',
+      process_vram: 'Mémoire GPU du processus',
+      process_absent: 'Processus absent',
     },
     conditions: { above: 'au-dessus de', below: 'en dessous de' },
     observed: 'observée',
     on_gpu: 'sur GPU',
+    on_host: "sur l'hôte",
+    process: 'processus',
+    absent: 'aucun processus correspondant à',
+    back: 'est revenu',
     resolved_to_normal: 'revenue à la normale',
     firing_title: 'Alerte déclenchée',
     resolved_title: 'Alerte résolue',
@@ -79,7 +106,19 @@ const UNITS: Record<AlertMetric, string> = {
   memory: '%',
   power: ' W',
   fan_speed: '%',
+  host_cpu: '%',
+  host_load_1m: '',
+  host_memory: '%',
+  process_vram: ' MiB',
+  process_absent: '',
 };
+
+/** "on GPU #0", "on host" or "process "llama-server"". */
+function targetLabel(event: AlertEventLite, ph: Phrases): string {
+  if (event.metric.startsWith('host_')) return ph.on_host;
+  if (event.metric.startsWith('process_')) return `${ph.process} "${event.process_match ?? ''}"`;
+  return `${ph.on_gpu} #${event.gpu_index}`;
+}
 
 function fmtNum(n: number): string {
   // 1 decimal max, trimmed — same rounding the in-app event message uses.
@@ -114,9 +153,15 @@ function buildLines(event: AlertEventLite, lang: AlertLang, m: Marker, condition
   // identical across languages once we substitute the localized labels,
   // so we don't branch on `lang` again below.
   const ph = I18N[lang];
-  const unit = UNITS[event.metric];
-  const metricLabel = ph.metrics[event.metric];
-  const gpu = `${ph.on_gpu} #${event.gpu_index}`;
+  const unit = UNITS[event.metric] ?? '';
+  const metricLabel = ph.metrics[event.metric] ?? event.metric;
+  const gpu = targetLabel(event, ph);
+  if (event.metric === 'process_absent') {
+    const match = m.bold(`"${event.process_match ?? ''}"`);
+    return event.state === 'firing'
+      ? { title: `${ph.firing_title} — ${event.rule_name}`, description: `${ph.absent} ${match}` }
+      : { title: `${ph.resolved_title} — ${event.rule_name}`, description: `${ph.process} ${match} ${ph.back}` };
+  }
   const observedStr = `${fmtNum(event.observed)}${unit}`;
   const thresholdStr = `${fmtNum(event.threshold)}${unit}`;
 

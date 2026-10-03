@@ -94,7 +94,19 @@
       "6h": "6 h",
       "24h": "24 h",
       "3d": "3 d"
-    }
+    },
+    "llm_idle": "asleep",
+    "llm_idle_help": "The llama.cpp server released its model (--sleep-idle-seconds): it reloads on the next request.",
+    "llm_unloads_min": "unloads in {{min}} min",
+    "llm_unloads_h": "unloads in {{h}} h",
+    "container_help": "Runs in {{engine}} container {{id}}. To see its name: {{cmd}}",
+    "gtt_help": "System memory mapped to the GPU (GTT). On APUs and integrated GPUs, model weights often live here rather than in VRAM.",
+    "top_title": "Top over {{hours}} h",
+    "top_empty": "No history yet: one point per minute is recorded while processes run.",
+    "top_vram_max": "Peak memory",
+    "top_vram_avg": "Mean memory",
+    "top_gpu_avg": "Mean GPU",
+    "top_seen": "Seen"
   },
   "alerts": {
     "title": "Alerts",
@@ -140,7 +152,9 @@
       "fan_speed": "Fan speed",
       "host_cpu": "Host CPU",
       "host_load_1m": "Host load (1m)",
-      "host_memory": "Host memory"
+      "host_memory": "Host memory",
+      "process_vram": "GPU memory of process",
+      "process_absent": "Process missing"
     },
     "metric_group_gpu": "GPU",
     "metric_group_host": "Host",
@@ -161,7 +175,11 @@
     "just_now": "Just now",
     "delete_event": "Delete event",
     "clear_all_events": "Clear all",
-    "events_cleared": "Events cleared"
+    "events_cleared": "Events cleared",
+    "metric_group_process": "Process",
+    "process_match": "Process (name, command or model contains)",
+    "process_match_help": "Case-insensitive text searched in the process name, its command line and the LLM model name. Example: llama-server, qwen3, ollama.",
+    "threshold_mib": "Threshold (MiB)"
   },
   "logs": {
     "subtitle": "Recent backend activity, filterable",
@@ -335,7 +353,8 @@
     "updates": "Updates",
     "updates_enable": "Check for updates automatically",
     "updates_frequency": "Check frequency (hours)",
-    "updates_frequency_help": "How often the server polls GitHub for new releases. The result is cached for this duration."
+    "updates_frequency_help": "How often the server polls GitHub for new releases. The result is cached for this duration.",
+    "tab_llm": "LLM"
   },
   "updates": {
     "available_title": "GpuViewR {{version}} is available",
@@ -501,7 +520,11 @@
       "offline": "Offline",
       "pending": "Pending",
       "disabled": "Disabled"
-    }
+    },
+    "llm_title": "LLM models in the fleet",
+    "llm_host": "Host",
+    "llm_runtime": "Runtime",
+    "llm_model": "Model"
   },
   "hosts": {
     "section_title": "Remote hosts",
@@ -635,5 +658,25 @@
     "uninstall_cmd": "Uninstall command",
     "delete_confirm": "Delete from hub",
     "delete_history_kept": "Historical metrics (gpu_metrics, alert_events) are kept under this host id for audit. Re-enrolling later creates a fresh UUID, old data won't be linked."
+  },
+  "llm": {
+    "rules_title": "Naming rules",
+    "rules_help": "When a GPU process isn't recognised, add a rule: if its command line contains the text, it is shown with this runtime, and the model is read from the flag (e.g. --model) or set to a fixed name. Applies to every agent, checked before the built-in detection.",
+    "rules_empty": "No rule. The built-in detection covers Ollama, llama.cpp, vLLM, KoboldCpp, oobabooga, ComfyUI, SD WebUI and LM Studio.",
+    "rule_match": "Command contains",
+    "rule_runtime": "Runtime label",
+    "rule_flag": "Model flag",
+    "rule_model": "Fixed model name",
+    "rule_model_placeholder": "optional",
+    "add_rule": "Add rule",
+    "remove": "Remove",
+    "pushed": "Sent to connected agents.",
+    "host_title": "LLM servers per host",
+    "host_help": "Lets the agent ask the LLM servers themselves which model is loaded and whether it is asleep. Ollama on 127.0.0.1:11434 and the --port of each llama.cpp / vLLM process are tried automatically; add a URL here for a server the agent can't reach on localhost (another container, published port).",
+    "host": "Host",
+    "endpoints": "Server URLs, one per line (max {{max}})",
+    "endpoints_help": "http(s) only, no credentials. The agent reads /api/ps, /api/show (Ollama) and /v1/models, nothing else.",
+    "manifests_dir": "Ollama manifests directory",
+    "manifests_dir_help": "Optional. Absolute path on that host, readable by the agent. Usually found on its own."
   }
 }

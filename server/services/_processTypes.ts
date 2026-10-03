@@ -22,6 +22,14 @@ export interface GpuProcess {
   llm_runtime?: string | null;   // 'ollama' | 'llamacpp' | 'vllm' | …
   llm_model?: string | null;     // best-effort model id (path basename or sha256:prefix)
   llm_hint?: 'ollama_manifests' | 'blob' | 'no_model' | null; // why llm_model isn't friendly
+  // v0.11.0, from the agent: model state reported by the LLM server
+  // itself ('idle' = llama.cpp asleep), Ollama unload time, system memory
+  // mapped to the GPU (AMD APUs, Intel iGPUs) and the container id.
+  llm_state?: 'loaded' | 'idle' | null;
+  llm_expires_at?: number | null;     // epoch seconds
+  gtt_memory?: number | null;         // MiB
+  container_engine?: string | null;   // 'docker' | 'podman' | 'containerd' | 'k8s'
+  container_id?: string | null;       // 12 hex chars
 }
 
 /** Agent-reported process visibility (AMD fdinfo scan). See
