@@ -79,15 +79,19 @@ Windows and macOS, each host with its own colour on every chart.
 
 **Where the hub runs** (it ships as a Docker image only):
 
-- **Linux + Docker** (amd64 or arm64): full install, and the only one where
-  the hub also monitors its own GPU. Needs Docker with Compose v2, plus the
+- **Linux + Docker** (amd64 or arm64), **stable**: full install, and the
+  only one where the hub also monitors its own GPU. Needs Docker with
+  Compose v2, plus the
   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
   for NVIDIA. AMD only needs the `amdgpu` driver.
-- **macOS + Docker Desktop**: aggregator only, the Mac's own GPU is not
-  seen. `install.sh` is Linux-only, set it up
+- **macOS + Docker Desktop**, **in development**: aggregator only, the
+  Mac's own GPU is not seen. `install.sh` is Linux-only, set it up
   [by hand](Docs/INSTALL.md#hub-on-macos-docker-desktop).
-- **Windows**: no documented hub. Docker Desktop on WSL2 should run it as
-  an aggregator, untested.
+- **Windows**, **in development**: no documented hub yet. Docker Desktop
+  on WSL2 should run it as an aggregator, untested.
+
+macOS and Windows need user feedback to be finished, see
+[Roadmap and help wanted](#roadmap-and-help-wanted).
 
 The machines you monitor need no Docker: agents run natively on Linux,
 Windows and macOS, see [Add a machine](#add-a-machine).
@@ -134,16 +138,23 @@ and auto-update.
 | [Migration](Docs/MIGRATION.md) | Coming from bigsk1/gpu-monitor, upgrade notes |
 | [Changelog](CHANGELOG.md) | Every release |
 
-## Help wanted
+## Roadmap and help wanted
 
-- **macOS**: the Apple Silicon agent has only been tested on synthetic
-  data. Have an M-series Mac? A two-minute capture helps:
-  [Help the macOS agent](agent/README.md#help-the-macos-agent).
-- **Windows with an AMD or Intel GPU**: please report whether GPU %
-  moves under load (the fix is only confirmed on NVIDIA so far).
+Linux (NVIDIA and AMD) is stable. macOS and Windows are still in
+development: no test hardware here, so finishing them depends on your
+reports. Open an [issue](https://github.com/Erreur32/GpuViewR/issues) with
+what you see, even "it works".
 
-Planned: a filesystem handshake to replace the sidecar's bootstrap secret,
-the macOS process list, RBAC.
+| Area | Status | How you can help |
+|---|---|---|
+| macOS agent (Apple Silicon) | In development, tested on synthetic data only | Two-minute capture: [Help the macOS agent](agent/README.md#help-the-macos-agent) |
+| macOS process list | Planned, needs a Mac to build against | Same capture as above |
+| Windows agent, AMD / Intel GPU | In development, GPU % confirmed on NVIDIA only | Report whether GPU % moves under load |
+| Hub on macOS (Docker Desktop) | In development, aggregator only | Report whether it starts and receives agents |
+| Hub on Windows (Docker Desktop / WSL2) | In development, untested | Same |
+| AMD without ROCm (v0.10.0) | New, tested on simulated hosts only | Report the installer output |
+| Filesystem handshake (replaces the sidecar bootstrap secret) | Planned | |
+| Roles and permissions (RBAC) | Planned | |
 
 ## Contributing
 
