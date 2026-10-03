@@ -49,14 +49,18 @@ import type {
 import {
   createCpuSampler,
   readCmdline,
+  readContainer,
   resolveProcessName,
 } from "./_procTicks.js";
 import {
+  AMD_DRIVERS,
   createFdinfoGpuSampler,
   createFdinfoScanState,
   hasPtraceCap,
+  INTEL_DRIVERS,
   scanAmdgpuFdinfo,
 } from "./processesAmdgpuFdinfo.js";
+import { intelUuidFromBus } from "./gpuIntel.js";
 import { classifyLLM } from "./llmClassifier.js";
 // Note: LLMResolvers is re-exported through ProcessCollectorOptions
 // (Omit<...>) below — no direct import needed here.
@@ -73,15 +77,17 @@ export type RocmProcessCollectorOptions = Omit<
   "nvidiaSmiPath"
 > & {
   rocmSmiPath: string;
-  /** /sys/class/drm, used to find the amdgpu cards when rocm-smi is
-   *  missing (fdinfo-only mode). */
+  /** /sys/class/drm, used to find the cards when rocm-smi is missing
+   *  (fdinfo-only mode). */
   sysClassDrm?: string;
+  /** 'intel': i915/xe cards, fdinfo only, rocm-smi never spawned. */
+  family?: "amd" | "intel";
 };
 
-/** PCI bus ids of the amdgpu cards under sysClassDrm, read from each
- *  card's device/uevent (`DRIVER=amdgpu`, `PCI_SLOT_NAME=...`). Same
- *  bus id the sysfs GPU collector turns into the card uuid. */
-export function amdgpuBusIds(sysClassDrm: string): string[] {
+/** PCI bus ids of the cards bound to `drivers` under sysClassDrm, read
+ *  from each card's device/uevent (`DRIVER=amdgpu`, `PCI_SLOT_NAME=...`).
+ *  Same bus id the sysfs GPU collectors turn into the card uuid. */
+export function amdgpuBusIds(sysClassDrm: string, drivers: ReadonlySet<string> = AMD_DRIVERS): string[] {
   let entries: string[];
   try {
     entries = readdirSync(sysClassDrm);
@@ -93,7 +99,8 @@ export function amdgpuBusIds(sysClassDrm: string): string[] {
     if (!/^card\d+$/.test(name)) continue;
     try {
       const uevent = readFileSync(`${sysClassDrm}/${name}/device/uevent`, "utf8");
-      if (!/^DRIVER=amdgpu$/m.test(uevent)) continue;
+      const driver = /^DRIVER=(\S+)$/m.exec(uevent)?.[1];
+      if (!driver || !drivers.has(driver)) continue;
       const slot = /^PCI_SLOT_NAME=(\S+)$/m.exec(uevent)?.[1];
       if (slot) buses.add(slot.toLowerCase());
     } catch {
@@ -121,13 +128,17 @@ export function createRocmProcessCollector(
   // Without rocm-smi (amdgpu driver only, no ROCm install) the list
   // comes from the DRM fdinfo scan alone: same rows minus CU occupancy,
   // and KFD-only clients that never opened a render node are missed.
+  const intel = opts.family === "intel";
+  const drivers = intel ? INTEL_DRIVERS : AMD_DRIVERS;
+  const uuidFromBus = intel ? intelUuidFromBus : rocmUuidFromBus;
   let sysfsBuses: string[] | null = null;
   const cardBuses = (): string[] => {
-    sysfsBuses ??= amdgpuBusIds(opts.sysClassDrm ?? "/sys/class/drm");
+    sysfsBuses ??= amdgpuBusIds(opts.sysClassDrm ?? "/sys/class/drm", drivers);
     return sysfsBuses;
   };
 
   function checkRocmSmi(): boolean {
+    if (intel) return false;
     if (rocmSmiAvailable !== null) return rocmSmiAvailable;
     try {
       const r = spawnSync(opts.rocmSmiPath, ["--version"], { timeout: 3_000 });
@@ -167,7 +178,7 @@ export function createRocmProcessCollector(
       const buses = info.cards.length > 0
         ? info.cards.map((c) => c.raw["PCI Bus"])
         : cardBuses();
-      const defaultUuid = rocmUuidFromBus(buses[0]);
+      const defaultUuid = uuidFromBus(buses[0]);
       const isMultiCard = buses.length > 1;
 
       const rocmPids = new Set(procs.map((p) => p.pid));
@@ -175,7 +186,7 @@ export function createRocmProcessCollector(
       // Scanned once per tick, for every pid regardless of how it was
       // discovered — drm-pdev per (pid, fd) is what makes correct
       // multi-card attribution possible for both branches below.
-      const fdinfoRaw = scanAmdgpuFdinfo(opts.hostProc, fdinfoScanState);
+      const fdinfoRaw = scanAmdgpuFdinfo(opts.hostProc, fdinfoScanState, Date.now(), drivers);
       const deniedCount = fdinfoScanState.deniedPids.size;
       if (deniedCount > 0 && !fdinfoDeniedWarned) {
         fdinfoDeniedWarned = true;
@@ -203,6 +214,7 @@ export function createRocmProcessCollector(
           name = resolveProcessName(p.pid, opts.hostProc) ?? "";
         }
         const llm = classifyLLM(command, opts.llmResolvers, p.pid);
+        const container = readContainer(p.pid, opts.hostProc);
         // Stateful (delta-based) sampler — must be called exactly once
         // per pid per tick even though a multi-card pid below produces
         // several rows, so hoist it here rather than call it per-row.
@@ -241,6 +253,8 @@ export function createRocmProcessCollector(
               llm_runtime: llm.runtime,
               llm_model: llm.model,
               llm_hint: llm.hint,
+              container_engine: container?.engine ?? null,
+              container_id: container?.id ?? null,
             },
           ];
         }
@@ -260,8 +274,9 @@ export function createRocmProcessCollector(
           // to defaultUuid rather than the synthetic "ROCm-unknown",
           // so the row still joins against the real GPU card list the
           // UI keys on (${pid}-${gpu_uuid}, see the module header).
-          gpu_uuid: d.pdev ? rocmUuidFromBus(d.pdev) : defaultUuid,
+          gpu_uuid: d.pdev ? uuidFromBus(d.pdev) : defaultUuid,
           used_memory: Math.floor(d.vramBytes / 1048576),
+          gtt_memory: Math.floor(d.gttBytes / 1048576),
           type: "C" as const,
           command,
           cpu_pct: cpuPct,
@@ -269,6 +284,8 @@ export function createRocmProcessCollector(
           llm_runtime: llm.runtime,
           llm_model: llm.model,
           llm_hint: llm.hint,
+          container_engine: container?.engine ?? null,
+          container_id: container?.id ?? null,
         }));
       });
 
@@ -283,6 +300,7 @@ export function createRocmProcessCollector(
         const command = readCmdline(pid, opts.hostProc);
         const name = resolveProcessName(pid, opts.hostProc) ?? "unknown";
         const llm = classifyLLM(command, opts.llmResolvers, pid);
+        const container = readContainer(pid, opts.hostProc);
         const cpuPct = cpuSampler.sample(pid); // once per pid per tick
         for (const usage of devices) {
           const { gpuPct, type } = fdinfoSampler.sample(pid, usage);
@@ -292,8 +310,9 @@ export function createRocmProcessCollector(
             // Same null-pdev fallback as the rocm-attributed branch
             // above: prefer the real defaultUuid over the synthetic
             // "ROCm-unknown" sentinel when drm-pdev was unreadable.
-            gpu_uuid: usage.pdev ? rocmUuidFromBus(usage.pdev) : defaultUuid,
+            gpu_uuid: usage.pdev ? uuidFromBus(usage.pdev) : defaultUuid,
             used_memory: Math.floor(usage.vramBytes / 1048576),
+            gtt_memory: Math.floor(usage.gttBytes / 1048576),
             type,
             command,
             cpu_pct: cpuPct,
@@ -301,6 +320,8 @@ export function createRocmProcessCollector(
             llm_runtime: llm.runtime,
             llm_model: llm.model,
             llm_hint: llm.hint,
+            container_engine: container?.engine ?? null,
+            container_id: container?.id ?? null,
           });
         }
       }
@@ -334,7 +355,9 @@ export function createRocmProcessCollector(
       } else if (cardBuses().length > 0) {
         logger.success(
           "proc",
-          `AMD process collector started from DRM fdinfo only, rocm-smi not found at ${opts.rocmSmiPath} (tick=${tickMs}ms, hostProc=${opts.hostProc}). ROCm-only clients without a render node fd won't be listed.`,
+          intel
+            ? `Intel process collector started from DRM fdinfo (tick=${tickMs}ms, hostProc=${opts.hostProc})`
+            : `AMD process collector started from DRM fdinfo only, rocm-smi not found at ${opts.rocmSmiPath} (tick=${tickMs}ms, hostProc=${opts.hostProc}). ROCm-only clients without a render node fd won't be listed.`,
         );
       } else {
         logger.warn(

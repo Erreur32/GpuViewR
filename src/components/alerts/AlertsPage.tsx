@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Plus, Trash2, Bell, Volume2, VolumeX, Edit3, Sparkles, Webhook,
   Thermometer, Activity, MemoryStick, Zap, Fan, Cpu, Server, Gauge,
-  ChevronDown, ChevronRight, Clock,
+  ChevronDown, ChevronRight, Clock, Bot, SearchX,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -13,7 +13,8 @@ import { notify } from '../../store/toastStore';
 
 type Metric =
   | 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed'
-  | 'host_cpu' | 'host_load_1m' | 'host_memory';
+  | 'host_cpu' | 'host_load_1m' | 'host_memory'
+  | 'process_vram' | 'process_absent';
 type Condition = 'above' | 'below';
 
 // Visual cue per metric so users scan rule rows without reading the metric column.
@@ -26,6 +27,8 @@ const METRIC_ICON: Record<Metric, { icon: LucideIcon; color: string }> = {
   host_cpu:      { icon: Cpu,          color: 'var(--gv-info)' },
   host_load_1m:  { icon: Gauge,        color: 'var(--gv-warn)' },
   host_memory:   { icon: Server,       color: 'var(--gv-accent)' },
+  process_vram:  { icon: Bot,          color: 'var(--gv-accent)' },
+  process_absent:{ icon: SearchX,      color: 'var(--gv-danger)' },
 };
 
 // Display order shared by the Rules table and the Presets picker so
@@ -35,7 +38,10 @@ const METRIC_ICON: Record<Metric, { icon: LucideIcon; color: string }> = {
 const METRIC_ORDER: Metric[] = [
   'utilization', 'memory', 'fan_speed', 'temperature', 'power',
   'host_cpu', 'host_load_1m', 'host_memory',
+  'process_vram', 'process_absent',
 ];
+
+const PROCESS_METRICS: ReadonlySet<Metric> = new Set(['process_vram', 'process_absent']);
 
 function MetricIcon({ metric, className = 'w-4 h-4' }: Readonly<{ metric: Metric; className?: string }>) {
   const spec = METRIC_ICON[metric];
@@ -74,6 +80,9 @@ interface Rule {
   threshold: number;
   duration_s: number;
   gpu_index: number | null;
+  /** Process metrics: text searched in the process name, command line
+   *  and LLM model (case-insensitive). */
+  process_match?: string | null;
   enabled: 0 | 1;
   notify_browser: 0 | 1;
   notify_sound: 0 | 1;
@@ -282,10 +291,12 @@ export default function AlertsPage() {
                 });
                 const gpuMetrics: Metric[] = ['utilization', 'memory', 'fan_speed', 'temperature', 'power'];
                 const gpu = sorted.filter((r) => gpuMetrics.includes(r.metric));
-                const host = sorted.filter((r) => !gpuMetrics.includes(r.metric));
+                const host = sorted.filter((r) => !gpuMetrics.includes(r.metric) && !PROCESS_METRICS.has(r.metric));
+                const proc = sorted.filter((r) => PROCESS_METRICS.has(r.metric));
                 const groups: { label: string; rules: Rule[] }[] = [];
                 if (gpu.length) groups.push({ label: t('alerts.metric_group_gpu'), rules: gpu });
                 if (host.length) groups.push({ label: t('alerts.metric_group_host'), rules: host });
+                if (proc.length) groups.push({ label: t('alerts.metric_group_process'), rules: proc });
                 return groups.map((grp) => (
                   <tbody key={grp.label}>
                     <tr>
@@ -305,7 +316,7 @@ export default function AlertsPage() {
                           </div>
                         </td>
                     <td className="py-2 px-4 tabular-nums">
-                      {t(`alerts.metrics.${r.metric}`)} {r.condition === 'above' ? '≥' : '≤'} {r.threshold}
+                      <RuleCondition rule={r} />
                     </td>
                     <td className="py-2 px-4 tabular-nums">{r.duration_s}s</td>
                     <td className="py-2 px-4">
@@ -665,6 +676,9 @@ function RuleModal({
 }) {
   const { t } = useTranslation();
   const update = (patch: Partial<Rule>) => setRule({ ...rule, ...patch });
+  const isProcess = !!rule.metric && PROCESS_METRICS.has(rule.metric);
+  // "Process missing" has no threshold: it fires while nothing matches.
+  const absent = rule.metric === 'process_absent';
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -692,21 +706,40 @@ function RuleModal({
                 <option value="host_load_1m">{t('alerts.metrics.host_load_1m')}</option>
                 <option value="host_memory">{t('alerts.metrics.host_memory')}</option>
               </optgroup>
+              <optgroup label={t('alerts.metric_group_process')}>
+                <option value="process_vram">{t('alerts.metrics.process_vram')}</option>
+                <option value="process_absent">{t('alerts.metrics.process_absent')}</option>
+              </optgroup>
             </select>
           </div>
           <div>
             <label className="label">{t('alerts.condition')}</label>
-            <select className="input" value={rule.condition} onChange={(e) => update({ condition: e.target.value as Condition })}>
+            <select className="input" value={rule.condition} disabled={absent} onChange={(e) => update({ condition: e.target.value as Condition })}>
               <option value="above">{t('alerts.above')} (≥)</option>
               <option value="below">{t('alerts.below')} (≤)</option>
             </select>
           </div>
         </div>
 
+        {isProcess && (
+          <div>
+            <label className="label">{t('alerts.process_match')}</label>
+            <input
+              className="input"
+              required
+              maxLength={120}
+              value={rule.process_match ?? ''}
+              onChange={(e) => update({ process_match: e.target.value })}
+              placeholder="llama-server"
+            />
+            <p className="text-xs mt-1" style={{ color: 'var(--gv-text-dim)' }}>{t('alerts.process_match_help')}</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="label">{t('alerts.threshold')}</label>
-            <input type="number" step="0.1" className="input" value={rule.threshold ?? 0} onChange={(e) => update({ threshold: Number.parseFloat(e.target.value) })} />
+            <label className="label">{isProcess ? t('alerts.threshold_mib') : t('alerts.threshold')}</label>
+            <input type="number" step="0.1" className="input" disabled={absent} value={rule.threshold ?? 0} onChange={(e) => update({ threshold: Number.parseFloat(e.target.value) })} />
           </div>
           <div>
             <label className="label">{t('alerts.duration_s')}</label>
@@ -743,6 +776,20 @@ function RuleModal({
       </form>
     </div>
   );
+}
+
+/** "Temperature ≥ 80", or for process rules "GPU memory of "ollama" ≥ 1000"
+ *  and "No process "llama-server"". */
+function RuleCondition({ rule }: Readonly<{ rule: Rule }>) {
+  const { t } = useTranslation();
+  if (rule.metric === 'process_absent') {
+    return <>{t('alerts.metrics.process_absent')} <code className="text-xs">{rule.process_match}</code></>;
+  }
+  const op = rule.condition === 'above' ? '≥' : '≤';
+  if (rule.metric === 'process_vram') {
+    return <>{t('alerts.metrics.process_vram')} <code className="text-xs">{rule.process_match}</code> {op} {rule.threshold} MiB</>;
+  }
+  return <>{t(`alerts.metrics.${rule.metric}`)} {op} {rule.threshold}</>;
 }
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {

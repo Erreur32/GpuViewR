@@ -187,8 +187,13 @@ elif grep -qsx 'DRIVER=amdgpu' /sys/class/drm/card[0-9]*/device/uevent; then
   # and the process list from DRM fdinfo, so the amdgpu driver is enough.
   VENDOR_BIN="amdgpu-sysfs"
   say "AMD GPU detected (amdgpu driver, no ROCm: metrics OK, process list from DRM fdinfo)."
+elif grep -qsxE 'DRIVER=(i915|xe)' /sys/class/drm/card[0-9]*/device/uevent; then
+  # Intel: no vendor tool needed, metrics and processes come from sysfs
+  # and DRM fdinfo.
+  VENDOR_BIN="intel-sysfs"
+  say "Intel GPU detected (i915/xe driver: metrics + process list from sysfs and DRM fdinfo)."
 else
-  die "No NVIDIA or AMD GPU found (no nvidia-smi, rocm-smi or amdgpu card). Install the vendor driver then re-run."
+  die "No NVIDIA, AMD or Intel GPU found (no nvidia-smi, rocm-smi, amdgpu or i915/xe card). Install the vendor driver then re-run."
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -300,6 +305,8 @@ if [[ "$VENDOR_BIN" == "rocm-smi" ]]; then
     echo "GPU_VENDOR=amd"
     echo "ROCM_SMI_PATH=${ROCM_BIN}"
   } >> "$ENV_FILE"
+elif [[ "$VENDOR_BIN" == "intel-sysfs" ]]; then
+  echo "GPU_VENDOR=intel" >> "$ENV_FILE"
 elif [[ "$VENDOR_BIN" == "amdgpu-sysfs" ]]; then
   echo "GPU_VENDOR=amd" >> "$ENV_FILE"
 else

@@ -12,7 +12,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { basename } from 'node:path';
 import { logger } from '../logger.js';
-import { createCpuSampler, readCmdline, resolveProcessName } from './_procTicks.js';
+import { createCpuSampler, readCmdline, readContainer, resolveProcessName } from './_procTicks.js';
 import { classifyLLM, type LLMHint, type LLMResolvers } from './llmClassifier.js';
 
 export type GpuProcessType = 'C' | 'G' | 'G+C' | null;
@@ -34,6 +34,17 @@ export interface AgentGpuProcess {
   llm_model?: string | null;
   /** Why llm_model is missing or not human-friendly (see LLMHint). */
   llm_hint?: LLMHint | null;
+  /** Model state from the runtime's own API or VRAM: 'loaded', 'idle'
+   *  (llama.cpp asleep, VRAM released), null when unknown. */
+  llm_state?: 'loaded' | 'idle' | null;
+  /** Ollama: epoch seconds the model unloads at (keep_alive), null otherwise. */
+  llm_expires_at?: number | null;
+  /** System RAM mapped to the GPU for this process (GTT), MiB. AMD APUs
+   *  (Strix Halo...) keep model weights there, so VRAM alone undercounts. */
+  gtt_memory?: number | null;
+  /** Container the process runs in (cgroup), null on the host. */
+  container_engine?: string | null;
+  container_id?: string | null;
 }
 
 /** How much of the host the process collector can actually see. Only
@@ -157,6 +168,7 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
         const pmon = pmonByPid.get(p.pid);
         const command = readCmdline(p.pid, opts.hostProc);
         const llm = classifyLLM(command, opts.llmResolvers, p.pid);
+        const container = readContainer(p.pid, opts.hostProc);
         return {
           ...p,
           type: pmon?.type ?? smiTypeByPid.get(p.pid) ?? (command ? 'C' : null),
@@ -166,6 +178,8 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
           llm_runtime: llm.runtime,
           llm_model: llm.model,
           llm_hint: llm.hint,
+          container_engine: container?.engine ?? null,
+          container_id: container?.id ?? null,
         };
       });
       cpuSampler.retain(new Set(procs.map((p) => p.pid)));

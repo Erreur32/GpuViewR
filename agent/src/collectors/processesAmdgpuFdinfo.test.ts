@@ -189,7 +189,7 @@ test("createFdinfoGpuSampler: first sample has no baseline -> gpuPct null", () =
   const sampler = createFdinfoGpuSampler();
   const { gpuPct, type } = sampler.sample(1, {
     pdev: "0000:c5:00.0",
-    vramBytes: 0,
+    vramBytes: 0, gttBytes: 0,
     gfxNs: 1000,
     computeNs: 0,
   });
@@ -200,22 +200,22 @@ test("createFdinfoGpuSampler: first sample has no baseline -> gpuPct null", () =
 test("createFdinfoGpuSampler: type reflects cumulative gfx/compute usage", () => {
   const sampler = createFdinfoGpuSampler();
   assert.equal(
-    sampler.sample(1, { pdev: null, vramBytes: 0, gfxNs: 0, computeNs: 0 })
+    sampler.sample(1, { pdev: null, vramBytes: 0, gttBytes: 0, gfxNs: 0, computeNs: 0 })
       .type,
     null,
   );
   assert.equal(
-    sampler.sample(2, { pdev: null, vramBytes: 0, gfxNs: 10, computeNs: 0 })
+    sampler.sample(2, { pdev: null, vramBytes: 0, gttBytes: 0, gfxNs: 10, computeNs: 0 })
       .type,
     "G",
   );
   assert.equal(
-    sampler.sample(3, { pdev: null, vramBytes: 0, gfxNs: 0, computeNs: 10 })
+    sampler.sample(3, { pdev: null, vramBytes: 0, gttBytes: 0, gfxNs: 0, computeNs: 10 })
       .type,
     "C",
   );
   assert.equal(
-    sampler.sample(4, { pdev: null, vramBytes: 0, gfxNs: 10, computeNs: 10 })
+    sampler.sample(4, { pdev: null, vramBytes: 0, gttBytes: 0, gfxNs: 10, computeNs: 10 })
       .type,
     "G+C",
   );
@@ -223,7 +223,7 @@ test("createFdinfoGpuSampler: type reflects cumulative gfx/compute usage", () =>
 
 test("createFdinfoGpuSampler: computes % busy from a real elapsed delta", async () => {
   const sampler = createFdinfoGpuSampler();
-  sampler.sample(1, { pdev: null, vramBytes: 0, gfxNs: 0, computeNs: 0 });
+  sampler.sample(1, { pdev: null, vramBytes: 0, gttBytes: 0, gfxNs: 0, computeNs: 0 });
 
   // dt is wall-clock (Date.now()), so give a real — if short — delay
   // to guarantee dt > 0 regardless of clock resolution, then feed a
@@ -231,7 +231,7 @@ test("createFdinfoGpuSampler: computes % busy from a real elapsed delta", async 
   await new Promise((r) => setTimeout(r, 20));
   const { gpuPct } = sampler.sample(1, {
     pdev: null,
-    vramBytes: 0,
+    vramBytes: 0, gttBytes: 0,
     gfxNs: 10_000_000, // 10ms of gfx busy time over >=20ms elapsed
     computeNs: 0,
   });
@@ -241,7 +241,7 @@ test("createFdinfoGpuSampler: computes % busy from a real elapsed delta", async 
 
 test("createFdinfoGpuSampler: zero elapsed engine time -> 0%, not null", async () => {
   const sampler = createFdinfoGpuSampler();
-  const usage = { pdev: null, vramBytes: 0, gfxNs: 0, computeNs: 0 };
+  const usage = { pdev: null, vramBytes: 0, gttBytes: 0, gfxNs: 0, computeNs: 0 };
   sampler.sample(1, usage);
   await new Promise((r) => setTimeout(r, 20));
   const { gpuPct } = sampler.sample(1, usage);
@@ -250,13 +250,13 @@ test("createFdinfoGpuSampler: zero elapsed engine time -> 0%, not null", async (
 
 test("createFdinfoGpuSampler: retain drops history for pids no longer present", () => {
   const sampler = createFdinfoGpuSampler();
-  sampler.sample(1, { pdev: null, vramBytes: 0, gfxNs: 10, computeNs: 0 });
+  sampler.sample(1, { pdev: null, vramBytes: 0, gttBytes: 0, gfxNs: 10, computeNs: 0 });
   sampler.retain(new Set());
   // After retain() drops pid 1's history, the next sample looks like a
   // fresh first observation again -> null.
   const { gpuPct } = sampler.sample(1, {
     pdev: null,
-    vramBytes: 0,
+    vramBytes: 0, gttBytes: 0,
     gfxNs: 20,
     computeNs: 0,
   });
@@ -266,14 +266,14 @@ test("createFdinfoGpuSampler: retain drops history for pids no longer present", 
 test("createFdinfoGpuSampler: same pid on two different cards tracks independent deltas", async () => {
   const sampler = createFdinfoGpuSampler();
   // Baseline on both cards for the same pid.
-  sampler.sample(7, { pdev: "0000:c5:00.0", vramBytes: 0, gfxNs: 0, computeNs: 0 });
-  sampler.sample(7, { pdev: "0000:c6:00.0", vramBytes: 0, gfxNs: 0, computeNs: 0 });
+  sampler.sample(7, { pdev: "0000:c5:00.0", vramBytes: 0, gttBytes: 0, gfxNs: 0, computeNs: 0 });
+  sampler.sample(7, { pdev: "0000:c6:00.0", vramBytes: 0, gttBytes: 0, gfxNs: 0, computeNs: 0 });
 
   await new Promise((r) => setTimeout(r, 20));
   // Card c5 is busy, card c6 is idle — the two deltas must not bleed
   // into each other via a shared pid-only key.
-  const c5 = sampler.sample(7, { pdev: "0000:c5:00.0", vramBytes: 0, gfxNs: 10_000_000, computeNs: 0 });
-  const c6 = sampler.sample(7, { pdev: "0000:c6:00.0", vramBytes: 0, gfxNs: 0, computeNs: 0 });
+  const c5 = sampler.sample(7, { pdev: "0000:c5:00.0", vramBytes: 0, gttBytes: 0, gfxNs: 10_000_000, computeNs: 0 });
+  const c6 = sampler.sample(7, { pdev: "0000:c6:00.0", vramBytes: 0, gttBytes: 0, gfxNs: 0, computeNs: 0 });
   assert.ok(c5.gpuPct !== null && c5.gpuPct > 0);
   assert.equal(c6.gpuPct, 0);
 });

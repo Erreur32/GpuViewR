@@ -7,6 +7,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { GpuMetricRepository } from '../database/models/GpuMetric.js';
 import { AppConfigRepo } from '../database/models/AppConfig.js';
+import { processHistory } from './processHistory.js';
 
 export function startRetentionJob(): void {
   const oneHour = 60 * 60 * 1000;
@@ -24,5 +25,7 @@ export function startRetentionJob(): void {
     const cutoff = Math.floor(Date.now() / 1000) - days * 86400;
     const removed = GpuMetricRepository.pruneOlderThan(cutoff);
     if (removed > 0) logger.info('gpu', `Retention: pruned ${removed} rows older than ${days}d`);
+    const procRemoved = processHistory.pruneOlderThan(cutoff);
+    if (procRemoved > 0) logger.info('proc', `Retention: pruned ${procRemoved} process history rows older than ${days}d`);
   }, oneHour);
 }

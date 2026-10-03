@@ -11,7 +11,7 @@ export interface AgentFeatures {
   processes: boolean;
 }
 
-export type GpuVendor = "auto" | "nvidia" | "amd" | "apple";
+export type GpuVendor = "auto" | "nvidia" | "amd" | "apple" | "intel";
 
 /** AMD-only knob. `auto` lets the agent prefer the cheap sysfs reader
  *  and fall back to rocm-smi if no amdgpu card is discovered under
@@ -50,7 +50,7 @@ export interface AgentConfig {
 
 export function parseGpuVendor(raw: string | undefined): GpuVendor {
   const v = (raw || "").trim().toLowerCase();
-  if (v === "nvidia" || v === "amd" || v === "apple" || v === "auto") return v;
+  if (v === "nvidia" || v === "amd" || v === "apple" || v === "intel" || v === "auto") return v;
   return "auto";
 }
 

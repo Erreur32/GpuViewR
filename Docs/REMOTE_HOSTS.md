@@ -39,7 +39,14 @@ curl -fsSL http://<your-hub>:7510/install.sh | sudo bash -s -- \
 Works on Debian / Ubuntu / RHEL / Rocky / Alma / Fedora, x86_64 and arm64.
 Installs Node 22 if missing and sets up a systemd unit in
 `/opt/gpuviewr-agent/`. NVIDIA needs the driver (`nvidia-smi`), AMD the
-amdgpu driver.
+amdgpu driver (ROCm optional), Intel the i915 or xe driver.
+
+**Intel GPUs (v0.11.0, not yet validated on real hardware)**: metrics and
+the process list come from sysfs and DRM fdinfo, no vendor tool. GPU % is
+measured on i915 only (xe reports engine cycles, not time), memory total is
+unknown, and an integrated GPU shows the system memory mapped to it. For a
+Docker agent, set `GPU_VENDOR=intel`, pass `/dev/dri` and keep
+`cap_add: [SYS_PTRACE]` (start from `docker-compose.agent.amd.yaml`).
 
 ## Linux (Docker)
 

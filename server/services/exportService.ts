@@ -860,7 +860,7 @@ class ExportService {
       message: string;
       triggered_at: number;
     };
-    const r = rule as { notify_browser?: boolean; notify_sound?: boolean };
+    const r = rule as { notify_browser?: boolean; notify_sound?: boolean; process_match?: string | null };
     const lang: AlertLang = cfg.language === 'fr' ? 'fr' : 'en';
     const eLite: AlertEventLite = {
       rule_name: e.rule_name,
@@ -869,6 +869,7 @@ class ExportService {
       threshold: e.threshold,
       observed: e.observed,
       state: e.state,
+      process_match: r.process_match ?? null,
     };
     const sys = cfg.includeSystemStats ? getSystemStats() : undefined;
     const fmt = formatAlert(eLite, lang, sys);

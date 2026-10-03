@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { AlertEventRepo, AlertRuleRepo, type AlertCondition, type AlertMetric } from '../database/models/Alert.js';
+import { AlertEventRepo, AlertRuleRepo, PROCESS_METRICS, type AlertCondition, type AlertMetric } from '../database/models/Alert.js';
 import { alertService } from '../services/alertService.js';
 
 const router = Router();
@@ -9,7 +9,14 @@ router.use(requireAuth);
 const VALID_METRICS: AlertMetric[] = [
   'temperature', 'utilization', 'memory', 'power', 'fan_speed',
   'host_cpu', 'host_load_1m', 'host_memory',
+  'process_vram', 'process_absent',
 ];
+const PROCESS_MATCH_MAX = 120;
+
+/** Trimmed process match, null when empty. Control characters refused by validate(). */
+function processMatch(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() !== '' ? v.trim() : null;
+}
 const VALID_CONDITIONS: ReadonlySet<AlertCondition> = new Set(['above', 'below']);
 
 router.get('/rules', (_req, res) => {
@@ -30,6 +37,7 @@ router.post('/rules', requireAdmin, (req, res) => {
     // host_id null = global (matches every host). A concrete string
     // scopes the rule to that host only. Plan D4.
     host_id: body.host_id === null || body.host_id === undefined || body.host_id === '' ? null : String(body.host_id),
+    process_match: processMatch(body.process_match),
     enabled: body.enabled === false ? 0 : 1,
     notify_browser: body.notify_browser === false ? 0 : 1,
     notify_sound: body.notify_sound ? 1 : 0,
@@ -48,6 +56,7 @@ type RulePatch = Partial<{
   duration_s: number;
   gpu_index: number | null;
   host_id: string | null;
+  process_match: string | null;
   enabled: 0 | 1;
   notify_browser: 0 | 1;
   notify_sound: 0 | 1;
@@ -69,6 +78,7 @@ const RULE_FIELD_COERCERS: Array<{ key: keyof RulePatch; coerce: (v: unknown) =>
   { key: 'duration_s',     coerce: (v) => int(v, 0) },
   { key: 'gpu_index',      coerce: (v) => (v === null ? null : Number(v)) },
   { key: 'host_id',        coerce: (v) => (typeof v === 'string' && v !== '' ? v : null) },
+  { key: 'process_match',  coerce: processMatch },
   { key: 'enabled',        coerce: toBit },
   { key: 'notify_browser', coerce: toBit },
   { key: 'notify_sound',   coerce: toBit },
@@ -160,6 +170,7 @@ router.post('/presets/install', requireAdmin, (req, res) => {
       duration_s: p.duration_s,
       gpu_index: null,
       host_id: null, // presets are global by default — user can scope later
+      process_match: null,
       enabled: 0, // installed disabled — user reviews then enables
       notify_browser: 1,
       notify_sound: p.notify_sound as 0 | 1,
@@ -203,6 +214,14 @@ function validate(body: Record<string, unknown>, partial = false): string | null
   }
   if (body.threshold !== undefined && !Number.isFinite(Number(body.threshold))) {
     return 'threshold must be a number';
+  }
+  if (body.process_match !== undefined && body.process_match !== null) {
+    if (typeof body.process_match !== 'string') return 'process_match must be a string';
+    if (body.process_match.length > PROCESS_MATCH_MAX) return `process_match is longer than ${PROCESS_MATCH_MAX} characters`;
+    if (/[\u0000-\u001f\u007f]/.test(body.process_match)) return 'process_match contains control characters';
+  }
+  if (!partial && PROCESS_METRICS.has(body.metric as AlertMetric) && !processMatch(body.process_match)) {
+    return 'process_match is required for process alerts';
   }
   return null;
 }

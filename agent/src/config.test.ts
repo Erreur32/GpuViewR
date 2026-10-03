@@ -36,6 +36,7 @@ test('parseGpuVendor: explicit values pass through', () => {
   assert.equal(parseGpuVendor('nvidia'), 'nvidia');
   assert.equal(parseGpuVendor('amd'), 'amd');
   assert.equal(parseGpuVendor('apple'), 'apple');
+  assert.equal(parseGpuVendor('intel'), 'intel');
   assert.equal(parseGpuVendor('auto'), 'auto');
 });
 
@@ -47,7 +48,7 @@ test('parseGpuVendor: case + whitespace tolerated', () => {
 test('parseGpuVendor: unknown / undefined falls back to auto', () => {
   assert.equal(parseGpuVendor(undefined), 'auto');
   assert.equal(parseGpuVendor(''), 'auto');
-  assert.equal(parseGpuVendor('intel'), 'auto');
+  assert.equal(parseGpuVendor('matrox'), 'auto');
 });
 
 test('parseGpuBackend: explicit values pass through', () => {

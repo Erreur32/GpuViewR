@@ -94,7 +94,19 @@
       "6h": "6 h",
       "24h": "24 h",
       "3d": "3 j"
-    }
+    },
+    "llm_idle": "en veille",
+    "llm_idle_help": "Le serveur llama.cpp a libéré son modèle (--sleep-idle-seconds) : il le recharge à la prochaine requête.",
+    "llm_unloads_min": "déchargé dans {{min}} min",
+    "llm_unloads_h": "déchargé dans {{h}} h",
+    "container_help": "Tourne dans le conteneur {{engine}} {{id}}. Pour voir son nom : {{cmd}}",
+    "gtt_help": "Mémoire système mappée sur le GPU (GTT). Sur les APU et GPU intégrés, les poids du modèle y sont souvent plutôt qu'en VRAM.",
+    "top_title": "Top sur {{hours}} h",
+    "top_empty": "Pas encore d'historique : un point par minute est enregistré tant que des processus tournent.",
+    "top_vram_max": "Mémoire max",
+    "top_vram_avg": "Mémoire moyenne",
+    "top_gpu_avg": "GPU moyen",
+    "top_seen": "Vu"
   },
   "alerts": {
     "title": "Alertes",
@@ -140,7 +152,9 @@
       "fan_speed": "Ventilateur",
       "host_cpu": "CPU hôte",
       "host_load_1m": "Charge hôte (1m)",
-      "host_memory": "Mémoire hôte"
+      "host_memory": "Mémoire hôte",
+      "process_vram": "Mémoire GPU du processus",
+      "process_absent": "Processus absent"
     },
     "metric_group_gpu": "GPU",
     "metric_group_host": "Machine",
@@ -161,7 +175,11 @@
     "just_now": "À l'instant",
     "delete_event": "Supprimer l'événement",
     "clear_all_events": "Tout effacer",
-    "events_cleared": "Événements supprimés"
+    "events_cleared": "Événements supprimés",
+    "metric_group_process": "Processus",
+    "process_match": "Processus (nom, commande ou modèle contient)",
+    "process_match_help": "Texte cherché, sans tenir compte de la casse, dans le nom du processus, sa ligne de commande et le nom du modèle LLM. Exemple : llama-server, qwen3, ollama.",
+    "threshold_mib": "Seuil (Mio)"
   },
   "logs": {
     "subtitle": "Activité récente du backend, filtrable",
@@ -335,7 +353,8 @@
     "updates": "Mises à jour",
     "updates_enable": "Vérifier automatiquement les mises à jour",
     "updates_frequency": "Fréquence de vérification (heures)",
-    "updates_frequency_help": "Intervalle entre deux interrogations de GitHub. Le résultat est mis en cache pour cette durée."
+    "updates_frequency_help": "Intervalle entre deux interrogations de GitHub. Le résultat est mis en cache pour cette durée.",
+    "tab_llm": "LLM"
   },
   "updates": {
     "available_title": "GpuViewR {{version}} est disponible",
@@ -501,7 +520,11 @@
       "offline": "Hors-ligne",
       "pending": "En attente",
       "disabled": "Désactivé"
-    }
+    },
+    "llm_title": "Modèles LLM de la flotte",
+    "llm_host": "Hôte",
+    "llm_runtime": "Runtime",
+    "llm_model": "Modèle"
   },
   "hosts": {
     "section_title": "Hôtes distants",
@@ -635,5 +658,25 @@
     "uninstall_cmd": "Commande de désinstallation",
     "delete_confirm": "Supprimer du hub",
     "delete_history_kept": "Les métriques historiques (gpu_metrics, alert_events) sont conservées sous cet host id pour audit. Un nouvel enregistrement plus tard crée un UUID frais, les anciennes données ne seront pas liées."
+  },
+  "llm": {
+    "rules_title": "Règles de nommage",
+    "rules_help": "Quand un processus GPU n'est pas reconnu, ajoute une règle : si sa ligne de commande contient le texte, il s'affiche avec ce runtime, et le modèle est lu dans le flag (ex. --model) ou fixé. S'applique à tous les agents, avant la détection intégrée.",
+    "rules_empty": "Aucune règle. La détection intégrée couvre Ollama, llama.cpp, vLLM, KoboldCpp, oobabooga, ComfyUI, SD WebUI et LM Studio.",
+    "rule_match": "Commande contient",
+    "rule_runtime": "Nom du runtime",
+    "rule_flag": "Flag du modèle",
+    "rule_model": "Nom de modèle fixe",
+    "rule_model_placeholder": "optionnel",
+    "add_rule": "Ajouter une règle",
+    "remove": "Supprimer",
+    "pushed": "Envoyé aux agents connectés.",
+    "host_title": "Serveurs LLM par hôte",
+    "host_help": "Permet à l'agent de demander aux serveurs LLM eux-mêmes quel modèle est chargé et s'il est en veille. Ollama sur 127.0.0.1:11434 et le --port de chaque processus llama.cpp / vLLM sont essayés automatiquement ; ajoute ici une URL pour un serveur que l'agent ne joint pas en localhost (autre conteneur, port publié).",
+    "host": "Hôte",
+    "endpoints": "URL des serveurs, une par ligne (max {{max}})",
+    "endpoints_help": "http(s) uniquement, sans identifiants. L'agent lit /api/ps, /api/show (Ollama) et /v1/models, rien d'autre.",
+    "manifests_dir": "Dossier des manifests Ollama",
+    "manifests_dir_help": "Optionnel. Chemin absolu sur cet hôte, lisible par l'agent. En général trouvé tout seul."
   }
 }

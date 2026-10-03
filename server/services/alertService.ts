@@ -4,12 +4,14 @@ import {
   AlertRuleRepo,
   ensureAlertSchema,
   HOST_METRICS,
+  PROCESS_METRICS,
   type AlertEvent,
   type AlertRule,
   type AlertMetric,
 } from '../database/models/Alert.js';
 import { type GpuSample } from './parsers/nvidia.js';
-import { metricsBus, type SampleEvent } from './_metricsBus.js';
+import { metricsBus, type ProcessesEvent, type SampleEvent } from './_metricsBus.js';
+import type { GpuProcess } from './_processTypes.js';
 import { getSystemStats } from './systemStats.js';
 import { logger } from '../utils/logger.js';
 
@@ -17,6 +19,8 @@ import { logger } from '../utils/logger.js';
 // (rule, sample) state map key stays unique without leaking into the
 // real per-GPU dimension.
 const HOST_PSEUDO_INDEX = -1;
+// Same, for process alerts (one state per rule and host).
+const PROCESS_PSEUDO_INDEX = -2;
 
 interface RuleState {
   /** epoch (s) at which the threshold first became crossed; 0 = not crossed */
@@ -36,6 +40,7 @@ class AlertService extends EventEmitter {
   init(): void {
     ensureAlertSchema();
     metricsBus.on('sample', (e: SampleEvent) => this.evaluate(e.host_id, e.samples));
+    metricsBus.on('processes', (e: ProcessesEvent) => this.evaluateProcesses(e.host_id, e.processes));
     logger.success('alert', 'Alert evaluator hooked');
     // Retention: prune events older than 30 days every hour
     setInterval(() => {
@@ -66,6 +71,7 @@ class AlertService extends EventEmitter {
     // rules see a consistent reading.
     let hostSample: HostSample | null = null;
     for (const rule of rules) {
+      if (PROCESS_METRICS.has(rule.metric)) continue;
       if (HOST_METRICS.has(rule.metric)) {
         hostSample ??= buildHostSample();
         this.evaluateOne(host_id, rule, hostSample, now);
@@ -74,6 +80,23 @@ class AlertService extends EventEmitter {
       for (const sample of samples) {
         this.evaluateOne(host_id, rule, sample, now);
       }
+    }
+  }
+
+  private evaluateProcesses(host_id: string, processes: GpuProcess[]): void {
+    const rules = this.rules().filter((r) => PROCESS_METRICS.has(r.metric) && r.process_match);
+    if (rules.length === 0) return;
+    const now = Math.floor(Date.now() / 1000);
+    for (const rule of rules) {
+      const matching = processes.filter((p) => processMatches(p, rule.process_match as string));
+      const sample: ProcessSample = {
+        gpu_index: rule.gpu_index ?? PROCESS_PSEUDO_INDEX,
+        process_vram: matching.length === 0
+          ? null
+          : matching.reduce((sum, p) => sum + p.used_memory + (p.gtt_memory ?? 0), 0),
+        process_absent: matching.length === 0 ? 1 : 0,
+      };
+      this.evaluateOne(host_id, rule, sample, now);
     }
   }
 
@@ -90,9 +113,9 @@ class AlertService extends EventEmitter {
     const observed = readMetric(sample, rule.metric);
     if (observed === null) return;
 
-    const crossed = rule.condition === 'above'
-      ? observed >= rule.threshold
-      : observed <= rule.threshold;
+    let crossed: boolean;
+    if (rule.metric === 'process_absent') crossed = observed === 1;
+    else crossed = rule.condition === 'above' ? observed >= rule.threshold : observed <= rule.threshold;
 
     const key = `${rule.id}:${host_id}:${sample.gpu_index}`;
     const st: RuleState = this.state.get(key) ?? { crossedSince: 0, lastFired: 0, firing: false };
@@ -126,10 +149,7 @@ class AlertService extends EventEmitter {
     // Host-scoped rules don't carry a meaningful gpu_index — surface
     // them as "host" in the message so the AlertsPage and webhook
     // formatter don't show "GPU #-1".
-    const target = HOST_METRICS.has(rule.metric) ? 'host' : `GPU #${sample.gpu_index}`;
-    const message = state === 'firing'
-      ? `${rule.name}: ${rule.metric} ${rule.condition} ${rule.threshold} (observed ${round(observed)}) on ${target}`
-      : `${rule.name} resolved on ${target} (observed ${round(observed)})`;
+    const message = eventMessage(rule, sample, observed, state);
     const event = AlertEventRepo.insert({
       host_id,
       rule_id: rule.id,
@@ -161,10 +181,43 @@ interface HostSample {
   host_memory: number;
 }
 
-type EvalSample = GpuSample | HostSample;
+interface ProcessSample {
+  gpu_index: number;
+  /** VRAM + GTT of the matching processes, MiB; null when none matches. */
+  process_vram: number | null;
+  /** 1 when no process matches, else 0. */
+  process_absent: number;
+}
+
+type EvalSample = GpuSample | HostSample | ProcessSample;
 
 function isHostSample(s: EvalSample): s is HostSample {
   return 'host_cpu' in s;
+}
+
+function isProcessSample(s: EvalSample): s is ProcessSample {
+  return 'process_absent' in s;
+}
+
+/** Case-insensitive substring over name, command and LLM model. Plain
+ *  includes(), no regex: the pattern is user input. */
+export function processMatches(p: GpuProcess, match: string): boolean {
+  const needle = match.toLowerCase();
+  return [p.process_name, p.command, p.llm_model].some((v) => typeof v === 'string' && v.toLowerCase().includes(needle));
+}
+
+function eventMessage(rule: AlertRule, sample: EvalSample, observed: number, state: 'firing' | 'resolved'): string {
+  if (rule.metric === 'process_absent') {
+    return state === 'firing'
+      ? `${rule.name}: no process matching "${rule.process_match}"`
+      : `${rule.name} resolved: process matching "${rule.process_match}" is back`;
+  }
+  let target = `GPU #${sample.gpu_index}`;
+  if (HOST_METRICS.has(rule.metric)) target = 'host';
+  else if (PROCESS_METRICS.has(rule.metric)) target = `process "${rule.process_match}"`;
+  return state === 'firing'
+    ? `${rule.name}: ${rule.metric} ${rule.condition} ${rule.threshold} (observed ${round(observed)}) on ${target}`
+    : `${rule.name} resolved on ${target} (observed ${round(observed)})`;
 }
 
 function buildHostSample(): HostSample {
@@ -178,6 +231,11 @@ function buildHostSample(): HostSample {
 }
 
 function readMetric(sample: EvalSample, metric: AlertMetric): number | null {
+  if (isProcessSample(sample)) {
+    if (metric === 'process_vram') return sample.process_vram;
+    if (metric === 'process_absent') return sample.process_absent;
+    return null;
+  }
   if (isHostSample(sample)) {
     if (metric === 'host_cpu') return sample.host_cpu;
     if (metric === 'host_load_1m') return sample.host_load_1m;

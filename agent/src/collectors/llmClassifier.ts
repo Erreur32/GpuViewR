@@ -74,6 +74,56 @@ interface ModelInfo {
   hint: LLMHint | null;
 }
 
+/** Operator-defined naming rule, sent by the hub (Settings > LLM).
+ *  Checked before the built-in patterns. */
+export interface CustomLLMRule {
+  /** Case-insensitive substring of the command line. */
+  match: string;
+  /** Runtime label shown in the badge. */
+  runtime: string;
+  /** Flag whose value names the model (`--model`), basename kept. */
+  model_flag?: string;
+  /** Fixed model name, used when model_flag is absent or not found. */
+  model?: string;
+}
+
+let customRules: CustomLLMRule[] = [];
+
+/** Keeps only well-formed rules (the hub validates too), max 50. */
+export function sanitizeCustomRules(raw: unknown): CustomLLMRule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CustomLLMRule[] = [];
+  for (const r of raw.slice(0, 50)) {
+    const rule = r as Record<string, unknown>;
+    const text = (v: unknown, max: number) => (typeof v === 'string' && v.trim() !== '' && v.length <= max ? v.trim() : undefined);
+    const match = text(rule.match, 120);
+    const runtime = text(rule.runtime, 40);
+    if (!match || !runtime) continue;
+    const flag = text(rule.model_flag, 40);
+    const model = text(rule.model, 120);
+    out.push({
+      match,
+      runtime,
+      ...(flag?.startsWith('-') ? { model_flag: flag } : {}),
+      ...(model ? { model } : {}),
+    });
+  }
+  return out;
+}
+
+/** Replaces the operator rules (hub config frame). */
+export function setCustomLLMRules(rules: readonly CustomLLMRule[]): void {
+  customRules = sanitizeCustomRules(rules);
+}
+
+function applyCustomRule(cmd: string): LLMClassification | null {
+  const lower = cmd.toLowerCase();
+  const rule = customRules.find((r) => lower.includes(r.match.toLowerCase()));
+  if (!rule) return null;
+  const fromFlag = rule.model_flag ? modelBasename(flagValue(cmd, [rule.model_flag])) : null;
+  return { runtime: rule.runtime, model: fromFlag ?? rule.model ?? null, hint: null };
+}
+
 interface Pattern {
   runtime: string;
   /** Predicate: does this command line belong to this runtime? */
@@ -304,6 +354,8 @@ export function classifyLLM(
   pid?: number,
 ): LLMClassification {
   if (!command) return { runtime: null, model: null, hint: null };
+  const custom = applyCustomRule(command);
+  if (custom) return custom;
   for (const p of PATTERNS) {
     if (p.matches(command)) {
       return { runtime: p.runtime, ...p.model(command, resolvers, pid) };

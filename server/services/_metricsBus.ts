@@ -9,6 +9,7 @@
 
 import { EventEmitter } from 'node:events';
 import type { GpuSample } from './parsers/nvidia.js';
+import type { GpuProcess } from './_processTypes.js';
 
 export interface SampleEvent {
   host_id: string;
@@ -21,8 +22,15 @@ export interface HostStatusEvent {
   last_seen: number | null;
 }
 
+/** A process snapshot from an agent (alerts on processes, history). */
+export interface ProcessesEvent {
+  host_id: string;
+  processes: GpuProcess[];
+}
+
 export type SampleListener = (event: SampleEvent) => void;
 export type HostStatusListener = (event: HostStatusEvent) => void;
+export type ProcessesListener = (event: ProcessesEvent) => void;
 
 class MetricsBus {
   private readonly emitter = new EventEmitter();
@@ -30,21 +38,24 @@ class MetricsBus {
 
   on(event: 'sample', listener: SampleListener): this;
   on(event: 'host_status', listener: HostStatusListener): this;
-  on(event: 'sample' | 'host_status', listener: SampleListener | HostStatusListener): this {
+  on(event: 'processes', listener: ProcessesListener): this;
+  on(event: 'sample' | 'host_status' | 'processes', listener: SampleListener | HostStatusListener | ProcessesListener): this {
     this.emitter.on(event, listener);
     return this;
   }
 
   off(event: 'sample', listener: SampleListener): this;
   off(event: 'host_status', listener: HostStatusListener): this;
-  off(event: 'sample' | 'host_status', listener: SampleListener | HostStatusListener): this {
+  off(event: 'processes', listener: ProcessesListener): this;
+  off(event: 'sample' | 'host_status' | 'processes', listener: SampleListener | HostStatusListener | ProcessesListener): this {
     this.emitter.off(event, listener);
     return this;
   }
 
   emit(event: 'sample', payload: SampleEvent): boolean;
   emit(event: 'host_status', payload: HostStatusEvent): boolean;
-  emit(event: 'sample' | 'host_status', payload: SampleEvent | HostStatusEvent): boolean {
+  emit(event: 'processes', payload: ProcessesEvent): boolean;
+  emit(event: 'sample' | 'host_status' | 'processes', payload: SampleEvent | HostStatusEvent | ProcessesEvent): boolean {
     if (event === 'sample') {
       const e = payload as SampleEvent;
       this.latestByHost.set(e.host_id, e.samples);

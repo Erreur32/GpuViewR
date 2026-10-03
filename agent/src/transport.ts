@@ -166,6 +166,9 @@ export interface Transport {
   stop(): void;
   enqueueSample(samples: GpuSample[]): void;
   enqueueProcesses(processes: AgentGpuProcess[], visibility?: ProcessVisibility): void;
+  /** Called with each hub's `config` frame payload (hub index, payload).
+   *  The payload is untrusted input: the handler validates it. */
+  onHubConfig(handler: (hubIndex: number, payload: unknown) => void): void;
 }
 
 interface HubConnection {
@@ -191,6 +194,7 @@ interface HubConnection {
 
 export function createTransport(config: AgentConfig): Transport {
   let stopped = false;
+  let hubConfigHandler: ((hubIndex: number, payload: unknown) => void) | null = null;
 
   const connections: HubConnection[] = config.hubs.map((target, i) => ({
     target,
@@ -356,7 +360,8 @@ export function createTransport(config: AgentConfig): Transport {
       case "pong":
         break;
       case "config":
-        // Reserved for future hub-driven tick rate changes.
+        // Hub-side settings for this host (LLM naming rules, endpoints).
+        hubConfigHandler?.(connections.indexOf(conn), frame.llm);
         break;
       case "agent_update":
         // Self-replace + exit. systemd / Docker restart-policy picks
@@ -647,6 +652,9 @@ export function createTransport(config: AgentConfig): Transport {
         processes,
         ...(visibility ? { visibility: { ...visibility, install_mode: INSTALL_MODE } } : {}),
       });
+    },
+    onHubConfig(handler) {
+      hubConfigHandler = handler;
     },
   };
 }

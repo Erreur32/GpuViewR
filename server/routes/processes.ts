@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { type GpuProcess, type ProcessVisibility } from '../services/_processTypes.js';
 import { agentProcessStore } from '../services/agentProcessStore.js';
 import { hiddenProcesses } from '../services/processVisibility.js';
+import { processHistory } from '../services/processHistory.js';
+import { HostsRepo } from '../database/models/Host.js';
 import { metricsBus } from '../services/_metricsBus.js';
 import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import type { GpuSample } from '../services/parsers/nvidia.js';
@@ -9,6 +11,38 @@ import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 router.use(requireAuth);
+
+/** Top processes of a host over the last N hours (1-168, default 24). */
+router.get('/history', (req, res) => {
+  const host = typeof req.query.host === 'string' && req.query.host.trim() !== '' ? req.query.host.trim() : LOCAL_HOST_ID;
+  const hoursRaw = Number.parseInt(String(req.query.hours ?? '24'), 10);
+  const hours = Number.isFinite(hoursRaw) ? Math.min(168, Math.max(1, hoursRaw)) : 24;
+  const indexByUuid = new Map(metricsBus.getLatestByHost(host).map((s) => [s.uuid, s.gpu_index]));
+  const top = processHistory.top(host, hours).map((r) => ({ ...r, gpu_index: indexByUuid.get(r.gpu_uuid) ?? null }));
+  res.json({ host, hours, top });
+});
+
+/** Every LLM process across the fleet, from the live snapshots. */
+router.get('/llm', (_req, res) => {
+  const rows = [];
+  for (const host of HostsRepo.list()) {
+    const snap = agentProcessStore.get(host.id);
+    if (!snap) continue;
+    const samples = metricsBus.getLatestByHost(host.id);
+    for (const p of snap.processes) {
+      if (!p.llm_runtime) continue;
+      const card = samples.find((s) => s.uuid === p.gpu_uuid);
+      rows.push({
+        host_id: host.id,
+        host_label: host.label || host.hostname || host.id,
+        gpu_index: card?.gpu_index ?? null,
+        gpu_name: card?.name ?? null,
+        ...p,
+      });
+    }
+  }
+  res.json({ processes: rows });
+});
 
 router.get('/', async (req, res) => {
   const hostRaw = req.query.host;

@@ -4,9 +4,14 @@ import { getDatabase } from '../connection.js';
 // (gpu_index is read from systemStats by alertService).
 export type AlertMetric =
   | 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed'
-  | 'host_cpu' | 'host_load_1m' | 'host_memory';
+  | 'host_cpu' | 'host_load_1m' | 'host_memory'
+  | 'process_vram' | 'process_absent';
 
 export const HOST_METRICS = new Set<AlertMetric>(['host_cpu', 'host_load_1m', 'host_memory']);
+/** Evaluated on agent process snapshots, against `process_match`:
+ *  process_vram = GPU memory (MiB, VRAM + GTT) of the matching processes,
+ *  process_absent = fires while no process matches. */
+export const PROCESS_METRICS = new Set<AlertMetric>(['process_vram', 'process_absent']);
 export type AlertCondition = 'above' | 'below';
 
 export interface AlertRule {
@@ -21,6 +26,9 @@ export interface AlertRule {
   /** Host scope: NULL = global (matches every host), otherwise only fires
    *  for samples coming from that exact host_id. D4 of the multi-host plan. */
   host_id: string | null;
+  /** Process metrics: case-insensitive substring of the process name,
+   *  command line or LLM model. Null for the other metrics. */
+  process_match: string | null;
   enabled: 0 | 1;
   notify_browser: 0 | 1;
   notify_sound: 0 | 1;
@@ -88,6 +96,9 @@ export function ensureAlertSchema(): void {
   if (!cols.some((c) => c.name === 'notify_webhook')) {
     db.exec("ALTER TABLE alert_rules ADD COLUMN notify_webhook INTEGER NOT NULL DEFAULT 1");
   }
+  if (!cols.some((c) => c.name === 'process_match')) {
+    db.exec('ALTER TABLE alert_rules ADD COLUMN process_match TEXT');
+  }
 }
 
 export const AlertRuleRepo = {
@@ -109,12 +120,12 @@ export const AlertRuleRepo = {
   create(input: Omit<AlertRule, 'id' | 'created_at'>): AlertRule {
     const stmt = getDatabase().prepare(
       `INSERT INTO alert_rules
-       (name, metric, condition, threshold, duration_s, gpu_index, host_id, enabled, notify_browser, notify_sound, notify_webhook, cooldown_s, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (name, metric, condition, threshold, duration_s, gpu_index, host_id, process_match, enabled, notify_browser, notify_sound, notify_webhook, cooldown_s, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const r = stmt.run(
       input.name, input.metric, input.condition, input.threshold,
-      input.duration_s, input.gpu_index, input.host_id ?? null, input.enabled,
+      input.duration_s, input.gpu_index, input.host_id ?? null, input.process_match ?? null, input.enabled,
       input.notify_browser, input.notify_sound, input.notify_webhook,
       input.cooldown_s,
       Math.floor(Date.now() / 1000)
@@ -127,10 +138,10 @@ export const AlertRuleRepo = {
     const merged = { ...cur, ...patch };
     getDatabase().prepare(
       `UPDATE alert_rules SET name=?, metric=?, condition=?, threshold=?, duration_s=?,
-       gpu_index=?, host_id=?, enabled=?, notify_browser=?, notify_sound=?, notify_webhook=?, cooldown_s=? WHERE id=?`
+       gpu_index=?, host_id=?, process_match=?, enabled=?, notify_browser=?, notify_sound=?, notify_webhook=?, cooldown_s=? WHERE id=?`
     ).run(
       merged.name, merged.metric, merged.condition, merged.threshold, merged.duration_s,
-      merged.gpu_index, merged.host_id ?? null, merged.enabled ? 1 : 0,
+      merged.gpu_index, merged.host_id ?? null, merged.process_match ?? null, merged.enabled ? 1 : 0,
       merged.notify_browser ? 1 : 0, merged.notify_sound ? 1 : 0,
       merged.notify_webhook ? 1 : 0, merged.cooldown_s, id
     );
