@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] - 2026-10-03
+
+### Added
+
+- **`install.sh --upgrade` for systemd agents.** Refreshes an existing install (bundle + systemd unit) from `/etc/gpuviewr-agent.env`: the host keeps its identity and settings (`TICK_MS`, `FEATURES`, `LOG_LEVEL`, variables added by hand), no token needed. Auto-update only replaces the bundle, so this is how unit changes reach older installs. `--url` switches hub; an install made with `--no-ptrace` stays without the capability.
+  ```bash
+  curl -fsSL http://<hub>:7510/install.sh | sudo bash -s -- --upgrade
+  ```
+
+### Changed
+
+- The hidden-process banner, the model-name hint and the Hosts "agent outdated" button now show the `--upgrade` command for systemd agents instead of a manual drop-in.
+- Re-running the installer restarts the agent so the new unit applies; the `ptrace.conf` drop-in suggested by v0.10.2 is removed (its lines are now in the unit).
+
 ## [0.10.2] - 2026-10-03
 
 ### Added
