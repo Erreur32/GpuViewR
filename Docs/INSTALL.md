@@ -9,6 +9,8 @@ same compose stack. To monitor other machines, see
 - [Quick install](#quick-install)
 - [Manual install](#manual-install)
 - [Update](#update)
+- [Supported hub platforms](#supported-hub-platforms)
+- [Compose examples](#compose-examples)
 - [Prerequisites](#prerequisites)
 - [Hub on macOS (Docker Desktop)](#hub-on-macos-docker-desktop)
 - [First login](#first-login)
@@ -74,6 +76,247 @@ docker compose pull && docker compose up -d
 The UI shows a banner when a new release is available. Agents with
 auto-update enabled follow the hub automatically, see
 [Remote hosts](REMOTE_HOSTS.md#auto-update).
+
+## Supported hub platforms
+
+The hub image is published for `linux/amd64` and `linux/arm64`, so it runs
+on regular x86 servers as well as ARM boards (Raspberry Pi 4/5 on a 64-bit
+OS, Ampere, etc.).
+
+| Host | Local GPU monitoring | Compose example |
+|---|---|---|
+| Linux + NVIDIA GPU | Yes, needs the NVIDIA Container Toolkit | [NVIDIA](#nvidia-hub--local-gpu) |
+| Linux + AMD GPU | Yes, needs the `amdgpu` driver (ROCm for the process list) | [AMD](#amd-hub--local-gpu) |
+| Linux, no GPU | No, aggregator only | [Hub only](#hub-only-aggregator) |
+| macOS, Docker Desktop (Intel / Apple Silicon) | No, aggregator only ([details](#hub-on-macos-docker-desktop)) | [Hub only](#hub-only-aggregator) |
+| Windows | Not supported as a hub, use the Windows agent ([Remote hosts](REMOTE_HOSTS.md)) | |
+
+`install.sh` only covers Linux. Intel GPUs and Apple Silicon are monitored
+through agents, not the hub sidecar.
+
+## Compose examples
+
+Standalone files, one per case, tested with `docker compose config`. The
+hub-only file was also started and reached `healthy`. They match the
+services in the official [`docker-compose.yaml`](../docker-compose.yaml),
+without the `COMPOSE_PROFILES` switch and the optional Ollama mount.
+Put the file next to a `.env` and run `docker compose up -d`.
+
+`.env` for every case:
+
+```bash
+JWT_SECRET=<openssl rand -base64 32>
+LOCAL_AGENT_BOOTSTRAP=<openssl rand -base64 32>   # leave empty for hub only
+HUB_HOSTNAME=my-server
+DASHBOARD_PORT=7510
+TZ=Europe/Paris
+```
+
+### Hub only (aggregator)
+
+No local GPU. The dashboard shows remote machines enrolled from
+**Settings → Hosts → Add host**.
+
+```yaml
+services:
+  hub:
+    image: ghcr.io/erreur32/gpuviewr:latest
+    container_name: gpuviewr-hub
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-7510}:3015"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      LOCAL_AGENT_BOOTSTRAP: ${LOCAL_AGENT_BOOTSTRAP:-}
+      PORT: 3015
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
+      CONTAINER_NAME: gpuviewr-hub
+      HOST_IP: ${HOST_IP:-}
+      TZ: ${TZ:-Europe/Paris}
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+      HOST_PROC: /host/proc
+      HOST_ETC: /host/etc
+    volumes:
+      - ./data:/app/data
+      - /proc:/host/proc:ro
+      - /etc/hostname:/host/etc/hostname:ro
+    networks: [gpuviewr]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  gpuviewr:
+    driver: bridge
+```
+
+### NVIDIA hub + local GPU
+
+Requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+on the host (`docker run --rm --gpus all ubuntu nvidia-smi` must work).
+
+```yaml
+services:
+  hub:
+    image: ghcr.io/erreur32/gpuviewr:latest
+    container_name: gpuviewr-hub
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-7510}:3015"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      LOCAL_AGENT_BOOTSTRAP: ${LOCAL_AGENT_BOOTSTRAP:-}
+      PORT: 3015
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
+      CONTAINER_NAME: gpuviewr-hub
+      HOST_IP: ${HOST_IP:-}
+      TZ: ${TZ:-Europe/Paris}
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+      HOST_PROC: /host/proc
+      HOST_ETC: /host/etc
+    volumes:
+      - ./data:/app/data
+      - /proc:/host/proc:ro
+      - /etc/hostname:/host/etc/hostname:ro
+    networks: [gpuviewr]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  agent:
+    image: ghcr.io/erreur32/gpuviewr-agent:latest
+    container_name: gpuviewr-hub-agent
+    restart: unless-stopped
+    cap_add: [SYS_PTRACE]
+    depends_on:
+      hub:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(Date.now()-require('fs').statSync('/tmp/.gpuviewr-agent-alive').mtimeMs<60000?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks: [gpuviewr]
+    environment:
+      HUB_URL: ws://hub:3015/agent
+      AGENT_TOKEN: ${LOCAL_AGENT_BOOTSTRAP}
+      HOST_ID: local
+      AGENT_LABEL: ${HUB_HOSTNAME:-master}
+      GPU_VENDOR: nvidia
+      HOST_PROC: /host/proc
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      - /proc:/host/proc:ro
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility]
+
+networks:
+  gpuviewr:
+    driver: bridge
+```
+
+### AMD hub + local GPU
+
+Requires the `amdgpu` driver. Without ROCm at `/opt/rocm`, drop that volume:
+GPU metrics still work, only the process list is lost. If
+`getent group video render` does not show `44` / `109`, set `VIDEO_GID` /
+`RENDER_GID` in `.env`.
+
+```yaml
+services:
+  hub:
+    image: ghcr.io/erreur32/gpuviewr:latest
+    container_name: gpuviewr-hub
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-7510}:3015"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      LOCAL_AGENT_BOOTSTRAP: ${LOCAL_AGENT_BOOTSTRAP:-}
+      PORT: 3015
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-7510}
+      CONTAINER_NAME: gpuviewr-hub
+      HOST_IP: ${HOST_IP:-}
+      TZ: ${TZ:-Europe/Paris}
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+      HOST_PROC: /host/proc
+      HOST_ETC: /host/etc
+    volumes:
+      - ./data:/app/data
+      - /proc:/host/proc:ro
+      - /etc/hostname:/host/etc/hostname:ro
+    networks: [gpuviewr]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3015/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  agent:
+    image: ghcr.io/erreur32/gpuviewr-agent:latest
+    container_name: gpuviewr-hub-agent
+    restart: unless-stopped
+    cap_add: [SYS_PTRACE]
+    depends_on:
+      hub:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(Date.now()-require('fs').statSync('/tmp/.gpuviewr-agent-alive').mtimeMs<60000?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks: [gpuviewr]
+    environment:
+      HUB_URL: ws://hub:3015/agent
+      AGENT_TOKEN: ${LOCAL_AGENT_BOOTSTRAP}
+      HOST_ID: local
+      AGENT_LABEL: ${HUB_HOSTNAME:-master}
+      GPU_VENDOR: amd
+      ROCM_SMI_PATH: /opt/rocm/bin/rocm-smi
+      LD_LIBRARY_PATH: /opt/rocm/lib:/opt/rocm/lib64
+      HOST_PROC: /host/proc
+      TZ: ${TZ:-Europe/Paris}
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-109}"
+    volumes:
+      - /opt/rocm:/opt/rocm:ro
+      - /proc:/host/proc:ro
+
+networks:
+  gpuviewr:
+    driver: bridge
+```
 
 ## Prerequisites
 
