@@ -1,7 +1,5 @@
-release: v0.11.5 per-GPU chart thresholds
+release: v0.11.6 GPU % for an unmeasured ROCm process
 
-- Added: each GPU can override any chart threshold line (Settings >
-  Chart thresholds > Per GPU); empty inherits the global value, 0 draws
-  no line.
-- Changed: thresholds live on the hub, shared by every browser, admin
-  only; a browser's old values seed the global set on first admin load.
+- Fixed: an Ollama ROCm runner sharing the card with a Vulkan llama.cpp
+  showed "-" as GPU %. The one process without a counter now gets the
+  card utilisation minus the measured processes (~X %).
