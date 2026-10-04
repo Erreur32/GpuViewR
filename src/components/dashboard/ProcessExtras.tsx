@@ -270,7 +270,9 @@ export function LlmOnlySwitch({ hiddenCount }: Readonly<{ hiddenCount: number }>
   const on = useUiStore((s) => s.processLlmOnly);
   const setOn = useUiStore((s) => s.setProcessLlmOnly);
   return (
-    <label className="inline-flex items-center gap-2 cursor-pointer text-xs select-none" style={{ color: 'var(--gv-text-muted)' }}
+    // ml-auto: stays on the right even alone on its row, which happens when
+    // the Top 24 h panel opens and wraps to a full-width row below it.
+    <label className="ml-auto inline-flex items-center gap-2 cursor-pointer text-xs select-none" style={{ color: 'var(--gv-text-muted)' }}
            title={t('dashboard.llm_only_help')}>
       <input type="checkbox" className="sr-only" checked={on} onChange={(e) => setOn(e.target.checked)} />
       <span className="w-8 h-4 rounded-full transition-colors relative shrink-0" aria-hidden="true"

@@ -63,6 +63,7 @@ export default function Dashboard() {
   const gaugeView = useUiStore((s) => s.gaugeView);
   const setGaugeView = useUiStore((s) => s.setGaugeView);
   const dashboardView = useUiStore((s) => s.dashboardView);
+  const range = useUiStore((s) => s.range);
 
   if (samples.length === 0) {
     return (
@@ -274,6 +275,9 @@ export default function Dashboard() {
         style={{ color: "var(--gv-text-muted)" }}
       >
         {t("dashboard.stats_24h")}
+        <span className="ml-2 normal-case tracking-normal" style={{ color: "var(--gv-accent)" }}>
+          · {t(`dashboard.ranges.${range}`)}
+        </span>
       </h3>
       <StatsSection gpuIndex={active.gpu_index} />
     </div>

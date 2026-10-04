@@ -1,4 +1,4 @@
-# GpuViewR, NVIDIA & AMD GPU Dashboard
+# GpuViewR, GPU monitoring built for local LLMs
 
 <div align="center">
 
@@ -16,7 +16,7 @@
 [![Snyk](https://img.shields.io/github/actions/workflow/status/Erreur32/GpuViewR/snyk.yml?style=for-the-badge&logo=snyk&logoColor=white&label=Snyk&color=111827)](https://github.com/Erreur32/GpuViewR/actions/workflows/snyk.yml)
 [![SonarCloud](https://img.shields.io/sonar/quality_gate/Erreur32_GpuViewR2?server=https%3A%2F%2Fsonarcloud.io&style=for-the-badge&logo=sonarcloud&logoColor=white&label=Sonar)](https://sonarcloud.io/summary/overall?id=Erreur32_GpuViewR2)
 
-**Real-time GPU monitoring dashboard, NVIDIA + AMD, single Docker image.**
+**Real-time multi-host GPU monitoring, built for local LLMs. NVIDIA, AMD and Intel, single Docker image.**
 
 </div>
 
@@ -66,7 +66,13 @@ Windows and macOS, each host with its own colour on every chart.
 
 <img src="Docs/screenshots/dashboard.png" alt="GpuViewR GPU dashboard: live charts, PCIe link and the Ollama process using the GPU" />
 
+<details>
+<summary><b>Hosts view</b>: fleet chart and the LLM models loaded across hosts</summary>
+<br />
+
 <img src="Docs/screenshots/hosts.png" alt="GpuViewR hosts view: fleet chart and the LLM models loaded across hosts" />
+
+</details>
 
 </div>
 

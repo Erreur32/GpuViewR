@@ -287,7 +287,7 @@ function printBoot(): void {
 
   const banner = renderBanner({
     title: 'GpuViewR',
-    subtitle: 'Real-time NVIDIA / AMD GPU Dashboard',
+    subtitle: 'Multi-host GPU monitoring, built for LLMs',
     version,
     envLabel,
     containerName,

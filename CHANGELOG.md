@@ -5,6 +5,18 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.4] - 2026-10-04
+
+### Changed
+
+- New tagline, **"Multi-host GPU monitoring, built for LLMs"**: header, login page, About, server banner, page description, PWA manifest and README title. LLM processes come first, every other GPU process is still listed.
+- The *Statistics for selected range* title now shows the range it covers (e.g. `· 1 h`), next to the title.
+- README: the hosts screenshot is folded by default, the dashboard one stays visible.
+
+### Fixed
+
+- **"LLM only" switch jumped to the left** when *Top over 24 h* was opened. It now stays on the right.
+
 ## [0.11.3] - 2026-10-04
 
 ### Security

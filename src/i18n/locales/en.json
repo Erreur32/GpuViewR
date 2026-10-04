@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "GpuViewR",
-    "subtitle": "Real-time multi-host GPU monitoring"
+    "subtitle": "Multi-host GPU monitoring, built for LLMs"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -231,7 +231,7 @@
     "chart_palette": "Chart curves",
     "chart_palette_help": "Pick a preset palette or fine-tune each metric's color individually. The gradient area fill underneath the line follows the selected color.",
     "chart_palette_reset": "Reset to theme",
-    "about_tagline": "Real-time multi-host GPU dashboard",
+    "about_tagline": "Multi-host GPU dashboard, built for local LLMs",
     "about_description": "GpuViewR streams live GPU metrics over WebSocket, stores history in SQLite, fires alerts, and exports to Prometheus, MQTT (with Home Assistant discovery), InfluxDB v2 and webhooks. Packaged as a single multi-arch Docker image.",
     "about_version": "Installed",
     "about_latest": "Latest",
