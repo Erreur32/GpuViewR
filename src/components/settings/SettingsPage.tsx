@@ -561,7 +561,7 @@ function ThemeRow({
   themes,
   current,
   onSelect,
-}: {
+}: Readonly<{
   title: string;
   themes: {
     id: string;
@@ -571,7 +571,7 @@ function ThemeRow({
   }[];
   current: string;
   onSelect: (id: string) => void;
-}) {
+}>) {
   return (
     <div>
       <div

@@ -35,7 +35,7 @@ type ChipProps = Readonly<{
   isCustom: boolean;
 }>;
 
-export default function LiveChart({ gpuIndex }: Props) {
+export default function LiveChart({ gpuIndex }: Readonly<Props>) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);

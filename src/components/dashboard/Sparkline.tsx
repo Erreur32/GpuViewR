@@ -16,7 +16,7 @@ export default function Sparkline({
   height = 28,
   stroke,
   className = '',
-}: Props) {
+}: Readonly<Props>) {
   // One gradient id per Sparkline instance. With a fixed id the area
   // fills of every gauge shared a single <linearGradient> definition,
   // so the browser picked a single winning color for the whole page —

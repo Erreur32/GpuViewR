@@ -8,7 +8,7 @@ import DropdownPanel from '../ui/DropdownPanel';
 
 // Collapsed dropdown instead of one tab per GPU: a host with many cards
 // used to blow out the header width with an ever-growing .seg strip.
-export default function GpuTabs({ samples }: { samples: GpuSample[] }) {
+export default function GpuTabs({ samples }: Readonly<{ samples: GpuSample[] }>) {
   const { t } = useTranslation();
   const selected = useUiStore((s) => s.selectedGpu);
   const setSelected = useUiStore((s) => s.setSelectedGpu);

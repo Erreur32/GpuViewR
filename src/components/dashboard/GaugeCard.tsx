@@ -147,7 +147,7 @@ function ArcGauge({
   warn,
   danger,
   status,
-}: {
+}: Readonly<{
   pct: number;
   colorVar: string;
   value: number;
@@ -158,7 +158,7 @@ function ArcGauge({
   warn?: number;
   danger?: number;
   status: Status;
-}) {
+}>) {
   const radius = 50;
   const strokeW = 13;
   const circ = 2 * Math.PI * radius * 0.75;
@@ -278,7 +278,7 @@ function BarGauge({
   displayValue,
   displaySubValue,
   status,
-}: {
+}: Readonly<{
   pct: number;
   colorVar: string;
   value: number;
@@ -287,7 +287,7 @@ function BarGauge({
   displayValue?: string;
   displaySubValue?: string;
   status: Status;
-}) {
+}>) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">

@@ -109,7 +109,7 @@ export default function Header() {
   );
 }
 
-function NavItem({ to, icon, label, end }: { to: string; icon: JSX.Element; label: string; end?: boolean }) {
+function NavItem({ to, icon, label, end }: Readonly<{ to: string; icon: JSX.Element; label: string; end?: boolean }>) {
   return (
     <NavLink
       to={to}

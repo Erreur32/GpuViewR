@@ -140,7 +140,7 @@ export default function UpdateBanner() {
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Stat({ label, value, accent }: Readonly<{ label: string; value: string; accent?: boolean }>) {
   return (
     <div className="card p-3" style={{ background: accent ? 'color-mix(in srgb, var(--gv-accent) 10%, var(--gv-surface))' : 'var(--gv-surface)' }}>
       <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>{label}</div>

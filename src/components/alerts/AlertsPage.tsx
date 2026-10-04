@@ -679,12 +679,12 @@ function PresetsModal({
 
 function RuleModal({
   rule, onClose, onSave, setRule,
-}: {
+}: Readonly<{
   rule: Partial<Rule>;
   onClose: () => void;
   onSave: (e: FormEvent) => void;
   setRule: (r: Partial<Rule>) => void;
-}) {
+}>) {
   const { t } = useTranslation();
   const update = (patch: Partial<Rule>) => setRule({ ...rule, ...patch });
   const isProcess = !!rule.metric && PROCESS_METRICS.has(rule.metric);
@@ -804,7 +804,7 @@ function RuleCondition({ rule }: Readonly<{ rule: Rule }>) {
   return <>{t(`alerts.metrics.${rule.metric}`)} {op} {rule.threshold}</>;
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+function Toggle({ checked, onChange, label }: Readonly<{ checked: boolean; onChange: (v: boolean) => void; label: string }>) {
   return (
     <label className="inline-flex items-center gap-2 cursor-pointer text-sm">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only peer" />
