@@ -64,7 +64,9 @@ Windows and macOS, each host with its own colour on every chart.
 
 <div align="center">
 
-<img src="public/chrome-capture-2026-10-02.png" alt="GpuViewR dashboard screenshot" />
+<img src="Docs/screenshots/dashboard.png" alt="GpuViewR GPU dashboard: live charts, PCIe link and the Ollama process using the GPU" />
+
+<img src="Docs/screenshots/hosts.png" alt="GpuViewR hosts view: fleet chart and the LLM models loaded across hosts" />
 
 </div>
 
