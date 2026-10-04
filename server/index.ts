@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import compression from 'compression';
+import helmet from 'helmet';
 import cors from 'cors';
 import http from 'node:http';
 import path from 'node:path';
@@ -71,6 +72,42 @@ async function bootstrap(): Promise<void> {
 
   const app = express();
   app.disable('x-powered-by');
+  // HTTP security headers (helmet). The CSP is tailored to the Vite SPA:
+  // all scripts and styles ship as same-origin files under /assets (no
+  // inline <script>), so script-src stays 'self'. style-src keeps
+  // 'unsafe-inline' because charting (Recharts) and a few UI libs set
+  // inline style attributes at runtime; img-src allows data:/blob: for
+  // logos and canvas exports; connect-src allows ws:/wss: for the two
+  // live WebSocket endpoints (/ws/gpu, /agent) alongside same-origin
+  // fetch. frame-ancestors 'self' is the anti-clickjacking guard.
+  // HSTS is left to helmet's default — browsers only honour it over
+  // HTTPS, so a plain-HTTP LAN deployment is unaffected.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          'default-src': ["'self'"],
+          'script-src': ["'self'"],
+          'style-src': ["'self'", "'unsafe-inline'"],
+          'img-src': ["'self'", 'data:', 'blob:'],
+          'font-src': ["'self'", 'data:'],
+          'connect-src': ["'self'", 'ws:', 'wss:'],
+          'worker-src': ["'self'", 'blob:'],
+          'manifest-src': ["'self'"],
+          'object-src': ["'none'"],
+          'base-uri': ["'self'"],
+          'frame-ancestors': ["'self'"],
+          // Off on purpose: plain-HTTP LAN installs must keep working, so we
+          // don't force the browser to rewrite requests to https.
+          'upgrade-insecure-requests': null,
+        },
+      },
+      // The dashboard never embeds cross-origin resources that would need
+      // COEP, and enabling it breaks some embedded media; keep it off.
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
   // Trust the first proxy hop (typical reverse-proxy setup) so that
   // express-rate-limit and req.ip use X-Forwarded-For correctly.
   app.set('trust proxy', 1);

@@ -66,6 +66,9 @@ const pwaPlugin = VitePWA({
   },
   workbox: {
     globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+    // README-only images: still served from /, but no reason to push them
+    // into every dashboard visitor's offline cache.
+    globIgnores: ['GpuViewR-Ban.png', 'icons/**'],
     navigateFallback: `${BASE_PATH}index.html`,
     // Live data must never be cached — these endpoints stream real metrics.
     navigateFallbackDenylist: [/^\/api\//, /^\/ws\//],
