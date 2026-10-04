@@ -41,6 +41,7 @@ import infoRoutes from './routes/info.js';
 import processesRoutes from './routes/processes.js';
 import hostsRoutes from './routes/hosts.js';
 import llmRoutes from './routes/llm.js';
+import thresholdsRoutes from './routes/thresholds.js';
 import agentDistributionRoutes from './routes/agentDistribution.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -153,6 +154,7 @@ async function bootstrap(): Promise<void> {
   app.use('/api/processes', processesRoutes);
   app.use('/api/hosts', hostsRoutes);
   app.use('/api/llm', llmRoutes);
+  app.use('/api/thresholds', thresholdsRoutes);
   app.use('/metrics', metricsLimiter, metricsRoutes);
   // /install.sh + /agent.mjs — unauthenticated by design, the agent
   // token itself is the auth. Mounted at root, before the SPA

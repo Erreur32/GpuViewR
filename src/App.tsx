@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useAuthStore } from './store/authStore';
 import { useUiStore } from './store/uiStore';
 import { useHostsStore } from './store/hostsStore';
+import { useThresholdsStore } from './store/thresholdsStore';
 import LoginPage from './components/login/LoginPage';
 import Dashboard from './components/dashboard/Dashboard';
 import AlertsPage from './components/alerts/AlertsPage';
@@ -16,6 +17,8 @@ export default function App() {
   const { token, hydrate, fetchStatus } = useAuthStore();
   const hydrateUi = useUiStore((s) => s.hydrate);
   const startHostsPolling = useHostsStore((s) => s.startPolling);
+  const loadThresholds = useThresholdsStore((s) => s.load);
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
   const location = useLocation();
 
   useEffect(() => {
@@ -31,6 +34,11 @@ export default function App() {
     if (!token) return;
     return startHostsPolling();
   }, [token, startHostsPolling]);
+
+  // Chart threshold lines are shared through the hub since v0.11.5.
+  useEffect(() => {
+    if (token) void loadThresholds(isAdmin);
+  }, [token, isAdmin, loadThresholds]);
 
   return (
     <>

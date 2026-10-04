@@ -9,7 +9,6 @@ import {
   Share2,
   Database,
   RefreshCw,
-  Activity,
   Info,
   Palette,
   RotateCcw,
@@ -24,7 +23,7 @@ import {
   Bot,
   Filter,
 } from "lucide-react";
-import { useUiStore, DEFAULT_THRESHOLDS, CONTENT_WIDTH, PROCESS_MIN_MIB_MAX } from "../../store/uiStore";
+import { useUiStore, CONTENT_WIDTH, PROCESS_MIN_MIB_MAX } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
 import { useHostsStore } from "../../store/hostsStore";
 import { THEMES } from "../../lib/themes";
@@ -36,6 +35,7 @@ import AboutSettings from "./AboutSettings";
 import HostsSettingsTab from "./HostsSettingsTab";
 import LogsPage from "../logs/LogsPage";
 import LlmSettings from "./LlmSettings";
+import ThresholdsSettings from "./ThresholdsSettings";
 import Icon, { type IconKey } from "../ui/icons/IconRegistry";
 
 type TabId =
@@ -61,11 +61,6 @@ export default function SettingsPage() {
     setThemeId,
     timeFormat,
     setTimeFormat,
-    chartThresholds,
-    chartThresholdsEnabled,
-    setChartThreshold,
-    setChartThresholdsEnabled,
-    resetChartThresholds,
     chartColors,
     setChartColor,
     resetChartColors,
@@ -344,82 +339,7 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          <section className="card p-5 space-y-3">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Activity className="w-4 h-4" /> {t("settings.thresholds")}
-            </h2>
-            <p className="text-xs" style={{ color: "var(--gv-text-muted)" }}>
-              {t("settings.thresholds_help")}
-            </p>
-            <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={chartThresholdsEnabled}
-                onChange={(e) => setChartThresholdsEnabled(e.target.checked)}
-              />
-              {t("settings.thresholds_enable")}
-            </label>
-            <div
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1"
-              aria-disabled={!chartThresholdsEnabled}
-            >
-              <ThresholdField
-                label={t("dashboard.metrics.utilization")}
-                unit="%"
-                value={chartThresholds.util}
-                placeholder={DEFAULT_THRESHOLDS.util}
-                disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold("util", v)}
-                clearLabel={t("settings.thresholds_clear")}
-              />
-              <ThresholdField
-                label={t("dashboard.metrics.memory")}
-                unit="%"
-                value={chartThresholds.mem}
-                placeholder={DEFAULT_THRESHOLDS.mem}
-                disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold("mem", v)}
-                clearLabel={t("settings.thresholds_clear")}
-              />
-              <ThresholdField
-                label={t("dashboard.metrics.fan")}
-                unit="%"
-                value={chartThresholds.fan}
-                placeholder={DEFAULT_THRESHOLDS.fan}
-                disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold("fan", v)}
-                clearLabel={t("settings.thresholds_clear")}
-              />
-              <ThresholdField
-                label={t("dashboard.metrics.temperature")}
-                unit="°C"
-                value={chartThresholds.temp}
-                placeholder={DEFAULT_THRESHOLDS.temp}
-                disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold("temp", v)}
-                clearLabel={t("settings.thresholds_clear")}
-              />
-              <ThresholdField
-                label={t("dashboard.metrics.power")}
-                unit="W"
-                value={chartThresholds.pow}
-                placeholder={DEFAULT_THRESHOLDS.pow}
-                disabled={!chartThresholdsEnabled}
-                onChange={(v) => setChartThreshold("pow", v)}
-                clearLabel={t("settings.thresholds_clear")}
-              />
-            </div>
-            <div>
-              <button
-                type="button"
-                className="seg-btn text-xs"
-                onClick={resetChartThresholds}
-                disabled={!chartThresholdsEnabled}
-              >
-                {t("settings.thresholds_reset")}
-              </button>
-            </div>
-          </section>
+          <ThresholdsSettings />
         </div>
       )}
 
@@ -633,75 +553,6 @@ function ColorPicker({
         )}
       </div>
     </div>
-  );
-}
-
-function ThresholdField({
-  label,
-  unit,
-  value,
-  placeholder,
-  disabled,
-  onChange,
-  clearLabel,
-}: Readonly<{
-  label: string;
-  unit: string;
-  value: number | undefined;
-  placeholder: number;
-  disabled: boolean;
-  onChange: (v: number | null) => void;
-  clearLabel: string;
-}>) {
-  return (
-    <label className="block text-xs space-y-1">
-      <span style={{ color: "var(--gv-text-muted)" }}>
-        {label} ({unit})
-      </span>
-      <span className="flex items-center gap-1">
-        <input
-          type="number"
-          inputMode="numeric"
-          step="1"
-          min="0"
-          value={value ?? ""}
-          placeholder={String(placeholder)}
-          disabled={disabled}
-          onChange={(e) => {
-            const raw = e.target.value;
-            if (raw === "") {
-              onChange(null);
-              return;
-            }
-            const n = Number(raw);
-            if (Number.isFinite(n)) onChange(n);
-          }}
-          className="w-full px-2 py-1 rounded"
-          style={{
-            background: "var(--gv-surface-alt)",
-            border: "1px solid var(--gv-border)",
-            color: "var(--gv-text)",
-          }}
-        />
-        {value !== undefined && (
-          <button
-            type="button"
-            aria-label={clearLabel}
-            title={clearLabel}
-            disabled={disabled}
-            onClick={() => onChange(null)}
-            className="px-2 py-1 rounded text-xs"
-            style={{
-              background: "transparent",
-              border: "1px solid var(--gv-border)",
-              color: "var(--gv-text-dim)",
-            }}
-          >
-            ×
-          </button>
-        )}
-      </span>
-    </label>
   );
 }
 

@@ -8,16 +8,6 @@ export type Range = 'live' | '5m' | '15m' | '1h' | '6h' | '24h' | '3d';
 export type ChartSeriesKey = 'util' | 'temp' | 'pow' | 'mem' | 'fan';
 export type ChartColors = Partial<Record<ChartSeriesKey, string>>;
 export type TimeFormat = '24h' | '12h';
-export type ChartThresholds = Partial<Record<ChartSeriesKey, number>>;
-
-export const DEFAULT_THRESHOLDS: Required<ChartThresholds> = {
-  util: 95,
-  temp: 83,
-  pow: 350,
-  mem: 90,
-  fan: 90,
-};
-
 // Default palette ("Royal") applied on first run when the user has no
 // custom chart colors yet. Mirrors the Royal preset in SettingsPage.
 // Exported so the FleetChart can reuse the same fallback rather than
@@ -64,7 +54,8 @@ interface UiState {
   soundEnabled: boolean;
   chartColors: ChartColors;
   timeFormat: TimeFormat;
-  chartThresholds: ChartThresholds;
+  /** Show the threshold lines on the live chart. The values themselves
+   *  live on the hub (thresholdsStore); this switch stays per browser. */
   chartThresholdsEnabled: boolean;
   chartPaletteInitialized: boolean;
   /** Fleet page density: 'simple' = single hottest-GPU card, 'detailed' =
@@ -88,9 +79,7 @@ interface UiState {
   setChartColor: (key: ChartSeriesKey, color: string | null) => void;
   resetChartColors: () => void;
   setTimeFormat: (f: TimeFormat) => void;
-  setChartThreshold: (key: ChartSeriesKey, value: number | null) => void;
   setChartThresholdsEnabled: (v: boolean) => void;
-  resetChartThresholds: () => void;
   setFleetView: (v: FleetView) => void;
   setContentWidth: (px: number) => void;
   /** Sets the threshold; 0 switches the filter off. */
@@ -110,7 +99,6 @@ const KEYS = {
   sound: 'gpuviewr.sound',
   chartColors: 'gpuviewr.chart_colors',
   timeFormat: 'gpuviewr.time_format',
-  chartThresholds: 'gpuviewr.chart_thresholds',
   chartThresholdsEnabled: 'gpuviewr.chart_thresholds_enabled',
   chartPaletteInitialized: 'gpuviewr.chart_palette_initialized',
   fleetView: 'gpuviewr.fleet_view',
@@ -149,23 +137,6 @@ function readChartColors(): ChartColors {
   }
 }
 
-function readChartThresholds(): ChartThresholds {
-  try {
-    const raw = localStorage.getItem(KEYS.chartThresholds);
-    if (!raw) return { ...DEFAULT_THRESHOLDS };
-    const obj = JSON.parse(raw) as ChartThresholds;
-    if (typeof obj !== 'object' || obj === null) return { ...DEFAULT_THRESHOLDS };
-    const out: ChartThresholds = {};
-    for (const k of ['util', 'temp', 'pow', 'mem', 'fan'] as ChartSeriesKey[]) {
-      const v = obj[k];
-      if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
-    }
-    return out;
-  } catch {
-    return { ...DEFAULT_THRESHOLDS };
-  }
-}
-
 export const useUiStore = create<UiState>((set, get) => ({
   themeId: 'midnight',
   gaugeView: 'arc',
@@ -175,7 +146,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   soundEnabled: false,
   chartColors: {},
   timeFormat: '24h',
-  chartThresholds: { ...DEFAULT_THRESHOLDS },
   chartThresholdsEnabled: true,
   chartPaletteInitialized: false,
   fleetView: 'simple',
@@ -230,21 +200,9 @@ export const useUiStore = create<UiState>((set, get) => ({
     localStorage.setItem(KEYS.timeFormat, f);
     set({ timeFormat: f });
   },
-  setChartThreshold: (key, value) => {
-    const next = { ...get().chartThresholds };
-    if (value === null || !Number.isFinite(value)) delete next[key];
-    else next[key] = value;
-    localStorage.setItem(KEYS.chartThresholds, JSON.stringify(next));
-    set({ chartThresholds: next });
-  },
   setChartThresholdsEnabled: (v) => {
     localStorage.setItem(KEYS.chartThresholdsEnabled, v ? '1' : '0');
     set({ chartThresholdsEnabled: v });
-  },
-  resetChartThresholds: () => {
-    const next = { ...DEFAULT_THRESHOLDS };
-    localStorage.setItem(KEYS.chartThresholds, JSON.stringify(next));
-    set({ chartThresholds: next });
   },
   setFleetView: (v) => {
     localStorage.setItem(KEYS.fleetView, v);
@@ -293,7 +251,6 @@ export const useUiStore = create<UiState>((set, get) => ({
     const selectedGpu = Number.isFinite(rawGpu) && rawGpu >= 0 ? rawGpu : 0;
     const chartColors = readChartColors();
     const timeFormat = (readLS(KEYS.timeFormat, '24h') as TimeFormat) || '24h';
-    const chartThresholds = readChartThresholds();
     const chartThresholdsEnabled = readLS(KEYS.chartThresholdsEnabled, '1') === '1';
     // First run: seed the chart palette with "Royal" so the dashboard ships
     // with a polished look out of the box. Honors any pre-existing custom
@@ -317,7 +274,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     const processLlmOnly = readLS(KEYS.processLlmOnly, '0') === '1';
     set({
       themeId, gaugeView, dashboardView, range, selectedGpu, soundEnabled: sound, chartColors: effectiveColors, timeFormat,
-      chartThresholds, chartThresholdsEnabled, chartPaletteInitialized: initialized,
+      chartThresholdsEnabled, chartPaletteInitialized: initialized,
       fleetView, contentWidth, processMinMib, processFilterOn, processLlmOnly,
     });
   },
