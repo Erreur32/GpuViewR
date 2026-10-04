@@ -5,6 +5,16 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.5] - 2026-10-04
+
+### Added
+
+- **Chart thresholds per GPU.** Settings > Chart thresholds now has a *Per GPU* list under the global values: each card can get its own line for any metric (a 350 W line never shows on a 200 W card or a 120 W APU). An empty field uses the global value, shown in grey; `0` draws no line on that GPU.
+
+### Changed
+
+- **Thresholds are stored on the hub**, the same in every browser, instead of each browser's local storage. Only an admin can change them. The first time an admin opens the dashboard, the values that browser had become the global set, so nothing is lost. The *Show threshold lines* switch stays a per-browser choice.
+
 ## [0.11.4] - 2026-10-04
 
 ### Changed
