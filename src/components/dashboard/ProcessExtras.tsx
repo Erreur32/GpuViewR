@@ -158,19 +158,26 @@ export function gpuMemoryMib(p: Readonly<{ used_memory: number; gtt_memory?: num
   return p.used_memory + (p.gtt_memory ?? 0);
 }
 
-/** Card utilisation left over for the one process whose GPU % the driver
- *  doesn't report (ROCm compute queues have no per-process counter), once
- *  the measured processes are taken out. Null when none or several rows
- *  lack a value: splitting the rest between them would be a guess. */
-export function residualGpuPct(
-  rows: ReadonlyArray<Readonly<{ gpu_pct?: number | null }>>,
+type ResidualRow = Readonly<{ gpu_pct?: number | null; command?: string | null; llm_model?: string | null; llm_runtime?: string | null }>;
+
+/** Card utilisation left over once the measured processes are taken out,
+ *  and the one row it goes to: the process whose GPU % the driver doesn't
+ *  report (ROCm compute queues have no per-process counter). Embedding
+ *  runners without a value are left out of the count: they only work a few
+ *  ms per RAG request, so a chat model sharing the card with bge-m3 still
+ *  gets the number. Null when no row or several chat rows lack a value:
+ *  splitting the rest between them would be a guess. */
+export function residualGpuPct<T extends ResidualRow>(
+  rows: ReadonlyArray<T>,
   cardPct: number | null,
-): number | null {
+): { row: T; pct: number } | null {
   if (cardPct === null || !Number.isFinite(cardPct)) return null;
-  const measured = rows.filter((p) => p.gpu_pct !== null && p.gpu_pct !== undefined && Number.isFinite(p.gpu_pct));
-  if (rows.length - measured.length !== 1) return null;
-  const used = measured.reduce((sum, p) => sum + (p.gpu_pct ?? 0), 0);
-  return Math.max(0, Math.round((cardPct - used) * 10) / 10);
+  const hasPct = (p: T) => p.gpu_pct !== null && p.gpu_pct !== undefined && Number.isFinite(p.gpu_pct);
+  const unmeasured = rows.filter((p) => !hasPct(p));
+  const candidates = unmeasured.length > 1 ? unmeasured.filter((p) => !isEmbeddingProcess(p)) : unmeasured;
+  if (candidates.length !== 1) return null;
+  const used = rows.filter(hasPct).reduce((sum, p) => sum + (p.gpu_pct ?? 0), 0);
+  return { row: candidates[0], pct: Math.max(0, Math.round((cardPct - used) * 10) / 10) };
 }
 
 /** Embedding model (vectors for search / RAG, not chat): a runner started

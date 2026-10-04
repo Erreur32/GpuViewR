@@ -109,9 +109,10 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
   const hiddenSmall = all.length - sorted.length;
   // The card's utilisation only stands in for the one process without a
   // GPU %, minus what the measured ones use (an Ollama ROCm runner next to
-  // a Vulkan llama.cpp). With several unknowns, copying it on
-  // every row (3 Ollama runners all at "~100%") says something false.
-  const cardFallback = residualGpuPct(all, gpuUtilFallback);
+  // a Vulkan llama.cpp, or next to an idle embedding runner). With several
+  // unknowns, copying it on every row (3 Ollama runners all at "~100%")
+  // says something false.
+  const residual = residualGpuPct(all, gpuUtilFallback);
 
   return (
     <div className="card p-4">
@@ -210,7 +211,7 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
                   <td className="py-1.5 pr-3 font-mono tabular-nums text-right">
                     <GpuPctCell
                       value={p.gpu_pct}
-                      fallback={cardFallback}
+                      fallback={residual?.row === p ? residual.pct : null}
                       tooltip={t('dashboard.processes_gpu_pct_approx')}
                       unknownTooltip={t('dashboard.processes_gpu_pct_unknown')}
                     />
