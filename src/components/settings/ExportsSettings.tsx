@@ -572,7 +572,7 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
   return (
     <Block icon={<Send className="w-4 h-4" />} title="MQTT / Home Assistant">
       <Toggle label={t('settings.exports_enabled')} checked={s.enabled} onChange={(v) => setS({ ...s, enabled: v })} disabled={disabled} />
-      <Field label={t('settings.exports_mqtt_url')} value={s.url} onChange={(v) => setS({ ...s, url: v })} disabled={disabled} placeholder="mqtt://broker:1883" />
+      <Field label={t('settings.exports_mqtt_url')} value={s.url} onChange={(v) => setS({ ...s, url: v })} disabled={disabled} placeholder="mqtts://broker:8883" />
       <div className="grid grid-cols-2 gap-2">
         <Field label={t('settings.exports_user')} value={s.username ?? ''} onChange={(v) => setS({ ...s, username: v })} disabled={disabled} />
         <Field label={t('settings.exports_pass')} value={s.password ?? ''} onChange={(v) => setS({ ...s, password: v })} disabled={disabled} type="password" />
