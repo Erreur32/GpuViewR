@@ -1,10 +1,7 @@
-release: v0.11.4 LLM tagline, stats range in title, switch fix
+release: v0.11.5 per-GPU chart thresholds
 
-- Changed: new tagline "Multi-host GPU monitoring, built for LLMs" in
-  the header, login page, About, server banner, page description, PWA
-  manifest and README title.
-- Changed: the "Statistics for selected range" title shows the range
-  it covers (e.g. "· 1 h").
-- Changed: README hosts screenshot folded by default.
-- Fixed: the "LLM only" switch stayed on the left once "Top over 24 h"
-  was opened; it now stays on the right.
+- Added: each GPU can override any chart threshold line (Settings >
+  Chart thresholds > Per GPU); empty inherits the global value, 0 draws
+  no line.
+- Changed: thresholds live on the hub, shared by every browser, admin
+  only; a browser's old values seed the global set on first admin load.
