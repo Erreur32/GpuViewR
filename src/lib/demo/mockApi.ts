@@ -182,6 +182,10 @@ function handleGpu(ctx: RouteCtx): Response | null {
 }
 
 function handleAlerts(ctx: RouteCtx): Response | null {
+  return handleAlertRules(ctx) ?? handleAlertEvents(ctx);
+}
+
+function handleAlertRules(ctx: RouteCtx): Response | null {
   const p = ctx.url.pathname;
   if (p === '/api/alerts/rules') {
     if (ctx.method === 'GET') return json({ rules: demoRules });
@@ -217,6 +221,11 @@ function handleAlerts(ctx: RouteCtx): Response | null {
     const ids = (ctx.body as { ids?: string[] })?.ids ?? [];
     return json({ created: ids.length });
   }
+  return null;
+}
+
+function handleAlertEvents(ctx: RouteCtx): Response | null {
+  const p = ctx.url.pathname;
   if (p === '/api/alerts/events') {
     if (ctx.method === 'GET') return json({ events: demoEvents });
     if (ctx.method === 'DELETE') {

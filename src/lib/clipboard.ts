@@ -35,7 +35,7 @@ export async function copyText(text: string): Promise<boolean> {
     ta.focus();
     ta.select();
     // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional fallback for insecure contexts
-    const ok = document.execCommand('copy');
+    const ok = document.execCommand('copy'); // NOSONAR(S1874): only way to copy over plain-HTTP LAN access, see above
     ta.remove();
     return ok;
   } catch {

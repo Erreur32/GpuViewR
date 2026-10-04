@@ -26,7 +26,6 @@ export default function GpuTabs({ samples }: Readonly<{ samples: GpuSample[] }>)
         type="button"
         className="seg-btn inline-flex items-center gap-1.5"
         style={{ background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}
-        aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         title={t('dashboard.gpus_all_help')}
@@ -44,8 +43,6 @@ export default function GpuTabs({ samples }: Readonly<{ samples: GpuSample[] }>)
         <DropdownPanel label={t('dashboard.gpus_all_help')}>
           <button
             type="button"
-            role="option"
-            aria-selected={isAll}
             aria-pressed={isAll}
             className="seg-btn inline-flex items-center gap-1.5 text-left"
             onClick={() => { setDashboardView('all'); setOpen(false); }}
@@ -56,8 +53,6 @@ export default function GpuTabs({ samples }: Readonly<{ samples: GpuSample[] }>)
             <button
               key={s.gpu_index}
               type="button"
-              role="option"
-              aria-selected={!isAll && s.gpu_index === selected}
               aria-pressed={!isAll && s.gpu_index === selected}
               className="seg-btn text-left"
               onClick={() => {

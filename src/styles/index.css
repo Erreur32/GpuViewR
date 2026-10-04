@@ -158,7 +158,8 @@ body {
   .seg-btn:hover {
     color: var(--gv-text);
   }
-  .seg-btn[aria-pressed="true"] {
+  .seg-btn[aria-pressed="true"],
+  .seg-btn[aria-selected="true"] {
     background: transparent;
     color: var(--gv-accent);
     /* inset border so the layout doesn't shift between the
@@ -212,7 +213,7 @@ body {
 
   /* Scope override: the Settings page keeps the legacy filled-blue
      active state for both `.btn-primary` (Save/Apply CTAs) and
-     `.seg-btn[aria-pressed]` (the tab strip + language/format
+     `.seg-btn[aria-pressed]` / `[aria-selected]` (the tab strip + language/format
      toggles inside settings). User explicit ask: "sauf dans
      reglage ne touche pas" — outline style applies app-wide
      except inside `.settings-area`. */
@@ -225,7 +226,8 @@ body {
     background: var(--gv-accent);
     filter: brightness(1.08);
   }
-  .settings-area .seg-btn[aria-pressed="true"] {
+  .settings-area .seg-btn[aria-pressed="true"],
+  .settings-area .seg-btn[aria-selected="true"] {
     background: var(--gv-accent);
     color: var(--gv-accent-fg);
     box-shadow: none;

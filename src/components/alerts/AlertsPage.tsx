@@ -10,6 +10,7 @@ import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { notify } from '../../store/toastStore';
+import BackdropClose from '../ui/BackdropClose';
 
 type Metric =
   | 'temperature' | 'utilization' | 'memory' | 'power' | 'fan_speed'
@@ -518,16 +519,6 @@ interface Preset {
 
 function presetKey(p: Pick<Preset, 'metric' | 'condition' | 'threshold'>): string {
   return `${p.metric}|${p.condition}|${p.threshold}`;
-}
-
-/** Click-outside-to-close layer behind a modal card, a real button (as in
- *  ModalShell) so the overlay isn't a div with a mouse-only handler. The
- *  card above it needs `relative` to sit on top. */
-function BackdropClose({ onClose }: Readonly<{ onClose: () => void }>) {
-  const { t } = useTranslation();
-  return (
-    <button type="button" aria-label={t('common.close')} className="absolute inset-0 cursor-default" onClick={onClose} />
-  );
 }
 
 function PresetsModal({

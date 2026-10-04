@@ -27,17 +27,16 @@ export default function Toaster() {
       {items.map((t) => (
         <div
           key={t.id}
-          role="status"
           className="card p-3 toast-enter flex items-start gap-3"
           style={{ borderColor: `color-mix(in srgb, ${COLORS[t.kind]} 35%, var(--gv-border))` }}
         >
           <div className="mt-0.5" style={{ color: COLORS[t.kind] }}>{ICONS[t.kind]}</div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold" style={{ color: 'var(--gv-text)' }}>{t.title}</div>
+          <output className="block flex-1 min-w-0">
+            <span className="block text-sm font-semibold" style={{ color: 'var(--gv-text)' }}>{t.title}</span>
             {t.message && (
-              <div className="text-xs mt-0.5 break-words" style={{ color: 'var(--gv-text-muted)' }}>{t.message}</div>
+              <span className="block text-xs mt-0.5 break-words" style={{ color: 'var(--gv-text-muted)' }}>{t.message}</span>
             )}
-          </div>
+          </output>
           <button
             className="btn-ghost !p-1 !rounded-md"
             onClick={() => dismiss(t.id)}
