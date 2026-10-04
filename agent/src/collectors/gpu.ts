@@ -265,14 +265,9 @@ export function createGpuCollector(
       running = true;
       refreshPcieThroughput();
       pcieTimer = setInterval(refreshPcieThroughput, pcieTickMs);
-      // Windows keeps the per-tick fork until the stream is checked on a
-      // real host: Linux kills an orphaned nvidia-smi through SIGPIPE when
-      // the agent dies, nothing guarantees that for nvidia-smi.exe, and
-      // launcher.ps1 would restart the agent on top of the leftovers.
-      if (process.platform === "win32") {
-        startForking();
-        return;
-      }
+      // If the agent dies hard, the orphaned nvidia-smi exits on its own once
+      // its stdout pipe breaks: checked on Linux (SIGPIPE) and on Windows
+      // 11 with driver tools (gone within 6 s after Stop-Process -Force).
       startStream();
       watchdog = setInterval(checkStream, opts.tickMs);
     },

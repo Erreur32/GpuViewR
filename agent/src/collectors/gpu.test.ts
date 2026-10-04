@@ -23,6 +23,15 @@ test("createQueryBatcher: single GPU yields one line per interval", () => {
   assert.equal(batches.length, 3);
 });
 
+test("createQueryBatcher: Windows CRLF line endings are stripped", () => {
+  const batches: string[][] = [];
+  const b = createQueryBatcher((lines) => batches.push(lines));
+  b.push("0, 9, 2229\r");
+  b.push("0, 8, 2229\r");
+  b.flush();
+  assert.deepEqual(batches, [["0, 9, 2229"], ["0, 8, 2229"]]);
+});
+
 test("createQueryBatcher: blank lines are ignored and an empty flush is a no-op", () => {
   const batches: string[][] = [];
   const b = createQueryBatcher((lines) => batches.push(lines));
