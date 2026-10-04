@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Thermometer, Activity, MemoryStick, Zap, Fan } from "lucide-react";
 import { api } from "../../lib/api";
+import { pollWhileVisible } from "../../lib/poll";
 import { useUiStore } from "../../store/uiStore";
 import { useGpuStore } from "../../store/gpuStore";
 
@@ -50,7 +51,7 @@ export default function StatsSection({ gpuIndex }: Props) {
     // with the loading placeholder rather than briefly showing old
     // numbers under the new label.
     setData(null);
-    const load = () => {
+    const load = () =>
       api<StatsResponse>(`/gpu/stats?gpu=${gpuIndex}&range=${range}`)
         .then((r) => {
           if (!cancelled) setData(r);
@@ -58,12 +59,11 @@ export default function StatsSection({ gpuIndex }: Props) {
         .catch(() => {
           /* keep previous data; transient errors shouldn't blink */
         });
-    };
-    load();
-    const id = setInterval(load, 5_000);
+    void load();
+    const stop = pollWhileVisible(load, 5_000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [gpuIndex, range]);
 

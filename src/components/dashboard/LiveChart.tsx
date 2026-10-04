@@ -7,6 +7,7 @@ import { useHostsStore } from '../../store/hostsStore';
 import { useUiStore } from '../../store/uiStore';
 import { notify } from '../../store/toastStore';
 import { api } from '../../lib/api';
+import { pollWhileVisible } from '../../lib/poll';
 import { fmtClock, fmtDateTime, historyPollIntervalMs, makeAxisTimeFormatter, rangeToSeconds } from '../../lib/time';
 
 interface Props { gpuIndex: number; }
@@ -94,7 +95,7 @@ export default function LiveChart({ gpuIndex }: Props) {
     if (cached) setHistoric(cached);
     const fetchOnce = () => {
       if (first) setLoadingHistory(true);
-      api<{ history: HistoryRow[] }>(`/gpu/history?host=${encodeURIComponent(selectedHostId)}&gpu=${gpuIndex}&range=${range}`)
+      return api<{ history: HistoryRow[] }>(`/gpu/history?host=${encodeURIComponent(selectedHostId)}&gpu=${gpuIndex}&range=${range}`)
         .then((r) => {
           if (cancelled) return;
           setHistoric(r.history);
@@ -105,9 +106,9 @@ export default function LiveChart({ gpuIndex }: Props) {
           if (!cancelled && first) { setLoadingHistory(false); first = false; }
         });
     };
-    fetchOnce();
-    const id = setInterval(fetchOnce, historyPollIntervalMs(range));
-    return () => { cancelled = true; clearInterval(id); };
+    void fetchOnce();
+    const stop = pollWhileVisible(fetchOnce, historyPollIntervalMs(range));
+    return () => { cancelled = true; stop(); };
   }, [selectedHostId, gpuIndex, range, setHistoryCache]);
 
   // Build / rebuild chart on theme change

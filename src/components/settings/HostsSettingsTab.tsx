@@ -19,6 +19,7 @@ import { copyText } from '../../lib/clipboard';
 import { isUnitOutdated } from '../../lib/hostUnit';
 import { HOST_PALETTE, resolveHostColor } from '../../lib/hostColors';
 import { useDropdown } from '../../lib/useDropdown';
+import { pollWhileVisible } from '../../lib/poll';
 import StatusPill from '../fleet/StatusPill';
 import EnrollHostModal from './EnrollHostModal';
 import { ModalShell, WarningBanner, CopyValueBlock } from './_modalParts';
@@ -55,8 +56,7 @@ export default function HostsSettingsTab() {
   useEffect(() => {
     if (!isAdmin) return;
     fetchRejectedAttempts().catch(() => undefined);
-    const id = setInterval(() => { fetchRejectedAttempts().catch(() => undefined); }, 15_000);
-    return () => clearInterval(id);
+    return pollWhileVisible(() => fetchRejectedAttempts().catch(() => undefined), 15_000);
   }, [isAdmin, fetchRejectedAttempts]);
 
   if (!isAdmin) {

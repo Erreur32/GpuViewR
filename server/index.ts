@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import compression from 'compression';
 import helmet from 'helmet';
 import cors from 'cors';
 import http from 'node:http';
@@ -133,6 +134,10 @@ async function bootstrap(): Promise<void> {
     credentials: true,
   };
   app.use(cors(corsOptions));
+  // gzip for the SPA bundle (1 MB of JS, ~290 KB gzipped) and the JSON
+  // history / process responses. WebSocket upgrades don't go through
+  // Express middleware, so the live streams are unaffected.
+  app.use(compression());
   app.use(express.json({ limit: '256kb' }));
 
   app.use('/api', apiLimiter);
@@ -157,7 +162,17 @@ async function bootstrap(): Promise<void> {
 
   const distDir = path.resolve(__dirname, '..', 'dist');
   if (fs.existsSync(distDir)) {
-    app.use(express.static(distDir));
+    const assetsDir = path.join(distDir, 'assets') + path.sep;
+    app.use(express.static(distDir, {
+      setHeaders: (res, filePath) => {
+        // Vite puts a content hash in every /assets file name, so a URL
+        // never changes content: browsers may keep it for a year.
+        // index.html, sw.js and the rest keep the default revalidation.
+        if (filePath.startsWith(assetsDir)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
+    }));
     app.get(/^(?!\/api\/|\/ws\/|\/metrics(?:$|\/)).*/, (_req, res) => {
       res.sendFile(path.join(distDir, 'index.html'));
     });
