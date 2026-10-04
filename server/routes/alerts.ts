@@ -233,7 +233,8 @@ function validateProcessMatch(body: Record<string, unknown>, partial: boolean): 
 }
 
 function int(v: unknown, fallback: number): number {
-  const n = Number.parseInt(String(v ?? ''), 10);
+  // Only a number or a numeric string can parse; anything else falls back.
+  const n = typeof v === 'number' || typeof v === 'string' ? Number.parseInt(String(v), 10) : Number.NaN;
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 

@@ -132,7 +132,7 @@ export const updateService = {
 
     if (!force) {
       const cached = AppConfigRepo.getJson<CachedEnvelope>(CACHE_KEY);
-      if (cached && cached.cachedAt) {
+      if (cached?.cachedAt) {
         const ageMs = Date.now() - new Date(cached.cachedAt).getTime();
         if (ageMs >= 0 && ageMs < config.frequencyHours * 3_600_000) {
           return { ...cached.result, fromCache: true };

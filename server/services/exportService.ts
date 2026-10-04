@@ -406,8 +406,8 @@ class ExportService {
 
   getConfigs(): ExportConfigs {
     const stored = AppConfigRepo.getJson<Partial<ExportConfigs>>(CONFIG_KEY) ?? {};
-    const mqtt = { ...DEFAULTS.mqtt, ...(stored.mqtt ?? {}) };
-    const influxdb = { ...DEFAULTS.influxdb, ...(stored.influxdb ?? {}) };
+    const mqtt = { ...DEFAULTS.mqtt, ...stored.mqtt };
+    const influxdb = { ...DEFAULTS.influxdb, ...stored.influxdb };
     const webhook = {
       ...DEFAULTS.webhook,
       ...stored.webhook,
@@ -423,7 +423,7 @@ class ExportService {
     influxdb.token = decryptSecret(influxdb.token ?? '');
     webhook.token = decryptSecret(webhook.token ?? '');
     return {
-      prometheus: { ...DEFAULTS.prometheus, ...(stored.prometheus ?? {}) },
+      prometheus: { ...DEFAULTS.prometheus, ...stored.prometheus },
       mqtt,
       influxdb,
       webhook,

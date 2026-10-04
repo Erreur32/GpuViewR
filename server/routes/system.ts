@@ -207,7 +207,8 @@ router.get('/db', (_req, res) => {
 });
 
 router.put('/db/retention', requireAdmin, (req, res) => {
-  const days = Number.parseInt(String((req.body as { days?: unknown })?.days ?? ''), 10);
+  const raw = (req.body as { days?: unknown })?.days;
+  const days = typeof raw === 'number' || typeof raw === 'string' ? Number.parseInt(String(raw), 10) : Number.NaN;
   if (!Number.isFinite(days) || days < 1 || days > 365) {
     return res.status(400).json({ error: 'days must be an integer between 1 and 365' });
   }

@@ -31,10 +31,10 @@ function format(args: unknown[]): string {
   return args
     .map((a) => {
       if (a instanceof Error) return a.message;
-      if (typeof a === 'object') {
-        try { return JSON.stringify(a); } catch { return String(a); }
+      if (typeof a === 'object' && a !== null) {
+        try { return JSON.stringify(a); } catch { return Object.prototype.toString.call(a); }
       }
-      return String(a);
+      return String(a as string | number | boolean | bigint | symbol | null | undefined);
     })
     .join(' ');
 }

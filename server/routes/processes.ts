@@ -43,10 +43,16 @@ router.get('/llm', (_req, res) => {
   res.json({ processes: rows });
 });
 
-router.get('/', async (req, res) => {
+/** `?gpu=<index>` filter, null when absent or not a number. */
+function parseGpuFilter(raw: unknown): number | null {
+  if (typeof raw !== 'string' || raw === '') return null;
+  const idx = Number.parseInt(raw, 10);
+  return Number.isFinite(idx) ? idx : null;
+}
+
+router.get('/', (req, res) => {
   const hostRaw = req.query.host;
   const host = typeof hostRaw === 'string' && hostRaw.trim() !== '' ? hostRaw.trim() : LOCAL_HOST_ID;
-  const filterRaw = req.query.gpu;
 
   // Snapshot resolution: every host (local sidecar or remote) feeds
   // its process snapshot through the same agentProcessStore. v0.5
@@ -69,7 +75,6 @@ router.get('/', async (req, res) => {
       ? 'no local sidecar agent connected yet (check docker compose status)'
       : 'no recent process snapshot from this agent (capability disabled or agent offline)';
   }
-  await Promise.resolve(); // keep route async for upstream typings
 
   // Map gpu_uuid → gpu_index using whichever per-host samples we have.
   // Processes are reported by uuid but the WebSocket samples key by
@@ -83,15 +88,8 @@ router.get('/', async (req, res) => {
     gpu_index: uuidToIndex.get(p.gpu_uuid) ?? null,
   }));
 
-  let filtered = enriched;
-  let gpuIdx: number | null = null;
-  if (typeof filterRaw === 'string' && filterRaw !== '') {
-    const idx = Number.parseInt(filterRaw, 10);
-    if (Number.isFinite(idx)) {
-      gpuIdx = idx;
-      filtered = enriched.filter((p) => p.gpu_index === idx);
-    }
-  }
+  const gpuIdx = parseGpuFilter(req.query.gpu);
+  const filtered = gpuIdx === null ? enriched : enriched.filter((p) => p.gpu_index === gpuIdx);
 
   const hidden = visibility ? hiddenProcesses(visibility, samples, filtered, gpuIdx) : null;
 

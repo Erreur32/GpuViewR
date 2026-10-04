@@ -110,36 +110,33 @@ async function handleEnroll(req: Request, res: Response): Promise<void> {
   });
 }
 
-router.patch('/:id', (req, res) => {
-  if (req.params.id === LOCAL_HOST_ID) {
-    return res.status(400).json({ error: 'cannot modify local host' });
-  }
-  const patch: Partial<Omit<HostRecord, 'id' | 'enrolled_at'>> = {};
-  if (typeof req.body?.label === 'string') {
-    const l = req.body.label.trim();
-    if (l.length === 0 || l.length > LABEL_MAX) {
-      return res.status(400).json({ error: `label (1-${LABEL_MAX} chars)` });
-    }
+type HostPatch = Partial<Omit<HostRecord, 'id' | 'enrolled_at'>>;
+
+/** Validates the editable fields of a PATCH body. Returns the patch, or
+ *  the 400 message for the first invalid field. */
+function parseHostPatch(body: Record<string, unknown> | undefined): { patch: HostPatch } | { error: string } {
+  const patch: HostPatch = {};
+  if (typeof body?.label === 'string') {
+    const l = body.label.trim();
+    if (l.length === 0 || l.length > LABEL_MAX) return { error: `label (1-${LABEL_MAX} chars)` };
     patch.label = l;
   }
-  if (typeof req.body?.status === 'string') {
+  if (typeof body?.status === 'string') {
     const allowed: HostStatus[] = ['pending', 'online', 'offline', 'disabled'];
-    if (!allowed.includes(req.body.status as HostStatus)) {
-      return res.status(400).json({ error: `status must be one of ${allowed.join(', ')}` });
+    if (!allowed.includes(body.status as HostStatus)) {
+      return { error: `status must be one of ${allowed.join(', ')}` };
     }
-    patch.status = req.body.status as HostStatus;
+    patch.status = body.status as HostStatus;
   }
-  if (req.body?.auto_update !== undefined) {
+  if (body?.auto_update !== undefined) {
     // Accept boolean from the UI; stored as 0/1 because SQLite has no
     // native bool. Reject any other shape so a fat-fingered PATCH
     // can't insert a string here.
-    if (typeof req.body.auto_update !== 'boolean') {
-      return res.status(400).json({ error: 'auto_update must be a boolean' });
-    }
-    patch.auto_update = req.body.auto_update ? 1 : 0;
+    if (typeof body.auto_update !== 'boolean') return { error: 'auto_update must be a boolean' };
+    patch.auto_update = body.auto_update ? 1 : 0;
   }
-  if (req.body?.color !== undefined) {
-    const { color } = req.body;
+  if (body?.color !== undefined) {
+    const { color } = body;
     // null clears the override so the UI falls back to the
     // index-based palette (FleetChart.tsx's hostColor()). Otherwise
     // require a strict #rrggbb hex string — this value is used
@@ -147,10 +144,20 @@ router.patch('/:id', (req, res) => {
     // here keeps the DB from ever holding something that isn't safe
     // to drop straight into a style attribute.
     if (color !== null && !(typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color))) {
-      return res.status(400).json({ error: 'color must be a #rrggbb hex string or null' });
+      return { error: 'color must be a #rrggbb hex string or null' };
     }
-    patch.color = color;
+    patch.color = color as string | null;
   }
+  return { patch };
+}
+
+router.patch('/:id', (req, res) => {
+  if (req.params.id === LOCAL_HOST_ID) {
+    return res.status(400).json({ error: 'cannot modify local host' });
+  }
+  const parsed = parseHostPatch(req.body);
+  if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+  const { patch } = parsed;
   const updated = HostsRepo.update(req.params.id, patch);
   if (!updated) return res.status(404).json({ error: 'Not found' });
   if (patch.status) {

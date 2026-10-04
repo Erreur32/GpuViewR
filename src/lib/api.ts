@@ -41,7 +41,7 @@ export async function api<T = unknown>(
     headers: {
       'Content-Type': 'application/json',
       ...authHeader(),
-      ...(init.headers || {}),
+      ...init.headers,
     },
   });
   const text = await res.text();

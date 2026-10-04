@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { metricsBus } from '../services/_metricsBus.js';
-import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import { HostsRepo } from '../database/models/Host.js';
 import { config } from '../config.js';
 
@@ -18,7 +17,6 @@ router.get('/', (_req, res) => {
   let online = 0;
   let lagging = 0;
   let offline = 0;
-  void LOCAL_HOST_ID;   // kept for backward-compat callers; no special branch
   // Keep in sync with src/store/hostsStore.ts LAGGING_THRESHOLD_S. Both
   // surfaces compute lagging client-side from last_seen rather than from
   // a stored column, so the two thresholds must agree.

@@ -91,9 +91,9 @@ router.get('/history.csv', (req, res) => {
 
 function csvField(v: unknown): string {
   if (v === null || v === undefined) return '';
-  const s = typeof v === 'string' ? v : String(v);
+  const s = typeof v === 'object' ? JSON.stringify(v) : String(v as string | number | boolean | bigint);
   // Quote when the value contains a CSV special char; double internal quotes.
-  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  if (/[",\n\r]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
   return s;
 }
 
