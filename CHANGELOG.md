@@ -5,6 +5,18 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.7] - 2026-10-04
+
+### Fixed
+
+- **Accessibility:** the alert modals and the update details modal close on a click outside through a real button (keyboard and screen readers included), and Escape still closes the update modal. The range and GPU pickers, the gauge-view switch, the settings tabs, the toasts and the demo banner use native semantics (`fieldset`, toggle buttons, `<output>`) instead of mismatched ARIA roles. The webhook *Method* field is labelled.
+- The MQTT URL placeholder suggests the encrypted `mqtts://broker:8883`. Plain `mqtt://` URLs still work.
+- Editing a webhook header name no longer risks re-rendering the wrong row (stable row keys).
+
+### Changed
+
+- Code cleanup clearing all open SonarCloud findings (96 code smells, 4 bugs, 1 vulnerability): simpler host PATCH validation and `/processes` route, shared byte formatter, split multi-GPU chart merging. No behaviour change intended; the login and *Add host* fields still get the focus on open.
+
 ## [0.11.6] - 2026-10-04
 
 ### Fixed

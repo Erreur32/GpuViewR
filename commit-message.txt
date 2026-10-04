@@ -1,5 +1,7 @@
-release: v0.11.6 GPU % for an unmeasured ROCm process
+release: v0.11.7 SonarCloud cleanup and accessibility
 
-- Fixed: an Ollama ROCm runner sharing the card with a Vulkan llama.cpp
-  showed "-" as GPU %. The one process without a counter now gets the
-  card utilisation minus the measured processes (~X %).
+- Fixed: modal backdrops are real buttons, native semantics instead of
+  mismatched ARIA roles, labelled webhook Method, mqtts placeholder,
+  stable webhook header rows.
+- Changed: all open SonarCloud findings cleared (96 smells, 4 bugs,
+  1 vulnerability), no behaviour change intended.
