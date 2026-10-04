@@ -13,6 +13,8 @@ export default function LoginPage() {
   const { login, register, hasUsers, error, loading } = useAuthStore();
 
   const isRegister = !hasUsers;
+  let submitLabel = t(isRegister ? 'auth.submit_register' : 'auth.submit_login');
+  if (loading) submitLabel = t('common.loading');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   // ?expired=1 lands here when api.ts auto-logs-out on a 401 (stale
@@ -119,7 +121,7 @@ export default function LoginPage() {
           )}
 
           <button type="submit" className="btn-primary w-full" disabled={loading}>
-            {loading ? t('common.loading') : t(isRegister ? 'auth.submit_register' : 'auth.submit_login')}
+            {submitLabel}
           </button>
         </form>
       </div>

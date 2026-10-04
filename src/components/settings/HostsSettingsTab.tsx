@@ -11,6 +11,7 @@ import {
   CLOCK_SKEW_WARN_S,
   type HostRecord,
   type RejectedAttempt,
+  type InstallMode as AgentInstallMode,
 } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
@@ -31,7 +32,6 @@ import {
   TAB_LABEL_KEY_BY_MODE,
   type InstallMode,
 } from './_installCommands';
-import type { InstallMode as AgentInstallMode } from '../../store/hostsStore';
 
 // Same constant the footer uses — Vite injects the package.json version
 // at build time, so this stays in sync with what the hub actually runs.

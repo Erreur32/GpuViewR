@@ -112,6 +112,15 @@ async function handleEnroll(req: Request, res: Response): Promise<void> {
 
 type HostPatch = Partial<Omit<HostRecord, 'id' | 'enrolled_at'>>;
 
+/** null clears the override so the UI falls back to the index-based
+ *  palette (FleetChart.tsx's hostColor()). Otherwise a strict #rrggbb hex
+ *  string: the value is used directly as a CSS color on the client, so
+ *  validating the shape here keeps the DB from ever holding something
+ *  that isn't safe to drop straight into a style attribute. */
+function isHostColor(color: unknown): color is string | null {
+  return color === null || (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color));
+}
+
 /** Validates the editable fields of a PATCH body. Returns the patch, or
  *  the 400 message for the first invalid field. */
 function parseHostPatch(body: Record<string, unknown> | undefined): { patch: HostPatch } | { error: string } {
@@ -136,17 +145,8 @@ function parseHostPatch(body: Record<string, unknown> | undefined): { patch: Hos
     patch.auto_update = body.auto_update ? 1 : 0;
   }
   if (body?.color !== undefined) {
-    const { color } = body;
-    // null clears the override so the UI falls back to the
-    // index-based palette (FleetChart.tsx's hostColor()). Otherwise
-    // require a strict #rrggbb hex string — this value is used
-    // directly as a CSS color on the client, so validating the shape
-    // here keeps the DB from ever holding something that isn't safe
-    // to drop straight into a style attribute.
-    if (color !== null && !(typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color))) {
-      return { error: 'color must be a #rrggbb hex string or null' };
-    }
-    patch.color = color as string | null;
+    if (!isHostColor(body.color)) return { error: 'color must be a #rrggbb hex string or null' };
+    patch.color = body.color;
   }
   return { patch };
 }
