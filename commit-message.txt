@@ -1,5 +1,7 @@
-release: v0.11.2 Ollama API reached from Docker agents
+release: v0.11.3 security headers, lighter agent and dashboard
 
-- Fixed: a Docker agent now also asks its default gateway on :11434, so
-  hubs fed by a Docker sidecar get the Ollama unload countdown.
-- Changed: README feature list and roadmap (Intel GPUs).
+- Security: helmet HTTP headers with a CSP built for the dashboard.
+- Changed: agent uses nvidia-smi loop mode and skips pmon when the GPU
+  is idle (about 40 % less agent CPU on idle NVIDIA hosts).
+- Changed: no polling in hidden tabs, gzip, year-long cache on /assets.
+- Changed: new README screenshots, unused images removed from public/.

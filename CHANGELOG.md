@@ -5,6 +5,19 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] - 2026-10-04
+
+### Security
+
+- **HTTP security headers** (helmet): a Content-Security-Policy built for the dashboard (scripts from the hub only, no inline script), anti-clickjacking (`frame-ancestors 'self'`, `X-Frame-Options`), `nosniff` and `Referrer-Policy`. Plain-HTTP LAN installs keep working (`upgrade-insecure-requests` stays off).
+
+### Changed
+
+- **Agent: about 40 % less CPU on idle NVIDIA hosts.** GPU samples come from one long-lived `nvidia-smi` in loop mode instead of one launch per second, and the per-process `pmon` call is skipped while no process uses the GPU. Measured on an RTX 3060 Ti: 5.5 to 3.1 % of a core when idle, 5.5 to 4.5 % under an Ollama load. Linux and Windows; a host where the loop mode prints nothing falls back to the old per-second launch.
+- **Fewer and smaller requests from the dashboard.** No polling while the browser tab is hidden (one refresh right away when you come back), gzip on every response (JS bundle 1.07 MB to 297 KB, 1 h history 93 KB to 5 KB), and the hashed `/assets` files are cached by the browser for a year.
+- README: new dashboard and hosts screenshots.
+- Unused images removed from `public/` (914 KB); README-only images no longer go into the offline cache, which drops from 1.7 MB to 1.2 MB.
+
 ## [0.11.2] - 2026-10-04
 
 ### Fixed
