@@ -1,7 +1,6 @@
-release: v0.11.7 SonarCloud cleanup and accessibility
+release: v0.11.8 GPU % next to embedding runners, themed host picker
 
-- Fixed: modal backdrops are real buttons, native semantics instead of
-  mismatched ARIA roles, labelled webhook Method, mqtts placeholder,
-  stable webhook header rows.
-- Changed: all open SonarCloud findings cleared (96 smells, 4 bugs,
-  1 vulnerability), no behaviour change intended.
+- Fixed: an Ollama chat model sharing a ROCm card with an embedding
+  runner (bge-m3) showed "-" as GPU %; it now gets the card utilisation
+  (~X %). The dashboard host picker uses the themed dropdown.
+- Changed: LLM only also hides embedding runners.
