@@ -148,15 +148,13 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
     if (inflight) return;
     inflight = true;
     try {
-      const [computeOut, pidsOut, pmonOut] = await Promise.all([
+      const [computeOut, pidsOut] = await Promise.all([
         runSmi([`--query-compute-apps=${QUERY}`, '--format=csv,noheader,nounits']),
         // Only source that also lists graphics-only clients (Xorg,
         // compositors, browsers): --query-compute-apps skips them.
         runSmi(['-q', '-d', 'PIDS']),
-        runSmi(['pmon', '-c', '1', '-s', 'u']),
       ]);
       const procs = computeOut === null ? [] : parseComputeApps(computeOut, opts.hostProc);
-      const pmonByPid = pmonOut === null ? new Map() : parsePmon(pmonOut);
       const smiTypeByPid = new Map<number, GpuProcessType>();
       if (pidsOut !== null) {
         const listed = parseQueryPids(pidsOut);
@@ -164,6 +162,11 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
         mergeQueryPids(procs, listed, uuidByBus, opts.hostProc);
         for (const e of listed) if (e.type) smiTypeByPid.set(e.pid, e.type);
       }
+      // pmon is the costliest call of the tick (~36 ms CPU on a 3060 Ti)
+      // and only adds per-pid type + SM%, so it is skipped while no
+      // process holds the GPU, which is most of the time on idle hosts.
+      const pmonOut = procs.length > 0 ? await runSmi(['pmon', '-c', '1', '-s', 'u']) : null;
+      const pmonByPid = pmonOut === null ? new Map() : parsePmon(pmonOut);
       const enriched: AgentGpuProcess[] = procs.map((p) => {
         const pmon = pmonByPid.get(p.pid);
         const command = readCmdline(p.pid, opts.hostProc);
