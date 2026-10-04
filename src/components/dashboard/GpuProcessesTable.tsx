@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Cpu } from 'lucide-react';
 import { api } from '../../lib/api';
+import { pollWhileVisible } from '../../lib/poll';
 import { HiddenProcessesNotice, LLM_HINTS, LlmHintIcon, LlmHintPanel, type HiddenProcesses, type LlmHint } from './ProcessHints';
 import { ContainerBadge, EmbeddingBadge, LlmOnlySwitch, LlmStateBadge, ProcessFilter, ProcessTop, VramCell, gpuMemoryMib, isEmbeddingProcess } from './ProcessExtras';
 import { useUiStore } from '../../store/uiStore';
@@ -65,7 +66,6 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
 
   useEffect(() => {
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
 
     const tick = async () => {
       if (cancelled) return;
@@ -81,15 +81,15 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
       } finally {
         if (!cancelled) setLoading(false);
       }
-      if (!cancelled) timer = setTimeout(tick, REFRESH_MS);
     };
 
     setLoading(true);
-    tick();
+    void tick();
+    const stop = pollWhileVisible(tick, REFRESH_MS);
 
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      stop();
     };
   }, [gpuIndex, hostId]);
 

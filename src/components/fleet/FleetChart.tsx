@@ -32,6 +32,7 @@ import { useGpuStore, type HistoryRow } from '../../store/gpuStore';
 import { useHostsStore, type HostRecord } from '../../store/hostsStore';
 import { useUiStore } from '../../store/uiStore';
 import { api } from '../../lib/api';
+import { pollWhileVisible } from '../../lib/poll';
 import { fmtDateTime, historyPollIntervalMs } from '../../lib/time';
 import { resolveHostColor } from '../../lib/hostColors';
 import RangeSelector from '../dashboard/RangeSelector';
@@ -357,16 +358,16 @@ export default function FleetChart() {
     };
     const run = () => {
       if (first) setLoading(true);
-      fetchAll()
+      return fetchAll()
         .then((all) => { if (!cancelled) setHistoryByMetric(all); })
         .catch(() => { if (!cancelled && first) setHistoryByMetric(null); })
         .finally(() => {
           if (!cancelled && first) { setLoading(false); first = false; }
         });
     };
-    run();
-    const id = setInterval(run, historyPollIntervalMs(range));
-    return () => { cancelled = true; clearInterval(id); };
+    void run();
+    const stop = pollWhileVisible(run, historyPollIntervalMs(range));
+    return () => { cancelled = true; stop(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, hostsToPlot.map((h) => h.id).join(',')]);
 

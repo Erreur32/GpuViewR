@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import { api } from '../../lib/api';
+import { pollWhileVisible } from '../../lib/poll';
 
 type Level = 'all' | 'info' | 'warn' | 'error' | 'success' | 'debug';
 
@@ -56,8 +57,7 @@ export default function LogsPage() {
 
   useEffect(() => {
     if (!autoRefresh) return;
-    const id = setInterval(load, 3000);
-    return () => clearInterval(id);
+    return pollWhileVisible(load, 3000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh, level, scope, search]);
 

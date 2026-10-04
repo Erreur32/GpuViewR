@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Bot } from 'lucide-react';
 import { api } from '../../lib/api';
+import { pollWhileVisible } from '../../lib/poll';
 import { LOCAL_HOST_ID } from '../../store/hostsStore';
 import { LlmStateBadge, ContainerBadge } from '../dashboard/ProcessExtras';
 
@@ -47,18 +48,17 @@ export default function FleetLlmCard() {
 
   useEffect(() => {
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
     const tick = async () => {
       try {
         const r = await api<{ processes: FleetLlmRow[] }>('/processes/llm');
         if (!cancelled) setRows(r.processes);
       } catch { /* keep the last list */ }
-      if (!cancelled) timer = setTimeout(tick, REFRESH_MS);
     };
     void tick();
+    const stop = pollWhileVisible(tick, REFRESH_MS);
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      stop();
     };
   }, []);
 

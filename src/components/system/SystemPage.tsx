@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid, Cable, AlertTriangle, Info, ArrowDownToLine, ArrowUpFromLine, Thermometer } from 'lucide-react';
 import UsageArc from '../ui/UsageArc';
 import { api } from '../../lib/api';
+import { pollWhileVisible } from '../../lib/poll';
 import PcieThroughputTile from '../dashboard/PcieThroughputTile';
 import SystemTemperaturesPanel, { type HostTempSensor } from './SystemTemperaturesPanel';
 
@@ -66,15 +67,14 @@ export default function SystemPage() {
 
   const load = () => {
     setError(null);
-    api<SystemInfo>('/system')
+    return api<SystemInfo>('/system')
       .then(setInfo)
       .catch((e: Error) => setError(e.message));
   };
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, REFRESH_MS);
-    return () => clearInterval(id);
+    void load();
+    return pollWhileVisible(load, REFRESH_MS);
   }, []);
 
   const hasThermal = Boolean(info?.temperatures && info.temperatures.length > 0);

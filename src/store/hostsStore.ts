@@ -11,6 +11,7 @@
 
 import { create } from 'zustand';
 import { api } from '../lib/api';
+import { pollWhileVisible } from '../lib/poll';
 
 export type HostKind = 'local' | 'agent' | 'prometheus';
 export type HostStatus = 'pending' | 'online' | 'lagging' | 'offline' | 'disabled';
@@ -154,8 +155,7 @@ export const useHostsStore = create<HostsState>((set, get) => ({
 
   startPolling: () => {
     void get().refresh();
-    const id = setInterval(() => { void get().refresh(); }, POLL_MS);
-    return () => clearInterval(id);
+    return pollWhileVisible(() => get().refresh(), POLL_MS);
   },
 
   setSelectedHost: (host_id) => set({ selectedHostId: host_id }),

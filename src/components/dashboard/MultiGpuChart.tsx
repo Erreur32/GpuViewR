@@ -8,6 +8,7 @@ import { useGpuStore } from '../../store/gpuStore';
 import { useHostsStore } from '../../store/hostsStore';
 import { useUiStore } from '../../store/uiStore';
 import { api } from '../../lib/api';
+import { pollWhileVisible } from '../../lib/poll';
 import { fmtClock, fmtDateTime, historyPollIntervalMs, makeAxisTimeFormatter, rangeToSeconds } from '../../lib/time';
 import { shortGpuName } from '../../lib/gpuName';
 
@@ -145,10 +146,10 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
       );
       return new Map(entries);
     };
-    const run = () => { fetchAll().then((m) => { if (!cancelled) setHistoryByGpu(m); }); };
-    run();
-    const id = setInterval(run, historyPollIntervalMs(range));
-    return () => { cancelled = true; clearInterval(id); };
+    const run = () => fetchAll().then((m) => { if (!cancelled) setHistoryByGpu(m); });
+    void run();
+    const stop = pollWhileVisible(run, historyPollIntervalMs(range));
+    return () => { cancelled = true; stop(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHostId, range, gpuIndicesKey]);
 
