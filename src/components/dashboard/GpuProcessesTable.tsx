@@ -4,7 +4,7 @@ import { Cpu } from 'lucide-react';
 import { api } from '../../lib/api';
 import { pollWhileVisible } from '../../lib/poll';
 import { HiddenProcessesNotice, LLM_HINTS, LlmHintIcon, LlmHintPanel, type HiddenProcesses, type LlmHint } from './ProcessHints';
-import { ContainerBadge, EmbeddingBadge, LlmOnlySwitch, LlmStateBadge, ProcessFilter, ProcessTop, VramCell, gpuMemoryMib, isEmbeddingProcess } from './ProcessExtras';
+import { ContainerBadge, EmbeddingBadge, LlmOnlySwitch, LlmStateBadge, ProcessFilter, ProcessTop, VramCell, gpuMemoryMib, isEmbeddingProcess, residualGpuPct } from './ProcessExtras';
 import { useUiStore } from '../../store/uiStore';
 
 type GpuProcessType = 'C' | 'G' | 'G+C' | null;
@@ -107,10 +107,11 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
   const hiddenByLlm = all.length - llmRows.length;
   const hiddenByMemory = llmRows.length - sorted.length;
   const hiddenSmall = all.length - sorted.length;
-  // The card's utilisation only stands in for a process's GPU % when that
-  // process is alone on the card: with several, copying it on every row
-  // (3 Ollama runners all at "~100%") says something false.
-  const cardFallback = all.length === 1 ? gpuUtilFallback : null;
+  // The card's utilisation only stands in for the one process without a
+  // GPU %, minus what the measured ones use (an Ollama ROCm runner next to
+  // a Vulkan llama.cpp). With several unknowns, copying it on
+  // every row (3 Ollama runners all at "~100%") says something false.
+  const cardFallback = residualGpuPct(all, gpuUtilFallback);
 
   return (
     <div className="card p-4">

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { gpuMemoryMib, isEmbeddingProcess } from '../components/dashboard/ProcessExtras.js';
+import { gpuMemoryMib, isEmbeddingProcess, residualGpuPct } from '../components/dashboard/ProcessExtras.js';
 
 test('isEmbeddingProcess: runner flags and model names', () => {
   const ollama = '/usr/lib/ollama/llama-server --model /root/.ollama/models/blobs/sha256-dae --port 37483 --embedding -b 2048';
@@ -17,4 +17,14 @@ test('gpuMemoryMib: VRAM + GTT', () => {
   assert.equal(gpuMemoryMib({ used_memory: 0, gtt_memory: 830 }), 830);
   assert.equal(gpuMemoryMib({ used_memory: 17, gtt_memory: 13_989 }), 14_006);
   assert.equal(gpuMemoryMib({ used_memory: 4416 }), 4416);
+});
+
+test('residualGpuPct: card minus measured, only for a single unknown row', () => {
+  // Ollama ROCm runner (no counter) next to a Vulkan llama.cpp at 20 %.
+  assert.equal(residualGpuPct([{ gpu_pct: null }, { gpu_pct: 20 }], 65), 45);
+  assert.equal(residualGpuPct([{ gpu_pct: null }], 80), 80);
+  assert.equal(residualGpuPct([{ gpu_pct: null }, { gpu_pct: 90 }], 70), 0);
+  assert.equal(residualGpuPct([{ gpu_pct: null }, { gpu_pct: undefined }], 80), null);
+  assert.equal(residualGpuPct([{ gpu_pct: 10 }], 80), null);
+  assert.equal(residualGpuPct([{ gpu_pct: null }], null), null);
 });

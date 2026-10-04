@@ -158,6 +158,21 @@ export function gpuMemoryMib(p: Readonly<{ used_memory: number; gtt_memory?: num
   return p.used_memory + (p.gtt_memory ?? 0);
 }
 
+/** Card utilisation left over for the one process whose GPU % the driver
+ *  doesn't report (ROCm compute queues have no per-process counter), once
+ *  the measured processes are taken out. Null when none or several rows
+ *  lack a value: splitting the rest between them would be a guess. */
+export function residualGpuPct(
+  rows: ReadonlyArray<Readonly<{ gpu_pct?: number | null }>>,
+  cardPct: number | null,
+): number | null {
+  if (cardPct === null || !Number.isFinite(cardPct)) return null;
+  const measured = rows.filter((p) => p.gpu_pct !== null && p.gpu_pct !== undefined && Number.isFinite(p.gpu_pct));
+  if (rows.length - measured.length !== 1) return null;
+  const used = measured.reduce((sum, p) => sum + (p.gpu_pct ?? 0), 0);
+  return Math.max(0, Math.round((cardPct - used) * 10) / 10);
+}
+
 /** Embedding model (vectors for search / RAG, not chat): a runner started
  *  with --embedding(s) (Ollama, llama.cpp) or vLLM's embed task, or a
  *  model whose name says so (bge-*, *embed*). Plain token scan, no regex
