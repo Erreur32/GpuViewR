@@ -4,7 +4,11 @@
 // what to do with each tick. Shares the parser with the hub so any
 // future driver-format quirk fix lands in one place.
 
-import { spawn, spawnSync } from "node:child_process";
+import {
+  spawn,
+  spawnSync,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
 import {
   QUERY_FIELDS,
   num,
@@ -34,11 +38,60 @@ export interface GpuCollectorHandle {
   available(): boolean;
 }
 
+/** Delay before respawning an exited stream. */
+const RESPAWN_DELAY_MS = 3_000;
+/** Exits without a single line before giving up on streaming. */
+const MAX_COLD_FAILURES = 3;
+/** Lines of one interval arrive in a burst; flush this long after the last. */
+const BATCH_FLUSH_MS = 50;
+
+/** Groups the `--query-gpu ... -lms` output into one batch per interval.
+ *  A GPU index seen twice means the next interval has started. The caller
+ *  also flushes on a short timer so the last interval doesn't wait for
+ *  the next one. */
+export function createQueryBatcher(onBatch: (lines: string[]) => void) {
+  let lines: string[] = [];
+  const seen = new Set<string>();
+  function flush(): void {
+    if (lines.length === 0) return;
+    const out = lines;
+    lines = [];
+    seen.clear();
+    onBatch(out);
+  }
+  return {
+    push(line: string): void {
+      const row = line.trim();
+      if (!row) return;
+      const idx = row.split(",", 1)[0].trim();
+      if (seen.has(idx)) flush();
+      seen.add(idx);
+      lines.push(row);
+    },
+    flush,
+  };
+}
+
 export function createGpuCollector(
   opts: GpuCollectorOptions,
 ): GpuCollectorHandle {
   let timer: NodeJS.Timeout | null = null;
   let pcieTimer: NodeJS.Timeout | null = null;
+  let running = false;
+  // Main samples come from ONE long-lived `nvidia-smi --query-gpu ... -lms
+  // <tickMs>` instead of a fork per tick: 234 ms vs 744 ms CPU per minute
+  // on a 3060 Ti. Falls back to the per-tick fork (tick() below) when the
+  // loop mode never produces a line on this host.
+  let stream: ChildProcessWithoutNullStreams | null = null;
+  let streamProduced = false;
+  let coldFailures = 0;
+  let lastLineAt = 0;
+  let flushTimer: NodeJS.Timeout | null = null;
+  let watchdog: NodeJS.Timeout | null = null;
+  const batcher = createQueryBatcher((lines) => {
+    const samples = parseOutput(lines.join("\n"), lastPcieThroughput);
+    if (samples.length > 0) opts.onSample(samples);
+  });
   let nvidiaSmiAvailable: boolean | null = null;
   let lastPcieThroughput: Map<string, PcieThroughput> = new Map();
   let pcieDiagLogged = false;
@@ -117,12 +170,85 @@ export function createGpuCollector(
     });
   }
 
+  function startForking(): void {
+    tick();
+    timer = setInterval(tick, opts.tickMs);
+  }
+
+  function startStream(): void {
+    let stderr = "";
+    let buf = "";
+    lastLineAt = Date.now();
+    const child = spawn(opts.nvidiaSmiPath, [
+      `--query-gpu=${QUERY_FIELDS.join(",")}`,
+      "--format=csv,noheader,nounits",
+      "-lms",
+      String(opts.tickMs),
+    ]);
+    stream = child;
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      if (stream !== child) return; // abandoned by the watchdog
+      buf += chunk;
+      let nl = buf.indexOf("\n");
+      while (nl >= 0) {
+        batcher.push(buf.slice(0, nl));
+        buf = buf.slice(nl + 1);
+        nl = buf.indexOf("\n");
+        streamProduced = true;
+        lastLineAt = Date.now();
+      }
+      if (flushTimer) clearTimeout(flushTimer);
+      flushTimer = setTimeout(batcher.flush, BATCH_FLUSH_MS);
+    });
+    child.stderr.on("data", (d) => (stderr += d.toString()));
+    child.on("error", (err) =>
+      logger.error("gpu", "nvidia-smi spawn failed:", err.message),
+    );
+    child.on("close", (code) => {
+      // A child the watchdog already replaced must not respawn a second one.
+      if (stream !== child) return;
+      stream = null;
+      batcher.flush();
+      if (!running) return;
+      if (!streamProduced && ++coldFailures >= MAX_COLD_FAILURES) {
+        logger.warn(
+          "gpu",
+          `nvidia-smi loop mode unusable (exit ${code}: ${stderr.trim() || "no output"}), forking per tick`,
+        );
+        startForking();
+        return;
+      }
+      logger.warn(
+        "gpu",
+        `nvidia-smi stream exited ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}, respawning in 3 s`,
+      );
+      setTimeout(() => {
+        if (running && !timer) startStream();
+      }, RESPAWN_DELAY_MS).unref();
+    });
+  }
+
+  /** A stream that stays silent (driver hang, GPU fell off the bus) is
+   *  abandoned and replaced at once. SIGKILL because a stopped or hung
+   *  process never acts on SIGTERM, so waiting for its close event could
+   *  leave the host without samples for good. */
+  function checkStream(): void {
+    const silentFor = Date.now() - lastLineAt;
+    if (!stream || silentFor <= Math.max(5 * opts.tickMs, 10_000)) return;
+    logger.warn("gpu", `nvidia-smi stream silent for ${Math.round(silentFor / 1000)} s, replacing it`);
+    const stale = stream;
+    stream = null;
+    stale.kill("SIGKILL");
+    startStream();
+  }
+
   return {
     available(): boolean {
       return checkNvidiaSmi();
     },
     start(): void {
-      if (timer) return;
+      if (running) return;
       if (!checkNvidiaSmi()) {
         logger.error(
           "gpu",
@@ -136,16 +262,26 @@ export function createGpuCollector(
       );
       // Prime the PCIe map once so the first tick already has data, then
       // refresh on its own slower cadence.
+      running = true;
       refreshPcieThroughput();
       pcieTimer = setInterval(refreshPcieThroughput, pcieTickMs);
-      tick();
-      timer = setInterval(tick, opts.tickMs);
+      // If the agent dies hard, the orphaned nvidia-smi exits on its own once
+      // its stdout pipe breaks: checked on Linux (SIGPIPE) and on Windows
+      // 11 with driver tools (gone within 6 s after Stop-Process -Force).
+      startStream();
+      watchdog = setInterval(checkStream, opts.tickMs);
     },
     stop(): void {
+      running = false;
       if (timer) clearInterval(timer);
       if (pcieTimer) clearInterval(pcieTimer);
+      if (watchdog) clearInterval(watchdog);
+      if (flushTimer) clearTimeout(flushTimer);
+      stream?.kill();
+      stream = null;
       timer = null;
       pcieTimer = null;
+      watchdog = null;
       // Reset the once-flag so a subsequent start() re-reports persistent
       // PCIe spawn failures (otherwise the operator sees a single warning
       // for the very first session and silence forever after a restart).
