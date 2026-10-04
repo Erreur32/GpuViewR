@@ -1,9 +1,9 @@
 {
   "name": "gpuviewr",
   "private": true,
-  "version": "0.11.3",
+  "version": "0.11.4",
   "type": "module",
-  "description": "Modern real-time multi-host GPU monitoring dashboard (React + Vite + Express + WebSocket + uPlot)",
+  "description": "Real-time multi-host GPU monitoring built for local LLMs (React + Vite + Express + WebSocket + uPlot)",
   "homepage": "https://github.com/Erreur32/GpuViewR",
   "repository": {
     "type": "git",
