@@ -520,6 +520,16 @@ function presetKey(p: Pick<Preset, 'metric' | 'condition' | 'threshold'>): strin
   return `${p.metric}|${p.condition}|${p.threshold}`;
 }
 
+/** Click-outside-to-close layer behind a modal card, a real button (as in
+ *  ModalShell) so the overlay isn't a div with a mouse-only handler. The
+ *  card above it needs `relative` to sit on top. */
+function BackdropClose({ onClose }: Readonly<{ onClose: () => void }>) {
+  const { t } = useTranslation();
+  return (
+    <button type="button" aria-label={t('common.close')} className="absolute inset-0 cursor-default" onClick={onClose} />
+  );
+}
+
 function PresetsModal({
   installed, onClose, onInstalled,
 }: Readonly<{ installed: Rule[]; onClose: () => void; onInstalled: () => void | Promise<void> }>) {
@@ -579,8 +589,9 @@ function PresetsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="card p-5 w-full max-w-2xl space-y-4">
+    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm">
+      <BackdropClose onClose={onClose} />
+      <div className="card p-5 w-full max-w-2xl space-y-4 relative">
         <div>
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Sparkles className="w-4 h-4" /> {t('alerts.presets_title')}
@@ -681,8 +692,9 @@ function RuleModal({
   const absent = rule.metric === 'process_absent';
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={onSave} className="card p-5 w-full max-w-lg space-y-4">
+    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm">
+      <BackdropClose onClose={onClose} />
+      <form onSubmit={onSave} className="card p-5 w-full max-w-lg space-y-4 relative">
         <h2 className="text-lg font-semibold">{rule.id ? t('alerts.edit_rule') : t('alerts.new_rule')}</h2>
 
         <div>
