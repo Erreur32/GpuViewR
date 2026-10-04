@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Ollama on ROCm showed `-` as GPU % next to a Vulkan llama.cpp.** ROCm compute queues have no per-process counter, and the card's utilisation was only used for a process alone on its card. It now also fills the one process without a value, minus what the measured processes use (shown as `~X %`). With several unmeasured processes the column stays `-`.
+
 ## [0.11.5] - 2026-10-04
 
 ### Added
