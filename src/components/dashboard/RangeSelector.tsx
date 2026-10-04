@@ -21,7 +21,6 @@ export default function RangeSelector() {
         type="button"
         className="seg-btn inline-flex items-center gap-1.5"
         style={{ background: 'var(--gv-surface-alt)', border: '1px solid var(--gv-border)' }}
-        aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         title={t('dashboard.range_label')}
@@ -36,8 +35,6 @@ export default function RangeSelector() {
             <button
               key={r}
               className="seg-btn text-left"
-              role="option"
-              aria-selected={r === range}
               aria-pressed={r === range}
               onClick={() => {
                 setRange(r);

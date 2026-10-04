@@ -56,6 +56,9 @@ export interface DemoHost {
 
 const NOW = Math.floor(Date.now() / 1000);
 
+/** How long ago each demo status was last heard from. */
+const LAST_SEEN_AGE_S: Record<DemoHost['status'], number> = { online: 2, lagging: 28, offline: 600 };
+
 export const DEMO_FLEET_HOSTS: DemoHost[] = [
   {
     id: 'local',
@@ -139,7 +142,7 @@ export function fakeFleetHosts() {
     auto_update: 0,
     protocol_ver: 1,
     enrolled_at: h.enrolledAt,
-    last_seen: h.status === 'offline' ? now - 600 : h.status === 'lagging' ? now - 28 : now - 2,
+    last_seen: now - LAST_SEEN_AGE_S[h.status],
     status: h.status,
   }));
 }

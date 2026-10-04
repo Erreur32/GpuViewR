@@ -11,6 +11,7 @@ import {
   CLOCK_SKEW_WARN_S,
   type HostRecord,
   type RejectedAttempt,
+  type InstallMode as AgentInstallMode,
 } from '../../store/hostsStore';
 import { useGpuStore, liveLastSeenFor } from '../../store/gpuStore';
 import { useAuthStore } from '../../store/authStore';
@@ -396,7 +397,7 @@ function InstallTypeCell({
   isLocal, installMode, t,
 }: Readonly<{
   isLocal: boolean;
-  installMode: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown' | null;
+  installMode: AgentInstallMode | null;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }>) {
   if (isLocal) {
@@ -462,7 +463,7 @@ function VersionCell({
 }: Readonly<{
   isLocal: boolean;
   agentVersion: string | null;
-  installMode: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown' | null;
+  installMode: AgentInstallMode | null;
   /** systemd unit predates CAP_SYS_PTRACE, see lib/hostUnit.ts. */
   unitOutdated: boolean;
   kind: string;
@@ -501,7 +502,7 @@ function VersionCell({
  *  copied as a sensible default. Running the bare-metal recipe on a
  *  Docker host creates a "double agent" install — that's exactly
  *  what this per-host selection avoids. */
-function pickUpdateCmd(installMode: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown' | null, hubOrigin: string): {
+function pickUpdateCmd(installMode: AgentInstallMode | null, hubOrigin: string): {
   primary: string;
   /** Non-null when we are guessing — UI shows both recipes in the tooltip. */
   secondary: string | null;
@@ -515,7 +516,7 @@ function pickUpdateCmd(installMode: 'docker' | 'systemd' | 'windows' | 'macos' |
   // next iteration). If the admin doesn't have auto_update on, the
   // copy-paste form is to re-run the install.ps1 one-liner from the
   // Add Host modal, which re-downloads the bundle.
-  const windowsCmd = `iwr ${hubOrigin}/agent.mjs -OutFile $env:ProgramData\\GpuViewR-Agent\\agent.mjs.pending -UseBasicParsing`;
+  const windowsCmd = String.raw`iwr ${hubOrigin}/agent.mjs -OutFile $env:ProgramData\GpuViewR-Agent\agent.mjs.pending -UseBasicParsing`;
   // macOS: re-download the bundle into the LaunchAgent's install dir,
   // then kick the LaunchAgent so it picks up the new agent.mjs
   // immediately instead of waiting for the next KeepAlive respawn.
@@ -532,7 +533,7 @@ function AgentUpdateButton({
 }: Readonly<{
   t: (key: string, opts?: Record<string, unknown>) => string;
   agentVersion: string;
-  installMode: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown' | null;
+  installMode: AgentInstallMode | null;
 }>) {
   const hubOrigin = typeof globalThis.window === 'object' ? globalThis.location.origin : '';
   const { primary, secondary } = pickUpdateCmd(installMode, hubOrigin);
@@ -718,9 +719,10 @@ function AutoUpdateToggle({
   const setAutoUpdate = useHostsStore((s) => s.setAutoUpdate);
   const supported = isAgentSelfUpdatable(host.install_mode);
   const enabled = host.auto_update === 1;
-  const titleKey = supported
-    ? (enabled ? 'hosts.auto_update_on' : 'hosts.auto_update_off')
-    : 'hosts.auto_update_unsupported';
+  let titleKey = 'hosts.auto_update_unsupported';
+  if (supported) titleKey = enabled ? 'hosts.auto_update_on' : 'hosts.auto_update_off';
+  let color = 'var(--gv-text-dim)';
+  if (supported) color = enabled ? 'var(--gv-accent)' : 'var(--gv-text-muted)';
   // Build a multi-line tooltip suffix with the scheduler state when
   // auto_update is on. \n renders as newline in browser native tooltips
   // since Chrome 100+ / Firefox 89+. Falls back gracefully on older
@@ -761,9 +763,7 @@ function AutoUpdateToggle({
       className="inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
       style={{
         background: enabled ? 'color-mix(in srgb, var(--gv-accent) 18%, transparent)' : 'transparent',
-        color: !supported
-          ? 'var(--gv-text-dim)'
-          : (enabled ? 'var(--gv-accent)' : 'var(--gv-text-muted)'),
+        color,
         cursor: supported ? 'pointer' : 'not-allowed',
         opacity: supported ? 1 : 0.4,
       }}

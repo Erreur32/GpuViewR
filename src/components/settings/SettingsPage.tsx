@@ -159,7 +159,6 @@ export default function SettingsPage() {
               key={tb.id}
               role="tab"
               aria-selected={tab === tb.id}
-              aria-pressed={tab === tb.id}
               className="seg-btn inline-flex items-center gap-2"
               onClick={() => selectTab(tb.id)}
             >
@@ -561,7 +560,7 @@ function ThemeRow({
   themes,
   current,
   onSelect,
-}: {
+}: Readonly<{
   title: string;
   themes: {
     id: string;
@@ -571,7 +570,7 @@ function ThemeRow({
   }[];
   current: string;
   onSelect: (id: string) => void;
-}) {
+}>) {
   return (
     <div>
       <div

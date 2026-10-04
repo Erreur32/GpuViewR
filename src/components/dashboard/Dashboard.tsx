@@ -160,7 +160,7 @@ export default function Dashboard() {
               seg-btn's padding, making this group taller than the
               standalone RangeSelector/GpuTabs trigger buttons next to
               it on the same row. Dropping it lines the heights up. */}
-          <div className="seg p-0" role="group" aria-label="Gauge view">
+          <fieldset className="seg p-0 min-w-0" aria-label="Gauge view">
             <button
               className="seg-btn inline-flex items-center"
               aria-pressed={gaugeView === "arc"}
@@ -179,7 +179,7 @@ export default function Dashboard() {
             >
               <BarChart3 className="w-3.5 h-3.5" />
             </button>
-          </div>
+          </fieldset>
           <RangeSelector />
         </div>
       </div>

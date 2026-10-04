@@ -112,7 +112,7 @@ export function parseRocmClock(raw: string | undefined): number | null {
   if (!raw) return null;
   let buf = '';
   for (let i = 0; i < raw.length; i++) {
-    const c = raw.charCodeAt(i);
+    const c = raw.codePointAt(i) ?? 0;
     const isDigit = c >= 48 && c <= 57; // '0'..'9'
     const isDot = c === 46;             // '.'
     if (isDigit || isDot) {

@@ -35,7 +35,7 @@ type ChipProps = Readonly<{
   isCustom: boolean;
 }>;
 
-export default function LiveChart({ gpuIndex }: Props) {
+export default function LiveChart({ gpuIndex }: Readonly<Props>) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -181,7 +181,6 @@ export default function LiveChart({ gpuIndex }: Props) {
               // overflow the chart, so it sticks naturally next to the
               // cursor instead of being clipped or placed far from it.
               const w = u.over.clientWidth;
-              const h = u.over.clientHeight;
               setTip({
                 left,
                 top,
@@ -281,7 +280,7 @@ export default function LiveChart({ gpuIndex }: Props) {
     }
 
     if (tArr.length > 0) {
-      const cutoff = tArr[tArr.length - 1] - rangeToSeconds(range);
+      const cutoff = (tArr.at(-1) ?? 0) - rangeToSeconds(range);
       let drop = 0;
       while (drop < tArr.length && tArr[drop] < cutoff) drop++;
       if (drop > 0) {
@@ -535,8 +534,6 @@ function Chip({ colorVar, label, value, active, onClick, onColorChange, isCustom
       <label
         className="inline-flex relative cursor-pointer"
         title="Pick color"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
       >
         <span
           className="inline-block w-2.5 h-2.5 rounded-full"

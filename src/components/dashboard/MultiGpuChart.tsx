@@ -3,7 +3,7 @@ import uPlot, { type AlignedData } from 'uplot';
 import { useTranslation } from 'react-i18next';
 import { Thermometer, Activity, MemoryStick, Fan, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { GpuSample, HistoryRow } from '../../store/gpuStore';
+import type { GpuSample, HistoryRow, Series } from '../../store/gpuStore';
 import { useGpuStore } from '../../store/gpuStore';
 import { useHostsStore } from '../../store/hostsStore';
 import { useUiStore } from '../../store/uiStore';
@@ -21,6 +21,52 @@ const GPU_COLORS = [
 ] as const;
 
 type Metric = 'utilization' | 'temperature' | 'memory' | 'power' | 'fan_speed';
+
+/** One GPU's points, every metric, on its own timeline. */
+type MetricSeries = { t: number[] } & Record<Metric, (number | null)[]>;
+
+/** History rows followed by the live buffer's points newer than them. */
+function mergeHistoryAndLive(hist: HistoryRow[], live: Series | undefined, memTotal: number): MetricSeries {
+  const out: MetricSeries = { t: [], utilization: [], temperature: [], power: [], memory: [], fan_speed: [] };
+  for (const h of hist) {
+    out.t.push(h.timestamp_epoch);
+    out.utilization.push(h.utilization);
+    out.temperature.push(h.temperature);
+    out.power.push(h.power);
+    out.memory.push(h.memory_total ? (h.memory_used / h.memory_total) * 100 : null);
+    out.fan_speed.push(h.fan_speed);
+  }
+  if (!live) return out;
+  const lastHistT = out.t.at(-1) ?? -Infinity;
+  for (let i = 0; i < live.t.length; i++) {
+    if (live.t[i] <= lastHistT) continue;
+    const used = live.memory_used[i];
+    out.t.push(live.t[i]);
+    out.utilization.push(live.utilization[i] ?? null);
+    out.temperature.push(live.temperature[i]);
+    out.power.push(live.power[i]);
+    out.memory.push(used !== undefined && memTotal > 0 ? (used / memTotal) * 100 : null);
+    out.fan_speed.push(live.fan_speed[i] ?? null);
+  }
+  return out;
+}
+
+/** One metric of one GPU laid on the shared time axis, null where that
+ *  GPU has no point. */
+function alignToAxis(
+  m: MetricSeries | undefined,
+  metric: Metric,
+  byTimeIndex: Map<number, number>,
+  length: number,
+): (number | null)[] {
+  const arr: (number | null)[] = new Array(length).fill(null);
+  if (!m) return arr;
+  for (let i = 0; i < m.t.length; i++) {
+    const targetIdx = byTimeIndex.get(m.t[i]);
+    if (targetIdx !== undefined) arr[targetIdx] = m[metric][i];
+  }
+  return arr;
+}
 
 const METRICS: ReadonlyArray<{ key: Metric; labelKey: string; icon: LucideIcon; unit: string; scale: '%' | 'W' }> = [
   { key: 'utilization',  labelKey: 'dashboard.metrics.utilization', icon: Activity,    unit: '%', scale: '%' },
@@ -162,46 +208,13 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
     if (!plotRef.current) return;
     if (samples.length === 0) return;
 
-    const merged = new Map<number, {
-      t: number[];
-      util: (number | null)[];
-      temp: number[];
-      pow: number[];
-      mem: (number | null)[];
-      fan: (number | null)[];
-    }>();
+    const merged = new Map<number, MetricSeries>();
     for (const sample of samples) {
-      const hist = historyByGpu.get(sample.gpu_index) ?? [];
-      const t: number[] = [];
-      const util: (number | null)[] = [];
-      const temp: number[] = [];
-      const pow: number[] = [];
-      const mem: (number | null)[] = [];
-      const fan: (number | null)[] = [];
-      for (const h of hist) {
-        t.push(h.timestamp_epoch);
-        util.push(h.utilization);
-        temp.push(h.temperature);
-        pow.push(h.power);
-        mem.push(h.memory_total ? (h.memory_used / h.memory_total) * 100 : null);
-        fan.push(h.fan_speed);
-      }
-      const lastHistT = t.at(-1) ?? -Infinity;
-      const live = seriesMap.get(sample.gpu_index);
-      if (live) {
-        const total = sample.memory_total ?? 0;
-        for (let i = 0; i < live.t.length; i++) {
-          if (live.t[i] <= lastHistT) continue;
-          t.push(live.t[i]);
-          util.push(live.utilization[i] ?? null);
-          temp.push(live.temperature[i]);
-          pow.push(live.power[i]);
-          const used = live.memory_used[i];
-          mem.push(used !== undefined && total > 0 ? (used / total) * 100 : null);
-          fan.push(live.fan_speed[i] ?? null);
-        }
-      }
-      merged.set(sample.gpu_index, { t, util, temp, pow, mem, fan });
+      merged.set(sample.gpu_index, mergeHistoryAndLive(
+        historyByGpu.get(sample.gpu_index) ?? [],
+        seriesMap.get(sample.gpu_index),
+        sample.memory_total ?? 0,
+      ));
     }
 
     // Build a unified time axis from the longest GPU's timeline so all
@@ -221,23 +234,8 @@ export default function MultiGpuChart({ samples }: Readonly<{ samples: GpuSample
     const byTimeIndex = new Map<number, number>();
     tArr.forEach((ts, i) => byTimeIndex.set(ts, i));
 
-    const lines: (number | null)[][] = samples.map((sample) => {
-      const m = merged.get(sample.gpu_index);
-      const arr: (number | null)[] = new Array(tArr.length).fill(null);
-      if (!m) return arr;
-      for (let i = 0; i < m.t.length; i++) {
-        const targetIdx = byTimeIndex.get(m.t[i]);
-        if (targetIdx === undefined) continue;
-        switch (metric) {
-          case 'utilization': arr[targetIdx] = m.util[i]; break;
-          case 'temperature': arr[targetIdx] = m.temp[i]; break;
-          case 'fan_speed':   arr[targetIdx] = m.fan[i];  break;
-          case 'power':       arr[targetIdx] = m.pow[i];  break;
-          case 'memory':      arr[targetIdx] = m.mem[i];  break;
-        }
-      }
-      return arr;
-    });
+    const lines = samples.map((sample) =>
+      alignToAxis(merged.get(sample.gpu_index), metric, byTimeIndex, tArr.length));
 
     plotRef.current.setData([tArr, ...lines] as unknown as AlignedData);
   }, [samples, seriesMap, historyByGpu, metric, range]);

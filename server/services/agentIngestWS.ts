@@ -111,7 +111,7 @@ export async function authenticateAgent(token: string, claimedHostId: string): P
   }
 
   const host = HostsRepo.findById(claimedHostId);
-  if (!host || host.kind !== 'agent' || !host.token_hash) return { host: null, reason: 'unknown_host' };
+  if (host?.kind !== 'agent' || !host.token_hash) return { host: null, reason: 'unknown_host' };
   if (host.status === 'disabled') return { host: null, reason: 'disabled' };
   const ok = await bcrypt.compare(token, host.token_hash);
   return ok ? { host } : { host: null, reason: 'bad_token' };
@@ -153,7 +153,7 @@ function upsertLocalSidecarHost(): HostRecord {
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < a.length; i++) diff |= (a.codePointAt(i) ?? 0) ^ (b.codePointAt(i) ?? 0);
   return diff === 0;
 }
 

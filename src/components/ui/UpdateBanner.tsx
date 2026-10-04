@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowUpCircle, X, ExternalLink, RefreshCw, ClipboardCopy, Check } from 'lucide-react';
 import { useUpdateStore } from '../../store/updateStore';
+import BackdropClose from './BackdropClose';
 
 const UPDATE_COMMAND = 'docker compose pull && docker compose up -d';
 
@@ -12,12 +13,19 @@ export default function UpdateBanner() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    if (!showDetails) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowDetails(false); };
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
+  }, [showDetails]);
+
+  useEffect(() => {
     hydrate();
     check(false).catch(() => { /* ignore */ });
   }, [hydrate, check]);
 
   if (!bannerEnabled) return null;
-  if (!result || !result.updateAvailable || !result.dockerReady) return null;
+  if (!result?.updateAvailable || !result.dockerReady) return null;
   if (result.latestVersion && isDismissed(result.latestVersion)) return null;
 
   const copy = async () => {
@@ -58,20 +66,11 @@ export default function UpdateBanner() {
       </div>
 
       {showDetails && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm"
-          onClick={() => setShowDetails(false)}
-          onKeyDown={(e) => { if (e.key === 'Escape') setShowDetails(false); }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="update-modal-title"
-          tabIndex={-1}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            className="card p-5 w-full max-w-2xl space-y-4 max-h-[80vh] overflow-auto"
-            role="document"
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-sm">
+          <BackdropClose onClose={() => setShowDetails(false)} />
+          <section
+            className="card p-5 w-full max-w-2xl space-y-4 max-h-[80vh] overflow-auto relative"
+            aria-labelledby="update-modal-title"
           >
             <div className="flex items-center justify-between">
               <h2 id="update-modal-title" className="text-lg font-semibold flex items-center gap-2">
@@ -133,14 +132,14 @@ export default function UpdateBanner() {
                 {t('common.close')}
               </button>
             </div>
-          </div>
+          </section>
         </div>
       )}
     </>
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Stat({ label, value, accent }: Readonly<{ label: string; value: string; accent?: boolean }>) {
   return (
     <div className="card p-3" style={{ background: accent ? 'color-mix(in srgb, var(--gv-accent) 10%, var(--gv-surface))' : 'var(--gv-surface)' }}>
       <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>{label}</div>

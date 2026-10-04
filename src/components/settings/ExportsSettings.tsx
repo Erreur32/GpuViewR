@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send, Activity, Database, Webhook, Save, PlayCircle, BellRing, Eye, EyeOff, Home, HelpCircle, Filter } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -196,7 +196,6 @@ export default function ExportsSettings() {
         <button
           role="tab"
           aria-selected={sub === 'notification'}
-          aria-pressed={sub === 'notification'}
           className="seg-btn inline-flex items-center gap-2"
           onClick={() => selectSub('notification')}
         >
@@ -206,7 +205,6 @@ export default function ExportsSettings() {
         <button
           role="tab"
           aria-selected={sub === 'homeassistant'}
-          aria-pressed={sub === 'homeassistant'}
           className="seg-btn inline-flex items-center gap-2"
           onClick={() => selectSub('homeassistant')}
         >
@@ -219,7 +217,6 @@ export default function ExportsSettings() {
         <button
           role="tab"
           aria-selected={sub === 'prometheus'}
-          aria-pressed={sub === 'prometheus'}
           className="seg-btn inline-flex items-center gap-2"
           onClick={() => selectSub('prometheus')}
         >
@@ -229,7 +226,6 @@ export default function ExportsSettings() {
         <button
           role="tab"
           aria-selected={sub === 'influxdb'}
-          aria-pressed={sub === 'influxdb'}
           className="seg-btn inline-flex items-center gap-2"
           onClick={() => selectSub('influxdb')}
         >
@@ -554,6 +550,7 @@ function PrometheusBlock({ cfg, info, disabled, onSave }: Readonly<{
           ]}
           listTitle={t('settings.exports_info_metrics')}
           listItems={[...info.metrics, ...(info.hostMetrics ?? [])].map((m) => ({
+            id: m.name,
             primary: <code>{m.name}</code>,
             secondary: `${m.help} · ${m.type}`,
           }))}
@@ -625,14 +622,14 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
                 : []),
             ]}
             listTitle={t('settings.exports_info_payload_keys')}
-            listItems={info.payloadKeys.map((k) => ({ primary: <code>{k}</code> }))}
+            listItems={info.payloadKeys.map((k) => ({ id: k, primary: <code>{k}</code> }))}
             extra={(
               <>
                 {info.host && (
                   <DispatchPanel
                     rows={[]}
                     listTitle={t('settings.exports_info_host_payload_keys')}
-                    listItems={info.host.payloadKeys.map((k) => ({ primary: <code>{k}</code> }))}
+                    listItems={info.host.payloadKeys.map((k) => ({ id: k, primary: <code>{k}</code> }))}
                     embedded
                   />
                 )}
@@ -646,9 +643,10 @@ function MqttBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
                     ]}
                     listTitle={t('settings.exports_info_ha_sensors')}
                     listItems={[
-                      ...info.haDiscovery.sensors,
-                      ...(info.haDiscovery.host?.sensors ?? []),
-                    ].map((s) => ({
+                      ...info.haDiscovery.sensors.map((s) => ({ s, id: `gpu:${s.key}` })),
+                      ...(info.haDiscovery.host?.sensors ?? []).map((s) => ({ s, id: `host:${s.key}` })),
+                    ].map(({ s, id }) => ({
+                      id,
                       primary: <code>{s.key}</code>,
                       secondary: formatHaSensorMeta(s),
                     }))}
@@ -705,8 +703,9 @@ function InfluxBlock({ cfg, info, disabled, onSave, onTest }: Readonly<{
           ]}
           listTitle={t('settings.exports_info_field_keys')}
           listItems={[
-            ...info.fieldKeys.map((k) => ({ primary: <code>{k}</code> })),
+            ...info.fieldKeys.map((k) => ({ id: `gpu:${k}`, primary: <code>{k}</code> })),
             ...(info.hostFieldKeys ?? []).map((k) => ({
+              id: `host:${k}`,
               primary: <code>{k}</code>,
               secondary: t('settings.exports_info_host_field') as string,
             })),
@@ -825,8 +824,8 @@ function WebhookBlock({ cfg, disabled, onSave, onTest }: Readonly<{
       {s.type === 'generic' && (
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="label">Method</label>
-            <select className="input" value={s.method} disabled={disabled} onChange={(e) => setS({ ...s, method: e.target.value as 'POST' | 'PUT' })}>
+            <label className="label" htmlFor="webhook-method">Method</label>
+            <select id="webhook-method" className="input" value={s.method} disabled={disabled} onChange={(e) => setS({ ...s, method: e.target.value as 'POST' | 'PUT' })}>
               <option value="POST">POST</option>
               <option value="PUT">PUT</option>
             </select>
@@ -881,6 +880,12 @@ function HeadersEditor({ headers, disabled, onChange }: Readonly<{
   // Render as an ordered array internally so the user can have multiple in-flight
   // edits with empty keys without React reordering rows under them.
   const entries = Object.entries(headers);
+  // One stable id per row for the React key: the header name can't be the
+  // key (typing in it would remount the input and drop the focus).
+  const rowIds = useRef<number[]>([]);
+  const nextRowId = useRef(0);
+  while (rowIds.current.length < entries.length) rowIds.current.push(nextRowId.current++);
+  rowIds.current.length = entries.length;
   const update = (idx: number, key: string, value: string) => {
     const next: Record<string, string> = {};
     entries.forEach(([k, v], i) => {
@@ -896,6 +901,7 @@ function HeadersEditor({ headers, disabled, onChange }: Readonly<{
     onChange(next);
   };
   const remove = (idx: number) => {
+    rowIds.current.splice(idx, 1);
     const next: Record<string, string> = {};
     entries.forEach(([k, v], i) => { if (i !== idx && k.trim()) next[k] = v; });
     onChange(next);
@@ -919,7 +925,7 @@ function HeadersEditor({ headers, disabled, onChange }: Readonly<{
         </p>
       )}
       {entries.map(([k, v], i) => (
-        <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+        <div key={rowIds.current[i]} className="grid grid-cols-[1fr_1fr_auto] gap-2">
           <input
             type="text"
             className="input"
@@ -1026,7 +1032,8 @@ function PayloadFieldsPicker({ selected, disabled, onChange }: Readonly<{
 function DispatchPanel({ rows, listTitle, listItems, extra, embedded }: Readonly<{
   rows: Array<{ label: string; value: React.ReactNode }>;
   listTitle: string;
-  listItems: Array<{ primary: React.ReactNode; secondary?: string }>;
+  /** `id` is the React key: unique within the list. */
+  listItems: Array<{ id: string; primary: React.ReactNode; secondary?: string }>;
   extra?: React.ReactNode;
   embedded?: boolean;
 }>) {
@@ -1057,8 +1064,8 @@ function DispatchPanel({ rows, listTitle, listItems, extra, embedded }: Readonly
       <div className="mt-3">
         <div style={{ color: 'var(--gv-text-dim)' }} className="mb-1">{listTitle}</div>
         <ul className="space-y-0.5">
-          {listItems.map((item, i) => (
-            <li key={i} className="flex items-baseline gap-2">
+          {listItems.map((item) => (
+            <li key={item.id} className="flex items-baseline gap-2">
               <span>{item.primary}</span>
               {item.secondary && <span style={{ color: 'var(--gv-text-dim)' }}>— {item.secondary}</span>}
             </li>

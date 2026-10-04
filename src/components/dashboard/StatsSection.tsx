@@ -32,7 +32,7 @@ interface Props {
   gpuIndex: number;
 }
 
-export default function StatsSection({ gpuIndex }: Props) {
+export default function StatsSection({ gpuIndex }: Readonly<Props>) {
   const { t } = useTranslation();
   const range = useUiStore((s) => s.range);
   // Subscribe so this component re-renders on every WebSocket tick. The value

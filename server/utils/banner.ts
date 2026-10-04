@@ -99,23 +99,24 @@ export function renderBanner(b: BannerInput): string {
   const bot = `${C.bright}${C.cyan}╚${'═'.repeat(width)}╝${C.reset}`;
   const empty = `${C.bright}${C.cyan}║${' '.repeat(width)}║${C.reset}`;
 
-  const lines: string[] = [];
-  lines.push(top);
-  lines.push(center(b.title, C.bright + C.white));
-  lines.push(center(b.subtitle, C.dim));
-  lines.push(sep);
-  lines.push(center(b.envLabel, C.bright + C.green));
-  lines.push(empty);
-  lines.push(left(rows[0], C.cyan));   // container
-  lines.push(sep);
-  lines.push(left(rows[1], C.green));  // frontend web
-  lines.push(left(rows[2], C.blue));   // frontend local
-  lines.push(left(rows[3], C.yellow)); // backend
-  lines.push(left(rows[4], C.magenta));// websocket
-  lines.push(empty);
-  lines.push(left(featureRows[0], C.bright + C.white));
-  for (let i = 1; i < featureRows.length; i++) lines.push(left(featureRows[i], C.dim + C.green));
-  lines.push(bot);
+  const lines: string[] = [
+    top,
+    center(b.title, C.bright + C.white),
+    center(b.subtitle, C.dim),
+    sep,
+    center(b.envLabel, C.bright + C.green),
+    empty,
+    left(rows[0], C.cyan),    // container
+    sep,
+    left(rows[1], C.green),   // frontend web
+    left(rows[2], C.blue),    // frontend local
+    left(rows[3], C.yellow),  // backend
+    left(rows[4], C.magenta), // websocket
+    empty,
+    left(featureRows[0], C.bright + C.white),
+    ...featureRows.slice(1).map((r) => left(r, C.dim + C.green)),
+    bot,
+  ];
   return '\n' + lines.join('\n') + '\n';
 }
 

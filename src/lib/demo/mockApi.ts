@@ -182,6 +182,10 @@ function handleGpu(ctx: RouteCtx): Response | null {
 }
 
 function handleAlerts(ctx: RouteCtx): Response | null {
+  return handleAlertRules(ctx) ?? handleAlertRuleById(ctx) ?? handleAlertEvents(ctx);
+}
+
+function handleAlertRules(ctx: RouteCtx): Response | null {
   const p = ctx.url.pathname;
   if (p === '/api/alerts/rules') {
     if (ctx.method === 'GET') return json({ rules: demoRules });
@@ -197,6 +201,16 @@ function handleAlerts(ctx: RouteCtx): Response | null {
       return json({ rule: newRule });
     }
   }
+  if (p === '/api/alerts/presets') return json({ presets: fakeAlertPresets() });
+  if (p === '/api/alerts/presets/install' && ctx.method === 'POST') {
+    const ids = (ctx.body as { ids?: string[] })?.ids ?? [];
+    return json({ created: ids.length });
+  }
+  return null;
+}
+
+function handleAlertRuleById(ctx: RouteCtx): Response | null {
+  const p = ctx.url.pathname;
   const ruleMatch = /^\/api\/alerts\/rules\/(\d+)$/.exec(p);
   if (ruleMatch) {
     const id = Number.parseInt(ruleMatch[1], 10);
@@ -212,11 +226,11 @@ function handleAlerts(ctx: RouteCtx): Response | null {
       return json({ ok: true });
     }
   }
-  if (p === '/api/alerts/presets') return json({ presets: fakeAlertPresets() });
-  if (p === '/api/alerts/presets/install' && ctx.method === 'POST') {
-    const ids = (ctx.body as { ids?: string[] })?.ids ?? [];
-    return json({ created: ids.length });
-  }
+  return null;
+}
+
+function handleAlertEvents(ctx: RouteCtx): Response | null {
+  const p = ctx.url.pathname;
   if (p === '/api/alerts/events') {
     if (ctx.method === 'GET') return json({ events: demoEvents });
     if (ctx.method === 'DELETE') {
@@ -316,12 +330,15 @@ function parseBody(init?: RequestInit): unknown {
 }
 
 function resolveUrl(input: RequestInfo | URL): URL {
-  const raw = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  let raw: string;
+  if (typeof input === 'string') raw = input;
+  else if (input instanceof URL) raw = input.toString();
+  else raw = input.url;
   return new URL(raw, globalThis.location.origin);
 }
 
 export function installMockFetch(): void {
-  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     let url: URL;
     try { url = resolveUrl(input); } catch { return realFetch(input as RequestInfo, init); }
     if (!url.pathname.startsWith('/api/')) return realFetch(input as RequestInfo, init);
@@ -334,7 +351,7 @@ export function installMockFetch(): void {
       const r = h(ctx);
       if (r) return Promise.resolve(r);
     }
-    return json({ error: `[demo] ${ctx.method} ${url.pathname} not implemented` }, 404);
+    return Promise.resolve(json({ error: `[demo] ${ctx.method} ${url.pathname} not implemented` }, 404));
   };
 }
 

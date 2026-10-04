@@ -47,7 +47,7 @@ class AlertService extends EventEmitter {
       const cutoff = Math.floor(Date.now() / 1000) - 30 * 86400;
       const removed = AlertEventRepo.pruneOlderThan(cutoff);
       if (removed > 0) logger.info('alert', `Pruned ${removed} old alert events`);
-    }, 3600_000);
+    }, 3_600_000);
   }
 
   invalidateCache(): void {

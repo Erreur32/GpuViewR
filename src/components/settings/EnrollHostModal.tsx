@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useHostsStore } from '../../store/hostsStore';
 import { notify } from '../../store/toastStore';
 import { copyText } from '../../lib/clipboard';
+import { focusOnMount } from '../../lib/focus';
 import { ModalShell, WarningBanner, CopyValueBlock } from './_modalParts';
 import {
   buildInstallCommands,
@@ -138,7 +139,7 @@ export default function EnrollHostModal({ onClose }: Props) {
               onChange={(e) => setLabel(e.target.value)}
               placeholder={t('hosts.label_placeholder')}
               className="input"
-              autoFocus
+              ref={focusOnMount}
               maxLength={64}
             />
             <p className="text-xs" style={{ color: 'var(--gv-text-dim)' }}>

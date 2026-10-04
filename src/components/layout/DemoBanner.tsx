@@ -22,7 +22,6 @@ export default function DemoBanner() {
   const fleet = readFleet();
   return (
     <div
-      role="status"
       className="w-full text-center text-xs sm:text-sm font-medium px-3 py-1.5 border-b flex items-center justify-center gap-3 flex-wrap"
       style={{
         background: 'linear-gradient(90deg, rgba(245,158,11,0.18), rgba(168,85,247,0.18))',
@@ -30,9 +29,9 @@ export default function DemoBanner() {
         borderColor: 'var(--gv-border)',
       }}
     >
-      <span>
+      <output>
         DEMO MODE — synthetic data, no real hardware.
-      </span>
+      </output>
       <span className="inline-flex items-center gap-1">
         <button
           type="button"

@@ -2,12 +2,19 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LogIn, UserPlus, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { focusOnMount } from '../../lib/focus';
+
+/** Browser autofill hint: suggest a new password when creating the first
+ *  account, the saved one when logging in. */
+const PASSWORD_AUTOCOMPLETE = { register: 'new-password', login: 'current-password' } as const;
 
 export default function LoginPage() {
   const { t } = useTranslation();
   const { login, register, hasUsers, error, loading } = useAuthStore();
 
   const isRegister = !hasUsers;
+  let submitLabel = t(isRegister ? 'auth.submit_register' : 'auth.submit_login');
+  if (loading) submitLabel = t('common.loading');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   // ?expired=1 lands here when api.ts auto-logs-out on a 401 (stale
@@ -67,7 +74,7 @@ export default function LoginPage() {
           <div>
             <label className="label">{t('auth.username')}</label>
             <input
-              autoFocus
+              ref={focusOnMount}
               autoComplete="username"
               className="input"
               value={username}
@@ -80,7 +87,7 @@ export default function LoginPage() {
             <label className="label">{t('auth.password')}</label>
             <input
               type="password"
-              autoComplete={isRegister ? 'new-password' : 'current-password'}
+              autoComplete={PASSWORD_AUTOCOMPLETE[isRegister ? 'register' : 'login']}
               className="input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -114,7 +121,7 @@ export default function LoginPage() {
           )}
 
           <button type="submit" className="btn-primary w-full" disabled={loading}>
-            {loading ? t('common.loading') : isRegister ? t('auth.submit_register') : t('auth.submit_login')}
+            {submitLabel}
           </button>
         </form>
       </div>

@@ -27,7 +27,7 @@ export interface GpuSample {
 
 const MAX_POINTS = 600; // ~10 minutes at 1Hz
 
-interface Series {
+export interface Series {
   t: number[];
   temperature: number[];
   utilization: (number | null)[];

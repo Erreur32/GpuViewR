@@ -4,6 +4,7 @@ import { Database, Save, Trash2, AlertTriangle } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { notify } from '../../store/toastStore';
+import { fmtBytes } from '../../lib/bytesFormat';
 
 interface DbInfo {
   rows: number;
@@ -137,13 +138,4 @@ function Stat({ label, value }: Readonly<{ label: string; value: string }>) {
       <div className="tabular-nums font-semibold text-[13px] truncate" title={value} style={{ color: 'var(--gv-text)' }}>{value}</div>
     </div>
   );
-}
-
-function fmtBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0 B';
-  const units = ['B', 'KiB', 'MiB', 'GiB'];
-  let i = 0;
-  let v = n;
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-  return `${v.toFixed(v < 10 ? 2 : v < 100 ? 1 : 0)} ${units[i]}`;
 }

@@ -12,13 +12,12 @@ export default function DropdownPanel({
   children: ReactNode;
 }>) {
   return (
-    <div
-      className={`seg absolute top-full mt-1 z-20 flex-col max-h-72 overflow-y-auto ${align === 'right' ? 'right-0' : 'left-0'}`}
+    <fieldset
+      className={`seg absolute top-full mt-1 z-20 flex-col max-h-72 min-w-0 overflow-y-auto ${align === 'right' ? 'right-0' : 'left-0'}`}
       style={{ background: 'var(--gv-bg2)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
-      role="listbox"
       aria-label={label}
     >
       {children}
-    </div>
+    </fieldset>
   );
 }
