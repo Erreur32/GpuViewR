@@ -32,6 +32,7 @@
     "view_arc": "Gauges",
     "view_bar": "Compact",
     "gpus_all": "All",
+    "host_select": "Choose the host to display",
     "gpus_all_help": "Show every GPU at once (compact view)",
     "gpus_all_title": "All GPUs ({{count}})",
     "gpus_combined_chart": "Combined live chart",
@@ -55,7 +56,7 @@
     "processes_vram": "VRAM",
     "processes_cpu_pct": "CPU",
     "processes_gpu_pct": "GPU",
-    "processes_gpu_pct_approx": "Approximation: per-process GPU % not exposed by this driver (ROCm compute queues are not accounted per process). Showing the card's utilisation minus what the other processes use.",
+    "processes_gpu_pct_approx": "Approximation: per-process GPU % not exposed by this driver (ROCm compute queues are not accounted per process). Showing the card's utilisation minus what the other processes use. Idle embedding runners are assumed to use none.",
     "hint_copy": "Copy",
     "hint_docs": "Documentation: hidden GPU processes and model names",
     "hint_click": "Click the icon for the fix.",
@@ -120,10 +121,10 @@
     "filter_all_hidden_one": "{{count}} process uses less than {{mib}} MiB and is hidden by the filter.",
     "filter_all_hidden_other": "All {{count}} processes use less than {{mib}} MiB and are hidden by the filter.",
     "llm_only": "LLM only",
-    "llm_only_help": "Show only LLM processes (Ollama, llama.cpp, vLLM...). Other GPU processes stay counted as hidden. Saved in this browser.",
+    "llm_only_help": "Show only LLM chat models (Ollama, llama.cpp, vLLM...). Embedding runners and other GPU processes stay counted as hidden. Saved in this browser.",
     "llm_only_empty_one": "No LLM on this GPU ({{count}} other process hidden).",
     "llm_only_empty_other": "No LLM on this GPU ({{count}} other processes hidden).",
-    "processes_gpu_pct_unknown": "Per-process GPU % not reported by this driver (ROCm compute queues are not accounted per process), and several processes on the card lack it, so the card's total can't be split between them."
+    "processes_gpu_pct_unknown": "Per-process GPU % not reported by this driver (ROCm compute queues are not accounted per process). Either another process on the card already shows the card's value, or several chat models lack it, so the total can't be split between them."
   },
   "alerts": {
     "title": "Alerts",

@@ -19,12 +19,22 @@ test('gpuMemoryMib: VRAM + GTT', () => {
   assert.equal(gpuMemoryMib({ used_memory: 4416 }), 4416);
 });
 
-test('residualGpuPct: card minus measured, only for a single unknown row', () => {
+test('residualGpuPct: card minus measured, one unmeasured chat row only', () => {
+  const r = (gpu_pct: number | null | undefined, extra: object = {}) => ({ gpu_pct, ...extra });
+  const pct = (rows: ReturnType<typeof r>[], card: number | null) => residualGpuPct(rows, card)?.pct ?? null;
   // Ollama ROCm runner (no counter) next to a Vulkan llama.cpp at 20 %.
-  assert.equal(residualGpuPct([{ gpu_pct: null }, { gpu_pct: 20 }], 65), 45);
-  assert.equal(residualGpuPct([{ gpu_pct: null }], 80), 80);
-  assert.equal(residualGpuPct([{ gpu_pct: null }, { gpu_pct: 90 }], 70), 0);
-  assert.equal(residualGpuPct([{ gpu_pct: null }, { gpu_pct: undefined }], 80), null);
-  assert.equal(residualGpuPct([{ gpu_pct: 10 }], 80), null);
-  assert.equal(residualGpuPct([{ gpu_pct: null }], null), null);
+  assert.equal(pct([r(null), r(20)], 65), 45);
+  assert.equal(pct([r(null)], 80), 80);
+  assert.equal(pct([r(null), r(90)], 70), 0);
+  assert.equal(pct([r(null), r(undefined)], 80), null);
+  assert.equal(pct([r(10)], 80), null);
+  assert.equal(pct([r(null)], null), null);
+  // Chat model + bge-m3 embedding runner, both unmeasured: the chat row gets it.
+  const chat = r(null, { llm_runtime: 'ollama', llm_model: 'qwen3-4b-instruct:64k', command: '/usr/lib/ollama/llama-server -c 131072' });
+  const embed = r(null, { llm_runtime: 'ollama', llm_model: 'bge-m3:latest', command: '/usr/lib/ollama/llama-server --embedding' });
+  assert.deepEqual(residualGpuPct([embed, chat], 55), { row: chat, pct: 55 });
+  // Alone on the card, an embedding runner still gets the card value.
+  assert.equal(residualGpuPct([embed], 30)?.row, embed);
+  // Two chat models without a counter: no guess.
+  assert.equal(residualGpuPct([chat, { ...chat }, embed], 55), null);
 });
