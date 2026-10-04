@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.8] - 2026-10-04
+
+### Fixed
+
+- **Ollama chat model showed `-` as GPU % next to an embedding runner** (e.g. a chat model + `bge-m3` on ROCm). Neither has a per-process counter, so the card value was never used. Embedding runners only work a few ms per RAG request, so they are now left out: the one chat model without a value gets the card's utilisation (`~X %`). Two chat models without a counter still show `-`.
+- **The dashboard host picker was a native drop-down** with an unstyled popup. It now uses the same themed menu as the range and GPU pickers.
+
+### Changed
+
+- **LLM only also hides embedding runners** (`bge-m3`...): it now shows the chat models only. Hidden runners stay counted in the switch's hidden total, and still count for the GPU % above.
+
 ## [0.11.7] - 2026-10-04
 
 ### Fixed
