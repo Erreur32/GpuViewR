@@ -32,6 +32,7 @@
     "view_arc": "Jauges",
     "view_bar": "Compact",
     "gpus_all": "Tous",
+    "host_select": "Choisir l'hôte à afficher",
     "gpus_all_help": "Afficher toutes les cartes GPU sur la même page (vue compacte)",
     "gpus_all_title": "Toutes les GPU ({{count}})",
     "gpus_combined_chart": "Graphique combiné en direct",
@@ -120,7 +121,7 @@
     "filter_all_hidden_one": "{{count}} processus utilise moins de {{mib}} Mio et est masqué par le filtre.",
     "filter_all_hidden_other": "Les {{count}} processus utilisent moins de {{mib}} Mio et sont masqués par le filtre.",
     "llm_only": "LLM uniquement",
-    "llm_only_help": "N'affiche que les processus LLM (Ollama, llama.cpp, vLLM...). Les autres processus GPU restent comptés comme masqués. Mémorisé dans ce navigateur.",
+    "llm_only_help": "N'affiche que les modèles LLM de chat (Ollama, llama.cpp, vLLM...). Les runners d'embedding et les autres processus GPU restent comptés comme masqués. Mémorisé dans ce navigateur.",
     "llm_only_empty_one": "Aucun LLM sur ce GPU ({{count}} autre processus masqué).",
     "llm_only_empty_other": "Aucun LLM sur ce GPU ({{count}} autres processus masqués).",
     "processes_gpu_pct_unknown": "GPU % par processus non fourni par ce driver (les files de calcul ROCm ne sont pas comptées par processus). Soit un autre processus de la carte affiche déjà sa valeur, soit plusieurs modèles de chat n'en ont pas : le total ne peut donc pas être réparti entre eux."

@@ -101,7 +101,9 @@ export default function GpuProcessesTable({ gpuIndex, hostId, gpuUtilFallback = 
   // processes rank by what they really use.
   const all = [...data].sort((a, b) =>
     Number(!!b.llm_runtime) - Number(!!a.llm_runtime) || gpuMemoryMib(b) - gpuMemoryMib(a));
-  const llmRows = llmOnly ? all.filter((p) => !!p.llm_runtime) : all;
+  // "LLM only" means the chat models: embedding runners (bge-m3 for RAG)
+  // are hidden too, still counted in the switch's hidden total.
+  const llmRows = llmOnly ? all.filter((p) => !!p.llm_runtime && !isEmbeddingProcess(p)) : all;
   const sorted = minMib === 0 ? llmRows : llmRows.filter((p) => gpuMemoryMib(p) >= minMib);
   // Each control counts what it hides, the empty-state message the total.
   const hiddenByLlm = all.length - llmRows.length;

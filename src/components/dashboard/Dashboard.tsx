@@ -23,6 +23,7 @@ import { memoryLabel } from "../../lib/memoryFormat";
 import GaugeCard from "./GaugeCard";
 import LiveChart from "./LiveChart";
 import RangeSelector from "./RangeSelector";
+import HostSelector from "./HostSelector";
 import GpuTabs from "./GpuTabs";
 import StatsSection from "./StatsSection";
 import GpuProcessesTable from "./GpuProcessesTable";
@@ -468,48 +469,6 @@ function PcieLinkBwTile({
         )}
       </div>
     </div>
-  );
-}
-
-// Host selector — only renders past mono-host installs (zero-touch for
-// existing single-machine users). URL syncs to /host/:hostId on change
-// so the choice is bookmarkable and survives a hard reload.
-function HostSelector({
-  hosts,
-  selectedHostId,
-}: Readonly<{
-  hosts: ReturnType<typeof useHostsStore.getState>["hosts"];
-  selectedHostId: string;
-}>) {
-  const navigate = useNavigate();
-  if (hosts.length <= 1) return null;
-  return (
-    <label
-      className="inline-flex items-center gap-1.5 text-xs"
-      style={{ color: "var(--gv-text-muted)" }}
-    >
-      <Server className="w-3.5 h-3.5" />
-      <select
-        value={selectedHostId}
-        onChange={(e) => {
-          const id = e.target.value;
-          navigate(id === LOCAL_HOST_ID ? "/" : `/host/${id}`);
-        }}
-        className="select"
-        style={{
-          width: "auto",
-          padding: "0.25rem 1.75rem 0.25rem 0.5rem",
-          fontSize: "0.75rem",
-        }}
-        aria-label="Host"
-      >
-        {hosts.map((h) => (
-          <option key={h.id} value={h.id}>
-            {h.label}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 
