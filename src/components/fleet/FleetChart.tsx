@@ -541,9 +541,12 @@ export default function FleetChart() {
           // swatch, the chart stroke, and the Settings → Hosts picker
           // preview all agreeing on the same color for a given host.
           const color = hasData ? resolveHostColor(h, colorIdx) : 'var(--gv-text-dim)';
-          const titleKey = hasData
-            ? (hidden ? 'fleet.legend_show' : 'fleet.legend_hide')
-            : 'fleet.legend_no_data';
+          let titleKey = 'fleet.legend_no_data';
+          let opacity = 0.45;
+          if (hasData) {
+            titleKey = hidden ? 'fleet.legend_show' : 'fleet.legend_hide';
+            opacity = hidden ? 0.4 : 1;
+          }
           return (
             <button
               key={h.id}
@@ -553,7 +556,7 @@ export default function FleetChart() {
               className="inline-flex items-center gap-1.5 transition-opacity"
               style={{
                 color: 'var(--gv-text-muted)',
-                opacity: !hasData ? 0.45 : (hidden ? 0.4 : 1),
+                opacity,
                 textDecoration: hidden ? 'line-through' : 'none',
                 cursor: hasData ? 'pointer' : 'not-allowed',
               }}

@@ -156,7 +156,7 @@ function GpuThresholdRow({
             label={`${t(METRIC_LABEL[k].label)} (${METRIC_LABEL[k].unit})`}
             // 0 stands for "no line on this GPU": a 0 % / 0 °C / 0 W line
             // is never useful, and an empty field means "inherit".
-            value={value === null ? 0 : value}
+            value={value ?? 0}
             placeholder={typeof inherited === "number" ? String(inherited) : t("settings.thresholds_off")}
             disabled={disabled}
             onChange={(v) => onChange(k, v === 0 ? null : v)}

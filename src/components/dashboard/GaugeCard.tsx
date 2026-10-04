@@ -31,12 +31,16 @@ function statusFor(value: number, warn?: number, danger?: number): Status {
   return "ok";
 }
 
+/** Live dot: dim when the metric is unavailable, bright on a fresh sample. */
+function liveDotOpacity(available: boolean, flash: boolean): number {
+  if (!available) return 0.3;
+  return flash ? 1 : 0.45;
+}
+
 function colorFor(status: Status): string {
-  return status === "danger"
-    ? "var(--gv-danger)"
-    : status === "warn"
-      ? "var(--gv-warn)"
-      : "var(--gv-ok)";
+  if (status === "danger") return "var(--gv-danger)";
+  if (status === "warn") return "var(--gv-warn)";
+  return "var(--gv-ok)";
 }
 
 export default function GaugeCard({
@@ -90,7 +94,7 @@ export default function GaugeCard({
             className="inline-block w-1.5 h-1.5 rounded-full transition-opacity duration-300"
             style={{
               background: colorVar,
-              opacity: !available ? 0.3 : flash ? 1 : 0.45,
+              opacity: liveDotOpacity(available, flash),
               boxShadow: available && flash ? `0 0 6px ${colorVar}` : "none",
             }}
             title={available ? "Live" : "N/A on this host"}

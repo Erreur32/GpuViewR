@@ -157,7 +157,7 @@ export function bucketForRange(rangeSec: number): number {
 export function rangeToSec(range: string): number {
   const m = /^(\d+)([smhdw])$/.exec(range);
   if (!m) return 600;
-  const n = parseInt(m[1], 10);
+  const n = Number.parseInt(m[1], 10);
   switch (m[2]) {
     case 's': return n;
     case 'm': return n * 60;

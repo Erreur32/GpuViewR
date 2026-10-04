@@ -181,7 +181,6 @@ export default function LiveChart({ gpuIndex }: Readonly<Props>) {
               // overflow the chart, so it sticks naturally next to the
               // cursor instead of being clipped or placed far from it.
               const w = u.over.clientWidth;
-              const h = u.over.clientHeight;
               setTip({
                 left,
                 top,
@@ -281,7 +280,7 @@ export default function LiveChart({ gpuIndex }: Readonly<Props>) {
     }
 
     if (tArr.length > 0) {
-      const cutoff = tArr[tArr.length - 1] - rangeToSeconds(range);
+      const cutoff = (tArr.at(-1) ?? 0) - rangeToSeconds(range);
       let drop = 0;
       while (drop < tArr.length && tArr[drop] < cutoff) drop++;
       if (drop > 0) {

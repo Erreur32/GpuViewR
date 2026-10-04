@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { pollWhileVisible } from '../../lib/poll';
 import PcieThroughputTile from '../dashboard/PcieThroughputTile';
 import SystemTemperaturesPanel, { type HostTempSensor } from './SystemTemperaturesPanel';
+import { fmtBytes } from '../../lib/bytesFormat';
 
 type ViewMode = 'bar' | 'gauge';
 
@@ -140,12 +141,7 @@ export default function SystemPage() {
                   - gauge mode + xl  : Host (2fr) + CPU (1fr) + Memory (1fr) all on
                     one row — only when the zone has the full page width to itself */}
               <div
-                className={
-                  'pl-3 border-l-2 '
-                  + (viewMode === 'gauge'
-                    ? `grid gap-4 grid-cols-1 md:grid-cols-2 ${hasThermal ? '' : 'xl:grid-cols-4'}`
-                    : 'space-y-4')
-                }
+                className={'pl-3 border-l-2 ' + machineZoneLayout(viewMode, hasThermal)}
                 style={{ borderColor: 'color-mix(in srgb, var(--gv-info) 35%, transparent)' }}
               >
                 <section
@@ -729,13 +725,10 @@ function LoadAvgBars({ loadavg, cores, label, viewMode = 'bar' }: Readonly<{
   );
 }
 
-function fmtBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0 B';
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
-  let i = 0;
-  let v = n;
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-  return `${v.toFixed(v < 10 ? 2 : v < 100 ? 1 : 0)} ${units[i]}`;
+/** Machine zone card layout, see the comment above its container. */
+function machineZoneLayout(viewMode: ViewMode, hasThermal: boolean): string {
+  if (viewMode !== 'gauge') return 'space-y-4';
+  return hasThermal ? 'grid gap-4 grid-cols-1 md:grid-cols-2' : 'grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-4';
 }
 
 function fmtUptime(seconds: number): string {

@@ -316,7 +316,10 @@ function parseBody(init?: RequestInit): unknown {
 }
 
 function resolveUrl(input: RequestInfo | URL): URL {
-  const raw = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  let raw: string;
+  if (typeof input === 'string') raw = input;
+  else if (input instanceof URL) raw = input.toString();
+  else raw = input.url;
   return new URL(raw, globalThis.location.origin);
 }
 
@@ -332,7 +335,7 @@ export function installMockFetch(): void {
     };
     for (const h of handlers) {
       const r = h(ctx);
-      if (r) return Promise.resolve(r);
+      if (r) return r;
     }
     return json({ error: `[demo] ${ctx.method} ${url.pathname} not implemented` }, 404);
   };
