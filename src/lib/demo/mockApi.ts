@@ -299,7 +299,16 @@ function handleLlm(ctx: RouteCtx): Response | null {
   return null;
 }
 
-const handlers = [handleAuth, handleHealthSystem, handleGpu, handleAlerts, handleExports, handleLogsUpdates, handleLlm];
+// Settings > Chart thresholds (global + per GPU), kept in memory for the tab.
+let demoThresholds: unknown = { global: null, gpus: {} };
+
+function handleThresholds(ctx: RouteCtx): Response | null {
+  if (ctx.url.pathname !== '/api/thresholds') return null;
+  if (ctx.method === 'PUT') demoThresholds = ctx.body;
+  return json(demoThresholds);
+}
+
+const handlers = [handleAuth, handleHealthSystem, handleGpu, handleAlerts, handleExports, handleLogsUpdates, handleLlm, handleThresholds];
 
 function parseBody(init?: RequestInit): unknown {
   if (!init || typeof init.body !== 'string') return null;

@@ -5,7 +5,9 @@ import { Download } from 'lucide-react';
 import { useGpuStore } from '../../store/gpuStore';
 import { useHostsStore } from '../../store/hostsStore';
 import { useUiStore } from '../../store/uiStore';
+import { useThresholdsStore } from '../../store/thresholdsStore';
 import { notify } from '../../store/toastStore';
+import { gpuKey, resolveThresholds } from '../../lib/thresholds';
 import { api } from '../../lib/api';
 import { pollWhileVisible } from '../../lib/poll';
 import { fmtClock, fmtDateTime, historyPollIntervalMs, makeAxisTimeFormatter, rangeToSeconds } from '../../lib/time';
@@ -42,8 +44,9 @@ export default function LiveChart({ gpuIndex }: Props) {
   const chartColors = useUiStore((s) => s.chartColors);
   const setChartColor = useUiStore((s) => s.setChartColor);
   const timeFormat = useUiStore((s) => s.timeFormat);
-  const chartThresholds = useUiStore((s) => s.chartThresholds);
   const chartThresholdsEnabled = useUiStore((s) => s.chartThresholdsEnabled);
+  const globalThresholds = useThresholdsStore((s) => s.global);
+  const gpuThresholds = useThresholdsStore((s) => s.gpus);
   const series = useGpuStore((s) => s.series.get(gpuIndex));
   const latestSample = useGpuStore((s) => s.latest.get(gpuIndex));
   const cachedHistory = useGpuStore((s) => s.history.get(`${gpuIndex}|${range}`));
@@ -52,6 +55,11 @@ export default function LiveChart({ gpuIndex }: Props) {
   // fetches + cache keys correctly. Defaults to 'local' for mono-host
   // installs (the only situation pre-v0.3.0).
   const selectedHostId = useHostsStore((s) => s.selectedHostId);
+  // Lines for this GPU: its own overrides, else the global set.
+  const chartThresholds = useMemo(
+    () => resolveThresholds(globalThresholds, gpuThresholds[gpuKey(selectedHostId, gpuIndex)]),
+    [globalThresholds, gpuThresholds, selectedHostId, gpuIndex],
+  );
   const [historic, setHistoric] = useState<HistoryRow[]>(() => cachedHistory?.rows ?? []);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [cursor, setCursor] = useState<CursorValues>({ t: null, utilization: null, temperature: null, power: null, memory: null, fan: null });
