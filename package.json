@@ -41,6 +41,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
     "i18next": "^25.8.4",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.577.0",
