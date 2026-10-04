@@ -290,9 +290,9 @@ export default function AlertsPage() {
                   if (a.threshold !== b.threshold) return a.threshold - b.threshold;
                   return a.name.localeCompare(b.name);
                 });
-                const gpuMetrics: Metric[] = ['utilization', 'memory', 'fan_speed', 'temperature', 'power'];
-                const gpu = sorted.filter((r) => gpuMetrics.includes(r.metric));
-                const host = sorted.filter((r) => !gpuMetrics.includes(r.metric) && !PROCESS_METRICS.has(r.metric));
+                const gpuMetrics = new Set<Metric>(['utilization', 'memory', 'fan_speed', 'temperature', 'power']);
+                const gpu = sorted.filter((r) => gpuMetrics.has(r.metric));
+                const host = sorted.filter((r) => !gpuMetrics.has(r.metric) && !PROCESS_METRICS.has(r.metric));
                 const proc = sorted.filter((r) => PROCESS_METRICS.has(r.metric));
                 const groups: { label: string; rules: Rule[] }[] = [];
                 if (gpu.length) groups.push({ label: t('alerts.metric_group_gpu'), rules: gpu });
