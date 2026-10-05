@@ -17,6 +17,9 @@
     "submit_login": "Se connecter",
     "submit_register": "Créer le compte admin",
     "first_user_hint": "Le premier utilisateur devient automatiquement admin",
+    "user_menu": "Compte",
+    "signed_in_as": "Connecté en tant que {{user}}",
+    "profile": "Profil",
     "logout": "Déconnexion",
     "session_expired": "Votre session a expiré, reconnectez-vous. (Se produit après un reset du hub ou une rotation de token.)",
     "errors": {
@@ -256,6 +259,8 @@
   "settings": {
     "title": "Réglages",
     "subtitle": "Personnalisez votre tableau de bord",
+    "general_dashboard": "Tableau de bord",
+    "general_user": "Utilisateur",
     "tab_general": "Général",
     "tab_exports": "Exports",
     "tab_hosts": "Hôtes",
