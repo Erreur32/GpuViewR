@@ -8,7 +8,7 @@ import {
 import { effectiveStatus, useHostsStore, type HostRecord } from "../../store/hostsStore";
 import { statusFor, colorFor } from "../../lib/status";
 import { memoryLabel } from "../../lib/memoryFormat";
-import { hostPowerMax } from "../../lib/gaugeScale";
+import { hostPowerMax, tempScale } from "../../lib/gaugeScale";
 import StatusPill from "./StatusPill";
 import GpuMiniTile from "./GpuMiniTile";
 import MetricRow from "../ui/MetricRow";
@@ -178,6 +178,8 @@ export default function HostCard({ host, onOpen, detailed = false }: Props) {
 interface HostStats {
   avgUtil: number | null;
   hottestTemp: number | null;
+  /** Throttle temperature of the hottest card, when reported. */
+  hottestLimit: number | null;
   totalPower: number;
   powerMax: number;
   vramUsed: number;
@@ -190,6 +192,7 @@ function aggregateHostStats(samples: GpuSample[]): HostStats {
     return {
       avgUtil: null,
       hottestTemp: null,
+      hottestLimit: null,
       totalPower: 0,
       powerMax: 0,
       vramUsed: 0,
@@ -200,6 +203,7 @@ function aggregateHostStats(samples: GpuSample[]): HostStats {
   let utilSum = 0;
   let utilCount = 0;
   let hottest = Number.NEGATIVE_INFINITY;
+  let hottestLimit: number | null = null;
   let power = 0;
   let vramUsed = 0;
   let vramTotal = 0;
@@ -209,7 +213,10 @@ function aggregateHostStats(samples: GpuSample[]): HostStats {
       utilSum += g.utilization;
       utilCount++;
     }
-    if (g.temperature > hottest) hottest = g.temperature;
+    if (g.temperature > hottest) {
+      hottest = g.temperature;
+      hottestLimit = g.temp_limit ?? null;
+    }
     power += g.power;
     vramUsed += g.memory_used;
     vramTotal += g.memory_total ?? 0;
@@ -221,6 +228,7 @@ function aggregateHostStats(samples: GpuSample[]): HostStats {
   return {
     avgUtil: utilCount > 0 ? utilSum / utilCount : null,
     hottestTemp: hottest === Number.NEGATIVE_INFINITY ? null : hottest,
+    hottestLimit,
     totalPower: power,
     powerMax,
     vramUsed,
@@ -281,6 +289,7 @@ function HostMetricRows({
   }
   const vramPct =
     stats.vramTotal > 0 ? (stats.vramUsed / stats.vramTotal) * 100 : 0;
+  const tempBand = tempScale(stats.hottestLimit);
   return (
     <div className="grid grid-cols-1 gap-1.5">
       <MetricRow
@@ -312,9 +321,9 @@ function HostMetricRows({
         label={t("dashboard.metrics.temperature")}
         value={stats.hottestTemp ?? 0}
         displayValue={stats.hottestTemp === null ? "N/A" : undefined}
-        max={100}
-        warn={75}
-        danger={85}
+        max={tempBand.max}
+        warn={tempBand.warn}
+        danger={tempBand.danger}
         unit="°C"
       />
       <MetricRow

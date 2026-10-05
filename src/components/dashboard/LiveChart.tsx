@@ -335,7 +335,7 @@ export default function LiveChart({ gpuIndex }: Readonly<Props>) {
           <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--gv-text-muted)' }}>
             {t('dashboard.history')}
           </h3>
-          <CsvExportButton gpuIndex={gpuIndex} range={range} />
+          <CsvExportButton hostId={selectedHostId} gpuIndex={gpuIndex} range={range} />
         </div>
         <div className="flex items-center gap-3 text-xs">
           <Chip
@@ -481,14 +481,14 @@ export default function LiveChart({ gpuIndex }: Readonly<Props>) {
   );
 }
 
-function CsvExportButton({ gpuIndex, range }: Readonly<{ gpuIndex: number; range: string }>) {
+function CsvExportButton({ hostId, gpuIndex, range }: Readonly<{ hostId: string; gpuIndex: number; range: string }>) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const onClick = async () => {
     setBusy(true);
     try {
       const token = localStorage.getItem('gpuviewr.token') || '';
-      const res = await fetch(`/api/gpu/history.csv?gpu=${gpuIndex}&range=${encodeURIComponent(range)}`, {
+      const res = await fetch(`/api/gpu/history.csv?host=${encodeURIComponent(hostId)}&gpu=${gpuIndex}&range=${encodeURIComponent(range)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
