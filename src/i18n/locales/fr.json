@@ -28,7 +28,7 @@
     "offline": "HORS LIGNE",
     "host_unavailable": "{{host}} ne répond pas : dernier signal il y a {{age}}. Choisissez un autre hôte dans le sélecteur, ou vérifiez que la machine et son agent tournent.",
     "host_unavailable_never": "{{host}} n'a encore jamais envoyé de mesure. Vérifiez que la machine et son agent tournent.",
-    "fan_na_hint": "Vitesse du ventilateur non fournie par le pilote : APU ou carte sans ventilateur propre (refroidie par les ventilateurs de la carte mère ou du portable), carte passive de datacenter, ou agent Windows sans nvidia-smi. Ce n'est pas une erreur.",
+    "fan_na_hint": "Vitesse du ventilateur non fournie par le pilote : APU ou carte sans ventilateur propre (refroidie par les ventilateurs de la carte mère ou du portable), carte passive de datacenter, carte professionnelle (Quadro, RTX Entreprise) dont le pilote donne le ventilateur à des outils comme HWiNFO mais pas à nvidia-smi, ou agent Windows sans nvidia-smi. Ce n'est pas une erreur.",
     "no_gpu": "Aucun GPU détecté : vérifiez que le binaire smi de votre vendor (nvidia-smi ou rocm-smi) est accessible dans le conteneur et que GPU_VENDOR est correctement défini. Regardez les logs du hub pour le vendor résolu au boot.",
     "history": "Performance en direct",
     "export_csv_help": "Télécharger l'historique du GPU courant sur la période sélectionnée en CSV",

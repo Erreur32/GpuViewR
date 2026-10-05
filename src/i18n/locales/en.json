@@ -28,7 +28,7 @@
     "offline": "OFFLINE",
     "host_unavailable": "{{host}} is not responding: last seen {{age}} ago. Pick another host in the selector, or check that the machine and its agent are running.",
     "host_unavailable_never": "{{host}} has not sent any sample yet. Check that the machine and its agent are running.",
-    "fan_na_hint": "Fan speed not reported by the driver: APU or card without its own fan (cooled by the motherboard or laptop fans), passive datacenter card, or a Windows agent without nvidia-smi. Not an error.",
+    "fan_na_hint": "Fan speed not reported by the driver: APU or card without its own fan (cooled by the motherboard or laptop fans), passive datacenter card, a professional card (Quadro, RTX Enterprise) whose driver gives the fan to tools like HWiNFO but not to nvidia-smi, or a Windows agent without nvidia-smi. Not an error.",
     "no_gpu": "No GPU detected: check that the smi binary for your vendor (nvidia-smi or rocm-smi) is available in the container, and that GPU_VENDOR is set correctly. Look at the hub logs for the resolved vendor on boot.",
     "history": "Live performance",
     "export_csv_help": "Download the current GPU's history for the selected range as CSV",
