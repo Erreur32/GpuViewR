@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.16] - 2026-10-05
+
+### Added
+
+- **Warning when a Docker NVIDIA agent needs `pid: host`.** An existing Docker install keeps its compose file across updates, so on recent drivers its agent can still list no GPU process outside its container. The agent now detects that it runs in its own process space, and when the card has at least 1 GB of VRAM that the listed processes don't explain, the process table shows the cause and the `pid: host` line to copy. Agents that already see everything (older drivers, `pid: host`, systemd, Windows, AMD) show nothing.
+
 ## [0.11.15] - 2026-10-05
 
 ### Fixed

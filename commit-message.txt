@@ -1,6 +1,4 @@
-release: v0.11.15 Docker NVIDIA agent shares the host pid namespace
+release: v0.11.16 warn when a Docker NVIDIA agent needs pid: host
 
-- Fixed: on recent NVIDIA drivers (595) nvidia-smi in the agent
-  container listed no GPU process, so no LLM showed. Compose files set
-  pid: host on the NVIDIA agent; existing Docker installs add the line
-  and run docker compose up -d.
+- Added: the agent detects it runs in its own pid namespace; with 1 GB+
+  of unexplained VRAM the process table shows the pid: host fix to copy.
