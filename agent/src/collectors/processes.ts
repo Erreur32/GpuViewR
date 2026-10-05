@@ -93,8 +93,6 @@ export interface ProcessCollectorHandle {
 // the table anyway.
 const MIN_TICK_MS = 1_000;
 
-const QUERY = ['pid', 'process_name', 'gpu_uuid', 'used_memory'].join(',');
-
 /** True when the agent runs in its own pid namespace. Read through the
  *  host's /proc, its NSpid line then holds the host pid and the
  *  container pid; with `pid: host`, systemd or no /host/proc, one pid. */
@@ -171,13 +169,13 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
     if (inflight) return;
     inflight = true;
     try {
-      const [computeOut, pidsOut] = await Promise.all([
-        runSmi([`--query-compute-apps=${QUERY}`, '--format=csv,noheader,nounits']),
-        // Only source that also lists graphics-only clients (Xorg,
-        // compositors, browsers): --query-compute-apps skips them.
-        runSmi(['-q', '-d', 'PIDS']),
-      ]);
-      const procs = computeOut === null ? [] : parseComputeApps(computeOut, opts.hostProc);
+      // `-q -d PIDS` lists compute AND graphics clients (Xorg,
+      // compositors, browsers) with the same per-process VRAM as
+      // --query-compute-apps (checked on a 3060 Ti, 1154 MiB in both), so
+      // that second call (~7 ms CPU every tick) is gone. Blocks are keyed
+      // by PCI bus id, mapped to the card uuid with a cached lookup.
+      const pidsOut = await runSmi(['-q', '-d', 'PIDS']);
+      const procs: AgentGpuProcess[] = [];
       const smiTypeByPid = new Map<number, GpuProcessType>();
       if (pidsOut !== null) {
         const listed = parseQueryPids(pidsOut);
@@ -243,21 +241,6 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
   };
 }
 
-function parseComputeApps(out: string, procRoot: string): AgentGpuProcess[] {
-  const procs: AgentGpuProcess[] = [];
-  for (const raw of out.split('\n')) {
-    const line = raw.trim();
-    if (!line) continue;
-    const parts = line.split(',').map((p) => p.trim());
-    if (parts.length < 4) continue;
-    const pid = Number.parseInt(parts[0], 10);
-    if (!Number.isFinite(pid)) continue;
-    const used = Number.parseInt(parts[3], 10);
-    procs.push(bareProcess(pid, displayName(parts[1], pid, procRoot), parts[2] || '', Number.isFinite(used) ? used : 0));
-  }
-  return procs;
-}
-
 export function parsePmon(out: string): Map<number, { type: GpuProcessType; gpuPct: number | null }> {
   const result = new Map<number, { type: GpuProcessType; gpuPct: number | null }>();
   for (const raw of out.split('\n')) {
@@ -320,9 +303,11 @@ export function parseQueryPids(out: string): QueryPidsEntry[] {
     for (const chunk of block.split(/^\s*Process ID\s*:/m).slice(1)) {
       const pid = Number.parseInt(chunk, 10);
       if (!Number.isFinite(pid)) continue;
-      const type = /^\s*Type\s*:\s*(\S+)/m.exec(chunk)?.[1] ?? '';
-      const name = /^\s*Name\s*:\s*(.*)$/m.exec(chunk)?.[1] ?? '';
-      const used = Number.parseInt(/^\s*Used GPU Memory\s*:\s*(.*)$/m.exec(chunk)?.[1] ?? '', 10);
+      const type = /^[ \t]*Type[ \t]*:[ \t]*(\S+)/m.exec(chunk)?.[1] ?? '';
+      // [ \t], not \s: an empty `Name :` (process in another container)
+      // must not swallow the next line as the name.
+      const name = /^[ \t]*Name[ \t]*:[ \t]*(.*)$/m.exec(chunk)?.[1] ?? '';
+      const used = Number.parseInt(/^[ \t]*Used GPU Memory[ \t]*:[ \t]*(.*)$/m.exec(chunk)?.[1] ?? '', 10);
       entries.push({
         busId,
         pid,
@@ -345,9 +330,9 @@ export function parseBusUuidMap(out: string): Map<string, string> {
   return map;
 }
 
-/** Append `-q` entries missing from the compute-apps list (graphics-only
- *  clients). Entries on a GPU whose UUID is unknown are dropped, the hub
- *  could not attribute them to a card anyway. */
+/** Append the `-q -d PIDS` entries not already in `procs` (one row per
+ *  pid and card). Entries on a GPU whose UUID is unknown are dropped, the
+ *  hub could not attribute them to a card anyway. */
 export function mergeQueryPids(
   procs: AgentGpuProcess[],
   listed: QueryPidsEntry[],
