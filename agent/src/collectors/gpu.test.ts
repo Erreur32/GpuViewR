@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createQueryBatcher, parseOutput } from "./gpu.js";
-import { parseSlowdownTemps } from "../../../server/services/parsers/nvidia.js";
+import { parseDmonPcie, parseSlowdownTemps } from "../../../server/services/parsers/nvidia.js";
 
 test("createQueryBatcher: a repeated GPU index starts a new interval", () => {
   const batches: string[][] = [];
@@ -75,4 +75,22 @@ test("parseSlowdownTemps: an N/A slowdown temp is null, keyed by block order too
   const temps = parseSlowdownTemps(Q_3060TI.replace("GPU Slowdown Temp                 : 95 C", "GPU Slowdown Temp : N/A"));
   assert.equal(temps.get("idx:0"), null);
   assert.equal(parseSlowdownTemps(Q_3060TI).get("idx:0"), 95);
+});
+
+test("parseDmonPcie: MB/s per GPU index, converted to KB/s", () => {
+  const out = "# gpu  rxpci  txpci \n# Idx   MB/s   MB/s \n    0   2048      3 \n    1      0      0 \n";
+  const m = parseDmonPcie(out);
+  assert.deepEqual(m.get("idx:0"), { rxKbps: 2048 * 1024, txKbps: 3 * 1024 });
+  assert.deepEqual(m.get("idx:1"), { rxKbps: 0, txKbps: 0 });
+});
+
+test("parseDmonPcie: unsupported column is null, header-only output is empty", () => {
+  assert.deepEqual(parseDmonPcie("    0      -      -\n").get("idx:0"), { rxKbps: null, txKbps: null });
+  assert.equal(parseDmonPcie("# gpu  rxpci  txpci\n# Idx   MB/s   MB/s\n").size, 0);
+});
+
+test("parseOutput: dmon map attaches to the sample by GPU index", () => {
+  const [s] = parseOutput(CSV_3060TI, parseDmonPcie("    0     12      1\n"));
+  assert.equal(s.pcie_rx_kbps, 12 * 1024);
+  assert.equal(s.pcie_tx_kbps, 1024);
 });
