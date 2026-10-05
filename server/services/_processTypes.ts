@@ -38,4 +38,6 @@ export interface ProcessVisibility {
   denied_pids: number;
   has_ptrace: boolean;
   install_mode: string;
+  /** NVIDIA Docker agent without `pid: host` (see agent processes.ts). */
+  pid_isolated?: boolean;
 }

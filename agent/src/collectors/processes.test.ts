@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeQueryPids, parseBusUuidMap, parsePmon, parseQueryPids, type AgentGpuProcess } from './processes.js';
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { inOwnPidNamespace, mergeQueryPids, parseBusUuidMap, parsePmon, parseQueryPids, type AgentGpuProcess } from './processes.js';
 
 const PMON = `# gpu         pid   type     sm    mem    enc    dec    jpg    ofa    command
 # Idx           #    C/G      %      %      %      %      %      %    name
@@ -80,4 +83,21 @@ test('mergeQueryPids: adds graphics-only pids, keeps compute-apps rows, drops un
     [5347, 'anydesk', 'GPU-aaa', 5],
     [1607, 'Xorg', 'GPU-aaa', 245],
   ]);
+});
+
+async function fakeProc(nspid: string | null): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'gv-pidns-'));
+  await mkdir(join(root, 'self'));
+  await writeFile(join(root, 'self', 'status'), `Name:\tnode\n${nspid === null ? '' : `NSpid:\t${nspid}\n`}Uid:\t0\n`);
+  return root;
+}
+
+test('inOwnPidNamespace: Docker agent without pid: host (host pid + container pid)', async () => {
+  assert.equal(inOwnPidNamespace(await fakeProc('1440089\t9796')), true);
+});
+
+test('inOwnPidNamespace: pid: host, systemd, old kernel or no /host/proc', async () => {
+  assert.equal(inOwnPidNamespace(await fakeProc('1440170')), false);
+  assert.equal(inOwnPidNamespace(await fakeProc(null)), false);
+  assert.equal(inOwnPidNamespace('/nonexistent-gv-proc'), false);
 });
