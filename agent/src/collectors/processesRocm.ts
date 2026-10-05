@@ -1,4 +1,7 @@
-// Per-host GPU-process collector backed by `rocm-smi --showpids`.
+// Per-host GPU-process collector for AMD (and Intel, fdinfo only). The
+// KFD (ROCm compute) pid list comes from /sys/class/kfd (kfdSysfs.ts)
+// when readable, else from `rocm-smi --showpids`; the notes below are
+// about that rocm-smi fallback.
 // Same wire shape as the nvidia variant (AgentGpuProcess[]) so the
 // hub's agentIngestWS doesn't care which vendor produced the frame.
 //
@@ -61,6 +64,7 @@ import {
   scanAmdgpuFdinfo,
 } from "./processesAmdgpuFdinfo.js";
 import { intelUuidFromBus } from "./gpuIntel.js";
+import { kfdAvailable, readKfdGpuBuses, readKfdProcesses } from "./kfdSysfs.js";
 import { classifyLLM } from "./llmClassifier.js";
 // Note: LLMResolvers is re-exported through ProcessCollectorOptions
 // (Omit<...>) below — no direct import needed here.
@@ -103,7 +107,19 @@ export type RocmProcessCollectorOptions = Omit<
   sysClassDrm?: string;
   /** 'intel': i915/xe cards, fdinfo only, rocm-smi never spawned. */
   family?: "amd" | "intel";
+  /** /sys/class/kfd/kfd, override for tests. */
+  kfdRoot?: string;
 };
+
+/** A KFD process with its VRAM per card (bus id), whichever source. */
+interface KfdPid {
+  pid: number;
+  name: string;
+  /** Per-card VRAM when known (sysfs); rocm-smi only gives a total. */
+  vramByBus: Map<string, number> | null;
+  vramBytes: number;
+  cuOccupancy: number | null;
+}
 
 /** PCI bus ids of the cards bound to `drivers` under sysClassDrm, read
  *  from each card's device/uevent (`DRIVER=amdgpu`, `PCI_SLOT_NAME=...`).
@@ -153,6 +169,34 @@ export function createRocmProcessCollector(
   const drivers = intel ? INTEL_DRIVERS : AMD_DRIVERS;
   const uuidFromBus = intel ? intelUuidFromBus : rocmUuidFromBus;
   const rocmSmiOutput = createRocmSmiCache(() => spawnPidsAndBus());
+  // KFD pids from sysfs when the kernel exposes them (any ROCm-capable
+  // amdgpu): same list as rocm-smi --showpids, per card, at no cost.
+  // rocm-smi stays the fallback for hosts where it can't be read.
+  const kfdRoot = opts.kfdRoot ?? "/sys/class/kfd/kfd";
+  const useKfdSysfs = !intel && kfdAvailable(kfdRoot);
+  const kfdBuses = useKfdSysfs ? readKfdGpuBuses(kfdRoot) : new Map<number, string>();
+
+  /** KFD processes and the card bus ids, from sysfs or rocm-smi. */
+  async function kfdPids(): Promise<{ pids: KfdPid[]; buses: string[] }> {
+    if (useKfdSysfs) {
+      const pids = readKfdProcesses(kfdRoot, kfdBuses).map((p) => ({
+        pid: p.pid,
+        name: "",
+        vramByBus: p.vramByBus,
+        vramBytes: [...p.vramByBus.values()].reduce((a, b) => a + b, 0),
+        cuOccupancy: null,
+      }));
+      return { pids, buses: cardBuses() };
+    }
+    const out = checkRocmSmi() ? await rocmSmiOutput() : "";
+    const info = parseRocmInfo(out);
+    // The cached list can be up to ROCM_SMI_REFRESH_MS old: drop pids
+    // that have exited since.
+    const pids = parseRocmPids(out)
+      .filter((p) => existsSync(`${opts.hostProc}/${p.pid}`))
+      .map((p) => ({ pid: p.pid, name: p.process_name, vramByBus: null, vramBytes: p.vram_used_bytes, cuOccupancy: p.cu_occupancy }));
+    return { pids, buses: info.cards.length > 0 ? info.cards.map((c) => c.raw["PCI Bus"]) : cardBuses() };
+  }
   let sysfsBuses: string[] | null = null;
   const cardBuses = (): string[] => {
     sysfsBuses ??= amdgpuBusIds(opts.sysClassDrm ?? "/sys/class/drm", drivers);
@@ -190,18 +234,11 @@ export function createRocmProcessCollector(
     if (inflight) return;
     inflight = true;
     try {
-      const out = checkRocmSmi() ? await rocmSmiOutput() : "";
-      // The cached list can be up to ROCM_SMI_REFRESH_MS old: drop pids
-      // that have exited since.
-      const procs = parseRocmPids(out).filter((p) => existsSync(`${opts.hostProc}/${p.pid}`));
-      const info = parseRocmInfo(out);
+      const { pids: procs, buses } = await kfdPids();
 
       // Fallback uuid for a pid with zero DRM fdinfo visibility (see
       // the module header comment). Real per-card attribution below
       // comes from fdinfoRaw, not this.
-      const buses = info.cards.length > 0
-        ? info.cards.map((c) => c.raw["PCI Bus"])
-        : cardBuses();
       const defaultUuid = uuidFromBus(buses[0]);
       const isMultiCard = buses.length > 1;
 
@@ -227,7 +264,7 @@ export function createRocmProcessCollector(
         // when the hub runs in a container without CAP_SYS_PTRACE).
         // Fall back to argv[0] basename, then /proc/<pid>/comm — same
         // ladder the nvidia collector uses for [Not Found] / N/A rows.
-        let name = p.process_name;
+        let name = p.name;
         if (
           !name ||
           name.toLowerCase() === "unknown" ||
@@ -245,6 +282,25 @@ export function createRocmProcessCollector(
         const cpuPct = cpuSampler.sample(p.pid);
 
         const devices = fdinfoRaw.get(p.pid);
+        // No DRM fd but sysfs knows its cards: one row per card, no
+        // card0 guess.
+        if ((!devices || devices.length === 0) && p.vramByBus && p.vramByBus.size > 0) {
+          return [...p.vramByBus].map(([bus, bytes]) => ({
+            pid: p.pid,
+            process_name: name || "unknown",
+            gpu_uuid: uuidFromBus(bus),
+            used_memory: Math.floor(bytes / 1048576),
+            type: "C" as const,
+            command,
+            cpu_pct: cpuPct,
+            gpu_pct: null,
+            llm_runtime: llm.runtime,
+            llm_model: llm.model,
+            llm_hint: llm.hint,
+            container_engine: container?.engine ?? null,
+            container_id: container?.id ?? null,
+          }));
+        }
         if (!devices || devices.length === 0) {
           // One-shot per collector lifetime, not per pid: this can
           // recur silently for other pids afterwards (intermittent
@@ -264,7 +320,7 @@ export function createRocmProcessCollector(
               pid: p.pid,
               process_name: name || "unknown",
               gpu_uuid: defaultUuid,
-              used_memory: Math.floor(p.vram_used_bytes / 1048576),
+              used_memory: Math.floor(p.vramBytes / 1048576),
               type: "C" as const,
               command,
               cpu_pct: cpuPct,
@@ -273,7 +329,7 @@ export function createRocmProcessCollector(
               // it as gpu_pct so the UI can render a real number
               // instead of a permanent "—". Null when the driver
               // reports "unknown" (some kernels / non-root callers).
-              gpu_pct: p.cu_occupancy,
+              gpu_pct: p.cuOccupancy,
               llm_runtime: llm.runtime,
               llm_model: llm.model,
               llm_hint: llm.hint,
@@ -307,7 +363,7 @@ export function createRocmProcessCollector(
           type: "C" as const,
           command,
           cpu_pct: cpuPct,
-          gpu_pct: p.cu_occupancy ?? fdinfoSampler.sample(p.pid, d).gpuPct,
+          gpu_pct: p.cuOccupancy ?? fdinfoSampler.sample(p.pid, d).gpuPct,
           llm_runtime: llm.runtime,
           llm_model: llm.model,
           llm_hint: llm.hint,
@@ -370,11 +426,16 @@ export function createRocmProcessCollector(
 
   return {
     available(): boolean {
-      return checkRocmSmi() || cardBuses().length > 0;
+      return useKfdSysfs || checkRocmSmi() || cardBuses().length > 0;
     },
     start(): void {
       if (timer) return;
-      if (checkRocmSmi()) {
+      if (useKfdSysfs) {
+        logger.success(
+          "proc",
+          `AMD process collector started from KFD sysfs + DRM fdinfo, rocm-smi not needed (tick=${tickMs}ms, ${kfdBuses.size} KFD GPU(s), hostProc=${opts.hostProc})`,
+        );
+      } else if (checkRocmSmi()) {
         logger.success(
           "proc",
           `ROCm process collector started (tick=${tickMs}ms, hostProc=${opts.hostProc})`,
