@@ -5,6 +5,18 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.15] - 2026-10-05
+
+### Fixed
+
+- **Docker NVIDIA agent listed no GPU process at all on recent drivers** (seen on 595), so no LLM showed: inside a container, `nvidia-smi` now only lists that container's own processes, and Ollama or llama.cpp run in another container or on the host. The agent service in `docker-compose.yaml` (`agent-nvidia`) and `docker-compose.agent.nvidia.yaml` now has `pid: host`. Older drivers (550) were not affected, and the line is harmless there.
+
+  **Existing Docker NVIDIA installs must add it themselves** (the agent updates itself, the compose file doesn't): under the agent service, next to `restart: unless-stopped`, add `pid: host`, then run `docker compose up -d`. systemd, Windows and AMD agents need nothing.
+
+### Changed
+
+- The `docker run` example of the agent README adds `--pid host`, `SYS_PTRACE` and the `/proc` mount.
+
 ## [0.11.14] - 2026-10-05
 
 ### Changed
