@@ -10,10 +10,12 @@
 // nvtop-style enrichment (type, command, cpu_pct, gpu_pct).
 
 import { spawn, spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { logger } from '../logger.js';
 import { createCpuSampler, readCmdline, readContainer, resolveProcessName } from './_procTicks.js';
 import { classifyLLM, type LLMHint, type LLMResolvers } from './llmClassifier.js';
+import { hasPtraceCap } from './processesAmdgpuFdinfo.js';
 
 export type GpuProcessType = 'C' | 'G' | 'G+C' | null;
 
@@ -56,6 +58,10 @@ export interface ProcessVisibility {
   /** Agent holds CAP_SYS_PTRACE: denials then come from AppArmor (Docker
    *  agent vs host processes), not from a missing capability. */
   has_ptrace: boolean;
+  /** NVIDIA agent in its own pid namespace (Docker without `pid: host`):
+   *  recent drivers (seen on 595) then hide every GPU process outside
+   *  the agent's container from nvidia-smi. */
+  pid_isolated?: boolean;
 }
 
 export interface ProcessSnapshot {
@@ -89,6 +95,18 @@ const MIN_TICK_MS = 1_000;
 
 const QUERY = ['pid', 'process_name', 'gpu_uuid', 'used_memory'].join(',');
 
+/** True when the agent runs in its own pid namespace. Read through the
+ *  host's /proc, its NSpid line then holds the host pid and the
+ *  container pid; with `pid: host`, systemd or no /host/proc, one pid. */
+export function inOwnPidNamespace(hostProc: string): boolean {
+  try {
+    const nspid = /^NSpid:\s*(.+)$/m.exec(readFileSync(`${hostProc}/self/status`, 'utf8'));
+    return (nspid?.[1].trim().split(/\s+/).length ?? 1) > 1;
+  } catch {
+    return false;
+  }
+}
+
 // Retry window for the bus id → UUID lookup when a GPU stays unmapped.
 const UUID_MAP_TTL_MS = 60_000;
 
@@ -98,6 +116,11 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
   let nvidiaSmiAvailable: boolean | null = null;
   let inflight = false;
   const cpuSampler = createCpuSampler(opts.hostProc);
+  // Fixed for the agent's life: sent with every snapshot so the hub can
+  // explain unaccounted VRAM with the `pid: host` fix.
+  const isolation: ProcessVisibility | null = inOwnPidNamespace(opts.hostProc)
+    ? { denied_pids: 0, has_ptrace: hasPtraceCap(), pid_isolated: true }
+    : null;
 
   function checkNvidiaSmi(): boolean {
     if (nvidiaSmiAvailable !== null) return nvidiaSmiAvailable;
@@ -186,7 +209,11 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
         };
       });
       cpuSampler.retain(new Set(procs.map((p) => p.pid)));
-      opts.onSnapshot({ tsEpoch: Math.floor(Date.now() / 1000), processes: enriched });
+      opts.onSnapshot({
+        tsEpoch: Math.floor(Date.now() / 1000),
+        processes: enriched,
+        ...(isolation ? { visibility: isolation } : {}),
+      });
     } finally {
       inflight = false;
     }
@@ -203,6 +230,9 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
         return;
       }
       logger.success('proc', `Process collector started (tick=${tickMs}ms, hostProc=${opts.hostProc})`);
+      if (isolation) {
+        logger.info('proc', 'agent runs in its own pid namespace: recent NVIDIA drivers then list no GPU process outside this container. If some are missing, add `pid: host` to the agent service.');
+      }
       void tick();
       timer = setInterval(() => { void tick(); }, tickMs);
     },

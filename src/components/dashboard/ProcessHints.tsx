@@ -11,6 +11,8 @@ export interface HiddenProcesses {
   denied_pids: number;
   has_ptrace: boolean;
   install_mode: string;
+  /** NVIDIA Docker agent without `pid: host`. */
+  pid_isolated?: boolean;
   unaccounted_mib: number;
 }
 
@@ -24,6 +26,8 @@ function systemdUpgradeCmd(): string {
 }
 
 const DOCKER_PTRACE_SNIPPET = 'cap_add:\n  - SYS_PTRACE';
+
+const DOCKER_PID_HOST_SNIPPET = 'pid: host';
 
 const SYSTEMD_OLLAMA_ENV = 'OLLAMA_MANIFESTS_DIR=/path/to/.ollama/models/manifests';
 
@@ -95,6 +99,16 @@ function Panel({ children }: Readonly<{ children: ReactNode }>) {
  *  was installed and whether it already holds CAP_SYS_PTRACE. */
 function HiddenFix({ hidden }: Readonly<{ hidden: HiddenProcesses }>) {
   const { t } = useTranslation();
+  // Checked first: on recent NVIDIA drivers an isolated agent sees no
+  // GPU process outside its container, whatever its capabilities.
+  if (hidden.pid_isolated) {
+    return (
+      <>
+        <p>{t('dashboard.hidden_fix_pid_host')}</p>
+        <CommandBlock text={DOCKER_PID_HOST_SNIPPET} />
+      </>
+    );
+  }
   if (hidden.has_ptrace) {
     return <p>{t('dashboard.hidden_fix_apparmor')}</p>;
   }

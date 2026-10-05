@@ -47,3 +47,22 @@ test('hiddenProcesses: only the filtered card counts', () => {
 test('hiddenProcesses: no card sample, no warning', () => {
   assert.equal(hiddenProcesses(VIS, [], [], 0), null);
 });
+
+test('parseVisibility: an isolated NVIDIA agent reports with no denied pid', () => {
+  assert.deepEqual(
+    parseVisibility({ denied_pids: 0, has_ptrace: true, pid_isolated: true, install_mode: 'docker' }),
+    { denied_pids: 0, has_ptrace: true, install_mode: 'docker', pid_isolated: true },
+  );
+  assert.equal(parseVisibility({ denied_pids: 0, pid_isolated: 'yes' }), null);
+});
+
+const ISOLATED: ProcessVisibility = { denied_pids: 0, has_ptrace: true, install_mode: 'docker', pid_isolated: true };
+
+test('hiddenProcesses: Mint case, driver 595 hides both Ollama runners', () => {
+  // 13.8 GiB in use, nvidia-smi in the agent container listed nothing.
+  assert.equal(hiddenProcesses(ISOLATED, [card(0, 14_100)], [], 0)?.unaccounted_mib, 14_100);
+});
+
+test('hiddenProcesses: isolated agent on driver 550 sees everything, no warning', () => {
+  assert.equal(hiddenProcesses(ISOLATED, [card(0, 14_100)], [proc(5_066), proc(8_756)], 0), null);
+});

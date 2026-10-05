@@ -65,6 +65,7 @@
     "hidden_title": "{{mib}} Mio de VRAM utilisés ne sont pas expliqués par les processus ci-dessous : certains processus GPU sont probablement masqués.",
     "hidden_fix_systemd": "L'agent ne peut pas lire les détails GPU des processus d'autres utilisateurs (root, conteneurs) car son unit systemd date d'avant CAP_SYS_PTRACE. Exécutez une fois sur l'hôte (garde l'identité de l'hôte, sans token) :",
     "hidden_fix_docker": "Le conteneur de l'agent n'a pas SYS_PTRACE. Ajoutez ceci au service de l'agent dans votre fichier compose, puis lancez docker compose up -d :",
+    "hidden_fix_pid_host": "L'agent Docker tourne dans son propre espace de processus : les pilotes NVIDIA récents lui cachent alors tous les processus GPU hors de son conteneur (Ollama, llama.cpp dans un autre conteneur ou sur l'hôte). Ajoutez cette ligne au service de l'agent dans votre fichier compose (sous restart), puis lancez docker compose up -d :",
     "hidden_fix_apparmor": "L'agent Docker ne peut pas lire les processus lancés directement sur l'hôte (AppArmor le bloque). Installez plutôt l'agent systemd sur cet hôte, ou lancez la charge GPU dans un conteneur.",
     "hidden_fix_generic": "L'agent a besoin de CAP_SYS_PTRACE pour lire les détails GPU des processus d'autres utilisateurs.",
     "llm_hint_ollama_manifests": "Nom du modèle Ollama introuvable : l'agent n'a pas pu lire les manifests Ollama qui associent ce blob à un nom. Un modèle téléchargé il y a moins d'une minute est réessayé automatiquement.",

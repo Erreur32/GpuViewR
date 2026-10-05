@@ -12,11 +12,16 @@ const INSTALL_MODES = new Set(['docker', 'systemd', 'windows', 'macos', 'unknown
 export function parseVisibility(raw: unknown): ProcessVisibility | null {
   if (!raw || typeof raw !== 'object') return null;
   const v = raw as Record<string, unknown>;
-  if (typeof v.denied_pids !== 'number' || !Number.isFinite(v.denied_pids) || v.denied_pids <= 0) return null;
+  const denied = typeof v.denied_pids === 'number' && Number.isFinite(v.denied_pids) && v.denied_pids > 0
+    ? Math.floor(v.denied_pids)
+    : 0;
+  const pidIsolated = v.pid_isolated === true;
+  if (denied === 0 && !pidIsolated) return null;
   return {
-    denied_pids: Math.floor(v.denied_pids),
+    denied_pids: denied,
     has_ptrace: v.has_ptrace === true,
     install_mode: typeof v.install_mode === 'string' && INSTALL_MODES.has(v.install_mode) ? v.install_mode : 'unknown',
+    ...(pidIsolated ? { pid_isolated: true } : {}),
   };
 }
 
@@ -25,9 +30,11 @@ export function parseVisibility(raw: unknown): ProcessVisibility | null {
  *  reservations and desktop compositors stay well under this). */
 const HIDDEN_VRAM_MIN_MIB = 1024;
 
-/** Warn only when the agent could not read some pids AND the card has
- *  VRAM in use that the listed processes don't explain. Denied pids
- *  alone are the norm (a Docker agent can't read any host process). */
+/** Warn only when the agent could not see some pids (denied, or hidden
+ *  by its own pid namespace) AND the card has VRAM in use that the
+ *  listed processes don't explain. Either alone is the norm: a Docker
+ *  agent can't read host processes, and drivers up to 550 still list
+ *  other containers' GPU processes to an isolated agent. */
 export function hiddenProcesses(
   visibility: ProcessVisibility,
   samples: GpuSample[],
