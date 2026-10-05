@@ -166,13 +166,18 @@ if (-not $node -or $node.Major -lt 22) {
 #     Intel iGPU/Arc, and even NVIDIA boxes without the driver tools).
 #     Util % + VRAM only — no temp/power/freq/PCIe.
 # ──────────────────────────────────────────────────────────────────────
-$smi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
-if ($smi) {
-  $gpuName = (& nvidia-smi --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1)
-  Ok "nvidia-smi.exe at $($smi.Path) — $gpuName (full telemetry)"
+# Quadro / RTX Enterprise and older "Standard" drivers put nvidia-smi.exe
+# in the NVSMI folder instead of System32 (not on PATH); the agent looks
+# there too, so check the same place here.
+$smiPath = (Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue).Path
+$nvsmi = Join-Path $env:ProgramFiles 'NVIDIA Corporation\NVSMI\nvidia-smi.exe'
+if (-not $smiPath -and (Test-Path $nvsmi)) { $smiPath = $nvsmi }
+if ($smiPath) {
+  $gpuName = (& $smiPath --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1)
+  Ok "nvidia-smi.exe at $smiPath — $gpuName (full telemetry)"
 } else {
-  Say "No nvidia-smi.exe in PATH — the agent will use Windows PDH counters."
-  Say "Works for AMD / Intel / NVIDIA-without-tools. Reports util % + VRAM (no temp/power)."
+  Say "No nvidia-smi.exe found (PATH or NVSMI folder) — the agent will use Windows PDH counters."
+  Say "Works for AMD / Intel / NVIDIA-without-tools. Reports util % + VRAM (no temp/power/fan)."
 }
 
 # ──────────────────────────────────────────────────────────────────────

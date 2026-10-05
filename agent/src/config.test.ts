@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFeatures, parseGpuBackend, parseGpuVendor, resolveFeaturesEnv, resolveHostProc } from './config.js';
+import { parseFeatures, parseGpuBackend, parseGpuVendor, resolveFeaturesEnv, resolveHostProc, resolveNvidiaSmiPath } from './config.js';
 
 test('parseFeatures: parses canonical CSV', () => {
   assert.deepEqual(parseFeatures('gpu,system,temps,processes'), {
@@ -94,4 +94,23 @@ test('resolveFeaturesEnv: explicit lists and other platforms are untouched', () 
   assert.equal(resolveFeaturesEnv('gpu,system', 'win32'), 'gpu,system');
   assert.equal(resolveFeaturesEnv(undefined, 'win32'), 'gpu,system,temps,processes');
   assert.equal(resolveFeaturesEnv('', 'linux'), 'gpu,system,temps,processes');
+});
+
+const NVSMI = String.raw`C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe`;
+
+test('resolveNvidiaSmiPath: explicit NVIDIA_SMI_PATH wins, Linux uses PATH', () => {
+  assert.equal(resolveNvidiaSmiPath('D:\\tools\\nvidia-smi.exe', 'win32', () => false), 'D:\\tools\\nvidia-smi.exe');
+  assert.equal(resolveNvidiaSmiPath(undefined, 'linux', () => true), 'nvidia-smi');
+});
+
+test('resolveNvidiaSmiPath: DCH driver (System32) keeps the PATH lookup', () => {
+  assert.equal(resolveNvidiaSmiPath(undefined, 'win32', (p) => p.endsWith(String.raw`System32\nvidia-smi.exe`)), 'nvidia-smi.exe');
+});
+
+test('resolveNvidiaSmiPath: Quadro / Standard driver, only in the NVSMI folder', () => {
+  assert.equal(resolveNvidiaSmiPath(undefined, 'win32', (p) => p === NVSMI), NVSMI);
+});
+
+test('resolveNvidiaSmiPath: no NVIDIA tool at all, bare name (PDH fallback follows)', () => {
+  assert.equal(resolveNvidiaSmiPath(undefined, 'win32', () => false), 'nvidia-smi.exe');
 });
