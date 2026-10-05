@@ -24,6 +24,8 @@ export interface GpuSample {
   /** Hardware power cap (W) and throttle temperature (°C), agent v0.11.9+. */
   power_limit?: number | null;
   temp_limit?: number | null;
+  /** AMD APU: memory figures are VRAM + GTT. */
+  memory_shared?: boolean;
   timestamp: string;
   timestamp_epoch: number;
 }

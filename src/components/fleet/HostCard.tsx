@@ -185,6 +185,8 @@ interface HostStats {
   powerMax: number;
   vramUsed: number;
   vramTotal: number;
+  /** At least one card reports VRAM + GTT (AMD APU). */
+  memoryShared: boolean;
   pcieKbps: number;
 }
 
@@ -198,6 +200,7 @@ function aggregateHostStats(samples: GpuSample[]): HostStats {
       powerMax: 0,
       vramUsed: 0,
       vramTotal: 0,
+      memoryShared: false,
       pcieKbps: 0,
     };
   }
@@ -235,6 +238,7 @@ function aggregateHostStats(samples: GpuSample[]): HostStats {
     powerMax,
     vramUsed,
     vramTotal,
+    memoryShared: samples.some((g) => g.memory_shared === true),
     pcieKbps,
   };
 }
@@ -307,7 +311,7 @@ function HostMetricRows({
       />
       <MetricRow
         icon={<MemoryStick className="w-3.5 h-3.5" />}
-        label={memoryLabel(installMode)}
+        label={memoryLabel(installMode, stats.memoryShared)}
         value={vramPct}
         displayValue={
           stats.vramTotal === 0

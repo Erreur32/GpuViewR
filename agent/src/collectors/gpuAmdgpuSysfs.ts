@@ -15,6 +15,8 @@
 //     gpu_busy_percent       → utilization (0..100)
 //     mem_info_vram_used     → bytes
 //     mem_info_vram_total    → bytes
+//     mem_info_gtt_used/total → bytes of system RAM mapped for the GPU
+//     mem_info_vram_vendor   → discrete cards only (hidden on APUs)
 //     pp_dpm_sclk            → DPM levels, current marked with " *"
 //     hwmon/hwmonM/
 //       temp1_input          → edge temp (m°C)
@@ -59,6 +61,8 @@ interface CardMeta {
   pciBus: string;
   deviceIdHex: string | null;
   name: string;
+  /** No dedicated VRAM: ROCm allocates in GTT, VRAM stays near idle. */
+  isApu: boolean;
 }
 
 const CARD_RE = /^card(\d+)$/;
@@ -178,6 +182,7 @@ async function discoverAmdgpuCards(sysClassDrm: string): Promise<CardMeta[]> {
       pciBus,
       deviceIdHex,
       name: rocmDeviceName(deviceIdHex ?? undefined, undefined),
+      isApu: (await readText(join(devicePath, 'mem_info_vram_vendor'))) === null,
     });
   }
   cards.sort((a, b) => a.index - b.index);
@@ -210,6 +215,8 @@ async function sampleCard(meta: CardMeta, driverVersion: string | null): Promise
     powerCapUW,
     tempCritUC,
     fanPct,
+    gttUsedBytes,
+    gttTotalBytes,
   ] = await Promise.all([
     readNumber(join(meta.devicePath, 'gpu_busy_percent')),
     readNumber(join(meta.devicePath, 'mem_info_vram_used')),
@@ -220,7 +227,14 @@ async function sampleCard(meta: CardMeta, driverVersion: string | null): Promise
     meta.hwmonPath ? readNumber(join(meta.hwmonPath, 'power1_cap')) : Promise.resolve(null),
     meta.hwmonPath ? readNumber(join(meta.hwmonPath, 'temp1_crit')) : Promise.resolve(null),
     meta.hwmonPath ? readFanPct(meta.hwmonPath) : Promise.resolve(null),
+    meta.isApu ? readNumber(join(meta.devicePath, 'mem_info_gtt_used')) : Promise.resolve(null),
+    meta.isApu ? readNumber(join(meta.devicePath, 'mem_info_gtt_total')) : Promise.resolve(null),
   ]);
+  // APU: model weights live in GTT (Strix Halo, Jarvis: VRAM stuck at
+  // 147 MiB while Ollama held 14 GiB of GTT), so report both together.
+  const shared = meta.isApu && gttUsedBytes !== null && gttTotalBytes !== null;
+  const usedBytes = (vramUsedBytes ?? 0) + (shared ? gttUsedBytes : 0);
+  const totalBytes = vramTotalBytes === null ? null : vramTotalBytes + (shared ? gttTotalBytes : 0);
 
   const ts = nowTimestamp();
   return {
@@ -231,8 +245,9 @@ async function sampleCard(meta: CardMeta, driverVersion: string | null): Promise
     // m°C → °C. Matches the rounding rocm-smi does for `temp1_input`.
     temperature: tempUC !== null ? Math.round(tempUC / 1000) : 0,
     utilization: busy,
-    memory_used: vramUsedBytes !== null ? Math.floor(vramUsedBytes / 1048576) : 0,
-    memory_total: vramTotalBytes !== null ? Math.floor(vramTotalBytes / 1048576) : null,
+    memory_used: vramUsedBytes !== null || shared ? Math.floor(usedBytes / 1048576) : 0,
+    memory_total: totalBytes !== null ? Math.floor(totalBytes / 1048576) : null,
+    ...(shared ? { memory_shared: true } : {}),
     // µW → W. APUs like Strix Halo expose this; older discrete RX 6000
     // sometimes don't — we return 0 to match the rocm-smi mapping which
     // also coerces nulls to 0 for the `power` field.

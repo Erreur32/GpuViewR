@@ -222,7 +222,7 @@ export default function Dashboard() {
         />
         <GaugeCard
           variant={gaugeView}
-          label={memoryLabel(currentHost?.install_mode)}
+          label={memoryLabel(currentHost?.install_mode, active.memory_shared === true)}
           value={memPct}
           displayValue={
             active.memory_used == null ? "N/A" : `${fmt(active.memory_used)}`

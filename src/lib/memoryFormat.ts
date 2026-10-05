@@ -11,9 +11,11 @@ export function isUnifiedMemoryHost(installMode: string | null | undefined): boo
   return installMode === 'macos';
 }
 
-/** Short label for column headers / gauge captions. */
-export function memoryLabel(installMode: string | null | undefined): string {
-  return isUnifiedMemoryHost(installMode) ? 'Unified' : 'VRAM';
+/** Short label for column headers / gauge captions. `shared`: AMD APU
+ *  whose figures are VRAM + GTT (sample.memory_shared). */
+export function memoryLabel(installMode: string | null | undefined, shared = false): string {
+  if (isUnifiedMemoryHost(installMode)) return 'Unified';
+  return shared ? 'VRAM + GTT' : 'VRAM';
 }
 
 /** Longer label for prose contexts ("X GB of Memory used"). */

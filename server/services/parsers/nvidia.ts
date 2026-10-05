@@ -50,6 +50,9 @@ export interface GpuSample {
   /** Temperature where the card starts throttling, in °C (nvidia "GPU
    *  Slowdown Temp", amdgpu `temp1_crit`). Same back-compat as above. */
   temp_limit?: number | null;
+  /** AMD APU: memory_used / memory_total are VRAM + GTT (system RAM the
+   *  GPU maps), since ROCm puts model weights in GTT there. */
+  memory_shared?: boolean;
   timestamp: string;
   timestamp_epoch: number;
 }
