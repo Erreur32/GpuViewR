@@ -16,16 +16,18 @@
 //   - utilization (highest engine util per adapter, matches Task Mgr)
 //   - memory_used (DedicatedUsage, in MiB)
 //   - name (best-effort from Win32_VideoController, by index order)
-//   - memory_total (Win32_VideoController.AdapterRAM, in MiB)
+//   - memory_total (registry HardwareInformation.qwMemorySize, in MiB)
 //
 // What's NULL on purpose: temperature, power, fan, clocks, PCIe — PDH
 // doesn't expose them. NVIDIA users get the full picture via the
 // nvidia-smi collector instead; this path is the universal fallback.
 //
-// AdapterRAM is a DWORD in WMI (4 GiB cap). Cards >4 GiB report 4096.
-// Mentioned as a known limitation in the install messaging; a future
-// pass can read HKLM\SYSTEM\...\Class\{4d36e968-...}\HardwareInformation
-// .qwMemorySize (QWORD) for accurate totals.
+// Win32_VideoController.AdapterRAM is a DWORD (4 GiB cap): an 8 GB Quadro
+// RTX 4000 read 4095 MiB. The total now comes from the display class key
+// HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-...}\NNNN,
+// value HardwareInformation.qwMemorySize (QWORD, what Task Manager shows),
+// matched to the controller by MatchingDeviceId. AdapterRAM stays the
+// fallback for drivers that don't write it.
 
 import type { GpuSample } from '../../../server/services/parsers/nvidia.js';
 import { nowTimestamp } from '../../../server/services/parsers/nvidia.js';
@@ -50,7 +52,31 @@ const PS_SCRIPT_TEMPLATE = String.raw`
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# One-shot lookup: name + AdapterRAM per video controller. Used to label
+# Display adapter class keys: MatchingDeviceId (pci\ven_xxxx&dev_xxxx...)
+# -> qwMemorySize in bytes. Older drivers store it as a REG_BINARY QWORD.
+$vramByDevice = @{}
+try {
+  Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}' -ErrorAction SilentlyContinue |
+    Where-Object { $_.PSChildName -match '^\d{4}$' } |
+    ForEach-Object {
+      $p = Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue
+      $q = $p.'HardwareInformation.qwMemorySize'
+      if ($q -is [byte[]]) { $q = [BitConverter]::ToUInt64($q, 0) }
+      if ($p.MatchingDeviceId -and $q -and [uint64]$q -gt 0) { $vramByDevice[$p.MatchingDeviceId.ToLower()] = [uint64]$q }
+    }
+} catch {}
+
+function Get-VramBytes($pnpId, $adapterRam) {
+  $id = $pnpId.ToLower()
+  $best = $null
+  foreach ($k in $vramByDevice.Keys) {
+    if ($id.StartsWith($k) -and ($null -eq $best -or $k.Length -gt $best.Length)) { $best = $k }
+  }
+  if ($best) { return $vramByDevice[$best] }
+  return $adapterRam
+}
+
+# One-shot lookup: name + total VRAM per video controller. Used to label
 # adapters with something nicer than "GPU 0" and to attach a total VRAM
 # figure. Ordering isn't guaranteed to match LUID order, but in practice
 # Windows enumerates them in the same sequence — close enough for v1.
@@ -62,7 +88,7 @@ try {
     ForEach-Object {
       [pscustomobject]@{
         Name = $_.Name
-        AdapterRAM = $_.AdapterRAM
+        VramBytes = Get-VramBytes $_.PNPDeviceID $_.AdapterRAM
         DriverVersion = $_.DriverVersion
       }
     })
@@ -123,8 +149,8 @@ function Emit-Snapshot {
     $a = $byAdapter[$key]
     $name = if ($i -lt $controllers.Count) { $controllers[$i].Name } else { "GPU $i" }
     $totalMB = $null
-    if ($i -lt $controllers.Count -and $controllers[$i].AdapterRAM -and $controllers[$i].AdapterRAM -gt 0) {
-      $totalMB = [int]([math]::Round($controllers[$i].AdapterRAM / 1MB))
+    if ($i -lt $controllers.Count -and $controllers[$i].VramBytes -and $controllers[$i].VramBytes -gt 0) {
+      $totalMB = [int]([math]::Round($controllers[$i].VramBytes / 1MB))
     }
     $driver = if ($i -lt $controllers.Count) { $controllers[$i].DriverVersion } else { $null }
     [void]$list.Add([ordered]@{
