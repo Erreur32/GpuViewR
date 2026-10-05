@@ -5,6 +5,8 @@ import { api } from "../../lib/api";
 import { pollWhileVisible } from "../../lib/poll";
 import { useUiStore } from "../../store/uiStore";
 import { useGpuStore } from "../../store/gpuStore";
+import { useHostsStore } from "../../store/hostsStore";
+import { powerScale, tempScale } from "../../lib/gaugeScale";
 
 interface StatsResponse {
   gpuIndex: number;
@@ -35,6 +37,7 @@ interface Props {
 export default function StatsSection({ gpuIndex }: Readonly<Props>) {
   const { t } = useTranslation();
   const range = useUiStore((s) => s.range);
+  const hostId = useHostsStore((s) => s.selectedHostId);
   // Subscribe so this component re-renders on every WebSocket tick. The value
   // itself is unused; the subscription is the point.
   useGpuStore((s) => s.latest.get(gpuIndex)?.timestamp_epoch);
@@ -47,12 +50,14 @@ export default function StatsSection({ gpuIndex }: Readonly<Props>) {
   // (the original blink the user complained about).
   useEffect(() => {
     let cancelled = false;
-    // On gpu/range change, drop the cached data so the new range starts
+    // On host/gpu/range change, drop the cached data so the new range starts
     // with the loading placeholder rather than briefly showing old
     // numbers under the new label.
     setData(null);
     const load = () =>
-      api<StatsResponse>(`/gpu/stats?gpu=${gpuIndex}&range=${range}`)
+      // host= is required: without it the hub answers for its own GPU,
+      // so another host's page showed the hub's stats (fan included).
+      api<StatsResponse>(`/gpu/stats?host=${encodeURIComponent(hostId)}&gpu=${gpuIndex}&range=${range}`)
         .then((r) => {
           if (!cancelled) setData(r);
         })
@@ -65,7 +70,7 @@ export default function StatsSection({ gpuIndex }: Readonly<Props>) {
       cancelled = true;
       stop();
     };
-  }, [gpuIndex, range]);
+  }, [hostId, gpuIndex, range]);
 
   // The collector flushes its 1-Hz buffer to SQLite once a minute, so the
   // /api/gpu/stats numbers can lag the live gauges. We blend the latest live
@@ -107,6 +112,10 @@ export default function StatsSection({ gpuIndex }: Readonly<Props>) {
   const memAvg = s?.mem_avg ?? live?.memory_used;
   const memAvgPct =
     memTotal && memAvg != null ? (memAvg / memTotal) * 100 : null;
+  // Same bands as the gauges: from the card's own power cap and throttle
+  // temperature when the agent reports them (v0.11.9+).
+  const powBand = powerScale(live?.power ?? 0, live?.power_limit);
+  const tempBand = tempScale(live?.temp_limit);
 
   const rows = [
     {
@@ -143,7 +152,7 @@ export default function StatsSection({ gpuIndex }: Readonly<Props>) {
       min: blend(s?.temp_min, live?.temperature, "min"),
       max: blend(s?.temp_max, live?.temperature, "max"),
       avg: s?.temp_avg ?? live?.temperature,
-      status: statusFor(s?.temp_avg ?? live?.temperature, 75, 85),
+      status: statusFor(s?.temp_avg ?? live?.temperature, tempBand.warn, tempBand.danger),
     },
     {
       key: "power",
@@ -152,7 +161,7 @@ export default function StatsSection({ gpuIndex }: Readonly<Props>) {
       min: blend(s?.pow_min, live?.power, "min"),
       max: blend(s?.pow_max, live?.power, "max"),
       avg: s?.pow_avg ?? live?.power,
-      status: statusFor(s?.pow_avg ?? live?.power, 250, 350),
+      status: statusFor(s?.pow_avg ?? live?.power, powBand.warn, powBand.danger),
     },
   ].map((r) => {
     // Same N/A treatment as GaugeCard: when the metric has no value
