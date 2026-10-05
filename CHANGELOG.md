@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.14] - 2026-10-05
+
+### Changed
+
+- **Settings > LLM:** the help of the *Ollama manifests directory* field says to leave it empty (found on its own), and that for a Docker agent the path is the one inside its container (`/host/ollama/models/manifests`, with the Ollama directory mounted through `OLLAMA_DIR`), not the host path. The example in the field shows that path too.
+
 ## [0.11.13] - 2026-10-05
 
 ### Fixed
