@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.10] - 2026-10-05
+
+### Fixed
+
+- **Settings > About badges showed only their text** (Release, Docker, NVIDIA...) since 0.11.3: the security policy blocked images from `img.shields.io`. It is now allowed, and only that site.
+- **About showed "Installed: 0.11.9 · Latest: 0.11.8"** on hubs that pulled a new release before its tag was published: that early check was kept for 24 h. Such a result is now re-checked after 10 minutes, and *Latest* only shows when an update is really available.
+- **"All GPUs" view had no host picker**: it now has the same themed one as the single-GPU view.
+- **Compact metric rows** (All GPUs, Fleet compact cards): French labels are no longer cut ("UTILISATI…"), and the bars no longer start nearly black on light themes.
+- The Fleet chart's metric buttons are the same height as the range picker next to them.
+
+### Changed
+
+- **Demo:** four cards with different power limits and jobs (chat model + embedding runner, coding model in Docker, training, an idle desktop card), each with its own processes. In multi-host mode the cards no longer all show the same values, and the agents show the current version.
+
 ## [0.11.9] - 2026-10-05
 
 ### Changed

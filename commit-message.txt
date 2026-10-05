@@ -1,7 +1,7 @@
-release: v0.11.9 gauges and threshold lines follow the card's limits
+release: v0.11.10 About badges, update check ahead of tag, multi-GPU polish
 
-- Changed: the agent reports the power cap and throttle temperature
-  (NVIDIA power.limit + Slowdown Temp, AMD power1_cap + temp1_crit);
-  gauges scale to them instead of fixed 450 W / 300 W, and inherited
-  chart threshold lines are capped at the card's limit.
-- Dependencies: vite 8.3.2, @types/node 22.20.5 (dev).
+- Fixed: About badges blocked by the CSP since 0.11.3 (img.shields.io
+  allowed); "Latest: 0.11.8" cached for a day on hubs that pulled
+  0.11.9 before its tag; host picker in the All GPUs view; compact
+  metric rows (French labels, light-theme bars); fleet toolbar height.
+- Changed: 4-card demo with per-card jobs and processes.
