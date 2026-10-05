@@ -186,7 +186,7 @@ function HostSection() {
         <p className="text-xs mt-1" style={{ color: 'var(--gv-text-dim)' }}>{t('llm.endpoints_help')}</p>
       </div>
 
-      <Field label={t('llm.manifests_dir')} value={dir} max={512} placeholder="/home/docker/llm/ollama/models/manifests"
+      <Field label={t('llm.manifests_dir')} value={dir} max={512} placeholder="/host/ollama/models/manifests"
              disabled={!isAdmin} onChange={setDir} help={t('llm.manifests_dir_help')} />
 
       {isAdmin && (
