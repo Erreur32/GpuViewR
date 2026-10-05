@@ -5,6 +5,18 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.18] - 2026-10-05
+
+### Fixed
+
+- **Another host's page showed the hub's statistics.** *Statistics for selected range* (utilization, memory, fan, temperature, power) asked the hub for its own GPU instead of the selected host, so a host without a fan could show the hub's fan figures. The chart's CSV export had the same issue and downloaded the hub's history. Both now follow the selected host.
+- **NVIDIA: a process in another container could be named "Used GPU Memory : 1154 MiB"** when the driver gave no name for it. The name now stays empty and is read from the process itself.
+- The colours of the power and temperature statistics, and of the hottest-card row on Fleet host cards, use the card's own limits like the gauges, instead of fixed 250/350 W and 75/85 °C.
+
+### Changed
+
+- **NVIDIA agent: about 1 % of a CPU core less.** The process list now needs one `nvidia-smi` call per tick instead of two (same processes and memory), and the PCIe RX/TX figures come from `nvidia-smi dmon` instead of the full `nvidia-smi -q`. Measured on an RTX 3060 Ti: the GPU collector went from 1.45 % to 0.63 % of a core. PCIe throughput is now shown in steps of 1 MB/s, so an idle card can read 0; model loads are unaffected.
+
 ## [0.11.17] - 2026-10-05
 
 ### Changed
