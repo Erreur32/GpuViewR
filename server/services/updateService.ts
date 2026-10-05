@@ -17,6 +17,9 @@ const CACHE_KEY = 'update_check_cache';
 const DEFAULT_FREQUENCY_HOURS = 24;
 const DEFAULT_ENABLED = true;
 const RELEASE_NOTES_MAX = 800;
+/** Re-check delay while the running build is newer than the newest tag:
+ *  `:latest` is published on merge, the tag comes minutes later. */
+const AHEAD_OF_TAG_TTL_MS = 10 * 60_000;
 
 export interface UpdateCheckConfig {
   enabled: boolean;
@@ -134,7 +137,7 @@ export const updateService = {
       const cached = AppConfigRepo.getJson<CachedEnvelope>(CACHE_KEY);
       if (cached?.cachedAt) {
         const ageMs = Date.now() - new Date(cached.cachedAt).getTime();
-        if (ageMs >= 0 && ageMs < config.frequencyHours * 3_600_000) {
+        if (ageMs >= 0 && ageMs < cacheTtlMs(cached.result, config.frequencyHours)) {
           return { ...cached.result, fromCache: true };
         }
       }
@@ -291,7 +294,17 @@ function emptyResult(currentVersion: string, checkedAt: string): UpdateCheckResu
   };
 }
 
+/** A result saying "latest = older than what runs" only means the tag
+ *  wasn't pushed yet when it was fetched: keep it briefly, not for hours. */
+export function cacheTtlMs(result: Pick<UpdateCheckResult, 'currentVersion' | 'latestVersion'>, frequencyHours: number): number {
+  const full = frequencyHours * 3_600_000;
+  const ahead = result.latestVersion !== null
+    && updateService.compareVersions(result.currentVersion, result.latestVersion) > 0;
+  return ahead ? Math.min(full, AHEAD_OF_TAG_TTL_MS) : full;
+}
+
 function buildMessage(current: string, latest: string, updateAvailable: boolean, dockerReady: boolean): string {
+  if (updateService.compareVersions(current, latest) > 0) return `Running ${current}, newer than the latest release (${latest}): its tag is not published yet.`;
   if (!updateAvailable) return `You are running the latest version (${current}).`;
   if (dockerReady) return `Update available: ${current} → ${latest}`;
   return `New release ${latest} tagged but the Docker image is not ready yet.`;
