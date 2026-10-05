@@ -1,5 +1,7 @@
-release: v0.11.17 KFD sysfs instead of rocm-smi, AMD fan speed
+release: v0.11.18 stats follow the selected host, lighter NVIDIA agent
 
-- Changed: AMD process list read from /sys/class/kfd instead of
-  rocm-smi (collector ~1 % -> 0.4 % of a core on Strix Halo).
-- Added: AMD Radeon fan speed from hwmon; tooltip explaining an N/A fan.
+- Fixed: range stats and CSV export used the hub's data on another
+  host's page; empty nvidia-smi process name swallowed the next line;
+  stats colours from card limits.
+- Changed: NVIDIA agent drops --query-compute-apps and reads PCIe from
+  dmon instead of the full -q (GPU collector 1.45 % -> 0.63 % of a core).
