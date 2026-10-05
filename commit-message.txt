@@ -1,6 +1,5 @@
-release: v0.11.20 password change, sensor tooltips, old nvidia-smi
+release: v0.11.21 APU memory = VRAM + GTT, per-GPU threshold fields
 
-- Added: change your own password in Settings; reset CLI in the hub
-  image; N/A sensor tooltips.
-- Fixed: nvidia-smi detected with -L (old drivers reject --version);
-  0 °C / 0 W without a sensor shown as N/A.
+- Fixed: AMD APU memory gauge shows VRAM + GTT (Strix Halo stayed at
+  147 MiB, models live in GTT); per-GPU threshold fields show the
+  inherited value instead of 0.

@@ -5,6 +5,13 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.21] - 2026-10-05
+
+### Fixed
+
+- **AMD APU memory gauge stuck near 0** (Strix Halo: 147 MiB whatever the models). ROCm puts model weights in GTT, system RAM mapped for the GPU, not in the VRAM area the BIOS reserves. On an APU the gauge now shows **VRAM + GTT** (labelled so), e.g. 14.4 GB used with two Ollama models loaded. Discrete Radeon cards keep VRAM only.
+- **Settings > Chart thresholds > Per GPU showed 0 in every field** of a GPU without its own values, which reads as "no line". A field without its own value now shows the line that applies (global value, capped at the card's limit) in grey italics; typing a value overrides it, × goes back to the global value, and 0 still means no line.
+
 ## [0.11.20] - 2026-10-05
 
 ### Added
