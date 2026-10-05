@@ -103,6 +103,26 @@ export function parsePciThroughput(out: string): Map<string, PcieThroughput> {
   }));
 }
 
+/** `nvidia-smi dmon -s t -c 1`: one row per GPU index, rxpci / txpci in
+ *  MB/s. Keyed like parsePciThroughput's block-order fallback ("idx:N"),
+ *  values converted to KB/s so the sample fields keep their unit. A "-"
+ *  column (not supported) gives null. */
+export function parseDmonPcie(out: string): Map<string, PcieThroughput> {
+  const result = new Map<string, PcieThroughput>();
+  for (const raw of out.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const [idx, rx, tx] = line.split(/\s+/);
+    if (!/^\d+$/.test(idx)) continue;
+    const kb = (v: string | undefined) => {
+      const n = Number.parseFloat(v ?? '');
+      return Number.isFinite(n) ? n * 1024 : null;
+    };
+    result.set(`idx:${idx}`, { rxKbps: kb(rx), txKbps: kb(tx) });
+  }
+  return result;
+}
+
 /** "GPU Slowdown Temp : 95 C" per GPU, from the same `nvidia-smi -q`
  *  output and with the same keys as parsePciThroughput. */
 export function parseSlowdownTemps(out: string): Map<string, number | null> {

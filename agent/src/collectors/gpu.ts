@@ -15,6 +15,7 @@ import {
   numOrNull,
   nowTimestamp,
   normalizeBusId,
+  parseDmonPcie,
   parsePciThroughput,
   parseSlowdownTemps,
   type GpuSample,
@@ -25,10 +26,9 @@ import { logger } from "../logger.js";
 export type GpuCollectorOptions = Readonly<{
   nvidiaSmiPath: string;
   tickMs: number;
-  /** Refresh cadence for `nvidia-smi -q` (PCIe RX/TX). The full-driver
-   *  query is ~5x more expensive than the main `--query-gpu` call, and
-   *  PCIe throughput moves slowly enough that 5 s is plenty. Optional
-   *  for back-compat; defaults to 5000 ms when omitted. */
+  /** Refresh cadence for PCIe RX/TX (`nvidia-smi dmon -s t -c 1`, or
+   *  `-q` as fallback). PCIe throughput moves slowly enough that 5 s is
+   *  plenty. Optional for back-compat; defaults to 5000 ms when omitted. */
   pcieTickMs?: number;
   onSample: (samples: GpuSample[]) => void;
 }>;
@@ -95,7 +95,6 @@ export function createGpuCollector(
   });
   let nvidiaSmiAvailable: boolean | null = null;
   let lastPcieThroughput: Map<string, PcieThroughput> = new Map();
-  // Slowdown temperature comes from the same `-q` call, so it's free.
   let lastSlowdownTemps: Map<string, number | null> = new Map();
   let pcieDiagLogged = false;
   // `||` (not `??`) on purpose: pcieTickMs must be > 0 to be valid; an
@@ -118,41 +117,64 @@ export function createGpuCollector(
     return nvidiaSmiAvailable;
   }
 
-  function refreshPcieThroughput(): void {
-    const child = spawn(opts.nvidiaSmiPath, ["-q"]);
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => (stdout += d.toString()));
-    child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("error", (err) => {
-      if (!pcieDiagLogged) {
-        pcieDiagLogged = true;
-        logger.warn(
-          "gpu",
-          `nvidia-smi -q spawn failed (PCIe RX/TX disabled): ${err.message}`,
-        );
-      }
-    });
-    child.on("close", (code) => {
-      if (code !== 0) {
+  /** Runs nvidia-smi once and resolves its stdout, or null (spawn error
+   *  or non-zero exit, logged once per start()). */
+  function runOnce(args: string[]): Promise<string | null> {
+    return new Promise((resolve) => {
+      const child = spawn(opts.nvidiaSmiPath, args);
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (d) => (stdout += d.toString()));
+      child.stderr.on("data", (d) => (stderr += d.toString()));
+      const fail = (why: string) => {
         if (!pcieDiagLogged) {
           pcieDiagLogged = true;
-          logger.warn(
-            "gpu",
-            `nvidia-smi -q exited ${code} (PCIe RX/TX disabled): ${stderr.trim() || "(no stderr)"}`,
-          );
+          logger.warn("gpu", `nvidia-smi ${args.join(" ")} ${why}`);
         }
-        return;
-      }
-      lastPcieThroughput = parsePciThroughput(stdout);
-      lastSlowdownTemps = parseSlowdownTemps(stdout);
+        resolve(null);
+      };
+      child.on("error", (err) => fail(`spawn failed: ${err.message}`));
+      child.on("close", (code) => {
+        if (code === 0) resolve(stdout);
+        else fail(`exited ${code}: ${stderr.trim() || "(no stderr)"}`);
+      });
     });
   }
+
+  // PCIe RX/TX from `dmon -s t -c 1` (~12 ms of CPU) instead of the full
+  // `-q` (~49 ms), measured on a 3060 Ti. dmon reports whole MB/s, so idle
+  // trickles under 1 MB/s read 0; model loads (GB/s) are what matters.
+  // Falls back to `-q` (KB/s) when dmon fails on this driver.
+  let dmonWorks = true;
+  async function refreshPcieThroughput(): Promise<void> {
+    if (dmonWorks) {
+      const out = await runOnce(["dmon", "-s", "t", "-c", "1"]);
+      const parsed = out === null ? new Map<string, PcieThroughput>() : parseDmonPcie(out);
+      if (parsed.size > 0) {
+        lastPcieThroughput = parsed;
+        return;
+      }
+      dmonWorks = false;
+      pcieDiagLogged = false;
+      logger.warn("gpu", "nvidia-smi dmon gave no PCIe row, using nvidia-smi -q instead");
+    }
+    const out = await runOnce(["-q"]);
+    if (out !== null) lastPcieThroughput = parsePciThroughput(out);
+  }
+
+  /** Throttle temperatures don't change: read once (and retried at each
+   *  PCIe refresh until a GPU reports one). */
+  async function refreshSlowdownTemps(): Promise<void> {
+    if ([...lastSlowdownTemps.values()].some((v) => v !== null)) return;
+    const out = await runOnce(["-q", "-d", "TEMPERATURE"]);
+    if (out !== null) lastSlowdownTemps = parseSlowdownTemps(out);
+  }
+
 
   function tick(): void {
     // PCIe throughput refresh runs on its own slower interval (see start()).
     // Each tick re-uses the most recent lastPcieThroughput snapshot so we
-    // don't fork the expensive `nvidia-smi -q` at the main GPU cadence.
+    // don't fork the PCIe query at the main GPU cadence.
     const child = spawn(opts.nvidiaSmiPath, [
       `--query-gpu=${QUERY_FIELDS.join(",")}`,
       "--format=csv,noheader,nounits",
@@ -267,8 +289,11 @@ export function createGpuCollector(
       // Prime the PCIe map once so the first tick already has data, then
       // refresh on its own slower cadence.
       running = true;
-      refreshPcieThroughput();
-      pcieTimer = setInterval(refreshPcieThroughput, pcieTickMs);
+      const refreshPcie = () => {
+        void refreshSlowdownTemps().then(refreshPcieThroughput);
+      };
+      refreshPcie();
+      pcieTimer = setInterval(refreshPcie, pcieTickMs);
       // If the agent dies hard, the orphaned nvidia-smi exits on its own once
       // its stdout pipe breaks: checked on Linux (SIGPIPE) and on Windows
       // 11 with driver tools (gone within 6 s after Stop-Process -Force).
