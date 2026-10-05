@@ -13,16 +13,18 @@ interface MetricRowProps {
   max: number;
   warn: number;
   danger: number;
+  /** Tooltip, e.g. why the value is N/A. */
+  hint?: string;
 }
 
 export default function MetricRow({
-  icon, label, value, displayValue, unit, max, warn, danger,
+  icon, label, value, displayValue, unit, max, warn, danger, hint,
 }: Readonly<MetricRowProps>) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
   const status = statusFor(value, warn, danger);
   const color = colorFor(status);
   return (
-    <div className="flex items-center gap-2 text-xs min-w-0">
+    <div className="flex items-center gap-2 text-xs min-w-0" title={hint}>
       <span
         className="inline-flex items-center gap-1.5 w-[118px] shrink-0 uppercase tracking-wider"
         style={{ color: 'var(--gv-text-muted)' }}
