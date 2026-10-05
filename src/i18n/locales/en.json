@@ -17,6 +17,9 @@
     "submit_login": "Sign in",
     "submit_register": "Create admin account",
     "first_user_hint": "First user becomes admin automatically",
+    "user_menu": "Account",
+    "signed_in_as": "Signed in as {{user}}",
+    "profile": "Profile",
     "logout": "Sign out",
     "session_expired": "Your session has expired, sign in again. (Happens after a hub reset or token rotation.)",
     "errors": {
@@ -256,6 +259,8 @@
   "settings": {
     "title": "Settings",
     "subtitle": "Personalize the dashboard",
+    "general_dashboard": "Dashboard",
+    "general_user": "User",
     "tab_general": "General",
     "tab_exports": "Exports",
     "tab_hosts": "Hosts",
