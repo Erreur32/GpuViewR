@@ -314,7 +314,7 @@
     "thresholds_inherit_all": "Reprendre les valeurs globales",
     "thresholds_inherit": "Reprendre la valeur globale",
     "thresholds_off": "aucune",
-    "thresholds_per_gpu_help": "Chaque carte peut avoir ses propres lignes. Un champ vide reprend la valeur globale, affichée en gris et jamais au-dessus de la limite de puissance ou de température de la carte (une ligne à 350 W est tracée à 200 W sur une carte de 200 W) ; 0 ne trace pas de ligne pour ce GPU.",
+    "thresholds_per_gpu_help": "Chaque carte peut avoir ses propres lignes. Sans valeur propre, un champ affiche en gris italique la valeur globale appliquée, jamais au-dessus de la limite de puissance ou de température de la carte (une ligne à 350 W est tracée à 200 W sur une carte de 200 W). Tapez une valeur pour la remplacer, × pour revenir à la valeur globale ; 0 ne trace pas de ligne pour ce GPU.",
     "thresholds_per_gpu": "Par GPU",
     "thresholds_admin_only": "Seul un admin peut modifier ces valeurs.",
     "db_title": "Base de données (historique)",

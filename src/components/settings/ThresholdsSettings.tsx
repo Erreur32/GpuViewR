@@ -178,9 +178,11 @@ function GpuThresholdRow({
           <ThresholdField
             key={k}
             label={`${t(METRIC_LABEL[k].label)} (${METRIC_LABEL[k].unit})`}
-            // 0 stands for "no line on this GPU": a 0 % / 0 °C / 0 W line
-            // is never useful, and an empty field means "inherit".
-            value={value ?? 0}
+            // Own value (0 = no line on this GPU) in normal text; with no
+            // own value the field shows the inherited line, greyed, so
+            // the user sees what applies instead of a bare 0.
+            value={shownValue(value, inherited)}
+            inherited={value === undefined}
             placeholder={typeof inherited === "number" ? String(inherited) : t("settings.thresholds_off")}
             disabled={disabled}
             onChange={(v) => onChange(k, v === 0 ? null : v)}
@@ -199,6 +201,13 @@ function GpuThresholdRow({
   );
 }
 
+/** What a per-GPU field shows: its own value (null = no line, shown as
+ *  0), else the inherited line, else nothing (placeholder "off"). */
+function shownValue(own: number | null | undefined, inherited: number | undefined): number | undefined {
+  if (own === null) return 0;
+  return own ?? inherited;
+}
+
 /** Number input; clearing it (empty or ×) calls onChange(undefined). */
 function ThresholdField({
   label,
@@ -207,9 +216,12 @@ function ThresholdField({
   disabled,
   onChange,
   clearLabel,
+  inherited = false,
 }: Readonly<{
   label: string;
   value: number | undefined;
+  /** The value shown is inherited, not this field's own: greyed, no ×. */
+  inherited?: boolean;
   placeholder: string;
   disabled: boolean;
   onChange: (v: number | undefined) => void;
@@ -240,10 +252,11 @@ function ThresholdField({
           style={{
             background: "var(--gv-surface-alt)",
             border: "1px solid var(--gv-border)",
-            color: "var(--gv-text)",
+            color: inherited ? "var(--gv-text-dim)" : "var(--gv-text)",
+            fontStyle: inherited ? "italic" : undefined,
           }}
         />
-        {value !== undefined && (
+        {value !== undefined && !inherited && (
           <button
             type="button"
             aria-label={clearLabel}
