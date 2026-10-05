@@ -1,5 +1,5 @@
-release: v0.11.13 Windows VRAM above 4 GB
+release: v0.11.14 clearer Ollama manifests directory help
 
-- Fixed: the Windows PDH collector read the total VRAM from WMI
-  AdapterRAM (4 GiB cap, 8 GB card showed 4095 MiB); it now reads the
-  registry qwMemorySize, AdapterRAM as fallback.
+- Changed: Settings > LLM manifests field help and placeholder explain
+  that a Docker agent needs the path inside its container, and that the
+  field is usually left empty.
