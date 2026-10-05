@@ -86,6 +86,9 @@ COPY --chown=node:node --from=builder /app/server ./server
 COPY --chown=node:node --from=builder /app/tsconfig.json ./
 COPY --chown=node:node --from=builder /app/CHANGELOG.md ./
 COPY --chown=node:node --from=builder /app/README.md ./
+# Password reset CLI, for an admin locked out of the UI:
+#   docker exec -it gpuviewr-hub npx tsx scripts/reset-password.ts <user>
+COPY --chown=node:node --from=builder /app/scripts/reset-password.ts ./scripts/reset-password.ts
 # Bundled agent (built in the builder stage above) — required by
 # server/routes/agentDistribution.ts for the GET /install.sh + /agent.mjs
 # curl install path. Without it those endpoints 503 with a warn log.

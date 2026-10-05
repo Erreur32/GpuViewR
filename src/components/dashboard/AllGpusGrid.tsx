@@ -4,6 +4,8 @@ import type { GpuSample } from '../../store/gpuStore';
 import { useGpuStore } from '../../store/gpuStore';
 import { statusFor, colorFor } from '../../lib/status';
 import { powerScale, tempScale } from '../../lib/gaugeScale';
+import { sensorMissing } from '../../lib/sensors';
+import SensorNaInfo from '../ui/SensorNaInfo';
 import Sparkline from './Sparkline';
 import MetricRow from '../ui/MetricRow';
 import VendorIcon, { detectVendor } from '../ui/VendorIcon';
@@ -95,7 +97,8 @@ function CompactGpuTile({ sample }: Readonly<{ sample: GpuSample }>) {
           icon={<Activity className="w-3.5 h-3.5" />}
           label={t('dashboard.metrics.utilization')}
           value={sample.utilization ?? 0}
-          displayValue={sample.utilization === null ? 'N/A' : undefined}
+          displayValue={sensorMissing('utilization', sample) ? 'N/A' : undefined}
+          naInfo={sensorMissing('utilization', sample) ? <SensorNaInfo metric="utilization" placement="top" /> : undefined}
           max={100}
           warn={85}
           danger={95}
@@ -115,8 +118,8 @@ function CompactGpuTile({ sample }: Readonly<{ sample: GpuSample }>) {
           icon={<Fan className="w-3.5 h-3.5" />}
           label={t('dashboard.metrics.fan')}
           value={sample.fan_speed ?? 0}
-          displayValue={sample.fan_speed === null || sample.fan_speed === undefined ? 'N/A' : undefined}
-          hint={sample.fan_speed === null || sample.fan_speed === undefined ? t('dashboard.fan_na_hint') : undefined}
+          displayValue={sensorMissing('fan', sample) ? 'N/A' : undefined}
+          naInfo={sensorMissing('fan', sample) ? <SensorNaInfo metric="fan" placement="top" /> : undefined}
           max={100}
           warn={75}
           danger={90}
@@ -126,6 +129,8 @@ function CompactGpuTile({ sample }: Readonly<{ sample: GpuSample }>) {
           icon={<Thermometer className="w-3.5 h-3.5" />}
           label={t('dashboard.metrics.temperature')}
           value={sample.temperature}
+          displayValue={sensorMissing('temperature', sample) ? 'N/A' : undefined}
+          naInfo={sensorMissing('temperature', sample) ? <SensorNaInfo metric="temperature" placement="top" /> : undefined}
           max={tempBand.max}
           warn={tempBand.warn}
           danger={tempBand.danger}
@@ -135,6 +140,8 @@ function CompactGpuTile({ sample }: Readonly<{ sample: GpuSample }>) {
           icon={<Zap className="w-3.5 h-3.5" />}
           label={t('dashboard.metrics.power')}
           value={sample.power}
+          displayValue={sensorMissing('power', sample) ? 'N/A' : undefined}
+          naInfo={sensorMissing('power', sample) ? <SensorNaInfo metric="power" placement="top" /> : undefined}
           max={powBand.max}
           warn={powBand.warn}
           danger={powBand.danger}

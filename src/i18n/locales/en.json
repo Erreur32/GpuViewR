@@ -28,7 +28,42 @@
     "offline": "OFFLINE",
     "host_unavailable": "{{host}} is not responding: last seen {{age}} ago. Pick another host in the selector, or check that the machine and its agent are running.",
     "host_unavailable_never": "{{host}} has not sent any sample yet. Check that the machine and its agent are running.",
-    "fan_na_hint": "Fan speed not reported by the driver: APU or card without its own fan (cooled by the motherboard or laptop fans), passive datacenter card, a professional card (Quadro, RTX Enterprise) whose driver gives the fan to tools like HWiNFO but not to nvidia-smi, or a Windows agent without nvidia-smi. Not an error.",
+    "na": {
+      "title": "{{metric}} not available",
+      "footer": "Not an error: the other values are unaffected.",
+      "fan": {
+        "intro": "The driver doesn't report a fan for this GPU. Usual reasons:",
+        "reasons": [
+          "APU or integrated GPU (Strix Halo, Radeon 8060S...): cooled by the machine's fans, not its own.",
+          "Card cooled by the motherboard or a laptop, or a passive datacenter card.",
+          "Professional card (Quadro, RTX Enterprise) whose driver gives the fan to HWiNFO but not to nvidia-smi.",
+          "Windows agent without nvidia-smi: only utilization and VRAM are available (check agent.log)."
+        ]
+      },
+      "temperature": {
+        "intro": "The driver doesn't report a temperature for this GPU. Usual reasons:",
+        "reasons": [
+          "Windows agent without nvidia-smi: the Windows counters have no temperature (check agent.log for \"PDH collector\").",
+          "macOS agent: Apple doesn't expose a GPU temperature to user tools.",
+          "Virtual GPU (vGPU, some VM passthrough setups) where the host keeps the sensors."
+        ]
+      },
+      "power": {
+        "intro": "The driver doesn't report a power draw for this GPU. Usual reasons:",
+        "reasons": [
+          "Windows agent without nvidia-smi: the Windows counters have no power reading.",
+          "Older Radeon or some APUs: the amdgpu driver exposes no power sensor (power1_average).",
+          "Virtual GPU (vGPU, some VM passthrough setups) where the host keeps the sensors."
+        ]
+      },
+      "utilization": {
+        "intro": "The driver doesn't report a utilization for this GPU. Usual reasons:",
+        "reasons": [
+          "GPU partition (MIG, vGPU): utilization is only reported for the whole card.",
+          "Very old driver, or no sample received yet from this agent."
+        ]
+      }
+    },
     "no_gpu": "No GPU detected: check that the smi binary for your vendor (nvidia-smi or rocm-smi) is available in the container, and that GPU_VENDOR is set correctly. Look at the hub logs for the resolved vendor on boot.",
     "history": "Live performance",
     "export_csv_help": "Download the current GPU's history for the selected range as CSV",
@@ -262,6 +297,15 @@
     "lang_more_help": "More languages can be added under src/i18n/locales/.",
     "time_format": "Time format",
     "thresholds": "Chart thresholds",
+    "password_title": "Password",
+    "password_help": "Change the password of your account ({{user}}). You stay signed in on this browser.",
+    "password_current": "Current password",
+    "password_new": "New password",
+    "password_confirm": "Confirm the new password",
+    "password_submit": "Change password",
+    "password_done": "Password changed.",
+    "password_too_short": "At least {{n}} characters.",
+    "password_mismatch": "The two new passwords don't match.",
     "thresholds_help": "Dashed reference lines on the live chart, one per metric. Leave a field empty to draw no line. Shared by every browser, set once for the whole hub.",
     "thresholds_enable": "Show threshold lines",
     "thresholds_reset": "Restore defaults",

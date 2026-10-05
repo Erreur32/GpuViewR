@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid, Cable, AlertTriangle, Info, ArrowDownToLine, ArrowUpFromLine, Thermometer } from 'lucide-react';
+import { Cpu, MemoryStick, Server, HardDrive, Gauge, BarChart3, LayoutGrid, Cable, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Thermometer } from 'lucide-react';
 import UsageArc from '../ui/UsageArc';
+import InfoTooltip from '../ui/InfoTooltip';
 import { api } from '../../lib/api';
 import { pollWhileVisible } from '../../lib/poll';
 import PcieThroughputTile from '../dashboard/PcieThroughputTile';
@@ -443,7 +444,7 @@ function PcieSection({ gpu, t }: Readonly<{
                 / max {gpu.pcie_bandwidth_max_GBps.toFixed(2)} GB/s
               </span>
             )}
-            <InfoTooltip text={t('system.pcie_bandwidth_hint')} />
+            <InfoTooltip label={t('system.pcie_bandwidth_hint')} />
           </span>
         )}
 
@@ -488,47 +489,6 @@ function PcieSection({ gpu, t }: Readonly<{
         )}
       </div>
     </div>
-  );
-}
-
-// Theme-agnostic info icon with a CSS-only hover/focus tooltip. Uses
-// only --gv-* CSS variables so it adapts to every registered theme
-// (dark Midnight/Graphite/Oceanic, light variants, etc.) without
-// hard-coded colours. Tooltip stays clipped to the viewport via
-// `max-w-[min(20rem,calc(100vw-2rem))]` and is dismissed by mouseout
-// or blur. Also exposes `title` as an accessibility fallback.
-function InfoTooltip({ text }: Readonly<{ text: string }>) {
-  return (
-    <span className="relative inline-flex group ml-0.5 align-middle">
-      <button
-        type="button"
-        aria-label={text}
-        title={text}
-        className="inline-flex items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 cursor-help"
-        style={{
-          color: 'var(--gv-text-muted)',
-          // Use the accent ring colour so it visually agrees with the
-          // rest of the focus styles on cards/buttons.
-          // @ts-expect-error CSS custom property
-          '--tw-ring-color': 'color-mix(in srgb, var(--gv-accent) 35%, transparent)',
-        }}
-      >
-        <Info className="w-3.5 h-3.5" />
-      </button>
-      <span
-        role="tooltip"
-        className="invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 transition-opacity duration-150 pointer-events-none absolute z-20 left-1/2 -translate-x-1/2 bottom-full mb-2 p-2 rounded-lg text-[11px] leading-snug normal-case tracking-normal font-normal text-left max-w-[min(20rem,calc(100vw-2rem))] w-max"
-        style={{
-          background: 'var(--gv-surface)',
-          color: 'var(--gv-text)',
-          border: '1px solid var(--gv-border)',
-          boxShadow: '0 8px 24px -10px color-mix(in srgb, var(--gv-bg) 80%, #000 60%)',
-          backdropFilter: 'blur(6px)',
-        }}
-      >
-        {text}
-      </span>
-    </span>
   );
 }
 

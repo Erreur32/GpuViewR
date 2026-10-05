@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { _setDatabaseForTests, closeDatabase } from '../database/connection.js';
 import { UserRepository } from '../database/models/User.js';
-import { authService, canRegister } from './authService.js';
+import { authService, canRegister, PasswordChangeError } from './authService.js';
 
 before(() => {
   const db = new Database(':memory:');
@@ -67,4 +67,24 @@ test('canRegister: closed once a user exists, unless the caller is an admin', ()
   assert.equal(canRegister(1, false), false);
   assert.equal(canRegister(5, false), false);
   assert.equal(canRegister(1, true), true);
+});
+
+test('changePassword: right current password, new one works for login', async () => {
+  const { user } = await authService.register('pwuser', 'old-password-1', { callerIsAdmin: false });
+  const token = await authService.changePassword(user.id, 'old-password-1', 'new-password-2');
+  assert.ok(authService.verifyToken(token));
+  await assert.rejects(authService.login('pwuser', 'old-password-1'));
+  assert.ok((await authService.login('pwuser', 'new-password-2')).token);
+});
+
+test('changePassword: wrong current, too short, unchanged or unknown account are refused', async () => {
+  const { user } = await authService.register('pwuser', 'old-password-1', { callerIsAdmin: false });
+  const status = async (p: Promise<unknown>) => {
+    try { await p; return 0; } catch (e) { return e instanceof PasswordChangeError ? e.status : -1; }
+  };
+  assert.equal(await status(authService.changePassword(user.id, 'wrong-password', 'new-password-2')), 403);
+  assert.equal(await status(authService.changePassword(user.id, 'old-password-1', 'short')), 400);
+  assert.equal(await status(authService.changePassword(user.id, 'old-password-1', 'old-password-1')), 400);
+  assert.equal(await status(authService.changePassword(9999, 'old-password-1', 'new-password-2')), 404);
+  assert.ok((await authService.login('pwuser', 'old-password-1')).token, 'unchanged after refusals');
 });

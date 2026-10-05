@@ -7,6 +7,8 @@ import { useUiStore } from "../../store/uiStore";
 import { useGpuStore } from "../../store/gpuStore";
 import { useHostsStore } from "../../store/hostsStore";
 import { powerScale, tempScale } from "../../lib/gaugeScale";
+import { sensorMissing } from "../../lib/sensors";
+import SensorNaInfo, { type NaMetric } from "../ui/SensorNaInfo";
 
 interface StatsResponse {
   gpuIndex: number;
@@ -33,6 +35,14 @@ interface StatsResponse {
 interface Props {
   gpuIndex: number;
 }
+
+/** Stats rows that can lack a sensor, mapped to their N/A explanation. */
+const NA_METRICS: Partial<Record<string, NaMetric>> = {
+  utilization: "utilization",
+  fan: "fan",
+  temperature: "temperature",
+  power: "power",
+};
 
 export default function StatsSection({ gpuIndex }: Readonly<Props>) {
   const { t } = useTranslation();
@@ -170,12 +180,17 @@ export default function StatsSection({ gpuIndex }: Readonly<Props>) {
     // statusFor returns for null inputs. Availability is derived from
     // any of min/avg/max being a finite number; if all three are null
     // there's literally nothing to show.
-    const available =
-      (r.avg != null && Number.isFinite(r.avg)) ||
-      (r.min != null && Number.isFinite(r.min)) ||
-      (r.max != null && Number.isFinite(r.max));
+    // Temperature and power read 0 when the sensor is missing (see
+    // lib/sensors.ts): a range whose max is 0 had no sensor at all.
+    const naMetric = NA_METRICS[r.key];
+    const finite = (v: number | null | undefined) => v != null && Number.isFinite(v);
+    const sensorless = naMetric !== undefined
+      && (naMetric === "temperature" || naMetric === "power")
+      && (r.max ?? 0) <= 0
+      && sensorMissing(naMetric, live);
+    const available = !sensorless && (finite(r.avg) || finite(r.min) || finite(r.max));
     const color = available ? colorForStatus(r.status) : "var(--gv-text-dim)";
-    return { ...r, available, color };
+    return { ...r, available, color, naMetric };
   });
 
   return (
@@ -197,22 +212,23 @@ export default function StatsSection({ gpuIndex }: Readonly<Props>) {
             >
               {row.icon}
               <span>{t(`dashboard.metrics.${row.key}`)}</span>
+              {!row.available && row.naMetric && <SensorNaInfo metric={row.naMetric} />}
             </div>
             <div className="grid grid-cols-3 gap-1 text-xs">
               <Cell
                 label={t("dashboard.min")}
-                value={row.min}
+                value={row.available ? row.min : null}
                 unit={row.unit}
               />
               <Cell
                 label={t("dashboard.avg")}
-                value={row.avg}
+                value={row.available ? row.avg : null}
                 unit={row.unit}
                 bold
               />
               <Cell
                 label={t("dashboard.max")}
-                value={row.max}
+                value={row.available ? row.max : null}
                 unit={row.unit}
               />
             </div>

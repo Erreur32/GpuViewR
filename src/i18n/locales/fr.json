@@ -28,7 +28,42 @@
     "offline": "HORS LIGNE",
     "host_unavailable": "{{host}} ne répond pas : dernier signal il y a {{age}}. Choisissez un autre hôte dans le sélecteur, ou vérifiez que la machine et son agent tournent.",
     "host_unavailable_never": "{{host}} n'a encore jamais envoyé de mesure. Vérifiez que la machine et son agent tournent.",
-    "fan_na_hint": "Vitesse du ventilateur non fournie par le pilote : APU ou carte sans ventilateur propre (refroidie par les ventilateurs de la carte mère ou du portable), carte passive de datacenter, carte professionnelle (Quadro, RTX Entreprise) dont le pilote donne le ventilateur à des outils comme HWiNFO mais pas à nvidia-smi, ou agent Windows sans nvidia-smi. Ce n'est pas une erreur.",
+    "na": {
+      "title": "{{metric}} non disponible",
+      "footer": "Ce n'est pas une erreur : les autres valeurs ne sont pas affectées.",
+      "fan": {
+        "intro": "Le pilote ne fournit pas de ventilateur pour ce GPU. Raisons habituelles :",
+        "reasons": [
+          "APU ou GPU intégré (Strix Halo, Radeon 8060S...) : refroidi par les ventilateurs de la machine, pas par les siens.",
+          "Carte refroidie par la carte mère ou un portable, ou carte passive de datacenter.",
+          "Carte professionnelle (Quadro, RTX Entreprise) dont le pilote donne le ventilateur à HWiNFO mais pas à nvidia-smi.",
+          "Agent Windows sans nvidia-smi : seules l'utilisation et la VRAM sont disponibles (voir agent.log)."
+        ]
+      },
+      "temperature": {
+        "intro": "Le pilote ne fournit pas de température pour ce GPU. Raisons habituelles :",
+        "reasons": [
+          "Agent Windows sans nvidia-smi : les compteurs Windows n'ont pas de température (chercher \"PDH collector\" dans agent.log).",
+          "Agent macOS : Apple n'expose pas la température du GPU aux outils utilisateur.",
+          "GPU virtuel (vGPU, certains passthrough en VM) dont l'hôte garde les capteurs."
+        ]
+      },
+      "power": {
+        "intro": "Le pilote ne fournit pas de consommation pour ce GPU. Raisons habituelles :",
+        "reasons": [
+          "Agent Windows sans nvidia-smi : les compteurs Windows n'ont pas de mesure de puissance.",
+          "Radeon ancienne ou certains APU : le pilote amdgpu n'expose pas de capteur de puissance (power1_average).",
+          "GPU virtuel (vGPU, certains passthrough en VM) dont l'hôte garde les capteurs."
+        ]
+      },
+      "utilization": {
+        "intro": "Le pilote ne fournit pas d'utilisation pour ce GPU. Raisons habituelles :",
+        "reasons": [
+          "Partition de GPU (MIG, vGPU) : l'utilisation n'est donnée que pour la carte entière.",
+          "Pilote très ancien, ou aucune mesure encore reçue de cet agent."
+        ]
+      }
+    },
     "no_gpu": "Aucun GPU détecté : vérifiez que le binaire smi de votre vendor (nvidia-smi ou rocm-smi) est accessible dans le conteneur et que GPU_VENDOR est correctement défini. Regardez les logs du hub pour le vendor résolu au boot.",
     "history": "Performance en direct",
     "export_csv_help": "Télécharger l'historique du GPU courant sur la période sélectionnée en CSV",
@@ -262,6 +297,15 @@
     "lang_more_help": "D'autres langues peuvent être ajoutées dans src/i18n/locales/.",
     "time_format": "Format d'heure",
     "thresholds": "Seuils du graphique",
+    "password_title": "Mot de passe",
+    "password_help": "Changer le mot de passe de votre compte ({{user}}). Vous restez connecté sur ce navigateur.",
+    "password_current": "Mot de passe actuel",
+    "password_new": "Nouveau mot de passe",
+    "password_confirm": "Confirmer le nouveau mot de passe",
+    "password_submit": "Changer le mot de passe",
+    "password_done": "Mot de passe changé.",
+    "password_too_short": "Au moins {{n}} caractères.",
+    "password_mismatch": "Les deux nouveaux mots de passe ne correspondent pas.",
     "thresholds_help": "Lignes pointillées de référence sur le graphique en direct, une par métrique. Laissez un champ vide pour ne pas tracer de ligne. Partagé par tous les navigateurs, réglé une fois pour tout le hub.",
     "thresholds_enable": "Afficher les lignes de seuil",
     "thresholds_reset": "Valeurs par défaut",

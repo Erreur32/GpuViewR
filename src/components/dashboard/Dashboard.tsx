@@ -34,6 +34,8 @@ import MultiGpuChart from "./MultiGpuChart";
 import UpdateBanner from "../ui/UpdateBanner";
 import VendorIcon, { detectVendor } from "../ui/VendorIcon";
 import StatusPill from "../fleet/StatusPill";
+import SensorNaInfo from "../ui/SensorNaInfo";
+import { sensorMissing } from "../../lib/sensors";
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -207,7 +209,7 @@ export default function Dashboard() {
           variant={gaugeView}
           label={t("dashboard.metrics.utilization")}
           value={active.utilization ?? 0}
-          displayValue={active.utilization == null ? "N/A" : undefined}
+          displayValue={sensorMissing("utilization", active) ? "N/A" : undefined}
           unit="%"
           max={100}
           warn={85}
@@ -215,7 +217,8 @@ export default function Dashboard() {
           icon={<Activity className="w-4 h-4" />}
           history={series?.utilization?.map((v) => v ?? 0)}
           ts={active.timestamp_epoch}
-          available={active.utilization != null}
+          available={!sensorMissing("utilization", active)}
+          naInfo={<SensorNaInfo metric="utilization" />}
         />
         <GaugeCard
           variant={gaugeView}
@@ -238,7 +241,7 @@ export default function Dashboard() {
           variant={gaugeView}
           label={t("dashboard.metrics.fan")}
           value={active.fan_speed ?? 0}
-          displayValue={active.fan_speed == null ? "N/A" : undefined}
+          displayValue={sensorMissing("fan", active) ? "N/A" : undefined}
           unit="%"
           max={100}
           warn={75}
@@ -246,14 +249,14 @@ export default function Dashboard() {
           icon={<Fan className="w-4 h-4" />}
           history={series?.fan_speed?.map((v) => v ?? 0)}
           ts={active.timestamp_epoch}
-          available={active.fan_speed != null}
-          unavailableHint={t("dashboard.fan_na_hint")}
+          available={!sensorMissing("fan", active)}
+          naInfo={<SensorNaInfo metric="fan" />}
         />
         <GaugeCard
           variant={gaugeView}
           label={t("dashboard.metrics.temperature")}
           value={active.temperature ?? 0}
-          displayValue={active.temperature == null ? "N/A" : undefined}
+          displayValue={sensorMissing("temperature", active) ? "N/A" : undefined}
           unit="°C"
           max={tempBand.max}
           warn={tempBand.warn}
@@ -261,13 +264,14 @@ export default function Dashboard() {
           icon={<Thermometer className="w-4 h-4" />}
           history={series?.temperature}
           ts={active.timestamp_epoch}
-          available={active.temperature != null}
+          available={!sensorMissing("temperature", active)}
+          naInfo={<SensorNaInfo metric="temperature" />}
         />
         <GaugeCard
           variant={gaugeView}
           label={t("dashboard.metrics.power")}
           value={active.power ?? 0}
-          displayValue={active.power == null ? "N/A" : undefined}
+          displayValue={sensorMissing("power", active) ? "N/A" : undefined}
           unit="W"
           max={powBand.max}
           warn={powBand.warn}
@@ -275,7 +279,8 @@ export default function Dashboard() {
           icon={<Zap className="w-4 h-4" />}
           history={series?.power}
           ts={active.timestamp_epoch}
-          available={active.power != null}
+          available={!sensorMissing("power", active)}
+          naInfo={<SensorNaInfo metric="power" />}
         />
       </div>
 

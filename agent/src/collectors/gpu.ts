@@ -107,7 +107,8 @@ export function createGpuCollector(
   function checkNvidiaSmi(): boolean {
     if (nvidiaSmiAvailable !== null) return nvidiaSmiAvailable;
     try {
-      const r = spawnSync(opts.nvidiaSmiPath, ["--version"], {
+      // -L, not --version: old drivers (411.95) don't know --version.
+      const r = spawnSync(opts.nvidiaSmiPath, ["-L"], {
         timeout: 3_000,
       });
       nvidiaSmiAvailable = r.status === 0;

@@ -91,6 +91,21 @@ export const authService = {
     return task;
   },
 
+  /** Self-service password change: the current password must match.
+   *  Same 8-character minimum as register. Returns a fresh token. */
+  async changePassword(userId: number, currentPassword: string, newPassword: string): Promise<string> {
+    const user = UserRepository.findById(userId);
+    if (!user) throw new PasswordChangeError('Account not found', 404);
+    if (!(await this.verifyPassword(currentPassword, user.password_hash))) {
+      throw new PasswordChangeError('Current password is incorrect', 403);
+    }
+    if (newPassword.length < 8) throw new PasswordChangeError('Password must be at least 8 characters', 400);
+    if (newPassword.length > 256) throw new PasswordChangeError('Password must be at most 256 characters', 400);
+    if (newPassword === currentPassword) throw new PasswordChangeError('The new password must differ from the current one', 400);
+    UserRepository.updatePassword(user.id, await this.hashPassword(newPassword));
+    return this.signToken(user);
+  },
+
   async login(username: string, password: string): Promise<{ user: User; token: string }> {
     const user = UserRepository.findByUsername(username.trim());
     if (!user) throw new Error('Invalid credentials');
@@ -99,6 +114,13 @@ export const authService = {
     return { user, token: this.signToken(user) };
   },
 };
+
+/** A refused password change, with the HTTP status the route returns. */
+export class PasswordChangeError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
 
 /** Shared between routes/auth.ts's cheap pre-check and the
  *  authoritative re-check in doRegisterLocked below, so the two error

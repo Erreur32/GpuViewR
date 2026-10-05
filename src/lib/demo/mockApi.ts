@@ -99,6 +99,10 @@ function handleAuth(ctx: RouteCtx): Response | null {
   if (ctx.url.pathname === '/api/auth/register' && ctx.method === 'POST') {
     return json({ token: 'demo.token', user: { id: 1, username: 'demo', role: 'admin' } });
   }
+  // Nothing is stored in the demo: accept the change, keep the token.
+  if (ctx.url.pathname === '/api/auth/password' && ctx.method === 'POST') {
+    return json({ ok: true, token: 'demo.token' });
+  }
   return null;
 }
 

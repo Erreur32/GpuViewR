@@ -13,24 +13,25 @@ interface MetricRowProps {
   max: number;
   warn: number;
   danger: number;
-  /** Tooltip, e.g. why the value is N/A. */
-  hint?: string;
+  /** Shown after the label, e.g. why the value is N/A. */
+  naInfo?: React.ReactNode;
 }
 
 export default function MetricRow({
-  icon, label, value, displayValue, unit, max, warn, danger, hint,
+  icon, label, value, displayValue, unit, max, warn, danger, naInfo,
 }: Readonly<MetricRowProps>) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
   const status = statusFor(value, warn, danger);
   const color = colorFor(status);
   return (
-    <div className="flex items-center gap-2 text-xs min-w-0" title={hint}>
+    <div className="flex items-center gap-2 text-xs min-w-0">
       <span
         className="inline-flex items-center gap-1.5 w-[118px] shrink-0 uppercase tracking-wider"
         style={{ color: 'var(--gv-text-muted)' }}
       >
         <span style={{ color }}>{icon}</span>
         <span className="text-[10px] font-medium truncate">{label}</span>
+        {naInfo}
       </span>
       <div
         className="relative flex-1 h-2 rounded-full overflow-hidden"
