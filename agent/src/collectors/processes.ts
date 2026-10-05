@@ -123,7 +123,8 @@ export function createProcessCollector(opts: ProcessCollectorOptions): ProcessCo
   function checkNvidiaSmi(): boolean {
     if (nvidiaSmiAvailable !== null) return nvidiaSmiAvailable;
     try {
-      const r = spawnSync(opts.nvidiaSmiPath, ['--version'], { timeout: 3_000 });
+      // -L, not --version: old drivers (411.95) don't know --version.
+      const r = spawnSync(opts.nvidiaSmiPath, ['-L'], { timeout: 3_000 });
       nvidiaSmiAvailable = r.status === 0;
     } catch {
       nvidiaSmiAvailable = false;

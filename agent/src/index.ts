@@ -263,9 +263,12 @@ function vendorSource(v: GpuVendor, cfg: AgentConfig): string {
   return cfg.nvidiaSmiPath;
 }
 
-function smiResponds(bin: string): boolean {
+// `nvidia-smi -L` (list GPUs) rather than `--version`, which old drivers
+// don't know (411.95 on a Windows Quadro): the agent then believed there
+// was no nvidia-smi and fell back to PDH. rocm-smi keeps `--version`.
+function smiResponds(bin: string, args: string[] = ["--version"]): boolean {
   try {
-    return spawnSync(bin, ["--version"], { timeout: 3_000 }).status === 0;
+    return spawnSync(bin, args, { timeout: 3_000 }).status === 0;
   } catch {
     return false;
   }
@@ -283,7 +286,7 @@ function resolveVendor(cfg: AgentConfig): "nvidia" | "amd" | "apple" | "intel" {
   // auto: probe both. Prefer nvidia when both exist (historical default,
   // and nvidia-smi exposes strictly more telemetry — PCIe RX/TX, pmon).
   if (cfg.mockGpu) return "nvidia";
-  const nvidia = smiResponds(cfg.nvidiaSmiPath);
+  const nvidia = smiResponds(cfg.nvidiaSmiPath, ["-L"]);
   if (nvidia) return "nvidia";
   const amd = smiResponds(cfg.rocmSmiPath);
   if (amd) return "amd";
