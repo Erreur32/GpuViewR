@@ -1,5 +1,6 @@
-release: v0.11.14 clearer Ollama manifests directory help
+release: v0.11.15 Docker NVIDIA agent shares the host pid namespace
 
-- Changed: Settings > LLM manifests field help and placeholder explain
-  that a Docker agent needs the path inside its container, and that the
-  field is usually left empty.
+- Fixed: on recent NVIDIA drivers (595) nvidia-smi in the agent
+  container listed no GPU process, so no LLM showed. Compose files set
+  pid: host on the NVIDIA agent; existing Docker installs add the line
+  and run docker compose up -d.
