@@ -706,6 +706,6 @@
     "endpoints": "URL des serveurs, une par ligne (max {{max}})",
     "endpoints_help": "http(s) uniquement, sans identifiants. L'agent lit /api/ps, /api/show (Ollama) et /v1/models, rien d'autre.",
     "manifests_dir": "Dossier des manifests Ollama",
-    "manifests_dir_help": "Optionnel. Chemin absolu sur cet hôte, lisible par l'agent. En général trouvé tout seul."
+    "manifests_dir_help": "Optionnel, à laisser vide : l'agent le trouve tout seul. À remplir seulement si les modèles restent en sha256:…. Le chemin est celui que voit l'agent : pour un agent Docker, dans son conteneur (ex. /host/ollama/models/manifests, avec le dossier Ollama monté via OLLAMA_DIR), pas le chemin de la machine. Pour un agent systemd ou Windows, le chemin sur cette machine, lisible par l'agent."
   }
 }
