@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.17] - 2026-10-05
+
+### Changed
+
+- **AMD agent no longer runs `rocm-smi`.** The ROCm process list now comes straight from the kernel (`/sys/class/kfd`), with each process's memory per card. Measured on a Strix Halo with Ollama loaded: same processes, names and memory as before, process collector from about 1 % to 0.4 % of a CPU core. `rocm-smi` is only used if those kernel files can't be read. A ROCm process without a render node is now shown on its real card instead of card 0. The CU occupancy figure that `rocm-smi` sometimes gave is gone (it read "unknown" on every machine we measured); per-process GPU % still comes from the kernel engine counters.
+
+### Added
+
+- **Fan speed on AMD Radeon cards** (Linux): read from the driver (`pwm1`, or the fan RPM), 0 % when the fan is stopped. APUs have no fan of their own and keep showing N/A. Not yet confirmed on a real discrete Radeon.
+- **N/A fan explained:** hovering a fan shown as N/A says why (APU or card without its own fan, passive card, Windows without `nvidia-smi`) and that it is not an error.
+
 ## [0.11.16] - 2026-10-05
 
 ### Added
