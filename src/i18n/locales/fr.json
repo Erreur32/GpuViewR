@@ -26,6 +26,8 @@
   "dashboard": {
     "live": "LIVE",
     "offline": "HORS LIGNE",
+    "host_unavailable": "{{host}} ne répond pas : dernier signal il y a {{age}}. Choisissez un autre hôte dans le sélecteur, ou vérifiez que la machine et son agent tournent.",
+    "host_unavailable_never": "{{host}} n'a encore jamais envoyé de mesure. Vérifiez que la machine et son agent tournent.",
     "no_gpu": "Aucun GPU détecté : vérifiez que le binaire smi de votre vendor (nvidia-smi ou rocm-smi) est accessible dans le conteneur et que GPU_VENDOR est correctement défini. Regardez les logs du hub pour le vendor résolu au boot.",
     "history": "Performance en direct",
     "export_csv_help": "Télécharger l'historique du GPU courant sur la période sélectionnée en CSV",

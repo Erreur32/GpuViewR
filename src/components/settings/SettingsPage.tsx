@@ -90,8 +90,8 @@ export default function SettingsPage() {
   const hostCount = useHostsStore((s) => s.hosts.length);
   const showHostsTab = isAdmin || hostCount > 1;
   const VALID_TABS: ReadonlyArray<TabId> = showHostsTab
-    ? ["general", "theme", "exports", "hosts", "llm", "database", "updates", "logs", "about"]
-    : ["general", "theme", "exports", "llm", "database", "updates", "logs", "about"];
+    ? ["general", "theme", "exports", "hosts", "llm", "database", "logs", "updates", "about"]
+    : ["general", "theme", "exports", "llm", "database", "logs", "updates", "about"];
   const fallback =
     (localStorage.getItem("gpuviewr.settingsTab") as TabId | null) ?? "general";
   const tab: TabId = (VALID_TABS as readonly string[]).includes(tabParam ?? "")
@@ -133,8 +133,8 @@ export default function SettingsPage() {
       : []),
     { id: "llm", label: t("settings.tab_llm"), icon: Bot },
     { id: "database", label: t("settings.tab_database"), icon: Database },
-    { id: "updates", label: t("settings.tab_updates"), icon: RefreshCw },
     { id: "logs", label: t("settings.tab_logs"), icon: FileText },
+    { id: "updates", label: t("settings.tab_updates"), icon: RefreshCw },
     { id: "about", label: t("settings.tab_about"), icon: Info },
   ];
 

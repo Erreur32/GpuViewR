@@ -18,7 +18,7 @@ import {
 import type { GpuSample } from "../../store/gpuStore";
 import { useGpuStore } from "../../store/gpuStore";
 import { useUiStore } from "../../store/uiStore";
-import { useHostsStore, LOCAL_HOST_ID } from "../../store/hostsStore";
+import { useHostsStore, LOCAL_HOST_ID, effectiveStatus, formatRelative, type HostRecord } from "../../store/hostsStore";
 import { memoryLabel } from "../../lib/memoryFormat";
 import { powerScale, tempScale } from "../../lib/gaugeScale";
 import GaugeCard from "./GaugeCard";
@@ -33,6 +33,7 @@ import AllGpusGrid from "./AllGpusGrid";
 import MultiGpuChart from "./MultiGpuChart";
 import UpdateBanner from "../ui/UpdateBanner";
 import VendorIcon, { detectVendor } from "../ui/VendorIcon";
+import StatusPill from "../fleet/StatusPill";
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -67,17 +68,29 @@ export default function Dashboard() {
   const dashboardView = useUiStore((s) => s.dashboardView);
   const range = useUiStore((s) => s.range);
 
+  // No sample for this host: keep the header (host picker included) so an
+  // offline machine picked from the dropdown isn't a dead end.
   if (samples.length === 0) {
     return (
-      <>
+      <div className="space-y-6">
         <UpdateBanner />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <HostChip
+            label={currentHostLabel}
+            isLocal={selectedHostId === LOCAL_HOST_ID}
+          />
+          {currentHost && (
+            <StatusPill status={effectiveStatus(currentHost)} lastSeenEpoch={currentHost.last_seen} />
+          )}
+          <HostSelector hosts={hosts} selectedHostId={selectedHostId} />
+        </div>
         <div
           className="card p-8 text-center"
           style={{ color: "var(--gv-text-muted)" }}
         >
-          {t("dashboard.no_gpu")}
+          {noSampleMessage(currentHost, currentHostLabel, t)}
         </div>
-      </>
+      </div>
     );
   }
 
@@ -481,6 +494,22 @@ function PcieLinkBwTile({
 // this chip the user has no clue which box the Dashboard is reading
 // from. The "Hub" pill flag matches Settings → Hosts when the row is
 // the local host.
+/** Why a host has nothing to show: an agent that stopped reporting is
+ *  not a missing smi binary, which only applies to the hub itself. */
+function noSampleMessage(
+  host: HostRecord | undefined,
+  label: string,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (!host || host.kind !== "agent") return t("dashboard.no_gpu");
+  const status = effectiveStatus(host);
+  if (status === "online") return t("fleet.no_samples_yet");
+  const age = host.last_seen === null ? null : formatRelative(Math.max(0, Math.floor(Date.now() / 1000) - host.last_seen));
+  return age === null
+    ? t("dashboard.host_unavailable_never", { host: label })
+    : t("dashboard.host_unavailable", { host: label, age });
+}
+
 function HostChip({
   label,
   isLocal,
