@@ -49,7 +49,7 @@ export default function FleetIndicator() {
         style={{ background: dot, boxShadow: `0 0 6px ${dot}` }}
       />
       <span
-        className="hidden sm:inline-block tabular-nums"
+        className="hidden lg:inline-block tabular-nums"
         style={{ minWidth: `${widestLabel.length}ch` }}
       >
         {label}

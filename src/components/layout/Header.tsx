@@ -85,7 +85,9 @@ export default function Header() {
           </NavLink>
         </div>
 
-        <nav className="flex items-center gap-1 ml-2">
+        {/* Nav centred in the space between the brand and the user menu,
+            so it spreads with the Page width instead of hugging the logo. */}
+        <nav className="flex flex-1 items-center justify-center gap-2 lg:gap-4 flex-wrap">
           <NavItem to="/"        icon={<LayoutDashboard className="w-4 h-4" />} label={t('nav.dashboard')} end />
           {/* FleetIndicator self-hides on mono-host installs (hosts.length <= 1)
               so the nav stays identical to v0.2.x for single-host users. */}
@@ -95,7 +97,7 @@ export default function Header() {
           <NavItem to="/settings" icon={<Settings className="w-4 h-4" />}       label={t('nav.settings')} />
         </nav>
 
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-2 shrink-0">
           <UserMenu />
         </div>
       </div>
@@ -109,9 +111,11 @@ function NavItem({ to, icon, label, end }: Readonly<{ to: string; icon: JSX.Elem
       to={to}
       end={end}
       className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}
+      title={label}
     >
       {icon}
-      <span className="hidden sm:inline">{label}</span>
+      {/* Icons only below lg, so the nav stays on one row. */}
+      <span className="hidden lg:inline">{label}</span>
     </NavLink>
   );
 }

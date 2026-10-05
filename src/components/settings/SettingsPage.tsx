@@ -165,7 +165,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="settings-area space-y-6 max-w-[var(--gv-settings-max)]">
+    <div className="settings-area space-y-6">
       <header>
         <h1 className="text-2xl font-bold">{t("settings.title")}</h1>
         <p className="text-sm" style={{ color: "var(--gv-text-muted)" }}>
