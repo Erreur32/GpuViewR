@@ -77,6 +77,27 @@ export function resolveHostProc(
   return exists("/host/proc") ? "/host/proc" : "/proc";
 }
 
+/** NVIDIA's own folder: Quadro / RTX Enterprise and older "Standard"
+ *  (non-DCH) drivers install nvidia-smi.exe there, not in System32, so it
+ *  is not on PATH and the agent fell back to PDH (no fan, temp, power). */
+const WINDOWS_NVSMI = String.raw`C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe`;
+
+/** nvidia-smi to run: NVIDIA_SMI_PATH, else on Windows the NVSMI folder
+ *  when the binary is there, else the bare name resolved through PATH.
+ *  Node's spawn() does NOT consult PATHEXT, so Windows needs the .exe. */
+export function resolveNvidiaSmiPath(
+  raw: string | undefined,
+  platform: NodeJS.Platform,
+  exists: (path: string) => boolean = existsSync,
+): string {
+  if (raw) return raw;
+  if (platform !== "win32") return "nvidia-smi";
+  const winDir = process.env.SystemRoot ?? String.raw`C:\Windows`;
+  const system32 = `${winDir}\\System32\\nvidia-smi.exe`;
+  if (exists(system32)) return "nvidia-smi.exe";
+  return exists(WINDOWS_NVSMI) ? WINDOWS_NVSMI : "nvidia-smi.exe";
+}
+
 function requiredEnv(name: string): string {
   const v = process.env[name];
   if (!v || v.trim() === "") {
@@ -253,13 +274,7 @@ export function loadConfig(): AgentConfig {
     gpuBackend: parseGpuBackend(process.env.GPU_BACKEND),
     sysClassDrm: process.env.SYS_CLASS_DRM || "/sys/class/drm",
     processesTickMs: parseInt10("PROCESSES_TICK_MS", processesDefault),
-    // Windows: Node's spawn() does NOT consult PATHEXT, so 'nvidia-smi'
-    // alone fails with ENOENT even when the driver is installed. The
-    // .exe is in C:\Windows\System32\ which is always in PATH, so the
-    // bare filename with extension resolves correctly.
-    nvidiaSmiPath:
-      process.env.NVIDIA_SMI_PATH ||
-      (process.platform === "win32" ? "nvidia-smi.exe" : "nvidia-smi"),
+    nvidiaSmiPath: resolveNvidiaSmiPath(process.env.NVIDIA_SMI_PATH, process.platform),
     rocmSmiPath: process.env.ROCM_SMI_PATH || "rocm-smi",
     hostProc: resolveHostProc(process.env.HOST_PROC, process.platform),
     reconnectMaxMs: parseInt10("RECONNECT_MAX_MS", 30_000),
