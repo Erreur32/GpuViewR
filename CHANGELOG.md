@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.9] - 2026-10-05
+
+### Changed
+
+- **Gauges follow the card's own limits.** The agent now reports the hardware power cap and the throttle temperature: NVIDIA `power.limit` and "GPU Slowdown Temp" (read from the `nvidia-smi -q` call already made for PCIe, no extra process), AMD hwmon `power1_cap` and `temp1_crit`. The power gauge goes up to the cap (orange at 80 %, red at 95 %) and the temperature bands start 15 °C and 5 °C under the throttle temperature. A host's power gauge goes up to the sum of its cards' caps. This replaces the fixed 450 W and 300 W scales. Cards that report no limit (Strix Halo, Intel, Windows, macOS, rocm-smi) and agents older than 0.11.9 keep the previous scales.
+- **Chart threshold lines stay within the card's range.** A line inherited from the global set is drawn at the card's limit when it would sit above it (a 350 W global line is drawn at 200 W on a 200 W card). Values set for one GPU are used as typed. *Settings > Chart thresholds* shows each card's limits and the value an empty field resolves to.
+
+### Dependencies
+
+- `vite` 8.3.2, `@types/node` 22.20.5 (dev only).
+
 ## [0.11.8] - 2026-10-04
 
 ### Fixed
