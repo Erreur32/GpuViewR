@@ -1,5 +1,5 @@
-release: v0.11.12 AMD agent runs rocm-smi every 10 s
+release: v0.11.13 Windows VRAM above 4 GB
 
-- Changed: rocm-smi output cached for 10 s instead of a run every 2 s;
-  fdinfo data still every tick. AMD process collector 2.95 % -> 0.79 %
-  of a core on Strix Halo.
+- Fixed: the Windows PDH collector read the total VRAM from WMI
+  AdapterRAM (4 GiB cap, 8 GB card showed 4095 MiB); it now reads the
+  registry qwMemorySize, AdapterRAM as fallback.
