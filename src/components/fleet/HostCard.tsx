@@ -9,6 +9,7 @@ import { effectiveStatus, useHostsStore, type HostRecord } from "../../store/hos
 import { statusFor, colorFor } from "../../lib/status";
 import { memoryLabel } from "../../lib/memoryFormat";
 import { hostPowerMax, tempScale } from "../../lib/gaugeScale";
+import SensorNaInfo from "../ui/SensorNaInfo";
 import StatusPill from "./StatusPill";
 import GpuMiniTile from "./GpuMiniTile";
 import MetricRow from "../ui/MetricRow";
@@ -213,7 +214,8 @@ function aggregateHostStats(samples: GpuSample[]): HostStats {
       utilSum += g.utilization;
       utilCount++;
     }
-    if (g.temperature > hottest) {
+    // 0 = no temperature sensor (see lib/sensors.ts), not a cold card.
+    if (g.temperature > 0 && g.temperature > hottest) {
       hottest = g.temperature;
       hottestLimit = g.temp_limit ?? null;
     }
@@ -297,6 +299,7 @@ function HostMetricRows({
         label={t("dashboard.metrics.utilization")}
         value={stats.avgUtil ?? 0}
         displayValue={stats.avgUtil === null ? "N/A" : undefined}
+        naInfo={stats.avgUtil === null ? <SensorNaInfo metric="utilization" placement="top" /> : undefined}
         max={100}
         warn={85}
         danger={95}
@@ -321,6 +324,7 @@ function HostMetricRows({
         label={t("dashboard.metrics.temperature")}
         value={stats.hottestTemp ?? 0}
         displayValue={stats.hottestTemp === null ? "N/A" : undefined}
+        naInfo={stats.hottestTemp === null ? <SensorNaInfo metric="temperature" placement="top" /> : undefined}
         max={tempBand.max}
         warn={tempBand.warn}
         danger={tempBand.danger}
@@ -330,6 +334,8 @@ function HostMetricRows({
         icon={<Zap className="w-3.5 h-3.5" />}
         label={t("dashboard.metrics.power")}
         value={stats.totalPower}
+        displayValue={stats.totalPower <= 0 ? "N/A" : undefined}
+        naInfo={stats.totalPower <= 0 ? <SensorNaInfo metric="power" placement="top" /> : undefined}
         max={stats.powerMax}
         warn={Math.round(stats.powerMax * 0.7)}
         danger={Math.round(stats.powerMax * 0.9)}

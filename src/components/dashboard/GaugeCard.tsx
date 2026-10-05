@@ -23,8 +23,8 @@ type Props = Readonly<{
    *  and the value text is rendered in the muted text color so the card
    *  doesn't visually claim a live measurement that doesn't exist. */
   available?: boolean;
-  /** Tooltip explaining why the metric is N/A (only used when !available). */
-  unavailableHint?: string;
+  /** Shown next to the label when !available: why this sensor is missing. */
+  naInfo?: ReactNode;
 }>;
 
 function statusFor(value: number, warn?: number, danger?: number): Status {
@@ -58,7 +58,7 @@ export default function GaugeCard({
   history,
   ts,
   available = true,
-  unavailableHint,
+  naInfo,
   variant = "arc",
 }: Props) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
@@ -85,7 +85,7 @@ export default function GaugeCard({
   }, [ts, available]);
 
   return (
-    <div className="card card-hover p-4 flex flex-col gap-3" title={available ? undefined : unavailableHint}>
+    <div className="card card-hover p-4 flex flex-col gap-3">
       <div
         className="flex items-center justify-between text-xs"
         style={{ color: "var(--gv-text-muted)" }}
@@ -100,8 +100,9 @@ export default function GaugeCard({
               opacity: liveDotOpacity(available, flash),
               boxShadow: available && flash ? `0 0 6px ${colorVar}` : "none",
             }}
-            title={available ? "Live" : (unavailableHint ?? "N/A on this host")}
+            title={available ? "Live" : "N/A on this host"}
           />
+          {!available && naInfo}
         </span>
         {history && history.length > 1 && (
           <Sparkline
