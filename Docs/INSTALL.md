@@ -490,6 +490,7 @@ Vulkan server: `rocm-smi` never lists them.
 |---|---|---|
 | systemd, installed before v0.10.2 | no `CAP_SYS_PTRACE`, processes of root or of containers are unreadable | run `--upgrade` (below) |
 | Docker | `cap_add: [SYS_PTRACE]` missing | add it to the agent service, `docker compose up -d` |
+| Docker, NVIDIA, no GPU process listed at all | recent drivers (seen on 595) only list the container's own processes to `nvidia-smi` | add `pid: host` to the agent service (in the compose files since v0.11.15), `docker compose up -d` |
 | Docker, capability present | AppArmor blocks processes started directly on the host | use the systemd agent on that host |
 
 Refresh an existing systemd agent (bundle + unit). It reads

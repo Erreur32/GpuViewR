@@ -52,7 +52,7 @@ curl -fsSL https://gpu.example.com/install.sh | sudo bash -s -- --uninstall
 
 ```bash
 docker run -d --name gpuviewr-agent \
-  --gpus all \
+  --gpus all --pid host --cap-add SYS_PTRACE -v /proc:/host/proc:ro -e HOST_PROC=/host/proc \
   --restart unless-stopped \
   -e HUB_URL=wss://gpu.example.com/agent \
   -e HOST_ID="<host-uuid>" \
