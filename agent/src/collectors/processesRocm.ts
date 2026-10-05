@@ -34,7 +34,7 @@
 //    to cover that case too. rocm-smi's data wins on any pid overlap.
 
 import { spawn, spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   parseRocmInfo,
   parseRocmPids,
@@ -71,6 +71,27 @@ export type { ProcessSnapshot };
 const MIN_TICK_MS = 1_000;
 
 const PIDS_FLAGS = ["--showpids", "--showbus", "--json"];
+
+/** rocm-smi is a Python script: one run costs ~120 ms of CPU, and every
+ *  2 s that was 2.5 % of a core on a Strix Halo (Jarvis, 2026-10-05),
+ *  twice what the agent itself used. The fdinfo scan, which gives VRAM,
+ *  GTT, GPU % and the card of each pid, still runs every tick; only the
+ *  KFD pid list and CU occupancy are refreshed on this slower cadence
+ *  (collector 2.95 % -> 0.79 % of a core, same Jarvis box). */
+const ROCM_SMI_REFRESH_MS = 10_000;
+
+/** Last rocm-smi output, re-run at most every `refreshMs`. */
+export function createRocmSmiCache(run: () => Promise<string>, refreshMs = ROCM_SMI_REFRESH_MS) {
+  let out = "";
+  let fetchedAt = Number.NEGATIVE_INFINITY;
+  return async (now: number = Date.now()): Promise<string> => {
+    if (now - fetchedAt >= refreshMs) {
+      out = await run();
+      fetchedAt = now;
+    }
+    return out;
+  };
+}
 
 export type RocmProcessCollectorOptions = Omit<
   ProcessCollectorOptions,
@@ -131,6 +152,7 @@ export function createRocmProcessCollector(
   const intel = opts.family === "intel";
   const drivers = intel ? INTEL_DRIVERS : AMD_DRIVERS;
   const uuidFromBus = intel ? intelUuidFromBus : rocmUuidFromBus;
+  const rocmSmiOutput = createRocmSmiCache(() => spawnPidsAndBus());
   let sysfsBuses: string[] | null = null;
   const cardBuses = (): string[] => {
     sysfsBuses ??= amdgpuBusIds(opts.sysClassDrm ?? "/sys/class/drm", drivers);
@@ -168,8 +190,10 @@ export function createRocmProcessCollector(
     if (inflight) return;
     inflight = true;
     try {
-      const out = checkRocmSmi() ? await spawnPidsAndBus() : "";
-      const procs = parseRocmPids(out);
+      const out = checkRocmSmi() ? await rocmSmiOutput() : "";
+      // The cached list can be up to ROCM_SMI_REFRESH_MS old: drop pids
+      // that have exited since.
+      const procs = parseRocmPids(out).filter((p) => existsSync(`${opts.hostProc}/${p.pid}`));
       const info = parseRocmInfo(out);
 
       // Fallback uuid for a pid with zero DRM fdinfo visibility (see
