@@ -19,6 +19,8 @@
 //     hwmon/hwmonM/
 //       temp1_input          → edge temp (m°C)
 //       power1_average       → avg socket power (µW), absent on some parts
+//       power1_cap           → power limit (µW), absent on APUs
+//       temp1_crit           → edge critical temp (m°C), absent on APUs
 //   /sys/module/amdgpu/version → driver version (one-shot)
 //
 // Connector entries like `card0-DP-1`, `card0-HDMI-A-1` live in the
@@ -187,6 +189,8 @@ async function sampleCard(meta: CardMeta, driverVersion: string | null): Promise
     sclkRaw,
     tempUC,
     powerUW,
+    powerCapUW,
+    tempCritUC,
   ] = await Promise.all([
     readNumber(join(meta.devicePath, 'gpu_busy_percent')),
     readNumber(join(meta.devicePath, 'mem_info_vram_used')),
@@ -194,6 +198,8 @@ async function sampleCard(meta: CardMeta, driverVersion: string | null): Promise
     readText(join(meta.devicePath, 'pp_dpm_sclk')),
     meta.hwmonPath ? readNumber(join(meta.hwmonPath, 'temp1_input')) : Promise.resolve(null),
     meta.hwmonPath ? readNumber(join(meta.hwmonPath, 'power1_average')) : Promise.resolve(null),
+    meta.hwmonPath ? readNumber(join(meta.hwmonPath, 'power1_cap')) : Promise.resolve(null),
+    meta.hwmonPath ? readNumber(join(meta.hwmonPath, 'temp1_crit')) : Promise.resolve(null),
   ]);
 
   const ts = nowTimestamp();
@@ -221,6 +227,9 @@ async function sampleCard(meta: CardMeta, driverVersion: string | null): Promise
     pcie_width_max: null,
     pcie_rx_kbps: null,
     pcie_tx_kbps: null,
+    // 0 means "not set" on some boards: no limit beats a 0 W gauge.
+    power_limit: powerCapUW ? Math.round(powerCapUW / 1_000_000) : null,
+    temp_limit: tempCritUC ? Math.round(tempCritUC / 1000) : null,
     timestamp: ts.iso,
     timestamp_epoch: ts.epoch,
   };

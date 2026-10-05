@@ -6,7 +6,7 @@
 //
 // All synthetic. No network, no real hardware.
 
-import { DEMO_GPUS } from './data';
+import { DEMO_GPUS, DEMO_TEMP_LIMIT } from './data';
 
 const STORAGE_KEY = 'gpuviewr.demo.fleet';
 
@@ -204,6 +204,8 @@ export function liveSamplesForHost(host: DemoHost) {
       pcie_width_max: spec.pcie_width_max,
       pcie_rx_kbps: Math.round(Math.abs(wave) * 80_000),
       pcie_tx_kbps: Math.round(Math.abs(wave) * 50_000),
+      power_limit: spec.power_max,
+      temp_limit: DEMO_TEMP_LIMIT,
       timestamp: iso,
       timestamp_epoch: epoch,
     };

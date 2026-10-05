@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createQueryBatcher } from "./gpu.js";
+import { createQueryBatcher, parseOutput } from "./gpu.js";
+import { parseSlowdownTemps } from "../../../server/services/parsers/nvidia.js";
 
 test("createQueryBatcher: a repeated GPU index starts a new interval", () => {
   const batches: string[][] = [];
@@ -38,4 +39,40 @@ test("createQueryBatcher: blank lines are ignored and an empty flush is a no-op"
   b.push("   ");
   b.flush();
   assert.equal(batches.length, 0);
+});
+
+// Captured on the RTX 3060 Ti of the .209 test box (driver 5xx), trimmed.
+const CSV_3060TI =
+  "0, NVIDIA GeForce RTX 3060 Ti, GPU-1, 570.00, 43, 7, 1200, 8192, 31.50, 30, 210, 405, 00000000:01:00.0, 1, 4, 16, 16, 200.00";
+const Q_3060TI = `
+==============NVSMI LOG==============
+
+Attached GPUs                             : 1
+GPU 00000000:01:00.0
+    Product Name                          : NVIDIA GeForce RTX 3060 Ti
+    Temperature
+        GPU Current Temp                  : 43 C
+        GPU T.Limit Temp                  : N/A
+        GPU Shutdown Temp                 : 98 C
+        GPU Slowdown Temp                 : 95 C
+        GPU Max Operating Temp            : 93 C
+`;
+
+test("parseOutput: power.limit and the -q slowdown temp land on the sample", () => {
+  const [s] = parseOutput(CSV_3060TI, new Map(), parseSlowdownTemps(Q_3060TI));
+  assert.equal(s.power, 31.5);
+  assert.equal(s.power_limit, 200);
+  assert.equal(s.temp_limit, 95);
+});
+
+test("parseOutput: N/A power limit and no -q data give null limits", () => {
+  const [s] = parseOutput(CSV_3060TI.replace(/200\.00$/, "[N/A]"), new Map());
+  assert.equal(s.power_limit, null);
+  assert.equal(s.temp_limit, null);
+});
+
+test("parseSlowdownTemps: an N/A slowdown temp is null, keyed by block order too", () => {
+  const temps = parseSlowdownTemps(Q_3060TI.replace("GPU Slowdown Temp                 : 95 C", "GPU Slowdown Temp : N/A"));
+  assert.equal(temps.get("idx:0"), null);
+  assert.equal(parseSlowdownTemps(Q_3060TI).get("idx:0"), 95);
 });

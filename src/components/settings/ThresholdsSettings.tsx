@@ -9,7 +9,9 @@ import { useThresholdsStore } from "../../store/thresholdsStore";
 import {
   DEFAULT_THRESHOLDS,
   gpuKey,
+  resolveThresholds,
   THRESHOLD_KEYS,
+  type HardwareLimits,
   type ThresholdKey,
   type ThresholdValues,
 } from "../../lib/thresholds";
@@ -28,6 +30,15 @@ interface GpuRow {
   key: string;
   host: string;
   gpu: string;
+  limits: HardwareLimits;
+}
+
+/** "200 W · 95 °C" from what the card reports, "" when it reports nothing. */
+function limitsLabel(limits: HardwareLimits): string {
+  const parts: string[] = [];
+  if (limits.pow) parts.push(`${limits.pow} W`);
+  if (limits.temp) parts.push(`${limits.temp} °C`);
+  return parts.join(" · ");
 }
 
 /** Settings > General > Chart thresholds: global lines, then per-GPU
@@ -53,13 +64,18 @@ export default function ThresholdsSettings() {
     const out = new Map<string, GpuRow>();
     for (const [hostId, samples] of latestByHost) {
       for (const [index, s] of samples) {
-        out.set(gpuKey(hostId, index), { key: gpuKey(hostId, index), host: label(hostId), gpu: `GPU ${index} · ${s.name}` });
+        out.set(gpuKey(hostId, index), {
+          key: gpuKey(hostId, index),
+          host: label(hostId),
+          gpu: `GPU ${index} · ${s.name}`,
+          limits: { pow: s.power_limit ?? null, temp: s.temp_limit ?? null },
+        });
       }
     }
     for (const key of Object.keys(gpus)) {
       if (out.has(key)) continue;
       const at = key.lastIndexOf(":");
-      out.set(key, { key, host: label(key.slice(0, at)), gpu: `GPU ${key.slice(at + 1)}` });
+      out.set(key, { key, host: label(key.slice(0, at)), gpu: `GPU ${key.slice(at + 1)}`, limits: {} });
     }
     return [...out.values()].sort((a, b) => a.host.localeCompare(b.host) || a.gpu.localeCompare(b.gpu));
   }, [hosts, latestByHost, gpus]);
@@ -141,14 +157,22 @@ function GpuThresholdRow({
 }>) {
   const { t } = useTranslation();
   const hasOwn = own !== undefined && THRESHOLD_KEYS.some((k) => k in own);
+  // What an empty field resolves to on this card (global, capped at its limits).
+  const inheritedLines = resolveThresholds(global, undefined, row.limits);
+  const hw = limitsLabel(row.limits);
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
       <div className="text-xs lg:self-center min-w-0">
         <div className="font-semibold truncate" title={row.host}>{row.host}</div>
         <div className="truncate" style={{ color: "var(--gv-text-muted)" }} title={row.gpu}>{row.gpu}</div>
+        {hw && (
+          <div className="truncate" style={{ color: "var(--gv-text-dim)" }}>
+            {t("settings.thresholds_hw_limits", { limits: hw })}
+          </div>
+        )}
       </div>
       {FIELD_ORDER.map((k) => {
-        const inherited = global[k];
+        const inherited = inheritedLines[k];
         const value = own && k in own ? own[k] : undefined;
         return (
           <ThresholdField

@@ -129,6 +129,29 @@ test('sysfs collector: produces a GpuSample matching the fixture values', async 
   assert.equal(s.clock_graphics, 605);
   assert.equal(s.clock_memory, null);     // never populated for APUs
   assert.equal(s.pci_bus_id, '0000:c5:00.0');
+  // Like the real Strix Halo, the fixture has no power1_cap / temp1_crit.
+  assert.equal(s.power_limit, null);
+  assert.equal(s.temp_limit, null);
+});
+
+test('sysfs collector: power1_cap and temp1_crit become the hardware limits', async () => {
+  const { sysClassDrm } = await makeFakeSys();
+  const hw0 = join(sysClassDrm, 'card0', 'device', 'hwmon', 'hwmon3');
+  await writeFile(join(hw0, 'power1_cap'), '263000000\n');  // 263 W
+  await writeFile(join(hw0, 'temp1_crit'), '100000\n');     // 100 °C
+  const cards = await __test.discoverAmdgpuCards(sysClassDrm);
+  const sample = await __test.sampleCard(cards[0], '6.10.5');
+  assert.equal(sample.power_limit, 263);
+  assert.equal(sample.temp_limit, 100);
+});
+
+test('sysfs collector: a 0 power1_cap means no limit, not 0 W', async () => {
+  const { sysClassDrm } = await makeFakeSys();
+  const hw0 = join(sysClassDrm, 'card0', 'device', 'hwmon', 'hwmon3');
+  await writeFile(join(hw0, 'power1_cap'), '0\n');
+  const cards = await __test.discoverAmdgpuCards(sysClassDrm);
+  const sample = await __test.sampleCard(cards[0], '6.10.5');
+  assert.equal(sample.power_limit, null);
 });
 
 test('sysfs collector: available() reports false when no amdgpu card found', async () => {

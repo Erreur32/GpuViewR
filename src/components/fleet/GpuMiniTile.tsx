@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { type GpuSample } from '../../store/gpuStore';
 import UsageArc from '../ui/UsageArc';
 import { shortGpuName } from '../../lib/gpuName';
+import { knownLimit } from '../../lib/gaugeScale';
 
 type Props = Readonly<{
   sample: GpuSample;
@@ -26,10 +27,9 @@ export default function GpuMiniTile({ sample }: Props) {
 
   const memTotal = sample.memory_total ?? 0;
   const memPct = memTotal > 0 ? (sample.memory_used / memTotal) * 100 : 0;
-  // Power normalised against a 450W ceiling (RTX 4090-class). For
-  // lower-TDP cards the gauge still reads meaningfully and the danger
-  // band kicks in at the right place visually.
-  const powerMax = 450;
+  // Power normalised against the card's own cap; agents without it fall
+  // back to a 450W ceiling (RTX 4090-class).
+  const powerMax = knownLimit(sample.power_limit) ? Math.max(sample.power_limit, sample.power) : 450;
   const powerPct = Math.max(0, Math.min(100, (sample.power / powerMax) * 100));
   // Temperature normalised against 100°C — same scale as System.
   const tempPct = Math.max(0, Math.min(100, sample.temperature));

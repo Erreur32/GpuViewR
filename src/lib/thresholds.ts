@@ -21,12 +21,27 @@ export function gpuKey(hostId: string, gpuIndex: number): string {
   return `${hostId}:${gpuIndex}`;
 }
 
-/** Lines for one GPU: its own value or "none" when set, else the global. */
-export function resolveThresholds(global: ThresholdValues, gpu: ThresholdValues | undefined): EffectiveThresholds {
+/** What the card itself reports (power cap, throttle temperature). */
+export interface HardwareLimits {
+  pow?: number | null;
+  temp?: number | null;
+}
+
+/** Lines for one GPU: its own value or "none" when set, else the global.
+ *  An inherited line never sits above the card's hardware limit: a 350 W
+ *  line can't be reached by a 200 W card, so it's drawn at 200 W. */
+export function resolveThresholds(
+  global: ThresholdValues,
+  gpu: ThresholdValues | undefined,
+  hw: HardwareLimits = {},
+): EffectiveThresholds {
   const out: EffectiveThresholds = {};
   for (const k of THRESHOLD_KEYS) {
-    const v = gpu && k in gpu ? gpu[k] : global[k];
-    if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    const own = gpu !== undefined && k in gpu;
+    const v = own ? gpu[k] : global[k];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    const cap = k === 'pow' || k === 'temp' ? hw[k] : null;
+    out[k] = !own && typeof cap === 'number' && cap > 0 ? Math.min(v, cap) : v;
   }
   return out;
 }

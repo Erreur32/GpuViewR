@@ -21,6 +21,9 @@ export interface GpuSample {
   pcie_width_max?: number | null;
   pcie_rx_kbps?: number | null;
   pcie_tx_kbps?: number | null;
+  /** Hardware power cap (W) and throttle temperature (°C), agent v0.11.9+. */
+  power_limit?: number | null;
+  temp_limit?: number | null;
   timestamp: string;
   timestamp_epoch: number;
 }

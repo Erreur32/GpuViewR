@@ -16,6 +16,7 @@ import {
   nowTimestamp,
   normalizeBusId,
   parsePciThroughput,
+  parseSlowdownTemps,
   type GpuSample,
   type PcieThroughput,
 } from "../../../server/services/parsers/nvidia.js";
@@ -89,11 +90,13 @@ export function createGpuCollector(
   let flushTimer: NodeJS.Timeout | null = null;
   let watchdog: NodeJS.Timeout | null = null;
   const batcher = createQueryBatcher((lines) => {
-    const samples = parseOutput(lines.join("\n"), lastPcieThroughput);
+    const samples = parseOutput(lines.join("\n"), lastPcieThroughput, lastSlowdownTemps);
     if (samples.length > 0) opts.onSample(samples);
   });
   let nvidiaSmiAvailable: boolean | null = null;
   let lastPcieThroughput: Map<string, PcieThroughput> = new Map();
+  // Slowdown temperature comes from the same `-q` call, so it's free.
+  let lastSlowdownTemps: Map<string, number | null> = new Map();
   let pcieDiagLogged = false;
   // `||` (not `??`) on purpose: pcieTickMs must be > 0 to be valid; an
   // explicit 0 would yield a zero-delay interval that pegs the event loop.
@@ -142,6 +145,7 @@ export function createGpuCollector(
         return;
       }
       lastPcieThroughput = parsePciThroughput(stdout);
+      lastSlowdownTemps = parseSlowdownTemps(stdout);
     });
   }
 
@@ -165,7 +169,7 @@ export function createGpuCollector(
         logger.warn("gpu", `nvidia-smi exited ${code}: ${stderr.trim()}`);
         return;
       }
-      const samples = parseOutput(stdout, lastPcieThroughput);
+      const samples = parseOutput(stdout, lastPcieThroughput, lastSlowdownTemps);
       if (samples.length > 0) opts.onSample(samples);
     });
   }
@@ -290,9 +294,16 @@ export function createGpuCollector(
   };
 }
 
-function parseOutput(
+/** `-q` data for one GPU: by bus id, else by block order (see parseQueryBlocks). */
+function byGpu<T>(map: Map<string, T>, busId: string | null, gpuIdx: number): T | undefined {
+  const hit = busId ? map.get(normalizeBusId(busId)) : undefined;
+  return hit ?? map.get(`idx:${gpuIdx}`);
+}
+
+export function parseOutput(
   out: string,
   throughputMap: Map<string, PcieThroughput>,
+  slowdownTemps: Map<string, number | null> = new Map(),
 ): GpuSample[] {
   const { iso, epoch } = nowTimestamp();
   const samples: GpuSample[] = [];
@@ -303,12 +314,8 @@ function parseOutput(
     if (parts.length < QUERY_FIELDS.length) continue;
     const busId = parts[12] || null;
     const gpuIdx = num(parts[0]);
-    // Explicit branching avoids the `string && get(...)` short-circuit
-    // returning `""` in TS's view, which makes the union widen to
-    // `"" | PcieThroughput | undefined` and breaks `.rxKbps` access.
-    let throughput: PcieThroughput | undefined;
-    if (busId) throughput = throughputMap.get(normalizeBusId(busId));
-    if (!throughput) throughput = throughputMap.get(`idx:${gpuIdx}`);
+    const throughput = byGpu(throughputMap, busId, gpuIdx);
+    const tempLimit = byGpu(slowdownTemps, busId, gpuIdx);
     samples.push({
       gpu_index: gpuIdx,
       name: parts[1] || "GPU",
@@ -329,6 +336,8 @@ function parseOutput(
       pcie_width_max: numOrNull(parts[16]),
       pcie_rx_kbps: throughput?.rxKbps ?? null,
       pcie_tx_kbps: throughput?.txKbps ?? null,
+      power_limit: numOrNull(parts[17]),
+      temp_limit: tempLimit ?? null,
       timestamp: iso,
       timestamp_epoch: epoch,
     });

@@ -15,6 +15,19 @@ test('resolveThresholds: a GPU can draw a line the global set leaves off', () =>
   assert.deepEqual(resolveThresholds({ fan: null }, { fan: 70 }), { fan: 70 });
 });
 
+test('resolveThresholds: an inherited line is capped at the hardware limit', () => {
+  const global = { temp: 83, pow: 350 };
+  assert.deepEqual(resolveThresholds(global, undefined, { pow: 200, temp: 95 }), { temp: 83, pow: 200 });
+});
+
+test('resolveThresholds: a GPU override ignores the hardware limit, null stays off', () => {
+  assert.deepEqual(resolveThresholds({ pow: null }, { temp: 99 }, { pow: 200, temp: 95 }), { temp: 99 });
+});
+
+test('resolveThresholds: unknown or 0 limits change nothing', () => {
+  assert.deepEqual(resolveThresholds({ pow: 350 }, undefined, { pow: 0, temp: null }), { pow: 350 });
+});
+
 test('gpuKey: host id and index', () => {
   assert.equal(gpuKey('local', 0), 'local:0');
 });
