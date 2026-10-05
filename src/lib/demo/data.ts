@@ -17,6 +17,9 @@ export interface DemoGpuSpec {
   amplitude: number;
 }
 
+/** GeForce "GPU Slowdown Temp" on recent cards. */
+export const DEMO_TEMP_LIMIT = 95;
+
 export const DEMO_GPUS: DemoGpuSpec[] = [
   {
     index: 0,
@@ -78,6 +81,8 @@ export interface DemoSample {
   pcie_width_max: number;
   pcie_rx_kbps: number;
   pcie_tx_kbps: number;
+  power_limit: number;
+  temp_limit: number;
   timestamp: string;
   timestamp_epoch: number;
 }
@@ -113,6 +118,8 @@ export function sampleAt(spec: DemoGpuSpec, epochMs: number): DemoSample {
     pcie_width_max: spec.pcie_width_max,
     pcie_rx_kbps: pcieRx,
     pcie_tx_kbps: pcieTx,
+    power_limit: spec.power_max,
+    temp_limit: DEMO_TEMP_LIMIT,
     timestamp: new Date(epochMs).toISOString(),
     timestamp_epoch: Math.floor(epochMs / 1000),
   };

@@ -20,6 +20,7 @@ import { useGpuStore } from "../../store/gpuStore";
 import { useUiStore } from "../../store/uiStore";
 import { useHostsStore, LOCAL_HOST_ID } from "../../store/hostsStore";
 import { memoryLabel } from "../../lib/memoryFormat";
+import { powerScale, tempScale } from "../../lib/gaugeScale";
 import GaugeCard from "./GaugeCard";
 import LiveChart from "./LiveChart";
 import RangeSelector from "./RangeSelector";
@@ -114,6 +115,8 @@ export default function Dashboard() {
   const memPct = active.memory_total
     ? (active.memory_used / active.memory_total) * 100
     : 0;
+  const tempBand = tempScale(active.temp_limit);
+  const powBand = powerScale(active.power ?? 0, active.power_limit);
 
   return (
     <div className="space-y-6">
@@ -237,9 +240,9 @@ export default function Dashboard() {
           value={active.temperature ?? 0}
           displayValue={active.temperature == null ? "N/A" : undefined}
           unit="°C"
-          max={100}
-          warn={75}
-          danger={85}
+          max={tempBand.max}
+          warn={tempBand.warn}
+          danger={tempBand.danger}
           icon={<Thermometer className="w-4 h-4" />}
           history={series?.temperature}
           ts={active.timestamp_epoch}
@@ -251,9 +254,9 @@ export default function Dashboard() {
           value={active.power ?? 0}
           displayValue={active.power == null ? "N/A" : undefined}
           unit="W"
-          max={Math.max(300, Math.ceil((active.power ?? 0) * 1.4))}
-          warn={250}
-          danger={350}
+          max={powBand.max}
+          warn={powBand.warn}
+          danger={powBand.danger}
           icon={<Zap className="w-4 h-4" />}
           history={series?.power}
           ts={active.timestamp_epoch}

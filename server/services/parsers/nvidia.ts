@@ -21,6 +21,7 @@ export const QUERY_FIELDS = [
   'pcie.link.gen.max',
   'pcie.link.width.current',
   'pcie.link.width.max',
+  'power.limit',
 ];
 
 export interface GpuSample {
@@ -43,6 +44,12 @@ export interface GpuSample {
   pcie_width_max: number | null;
   pcie_rx_kbps: number | null;
   pcie_tx_kbps: number | null;
+  /** Hardware power cap in W (nvidia `power.limit`, amdgpu `power1_cap`).
+   *  Optional: agents older than v0.11.9 don't send it. */
+  power_limit?: number | null;
+  /** Temperature where the card starts throttling, in °C (nvidia "GPU
+   *  Slowdown Temp", amdgpu `temp1_crit`). Same back-compat as above. */
+  temp_limit?: number | null;
   timestamp: string;
   timestamp_epoch: number;
 }
@@ -74,7 +81,7 @@ export function normalizeBusId(id: string): string {
   return id.trim().toLowerCase();
 }
 
-export function matchKbps(block: string, re: RegExp): number | null {
+export function matchNumber(block: string, re: RegExp): number | null {
   const m = re.exec(block);
   if (!m) return null;
   const raw = m[1].trim();
@@ -90,14 +97,25 @@ export function matchKbps(block: string, re: RegExp): number | null {
  * header use slightly different formats (real driver inconsistencies).
  */
 export function parsePciThroughput(out: string): Map<string, PcieThroughput> {
-  const result = new Map<string, PcieThroughput>();
+  return parseQueryBlocks(out, (block) => ({
+    txKbps: matchNumber(block, /Tx\s+Throughput\s*:\s*([^\n]+)/i),
+    rxKbps: matchNumber(block, /Rx\s+Throughput\s*:\s*([^\n]+)/i),
+  }));
+}
+
+/** "GPU Slowdown Temp : 95 C" per GPU, from the same `nvidia-smi -q`
+ *  output and with the same keys as parsePciThroughput. */
+export function parseSlowdownTemps(out: string): Map<string, number | null> {
+  return parseQueryBlocks(out, (block) => matchNumber(block, /GPU\s+Slowdown\s+Temp\s*:\s*([^\n]+)/i));
+}
+
+function parseQueryBlocks<T>(out: string, read: (block: string) => T): Map<string, T> {
+  const result = new Map<string, T>();
   const blocks = out.split(/^GPU\s+/m).slice(1);
   blocks.forEach((block, blockIdx) => {
     const header = block.split('\n', 1)[0]?.trim();
     if (!header) return;
-    const tx = matchKbps(block, /Tx\s+Throughput\s*:\s*([^\n]+)/i);
-    const rx = matchKbps(block, /Rx\s+Throughput\s*:\s*([^\n]+)/i);
-    const value: PcieThroughput = { txKbps: tx, rxKbps: rx };
+    const value = read(block);
     result.set(normalizeBusId(header), value);
     result.set(`idx:${blockIdx}`, value);
   });

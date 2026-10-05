@@ -55,10 +55,13 @@ export default function LiveChart({ gpuIndex }: Readonly<Props>) {
   // fetches + cache keys correctly. Defaults to 'local' for mono-host
   // installs (the only situation pre-v0.3.0).
   const selectedHostId = useHostsStore((s) => s.selectedHostId);
-  // Lines for this GPU: its own overrides, else the global set.
+  // Lines for this GPU: its own overrides, else the global set capped at
+  // the card's limits. Primitives as deps so a new sample doesn't redraw.
+  const powLimit = latestSample?.power_limit ?? null;
+  const tempLimit = latestSample?.temp_limit ?? null;
   const chartThresholds = useMemo(
-    () => resolveThresholds(globalThresholds, gpuThresholds[gpuKey(selectedHostId, gpuIndex)]),
-    [globalThresholds, gpuThresholds, selectedHostId, gpuIndex],
+    () => resolveThresholds(globalThresholds, gpuThresholds[gpuKey(selectedHostId, gpuIndex)], { pow: powLimit, temp: tempLimit }),
+    [globalThresholds, gpuThresholds, selectedHostId, gpuIndex, powLimit, tempLimit],
   );
   const [historic, setHistoric] = useState<HistoryRow[]>(() => cachedHistory?.rows ?? []);
   const [loadingHistory, setLoadingHistory] = useState(false);

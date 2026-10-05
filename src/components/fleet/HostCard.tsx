@@ -8,6 +8,7 @@ import {
 import { effectiveStatus, useHostsStore, type HostRecord } from "../../store/hostsStore";
 import { statusFor, colorFor } from "../../lib/status";
 import { memoryLabel } from "../../lib/memoryFormat";
+import { hostPowerMax } from "../../lib/gaugeScale";
 import StatusPill from "./StatusPill";
 import GpuMiniTile from "./GpuMiniTile";
 import MetricRow from "../ui/MetricRow";
@@ -214,9 +215,9 @@ function aggregateHostStats(samples: GpuSample[]): HostStats {
     vramTotal += g.memory_total ?? 0;
     pcieKbps += (g.pcie_rx_kbps ?? 0) + (g.pcie_tx_kbps ?? 0);
   }
-  // Power gauge max: scale to a reasonable headroom over current draw so
-  // the bar fills meaningfully on idle hosts but still has room to grow.
-  const powerMax = Math.max(300 * samples.length, Math.ceil(power * 1.4));
+  // Power gauge max: the sum of the cards' power caps, with headroom
+  // over the current draw for cards that don't report one.
+  const powerMax = hostPowerMax(samples);
   return {
     avgUtil: utilCount > 0 ? utilSum / utilCount : null,
     hottestTemp: hottest === Number.NEGATIVE_INFINITY ? null : hottest,

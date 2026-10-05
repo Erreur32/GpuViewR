@@ -3,6 +3,7 @@ import { Thermometer, Activity, MemoryStick, Fan, Zap, Cable, ArrowDownToLine, A
 import type { GpuSample } from '../../store/gpuStore';
 import { useGpuStore } from '../../store/gpuStore';
 import { statusFor, colorFor } from '../../lib/status';
+import { powerScale, tempScale } from '../../lib/gaugeScale';
 import Sparkline from './Sparkline';
 import MetricRow from '../ui/MetricRow';
 import VendorIcon, { detectVendor } from '../ui/VendorIcon';
@@ -37,6 +38,8 @@ function CompactGpuTile({ sample }: Readonly<{ sample: GpuSample }>) {
   const series = useGpuStore((s) => s.series.get(sample.gpu_index));
 
   const memPct = sample.memory_total ? (sample.memory_used / sample.memory_total) * 100 : 0;
+  const tempBand = tempScale(sample.temp_limit);
+  const powBand = powerScale(sample.power, sample.power_limit);
   const utilStatus = statusFor(sample.utilization ?? 0, 85, 95);
   const utilColor = colorFor(utilStatus);
 
@@ -122,18 +125,18 @@ function CompactGpuTile({ sample }: Readonly<{ sample: GpuSample }>) {
           icon={<Thermometer className="w-3.5 h-3.5" />}
           label={t('dashboard.metrics.temperature')}
           value={sample.temperature}
-          max={100}
-          warn={75}
-          danger={85}
+          max={tempBand.max}
+          warn={tempBand.warn}
+          danger={tempBand.danger}
           unit="°C"
         />
         <MetricRow
           icon={<Zap className="w-3.5 h-3.5" />}
           label={t('dashboard.metrics.power')}
           value={sample.power}
-          max={Math.max(300, Math.ceil(sample.power * 1.4))}
-          warn={250}
-          danger={350}
+          max={powBand.max}
+          warn={powBand.warn}
+          danger={powBand.danger}
           unit="W"
         />
       </div>
