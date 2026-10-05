@@ -1,10 +1,10 @@
 import { useEffect, useState, type JSX } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { LogOut, BellRing, Settings, LayoutDashboard, Server, FlaskConical } from 'lucide-react';
-import { useAuthStore } from '../../store/authStore';
+import { BellRing, Settings, LayoutDashboard, Server, FlaskConical } from 'lucide-react';
 import { api } from '../../lib/api';
 import FleetIndicator from '../fleet/FleetIndicator';
+import UserMenu from './UserMenu';
 
 const VERSION = `v${__APP_VERSION__}`;
 const IS_DEV = import.meta.env.DEV;
@@ -16,7 +16,6 @@ interface HealthInfo {
 
 export default function Header() {
   const { t } = useTranslation();
-  const { user, logout } = useAuthStore();
   const [health, setHealth] = useState<HealthInfo>({});
 
   useEffect(() => {
@@ -97,12 +96,7 @@ export default function Header() {
         </nav>
 
         <div className="flex items-center gap-2 ml-auto">
-          {user && (
-            <button className="btn-ghost" onClick={logout} title={t('auth.logout')}>
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">{user.username}</span>
-            </button>
-          )}
+          <UserMenu />
         </div>
       </div>
     </header>

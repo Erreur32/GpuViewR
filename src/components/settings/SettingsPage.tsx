@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Moon,
@@ -22,6 +22,8 @@ import {
   FileText,
   Bot,
   Filter,
+  LayoutDashboard,
+  UserRound,
 } from "lucide-react";
 import { useUiStore, CONTENT_WIDTH, PROCESS_MIN_MIB_MAX } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
@@ -55,8 +57,31 @@ const LANGUAGES: ReadonlyArray<{ code: string; label: string; flag: IconKey }> =
   { code: "fr", label: "Français", flag: "flag.fr" },
 ];
 
+/** Sub-tabs of Settings > General, the last one kept per browser. */
+type GeneralSubTab = "dashboard" | "user";
+const GENERAL_SUBTAB_KEY = "gpuviewr.settingsGeneralTab";
+
+function readGeneralSubTab(): GeneralSubTab {
+  try {
+    return localStorage.getItem(GENERAL_SUBTAB_KEY) === "user" ? "user" : "dashboard";
+  } catch {
+    return "dashboard";
+  }
+}
+
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();
+  const [generalTab, setGeneralTabState] = useState<GeneralSubTab>(readGeneralSubTab);
+  const setGeneralTab = (v: GeneralSubTab) => {
+    setGeneralTabState(v);
+    try { localStorage.setItem(GENERAL_SUBTAB_KEY, v); } catch { /* storage disabled */ }
+  };
+  // ?section=user (header user menu > Profile) opens the User sub-tab.
+  const [searchParams] = useSearchParams();
+  const section = searchParams.get("section");
+  useEffect(() => {
+    if (section === "user" || section === "dashboard") setGeneralTabState(section);
+  }, [section]);
   const {
     themeId,
     setThemeId,
@@ -151,7 +176,9 @@ export default function SettingsPage() {
       <div
         role="tablist"
         aria-label={t("settings.title")}
-        className="seg flex-wrap"
+        // Full width of the settings body (Page width slider), tabs share
+        // it evenly and wrap onto more rows when it gets narrow.
+        className="seg flex w-full flex-wrap"
       >
         {tabs.map((tb) => {
           const Icon = tb.icon;
@@ -160,7 +187,7 @@ export default function SettingsPage() {
               key={tb.id}
               role="tab"
               aria-selected={tab === tb.id}
-              className="seg-btn inline-flex items-center gap-2"
+              className="seg-btn flex-1 inline-flex items-center justify-center gap-2 whitespace-nowrap"
               onClick={() => selectTab(tb.id)}
             >
               <Icon className="w-4 h-4" /> {tb.label}
@@ -288,59 +315,87 @@ export default function SettingsPage() {
 
       {tab === "general" && (
         <div className="space-y-6">
-          <section className="card p-5 space-y-3">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Languages className="w-4 h-4" /> {t("settings.language")}
-            </h2>
-            <div className="seg">
-              {LANGUAGES.map((l) => (
-                <button
-                  key={l.code}
-                  className="seg-btn inline-flex items-center gap-2"
-                  aria-pressed={i18n.language?.startsWith(l.code)}
-                  onClick={() => setLang(l.code)}
-                >
-                  <Icon name={l.flag} size={12} title={l.label} />
-                  {l.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs" style={{ color: "var(--gv-text-dim)" }}>
-              {t("settings.lang_more_help")}
-            </p>
-          </section>
+          <div className="seg" role="group" aria-label={t("settings.tab_general")}>
+            <button
+              type="button"
+              className="seg-btn inline-flex items-center gap-2"
+              aria-pressed={generalTab === "dashboard"}
+              onClick={() => setGeneralTab("dashboard")}
+            >
+              <LayoutDashboard className="w-4 h-4" /> {t("settings.general_dashboard")}
+            </button>
+            <button
+              type="button"
+              className="seg-btn inline-flex items-center gap-2"
+              aria-pressed={generalTab === "user"}
+              onClick={() => setGeneralTab("user")}
+            >
+              <UserRound className="w-4 h-4" /> {t("settings.general_user")}
+            </button>
+          </div>
 
-          <NotificationsSection
-            soundEnabled={soundEnabled}
-            setSoundEnabled={setSoundEnabled}
-          />
+          {generalTab === "dashboard" && (
+            <>
+              <NotificationsSection
+                soundEnabled={soundEnabled}
+                setSoundEnabled={setSoundEnabled}
+              />
 
-          <ProcessFilterSection />
+              <ProcessFilterSection />
 
-          <section className="card p-5 space-y-3">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Clock className="w-4 h-4" /> {t("settings.time_format")}
-            </h2>
-            <div className="seg">
-              <button
-                className="seg-btn"
-                aria-pressed={timeFormat === "24h"}
-                onClick={() => setTimeFormat("24h")}
-              >
-                24h
-              </button>
-              <button
-                className="seg-btn"
-                aria-pressed={timeFormat === "12h"}
-                onClick={() => setTimeFormat("12h")}
-              >
-                12h (AM/PM)
-              </button>
-            </div>
-          </section>
+              <ThresholdsSettings />
+            </>
+          )}
 
-          <ThresholdsSettings />
-          <PasswordSettings />
+          {generalTab === "user" && (
+            <>
+              <section className="card p-5 space-y-3">
+                <h2 className="font-semibold flex items-center gap-2">
+                  <Languages className="w-4 h-4" /> {t("settings.language")}
+                </h2>
+                <div className="seg">
+                  {LANGUAGES.map((l) => (
+                    <button
+                      key={l.code}
+                      className="seg-btn inline-flex items-center gap-2"
+                      aria-pressed={i18n.language?.startsWith(l.code)}
+                      onClick={() => setLang(l.code)}
+                    >
+                      <Icon name={l.flag} size={12} title={l.label} />
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs" style={{ color: "var(--gv-text-dim)" }}>
+                  {t("settings.lang_more_help")}
+                </p>
+              </section>
+
+              <section className="card p-5 space-y-3">
+                <h2 className="font-semibold flex items-center gap-2">
+                  <Clock className="w-4 h-4" /> {t("settings.time_format")}
+                </h2>
+                <div className="seg">
+                  <button
+                    className="seg-btn"
+                    aria-pressed={timeFormat === "24h"}
+                    onClick={() => setTimeFormat("24h")}
+                  >
+                    24h
+                  </button>
+                  <button
+                    className="seg-btn"
+                    aria-pressed={timeFormat === "12h"}
+                    onClick={() => setTimeFormat("12h")}
+                  >
+                    12h (AM/PM)
+                  </button>
+                </div>
+              </section>
+
+              <PasswordSettings />
+            </>
+          )}
         </div>
       )}
 
