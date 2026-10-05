@@ -48,7 +48,7 @@
 Windows and macOS, each host with its own colour on every chart.
 
 ✅ **Agents used daily** on Linux (NVIDIA, AMD incl. APUs) and Windows
-(NVIDIA). Other combinations: see [what is tested](#roadmap-and-help-wanted).
+(NVIDIA, AMD). Other combinations: see [what is tested](#roadmap-and-help-wanted).
 
 </div>
 
@@ -154,9 +154,9 @@ and auto-update.
 ## Roadmap and help wanted
 
 **The agents work today** on most machines: Linux with NVIDIA or AMD
-(systemd or Docker, APUs included) and Windows with NVIDIA, all running
-daily against a Linux hub, with the LLM-aware process list. What remains
-is hardware nobody has tested yet (macOS, Intel, AMD / Intel on Windows)
+(systemd or Docker, APUs included) and Windows with NVIDIA or AMD, all
+reporting to a Linux hub with the LLM-aware process list. What remains is
+hardware nobody has tested yet (macOS, Intel, discrete Radeon fan speed)
 and the hub outside Linux.
 
 Your reports are what moves those forward: open an
@@ -165,17 +165,20 @@ Your reports are what moves those forward: open an
 
 | Area | Status | How you can help |
 |---|---|---|
-| **Linux agent, NVIDIA** (systemd or Docker) | ✅ Works, used daily | |
-| **Linux agent, AMD** with ROCm, APUs included (Strix Halo) | ✅ Works, used daily | |
-| **Windows agent, NVIDIA** | ✅ Works, used daily on an RTX 3090 Ti gaming PC (GPU metrics and process list) | |
+| **Linux agent, NVIDIA** (systemd or Docker) | ✅ Works, used daily | Docker agent on a recent driver: keep `pid: host` (in the compose files since v0.11.15, the UI tells you if it's missing) |
+| **Linux agent, AMD**, APUs included (Strix Halo) | ✅ Works, used daily; process list read from the kernel, `rocm-smi` no longer needed (v0.11.17); APU memory shown as VRAM + GTT (v0.11.21) | |
+| **Windows agent, NVIDIA** | ✅ Works (RTX 3090 Ti gaming PC, Quadro RTX 4000 on a 2018 driver since v0.11.20) | |
+| **Windows agent, AMD** | ✅ Works through Windows performance counters: GPU % and VRAM only, no fan, temperature or power (shown as N/A) | |
 | **Hub on Linux + Docker** | ✅ Works, used daily | |
-| Windows agent, AMD / Intel GPU | Works through Windows performance counters; GPU % not yet confirmed on real AMD / Intel hardware | Report whether GPU % moves under load |
-| AMD without ROCm (v0.10.0) | Tested on simulated hosts only | Report the installer output |
+| Fan speed on discrete Radeon cards, Linux (v0.11.17) | Tested on fixtures only | Compare GpuViewR's fan % with your vendor tool |
+| AMD without ROCm installed | Kernel path used daily on Jarvis; the installer on such a host is untested | Report the installer output |
+| Windows agent, Intel GPU | Should work through the same counters, untested | Report whether GPU % moves under load |
 | Intel GPUs on Linux, i915 / xe (v0.11.0) | Tested on fixtures only | Report GPU %, memory and the process list |
 | macOS agent (Apple Silicon) | Tested on synthetic data only, never on a real Mac | Two-minute capture: [Help the macOS agent](agent/README.md#help-the-macos-agent) |
 | macOS process list | Planned, needs a Mac to build against | Same capture as above |
 | Hub on macOS (Docker Desktop) | Aggregator only, untested | Report whether it starts and receives agents |
 | Hub on Windows (Docker Desktop / WSL2) | Untested | Same |
+| Machine fan as a fallback when the GPU has none (Linux) | Idea | Tell us if you'd use it |
 | Filesystem handshake (replaces the sidecar bootstrap secret) | Planned | |
 | Roles and permissions (RBAC) | Planned | |
 
