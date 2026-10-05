@@ -96,6 +96,12 @@ services:
     container_name: gpuviewr-hub-agent
     restart: unless-stopped
     profiles: [nvidia]
+    # pid: host: since driver 5xx (seen on 595, not on 550) nvidia-smi
+    # inside a container only lists that container's own GPU processes,
+    # so Ollama/llama.cpp in another container or on the host never showed
+    # up. Sharing the host pid namespace brings them back; the agent
+    # already reads /host/proc, so it sees no more than before.
+    pid: host
     # Healthcheck: the agent touches /tmp/.gpuviewr-agent-alive on every
     # successful WS frame send (cf. agent/src/transport.ts touchHeartbeat).
     # A 60 s threshold tolerates one reconnect cycle (PING_INTERVAL_MS=15 s,
