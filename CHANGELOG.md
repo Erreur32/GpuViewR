@@ -5,6 +5,16 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.19] - 2026-10-05
+
+### Fixed
+
+- **Windows: `nvidia-smi.exe` is also looked for in `C:\Program Files\NVIDIA Corporation\NVSMI\`**, where Quadro / RTX Enterprise and older "Standard" NVIDIA drivers install it instead of `System32`. Without it on PATH, the agent fell back to the Windows counters (no temperature, power or fan). The installer checks the same folder.
+
+### Changed
+
+- The tooltip on an N/A fan also covers professional cards (Quadro, RTX Enterprise) whose driver gives the fan speed to tools like HWiNFO but not to `nvidia-smi`.
+
 ## [0.11.18] - 2026-10-05
 
 ### Fixed
