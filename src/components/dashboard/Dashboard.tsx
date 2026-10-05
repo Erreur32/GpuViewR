@@ -98,6 +98,7 @@ export default function Dashboard() {
             label={currentHostLabel}
             isLocal={selectedHostId === LOCAL_HOST_ID}
           />
+          <HostSelector hosts={hosts} selectedHostId={selectedHostId} />
           <GpuTabs samples={samples} />
           <div className="ml-auto">
             <RangeSelector />

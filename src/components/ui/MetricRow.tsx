@@ -24,7 +24,7 @@ export default function MetricRow({
   return (
     <div className="flex items-center gap-2 text-xs min-w-0">
       <span
-        className="inline-flex items-center gap-1.5 w-[88px] shrink-0 uppercase tracking-wider"
+        className="inline-flex items-center gap-1.5 w-[118px] shrink-0 uppercase tracking-wider"
         style={{ color: 'var(--gv-text-muted)' }}
       >
         <span style={{ color }}>{icon}</span>
@@ -37,7 +37,7 @@ export default function MetricRow({
         <div
           className="absolute inset-0 rounded-full"
           style={{
-            background: `linear-gradient(90deg, color-mix(in srgb, ${color} 35%, #000) 0%, ${color} 70%, color-mix(in srgb, ${color} 70%, #fff) 100%)`,
+            background: `linear-gradient(90deg, color-mix(in srgb, ${color} 40%, var(--gv-bg)) 0%, ${color} 70%, color-mix(in srgb, ${color} 70%, #fff) 100%)`,
             boxShadow: `0 0 6px color-mix(in srgb, ${color} 35%, transparent)`,
             clipPath: `inset(0 ${100 - pct}% 0 0)`,
             transition: 'clip-path 500ms cubic-bezier(0.2, 0.8, 0.2, 1), background 300ms',

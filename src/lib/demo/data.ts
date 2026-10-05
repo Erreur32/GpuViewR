@@ -18,8 +18,11 @@ export interface DemoGpuSpec {
 }
 
 /** GeForce "GPU Slowdown Temp" on recent cards. */
-export const DEMO_TEMP_LIMIT = 95;
+const DEMO_TEMP_LIMIT = 95;
 
+/** A 4-card LLM box: each card has its own power cap and its own job, so
+ *  the multi-GPU views show cards that really differ (a 165 W gauge next
+ *  to a 450 W one, a hot 3090, an idle desktop card). */
 export const DEMO_GPUS: DemoGpuSpec[] = [
   {
     index: 0,
@@ -31,23 +34,51 @@ export const DEMO_GPUS: DemoGpuSpec[] = [
     pci_bus_id: '00000000:01:00.0',
     pcie_gen_max: 4,
     pcie_width_max: 16,
-    base_util: 55,
+    base_util: 60,
     base_temp: 62,
-    amplitude: 25,
+    amplitude: 30,
   },
   {
     index: 1,
-    name: 'NVIDIA GeForce RTX 3080 (Demo)',
+    name: 'NVIDIA GeForce RTX 3090 (Demo)',
     uuid: 'GPU-DEMO-1111-1111-1111-111111111111',
+    driver_version: '550.144.03',
+    memory_total: 24576,
+    power_max: 350,
+    pci_bus_id: '00000000:02:00.0',
+    pcie_gen_max: 4,
+    pcie_width_max: 8,
+    base_util: 45,
+    base_temp: 70,
+    amplitude: 35,
+  },
+  {
+    index: 2,
+    name: 'NVIDIA GeForce RTX 3080 (Demo)',
+    uuid: 'GPU-DEMO-2222-2222-2222-222222222222',
     driver_version: '550.144.03',
     memory_total: 10240,
     power_max: 320,
-    pci_bus_id: '00000000:02:00.0',
+    pci_bus_id: '00000000:41:00.0',
     pcie_gen_max: 4,
     pcie_width_max: 16,
-    base_util: 35,
-    base_temp: 58,
-    amplitude: 30,
+    base_util: 82,
+    base_temp: 64,
+    amplitude: 12,
+  },
+  {
+    index: 3,
+    name: 'NVIDIA GeForce RTX 4060 Ti 16GB (Demo)',
+    uuid: 'GPU-DEMO-3333-3333-3333-333333333333',
+    driver_version: '550.144.03',
+    memory_total: 16380,
+    power_max: 165,
+    pci_bus_id: '00000000:42:00.0',
+    pcie_gen_max: 4,
+    pcie_width_max: 8,
+    base_util: 9,
+    base_temp: 41,
+    amplitude: 7,
   },
 ];
 
@@ -90,8 +121,8 @@ export interface DemoSample {
 export function sampleAt(spec: DemoGpuSpec, epochMs: number): DemoSample {
   const t = epochMs / 1000;
   const u = clamp(spec.base_util + spec.amplitude * (wave(t, 0.05, spec.index) * 0.6 + wave(t, 0.013, spec.index * 1.7) * 0.4), 5, 99);
-  const temp = clamp(spec.base_temp + 8 * wave(t, 0.02, spec.index + 1) + u * 0.12, 35, 88);
-  const power = clamp(spec.power_max * (0.25 + 0.55 * (u / 100)) + 12 * wave(t, 0.08, spec.index), 30, spec.power_max);
+  const temp = clamp(spec.base_temp + 8 * wave(t, 0.02, spec.index + 1) + u * 0.12, 32, 91);
+  const power = clamp(spec.power_max * (0.18 + 0.78 * (u / 100)) + 8 * wave(t, 0.08, spec.index), 15, spec.power_max);
   const fan = clamp(20 + (temp - 40) * 1.6 + 4 * wave(t, 0.04, spec.index), 0, 100);
   const memUsedPct = clamp(0.45 + 0.35 * (wave(t, 0.011, spec.index) * 0.5 + 0.5), 0.2, 0.95);
   const clockG = Math.round(clamp(900 + 1500 * (u / 100) + 80 * wave(t, 0.06, spec.index), 300, 2700));
@@ -175,84 +206,96 @@ export function rangeToSec(range: string): number {
   }
 }
 
-export function fakeProcesses(gpuIndex: number) {
-  const seed = gpuIndex + 1;
-  const spec = DEMO_GPUS.find((g) => g.index === gpuIndex) ?? DEMO_GPUS[0];
-  return [
+type DemoProcess = Record<string, unknown> & { pid: number; process_name: string; used_memory: number };
+
+/** One job per card, as on a real multi-GPU LLM box: chat model + its
+ *  embedding runner, a coding model in Docker, a training run, and a
+ *  desktop card with a sleeping llama.cpp. */
+const DEMO_PROCESSES: Record<number, (now: number) => DemoProcess[]> = {
+  0: (now) => [
     {
-      pid: 1024 + seed,
-      process_name: 'python3',
-      gpu_uuid: spec.uuid,
-      used_memory: 4096 + seed * 320,
-      gpu_index: gpuIndex,
-      type: 'C' as const,
-      command: 'python3 train.py --epochs 50 --batch 32',
-      cpu_pct: 18 + seed * 4,
-      gpu_pct: 62 - seed * 5,
-    },
-    {
-      pid: 2048 + seed,
+      pid: 2049,
       process_name: 'llama-server',
-      gpu_uuid: spec.uuid,
-      used_memory: 2200 + seed * 180,
-      gpu_index: gpuIndex,
-      type: 'C' as const,
+      used_memory: 14210,
+      type: 'C',
       command: '/usr/lib/ollama/llama-server --model /root/.ollama/models/blobs/sha256-3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597 --port 42291',
       cpu_pct: 9,
-      gpu_pct: 24,
+      gpu_pct: 64,
       llm_runtime: 'ollama',
-      llm_model: 'qwen3-4b-instruct:64k',
-      llm_state: 'loaded' as const,
+      llm_model: 'qwen3-14b-instruct:64k',
+      llm_state: 'loaded',
       // Unloads in ~21 min, like Ollama's default keep_alive after a request.
-      llm_expires_at: Math.floor(Date.now() / 1000) + 21 * 60,
+      llm_expires_at: now + 21 * 60,
     },
     {
-      pid: 2000 + seed,
+      pid: 2401,
       process_name: 'llama-server',
-      gpu_uuid: spec.uuid,
-      used_memory: 1,
-      gtt_memory: 2,
-      gpu_index: gpuIndex,
-      type: 'C' as const,
-      command: '/app/llama-server -hf unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q5_K_M --port 8080 --alias qwen3-coder-30b --sleep-idle-seconds 1800',
-      cpu_pct: 0,
-      gpu_pct: 0,
-      llm_runtime: 'llamacpp',
-      llm_model: 'Qwen3-Coder-30B-A3B-Instruct-GGUF:Q5_K_M',
-      llm_state: 'idle' as const,
-      container_engine: 'docker',
-      container_id: '9692a12ef6f9',
-    },
-    {
-      pid: 2400 + seed,
-      process_name: 'llama-server',
-      gpu_uuid: spec.uuid,
-      used_memory: 0,
-      gtt_memory: 830,
-      gpu_index: gpuIndex,
-      type: 'C' as const,
+      used_memory: 1240,
+      type: 'C',
       command: '/usr/lib/ollama/llama-server --model /root/.ollama/models/blobs/sha256-daec91ffb5dd0c27411bd71f29932917c49cf529a641d0168496c3a501e3062c --port 37483 --embedding',
       cpu_pct: 0,
       gpu_pct: 0,
       llm_runtime: 'ollama',
       llm_model: 'bge-m3:latest',
-      llm_state: 'loaded' as const,
-      llm_expires_at: Math.floor(Date.now() / 1000) + 28 * 60,
+      llm_state: 'loaded',
+      llm_expires_at: now + 28 * 60,
       container_engine: 'docker',
       container_id: '711f503f64d0',
     },
+  ],
+  1: () => [
     {
-      pid: 3072 + seed,
-      process_name: 'Xorg',
-      gpu_uuid: spec.uuid,
-      used_memory: 180,
-      gpu_index: gpuIndex,
-      type: 'G' as const,
-      command: '/usr/lib/xorg/Xorg :0',
-      cpu_pct: 1,
-      gpu_pct: 2,
+      pid: 2002,
+      process_name: 'llama-server',
+      used_memory: 21480,
+      type: 'C',
+      command: '/app/llama-server -hf unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q5_K_M --port 8080 --alias qwen3-coder-30b -ngl 99',
+      cpu_pct: 4,
+      gpu_pct: 41,
+      llm_runtime: 'llamacpp',
+      llm_model: 'Qwen3-Coder-30B-A3B-Instruct-GGUF:Q5_K_M',
+      llm_state: 'loaded',
+      container_engine: 'docker',
+      container_id: '9692a12ef6f9',
     },
-  ];
+  ],
+  2: () => [
+    {
+      pid: 1027,
+      process_name: 'python3',
+      used_memory: 8960,
+      type: 'C',
+      command: 'python3 train.py --epochs 50 --batch 32',
+      cpu_pct: 34,
+      gpu_pct: 86,
+    },
+  ],
+  3: () => [
+    {
+      pid: 2404,
+      process_name: 'llama-server',
+      used_memory: 1,
+      gtt_memory: 2,
+      type: 'C',
+      command: '/app/llama-server -hf ggml-org/gemma-3-4b-it-GGUF:Q4_K_M --port 8081 --alias gemma3-4b --sleep-idle-seconds 1800',
+      cpu_pct: 0,
+      gpu_pct: 0,
+      llm_runtime: 'llamacpp',
+      llm_model: 'gemma-3-4b-it-GGUF:Q4_K_M',
+      llm_state: 'idle',
+      container_engine: 'docker',
+      container_id: 'c41e07d2a9b3',
+    },
+    { pid: 3075, process_name: 'Xorg', used_memory: 310, type: 'G', command: '/usr/lib/xorg/Xorg :0', cpu_pct: 1, gpu_pct: 3 },
+    { pid: 3311, process_name: 'gnome-shell', used_memory: 190, type: 'G', command: '/usr/bin/gnome-shell', cpu_pct: 2, gpu_pct: 2 },
+    { pid: 4120, process_name: 'firefox', used_memory: 420, type: 'G', command: '/usr/lib/firefox/firefox', cpu_pct: 6, gpu_pct: 4 },
+  ],
+};
+
+export function fakeProcesses(gpuIndex: number) {
+  const spec = DEMO_GPUS.find((g) => g.index === gpuIndex) ?? DEMO_GPUS[0];
+  const build = DEMO_PROCESSES[spec.index] ?? DEMO_PROCESSES[0];
+  return build(Math.floor(Date.now() / 1000)).map((p) => ({ ...p, gpu_uuid: spec.uuid, gpu_index: gpuIndex }));
 }
 
 /** What a Windows agent reports (PDH counters, see
