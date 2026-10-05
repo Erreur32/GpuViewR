@@ -203,7 +203,9 @@ export default function AboutSettings() {
             </p>
             <div className="text-xs mt-1" style={{ color: 'var(--gv-text-dim)' }}>
               {t('settings.about_version')}: <span className="font-mono" style={{ color: 'var(--gv-text)' }}>{result?.currentVersion ?? '-'}</span>
-              {result?.latestVersion && result.latestVersion !== result.currentVersion && (
+              {/* Only a newer release: a build ahead of its tag (pulled at merge,
+                  tag not pushed yet) must not read as "latest: older". */}
+              {result?.updateAvailable && result.latestVersion && (
                 <> · {t('settings.about_latest')}: <span className="font-mono font-semibold" style={{ color: 'var(--gv-accent)' }}>{result.latestVersion}</span></>
               )}
             </div>
