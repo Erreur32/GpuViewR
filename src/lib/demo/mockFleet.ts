@@ -123,6 +123,19 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     phaseOffsetMs: 31000,
     installMode: 'windows',
   },
+  {
+    // Powered off: no samples, so the dashboard shows the offline message.
+    id: 'a1b2c3d4-nas-gpu-fake-uuid-00000000005',
+    label: 'nas-gpu',
+    hostname: 'nas-gpu.lan',
+    kind: 'agent',
+    status: 'offline',
+    agent_version: DEMO_AGENT_VERSION,
+    enrolledAt: NOW - 86400 * 14,
+    gpuIndices: [2],
+    phaseOffsetMs: 41000,
+    installMode: 'systemd',
+  },
 ];
 
 export function findDemoHost(id: string | null): DemoHost | undefined {
