@@ -5,6 +5,18 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.20] - 2026-10-05
+
+### Added
+
+- **Change your own password** in *Settings > General > Password* (current password, new one twice). The session stays open. An admin locked out of the interface can reset a password with `docker exec -it gpuviewr-hub npx tsx scripts/reset-password.ts <user>`: the script now ships in the hub image.
+- **Missing GPU sensors are explained.** An N/A fan, temperature, power or utilization gets an info icon whose tooltip lists the usual reasons (APU, passive or professional card, Windows without `nvidia-smi`, macOS, virtual GPU).
+
+### Fixed
+
+- **Windows with an old NVIDIA driver still had no fan, temperature or power** after 0.11.19: the agent checked `nvidia-smi` with `--version`, which old versions (e.g. 411.95) reject, and fell back to the Windows counters. It now checks with `nvidia-smi -L`.
+- Temperature and power shown as **0 °C / 0 W** when the GPU has no such sensor now read **N/A**.
+
 ## [0.11.19] - 2026-10-05
 
 ### Fixed

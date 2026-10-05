@@ -1,6 +1,6 @@
-release: v0.11.19 nvidia-smi.exe in the NVSMI folder, N/A fan tooltip
+release: v0.11.20 password change, sensor tooltips, old nvidia-smi
 
-- Fixed: Windows agent and installer also look for nvidia-smi.exe in
-  the NVSMI folder (Quadro / Standard drivers).
-- Changed: N/A fan tooltip mentions pro cards hiding the fan from
-  nvidia-smi.
+- Added: change your own password in Settings; reset CLI in the hub
+  image; N/A sensor tooltips.
+- Fixed: nvidia-smi detected with -L (old drivers reject --version);
+  0 °C / 0 W without a sensor shown as N/A.
