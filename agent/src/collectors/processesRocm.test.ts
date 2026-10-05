@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FDINFO_MIN_AGE_MS } from "./processesAmdgpuFdinfo.js";
-import { amdgpuBusIds, createRocmProcessCollector } from "./processesRocm.js";
+import { amdgpuBusIds, createRocmProcessCollector, createRocmSmiCache } from "./processesRocm.js";
 import type { ProcessSnapshot } from "./processes.js";
 
 async function fakeCard(drm: string, name: string, uevent: string): Promise<void> {
@@ -71,4 +71,14 @@ test("rocm process collector: unavailable with neither rocm-smi nor an amdgpu ca
     onSnapshot: () => {},
   });
   assert.equal(collector.available(), false);
+});
+
+test("createRocmSmiCache: runs rocm-smi once per refresh window", async () => {
+  let runs = 0;
+  const get = createRocmSmiCache(async () => `out${++runs}`, 10_000);
+  assert.equal(await get(0), "out1");
+  assert.equal(await get(2_000), "out1"); // next 2 s ticks reuse it
+  assert.equal(await get(9_999), "out1");
+  assert.equal(await get(10_000), "out2");
+  assert.equal(runs, 2);
 });
