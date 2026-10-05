@@ -314,7 +314,7 @@
     "thresholds_inherit_all": "Use the global values",
     "thresholds_inherit": "Use the global value",
     "thresholds_off": "off",
-    "thresholds_per_gpu_help": "Each card can have its own lines. An empty field uses the global value, shown in grey and never above the card's own power or throttle limit (a 350 W line is drawn at 200 W on a 200 W card); 0 draws no line on that GPU.",
+    "thresholds_per_gpu_help": "Each card can have its own lines. Without its own value, a field shows the global value that applies, in grey italics, never above the card's own power or throttle limit (a 350 W line is drawn at 200 W on a 200 W card). Type a value to override it, × to go back to the global value; 0 draws no line on that GPU.",
     "thresholds_per_gpu": "Per GPU",
     "thresholds_admin_only": "Only an admin can change these values.",
     "db_title": "Database (history)",

@@ -235,3 +235,31 @@ test('readFanPct: fan stopped (zero-RPM mode) is 0, not N/A', async () => {
 test('readFanPct: APU without fan files is null (Strix Halo)', async () => {
   assert.equal(await readFanPct(await fakeHwmon({ temp1_input: '34000', power1_average: '9013000' })), null);
 });
+
+test('sysfs collector: APU (no mem_info_vram_vendor) reports VRAM + GTT', async () => {
+  // Jarvis, Strix Halo: VRAM 147 MiB used, Ollama's weights in GTT.
+  const { sysClassDrm } = await makeFakeSys();
+  const c0 = join(sysClassDrm, 'card0', 'device');
+  await writeFile(join(c0, 'mem_info_vram_used'), `${147 * 1048576}\n`);
+  await writeFile(join(c0, 'mem_info_vram_total'), `${49152 * 1048576}\n`);
+  await writeFile(join(c0, 'mem_info_gtt_used'), `${14239 * 1048576}\n`);
+  await writeFile(join(c0, 'mem_info_gtt_total'), `${36864 * 1048576}\n`);
+  const cards = await __test.discoverAmdgpuCards(sysClassDrm);
+  const s = await __test.sampleCard(cards[0], '6.10.5');
+  assert.equal(s.memory_used, 147 + 14239);
+  assert.equal(s.memory_total, 49152 + 36864);
+  assert.equal(s.memory_shared, true);
+});
+
+test('sysfs collector: discrete card (mem_info_vram_vendor present) keeps VRAM only', async () => {
+  const { sysClassDrm } = await makeFakeSys();
+  const c0 = join(sysClassDrm, 'card0', 'device');
+  await writeFile(join(c0, 'mem_info_vram_vendor'), 'samsung\n');
+  await writeFile(join(c0, 'mem_info_gtt_used'), `${300 * 1048576}\n`);
+  await writeFile(join(c0, 'mem_info_gtt_total'), `${16384 * 1048576}\n`);
+  const cards = await __test.discoverAmdgpuCards(sysClassDrm);
+  const s = await __test.sampleCard(cards[0], '6.10.5');
+  assert.equal(s.memory_used, 512);
+  assert.equal(s.memory_total, 8192);
+  assert.equal(s.memory_shared, undefined);
+});
