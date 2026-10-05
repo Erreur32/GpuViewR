@@ -1,4 +1,5 @@
-release: v0.11.16 warn when a Docker NVIDIA agent needs pid: host
+release: v0.11.17 KFD sysfs instead of rocm-smi, AMD fan speed
 
-- Added: the agent detects it runs in its own pid namespace; with 1 GB+
-  of unexplained VRAM the process table shows the pid: host fix to copy.
+- Changed: AMD process list read from /sys/class/kfd instead of
+  rocm-smi (collector ~1 % -> 0.4 % of a core on Strix Halo).
+- Added: AMD Radeon fan speed from hwmon; tooltip explaining an N/A fan.
