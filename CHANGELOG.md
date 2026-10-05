@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.13] - 2026-10-05
+
+### Fixed
+
+- **Windows: GPUs with more than 4 GB showed 4095 MiB of VRAM** when the agent reads the Windows performance counters (no `nvidia-smi`, AMD or Intel cards). The total now comes from the same registry value Task Manager uses, so an 8 GB card shows 8192 MiB. Not yet confirmed on a real Windows box.
+
 ## [0.11.12] - 2026-10-05
 
 ### Changed
