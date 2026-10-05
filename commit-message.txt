@@ -1,6 +1,7 @@
-release: v0.11.8 GPU % next to embedding runners, themed host picker
+release: v0.11.9 gauges and threshold lines follow the card's limits
 
-- Fixed: an Ollama chat model sharing a ROCm card with an embedding
-  runner (bge-m3) showed "-" as GPU %; it now gets the card utilisation
-  (~X %). The dashboard host picker uses the themed dropdown.
-- Changed: LLM only also hides embedding runners.
+- Changed: the agent reports the power cap and throttle temperature
+  (NVIDIA power.limit + Slowdown Temp, AMD power1_cap + temp1_crit);
+  gauges scale to them instead of fixed 450 W / 300 W, and inherited
+  chart threshold lines are capped at the card's limit.
+- Dependencies: vite 8.3.2, @types/node 22.20.5 (dev).
