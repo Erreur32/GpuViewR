@@ -307,8 +307,10 @@ function handleLlm(ctx: RouteCtx): Response | null {
     });
   }
   if (p === '/api/processes/llm') {
-    const procs = fakeProcesses(0).filter((x) => 'llm_runtime' in x);
-    return json({ processes: procs.map((x) => ({ ...x, host_id: 'local', host_label: 'demo', gpu_name: DEMO_GPUS[0].name })) });
+    const processes = DEMO_GPUS.flatMap((g) => fakeProcesses(g.index)
+      .filter((x) => 'llm_runtime' in x)
+      .map((x) => ({ ...x, host_id: 'local', host_label: 'demo', gpu_name: g.name })));
+    return json({ processes });
   }
   return null;
 }

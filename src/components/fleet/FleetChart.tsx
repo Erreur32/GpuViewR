@@ -492,7 +492,9 @@ export default function FleetChart() {
           )}
         </h2>
         <div className="flex flex-wrap gap-2">
-          <div className="seg" role="toolbar" aria-label={t('fleet.metrics_label')}>
+          {/* p-0 lines its height up with the RangeSelector trigger next
+              to it, same as the dashboard's gauge-view switch. */}
+          <div className="seg p-0" role="toolbar" aria-label={t('fleet.metrics_label')}>
             {METRICS.map((m) => (
               <button
                 key={m}

@@ -6,7 +6,7 @@
 //
 // All synthetic. No network, no real hardware.
 
-import { DEMO_GPUS, DEMO_TEMP_LIMIT } from './data';
+import { DEMO_GPUS, sampleAt } from './data';
 
 const STORAGE_KEY = 'gpuviewr.demo.fleet';
 
@@ -59,6 +59,9 @@ const NOW = Math.floor(Date.now() / 1000);
 /** How long ago each demo status was last heard from. */
 const LAST_SEEN_AGE_S: Record<DemoHost['status'], number> = { online: 2, lagging: 28, offline: 600 };
 
+/** Agents run the hub's own release, as after an auto-update. */
+const DEMO_AGENT_VERSION = __APP_VERSION__.replace(/-demo$/, '');
+
 export const DEMO_FLEET_HOSTS: DemoHost[] = [
   {
     id: 'local',
@@ -68,7 +71,7 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     status: 'online',
     agent_version: null,
     enrolledAt: NOW - 86400 * 30,
-    gpuIndices: [0, 1],
+    gpuIndices: [0, 1, 2, 3],
     phaseOffsetMs: 0,
     installMode: null,
   },
@@ -78,7 +81,7 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     hostname: 'rtx-rig.lan',
     kind: 'agent',
     status: 'online',
-    agent_version: '0.3.0',
+    agent_version: DEMO_AGENT_VERSION,
     enrolledAt: NOW - 86400 * 7,
     gpuIndices: [0],
     phaseOffsetMs: 5000,
@@ -90,9 +93,9 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     hostname: 'lab-3.uni',
     kind: 'agent',
     status: 'online',
-    agent_version: '0.3.0',
+    agent_version: DEMO_AGENT_VERSION,
     enrolledAt: NOW - 86400 * 3,
-    gpuIndices: [0, 1],
+    gpuIndices: [1, 2],
     phaseOffsetMs: 12000,
     installMode: 'docker',
   },
@@ -102,7 +105,7 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     hostname: 'thomas-mbp',
     kind: 'agent',
     status: 'lagging',
-    agent_version: '0.3.0',
+    agent_version: DEMO_AGENT_VERSION,
     enrolledAt: NOW - 86400 * 1,
     gpuIndices: [0],
     phaseOffsetMs: 23000,
@@ -114,9 +117,9 @@ export const DEMO_FLEET_HOSTS: DemoHost[] = [
     hostname: 'GAMING-PC',
     kind: 'agent',
     status: 'online',
-    agent_version: '0.3.0',
+    agent_version: DEMO_AGENT_VERSION,
     enrolledAt: NOW - 86400 * 2,
-    gpuIndices: [0],
+    gpuIndices: [3],
     phaseOffsetMs: 31000,
     installMode: 'windows',
   },
@@ -169,43 +172,19 @@ export function fakeFleetHealth() {
   };
 }
 
-/** Build live samples for one host, phase-shifted so each host's
- *  curves are visually distinct on the combined FleetChart. */
+/** Build live samples for one host: each card follows its own profile
+ *  (sampleAt), phase-shifted per host so the FleetChart curves differ. */
 export function liveSamplesForHost(host: DemoHost) {
   const now = Date.now();
   const epoch = Math.floor(now / 1000);
   const iso = new Date(now).toISOString().slice(0, 19).replace('T', ' ');
   return host.gpuIndices.map((idx) => {
     const spec = DEMO_GPUS[idx % DEMO_GPUS.length];
-    // Sine waves shifted per host so the FleetChart has distinct curves.
-    const wave = Math.sin((now + host.phaseOffsetMs) / 8000);
-    const utilization = Math.max(2, Math.min(100, spec.base_util + wave * spec.amplitude));
-    const temperature = Math.round(spec.base_temp + wave * (spec.amplitude / 3));
-    const power = Math.round(
-      Math.max(40, Math.min(spec.power_max, spec.power_max * 0.4 + wave * spec.power_max * 0.4)),
-    );
     return {
+      ...sampleAt(spec, now + host.phaseOffsetMs),
       gpu_index: idx,
       name: spec.name.replace('(Demo)', `(Demo · ${host.label})`),
       uuid: `${spec.uuid}-${host.label}`,
-      driver_version: spec.driver_version,
-      temperature,
-      utilization,
-      memory_used: Math.round(spec.memory_total * (0.3 + Math.abs(wave) * 0.4)),
-      memory_total: spec.memory_total,
-      power,
-      fan_speed: Math.round(40 + Math.abs(wave) * 50),
-      clock_graphics: 1500 + Math.round(wave * 500),
-      clock_memory: 9000 + Math.round(wave * 800),
-      pci_bus_id: spec.pci_bus_id,
-      pcie_gen_current: spec.pcie_gen_max,
-      pcie_gen_max: spec.pcie_gen_max,
-      pcie_width_current: spec.pcie_width_max,
-      pcie_width_max: spec.pcie_width_max,
-      pcie_rx_kbps: Math.round(Math.abs(wave) * 80_000),
-      pcie_tx_kbps: Math.round(Math.abs(wave) * 50_000),
-      power_limit: spec.power_max,
-      temp_limit: DEMO_TEMP_LIMIT,
       timestamp: iso,
       timestamp_epoch: epoch,
     };

@@ -78,7 +78,8 @@ async function bootstrap(): Promise<void> {
   // inline <script>), so script-src stays 'self'. style-src keeps
   // 'unsafe-inline' because charting (Recharts) and a few UI libs set
   // inline style attributes at runtime; img-src allows data:/blob: for
-  // logos and canvas exports; connect-src allows ws:/wss: for the two
+  // logos and canvas exports, plus img.shields.io for the badges of
+  // Settings > About (same list as the demo's CSP); connect-src allows ws:/wss: for the two
   // live WebSocket endpoints (/ws/gpu, /agent) alongside same-origin
   // fetch. frame-ancestors 'self' is the anti-clickjacking guard.
   // HSTS is left to helmet's default — browsers only honour it over
@@ -91,7 +92,7 @@ async function bootstrap(): Promise<void> {
           'default-src': ["'self'"],
           'script-src': ["'self'"],
           'style-src': ["'self'", "'unsafe-inline'"],
-          'img-src': ["'self'", 'data:', 'blob:'],
+          'img-src': ["'self'", 'data:', 'blob:', 'https://img.shields.io'],
           'font-src': ["'self'", 'data:'],
           'connect-src': ["'self'", 'ws:', 'wss:'],
           'worker-src': ["'self'", 'blob:'],
