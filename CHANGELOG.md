@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **AMD APU memory gauge stuck near 0** (Strix Halo: 147 MiB whatever the models). ROCm puts model weights in GTT, system RAM mapped for the GPU, not in the VRAM area the BIOS reserves. On an APU the gauge now shows **VRAM + GTT** (labelled so), e.g. 14.4 GB used with two Ollama models loaded. Discrete Radeon cards keep VRAM only.
 - **Settings > Chart thresholds > Per GPU showed 0 in every field** of a GPU without its own values, which reads as "no line". A field without its own value now shows the line that applies (global value, capped at the card's limit) in grey italics; typing a value overrides it, × goes back to the global value, and 0 still means no line.
 
+### Changed
+
+- **Header:** the user button opens a menu (signed in as, role, *Profile*, *Sign out*) instead of signing out on the first click. *Profile* opens *Settings > General > User*. The navigation is centred and spreads with the page width; below 1024 px it shows icons only, with the name as tooltip.
+- **Settings > General** has two sub-tabs: *Dashboard* (notifications, process filter, chart thresholds) and *User* (language, time format, password).
+- **Settings** now uses the same width as the other pages and follows the *Page width* setting; its tab bar spans it.
+
 ## [0.11.20] - 2026-10-05
 
 ### Added
