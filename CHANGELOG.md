@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.11] - 2026-10-05
+
+### Fixed
+
+- **Picking a powered-off host left no way back**: the dashboard showed only "No GPU detected: check nvidia-smi / GPU_VENDOR", without the host picker. The header now stays (host, status with last seen, host picker) and the message says the host is not responding since when, has never reported, or is waiting for its first sample. The nvidia-smi / GPU_VENDOR hint now only shows for the hub itself.
+
+### Changed
+
+- **Settings:** the *Updates* tab now sits between *Logs* and *About*.
+- **Demo:** a sixth, powered-off host shows that page.
+
 ## [0.11.10] - 2026-10-05
 
 ### Fixed
