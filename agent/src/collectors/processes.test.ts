@@ -85,6 +85,38 @@ test('mergeQueryPids: adds graphics-only pids, keeps compute-apps rows, drops un
   ]);
 });
 
+test('mergeQueryPids: -q -d PIDS alone builds compute and graphics rows (no compute-apps call)', () => {
+  // Same values as --query-compute-apps for the compute client (1154 MiB
+  // checked on .209), plus the graphics client compute-apps never lists.
+  const out = [
+    'GPU 00000000:01:00.0',
+    '    Processes',
+    '        Process ID                        : 1517064',
+    '            Type                          : C',
+    '            Name                          : python3',
+    '            Used GPU Memory               : 1154 MiB',
+    '        Process ID                        : 1607',
+    '            Type                          : G',
+    '            Name                          : /usr/lib/xorg/Xorg',
+    '            Used GPU Memory               : 245 MiB',
+  ].join('\n');
+  const procs: AgentGpuProcess[] = [];
+  mergeQueryPids(procs, parseQueryPids(out), new Map([['00000000:01:00.0', 'GPU-aaa']]), '/nonexistent');
+  assert.deepEqual(procs.map((p) => [p.pid, p.process_name, p.gpu_uuid, p.used_memory]), [
+    [1517064, 'python3', 'GPU-aaa', 1154],
+    [1607, 'Xorg', 'GPU-aaa', 245], // displayName keeps the base name
+  ]);
+});
+
+test('parseQueryPids: an empty Name (process in another container) stays empty', () => {
+  // Real nvidia-smi 550 output seen from the agent container on .209.
+  const out = 'GPU 00000000:01:00.0\n    Processes\n        Process ID                        : 1520223\n            Type                          : C\n            Name                          : \n            Used GPU Memory               : 1154 MiB\n';
+  const [e] = parseQueryPids(out);
+  assert.equal(e.name, '');
+  assert.equal(e.used_memory, 1154);
+  assert.equal(e.type, 'C');
+});
+
 async function fakeProc(nspid: string | null): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'gv-pidns-'));
   await mkdir(join(root, 'self'));
