@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
-import { authService, canRegister, REGISTRATION_CLOSED_MESSAGE } from '../services/authService.js';
+import { authService, canRegister, PasswordChangeError, REGISTRATION_CLOSED_MESSAGE } from '../services/authService.js';
 import { UserRepository } from '../database/models/User.js';
 import { requireAuth, getBearerPayload } from '../middleware/auth.js';
 
@@ -70,6 +70,22 @@ router.post('/login', authLimiter, async (req, res) => {
     });
   } catch (err) {
     res.status(401).json({ error: (err as Error).message });
+  }
+});
+
+// Change the caller's own password. Rate-limited like login: the current
+// password check is a guessing oracle for a stolen session token.
+router.post('/password', authLimiter, requireAuth, async (req, res) => {
+  const { current_password: current, new_password: next } = req.body || {};
+  if (typeof current !== 'string' || typeof next !== 'string') {
+    return res.status(400).json({ error: 'current_password and new_password required' });
+  }
+  try {
+    const token = await authService.changePassword(req.user!.sub, current, next);
+    res.json({ ok: true, token });
+  } catch (err) {
+    if (err instanceof PasswordChangeError) return res.status(err.status).json({ error: err.message });
+    res.status(500).json({ error: 'Password change failed' });
   }
 });
 
