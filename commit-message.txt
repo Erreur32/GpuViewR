@@ -1,6 +1,5 @@
-release: v0.11.11 offline host keeps the dashboard header
+release: v0.11.12 AMD agent runs rocm-smi every 10 s
 
-- Fixed: picking a powered-off host showed only the smi / GPU_VENDOR
-  hint with no host picker; the header stays and the message says the
-  host is not responding since N.
-- Changed: Settings tab order Logs > Updates > About; demo offline host.
+- Changed: rocm-smi output cached for 10 s instead of a run every 2 s;
+  fdinfo data still every tick. AMD process collector 2.95 % -> 0.79 %
+  of a core on Strix Halo.

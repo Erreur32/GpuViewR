@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.12] - 2026-10-05
+
+### Changed
+
+- **AMD agent: about 2 % of a CPU core less.** `rocm-smi` (a Python script) ran every 2 s for the process list and cost more than the agent itself. It now runs every 10 s; VRAM, GTT, per-process GPU % and the card of each process still refresh every 2 s from the kernel. Measured on a Strix Halo: the process collector went from 2.95 % to 0.79 % of a core. Only the ROCm process list and CU occupancy can now be up to 10 s old; a process that exits disappears at once.
+
 ## [0.11.11] - 2026-10-05
 
 ### Fixed
