@@ -247,6 +247,7 @@ export default function Dashboard() {
           history={series?.fan_speed?.map((v) => v ?? 0)}
           ts={active.timestamp_epoch}
           available={active.fan_speed != null}
+          unavailableHint={t("dashboard.fan_na_hint")}
         />
         <GaugeCard
           variant={gaugeView}

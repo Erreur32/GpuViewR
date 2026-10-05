@@ -116,6 +116,7 @@ function CompactGpuTile({ sample }: Readonly<{ sample: GpuSample }>) {
           label={t('dashboard.metrics.fan')}
           value={sample.fan_speed ?? 0}
           displayValue={sample.fan_speed === null || sample.fan_speed === undefined ? 'N/A' : undefined}
+          hint={sample.fan_speed === null || sample.fan_speed === undefined ? t('dashboard.fan_na_hint') : undefined}
           max={100}
           warn={75}
           danger={90}

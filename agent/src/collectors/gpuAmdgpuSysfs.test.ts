@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, symlink } from 'node:fs/promises';
 import { tmpdir, release } from 'node:os';
 import { join } from 'node:path';
-import { __test, createAmdgpuSysfsCollector } from './gpuAmdgpuSysfs.js';
+import { __test, createAmdgpuSysfsCollector, readFanPct } from './gpuAmdgpuSysfs.js';
 import type { GpuSample } from '../../../server/services/parsers/nvidia.js';
 
 /** Build a fake /sys/class/drm tree:
@@ -129,7 +129,8 @@ test('sysfs collector: produces a GpuSample matching the fixture values', async 
   assert.equal(s.clock_graphics, 605);
   assert.equal(s.clock_memory, null);     // never populated for APUs
   assert.equal(s.pci_bus_id, '0000:c5:00.0');
-  // Like the real Strix Halo, the fixture has no power1_cap / temp1_crit.
+  // Like the real Strix Halo, the fixture has no power1_cap / temp1_crit / fan.
+  assert.equal(s.fan_speed, null);
   assert.equal(s.power_limit, null);
   assert.equal(s.temp_limit, null);
 });
@@ -209,4 +210,28 @@ test('readDriverVersion: falls back to the kernel release when the module file i
   const version = await __test.readDriverVersion(amdgpuModulePath);
   assert.equal(version, release());
   assert.notEqual(version, null);
+});
+
+async function fakeHwmon(files: Record<string, string>): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'gv-hwmon-'));
+  for (const [name, value] of Object.entries(files)) await writeFile(join(dir, name), `${value}\n`);
+  return dir;
+}
+
+test('readFanPct: pwm1 duty against pwm1_max (discrete Radeon)', async () => {
+  assert.equal(await readFanPct(await fakeHwmon({ pwm1: '102', pwm1_max: '255' })), 40);
+  assert.equal(await readFanPct(await fakeHwmon({ pwm1: '102' })), 40); // max defaults to 255
+});
+
+test('readFanPct: RPM ratio when pwm1 is unreadable or 0 under firmware control', async () => {
+  assert.equal(await readFanPct(await fakeHwmon({ fan1_input: '1650', fan1_max: '3300' })), 50);
+  assert.equal(await readFanPct(await fakeHwmon({ pwm1: '0', fan1_input: '1650', fan1_max: '3300' })), 50);
+});
+
+test('readFanPct: fan stopped (zero-RPM mode) is 0, not N/A', async () => {
+  assert.equal(await readFanPct(await fakeHwmon({ pwm1: '0', pwm1_max: '255' })), 0);
+});
+
+test('readFanPct: APU without fan files is null (Strix Halo)', async () => {
+  assert.equal(await readFanPct(await fakeHwmon({ temp1_input: '34000', power1_average: '9013000' })), null);
 });

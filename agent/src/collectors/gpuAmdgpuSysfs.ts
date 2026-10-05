@@ -21,6 +21,8 @@
 //       power1_average       → avg socket power (µW), absent on some parts
 //       power1_cap           → power limit (µW), absent on APUs
 //       temp1_crit           → edge critical temp (m°C), absent on APUs
+//       pwm1, pwm1_max       → fan duty (0..255), discrete cards only
+//       fan1_input, fan1_max → fan RPM, used when pwm1 is unreadable
 //   /sys/module/amdgpu/version → driver version (one-shot)
 //
 // Connector entries like `card0-DP-1`, `card0-HDMI-A-1` live in the
@@ -111,6 +113,22 @@ function parseActiveDpm(raw: string | null): number | null {
   return null;
 }
 
+/** Fan speed in % from hwmon: pwm1 / pwm1_max (duty), else the RPM
+ *  ratio fan1_input / fan1_max (RDNA3 boards where pwm1 reads 0 under
+ *  firmware fan control). Null when the card has no fan of its own. */
+export async function readFanPct(hwmonPath: string): Promise<number | null> {
+  const [pwm, pwmMax, rpm, rpmMax] = await Promise.all([
+    readNumber(join(hwmonPath, 'pwm1')),
+    readNumber(join(hwmonPath, 'pwm1_max')),
+    readNumber(join(hwmonPath, 'fan1_input')),
+    readNumber(join(hwmonPath, 'fan1_max')),
+  ]);
+  const pct = (v: number, max: number) => Math.max(0, Math.min(100, Math.round((v / max) * 100)));
+  if (pwm !== null && pwm > 0) return pct(pwm, pwmMax && pwmMax > 0 ? pwmMax : 255);
+  if (rpm !== null && rpmMax && rpmMax > 0) return pct(rpm, rpmMax);
+  return pwm === 0 ? 0 : null;
+}
+
 async function pickHwmonDir(devicePath: string): Promise<string | null> {
   const hwmonRoot = join(devicePath, 'hwmon');
   try {
@@ -191,6 +209,7 @@ async function sampleCard(meta: CardMeta, driverVersion: string | null): Promise
     powerUW,
     powerCapUW,
     tempCritUC,
+    fanPct,
   ] = await Promise.all([
     readNumber(join(meta.devicePath, 'gpu_busy_percent')),
     readNumber(join(meta.devicePath, 'mem_info_vram_used')),
@@ -200,6 +219,7 @@ async function sampleCard(meta: CardMeta, driverVersion: string | null): Promise
     meta.hwmonPath ? readNumber(join(meta.hwmonPath, 'power1_average')) : Promise.resolve(null),
     meta.hwmonPath ? readNumber(join(meta.hwmonPath, 'power1_cap')) : Promise.resolve(null),
     meta.hwmonPath ? readNumber(join(meta.hwmonPath, 'temp1_crit')) : Promise.resolve(null),
+    meta.hwmonPath ? readFanPct(meta.hwmonPath) : Promise.resolve(null),
   ]);
 
   const ts = nowTimestamp();
@@ -217,7 +237,8 @@ async function sampleCard(meta: CardMeta, driverVersion: string | null): Promise
     // sometimes don't — we return 0 to match the rocm-smi mapping which
     // also coerces nulls to 0 for the `power` field.
     power: powerUW !== null ? Math.round(powerUW / 1_000_000) : 0,
-    fan_speed: null,
+    // APUs (Strix Halo) have no fan of their own: null, shown as N/A.
+    fan_speed: fanPct,
     clock_graphics: parseActiveDpm(sclkRaw),
     clock_memory: null,
     pci_bus_id: meta.pciBus || null,
