@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
@@ -5,6 +6,11 @@ import { UserRepository, type User } from '../database/models/User.js';
 
 const SALT_ROUNDS = 10;
 const TOKEN_TTL = '7d';
+
+/** 'revoked' (userId): the account's older tokens just stopped being
+ *  valid, so long-lived sockets (gpuStreamWS) re-check theirs now
+ *  instead of at their next periodic check. */
+export const sessionEvents = new EventEmitter();
 
 export interface JwtPayload {
   sub: number;
@@ -114,6 +120,7 @@ export const authService = {
     if (newPassword.length > 256) throw new AccountChangeError('Password must be at most 256 characters', 400);
     if (newPassword === currentPassword) throw new AccountChangeError('The new password must differ from the current one', 400);
     UserRepository.updatePassword(user.id, await this.hashPassword(newPassword));
+    sessionEvents.emit('revoked', user.id);
     // Re-read: the update bumped token_version, the new token must carry it.
     return this.signToken(UserRepository.findById(user.id)!);
   },

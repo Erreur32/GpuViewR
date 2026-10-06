@@ -1,10 +1,12 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { authService } from './authService.js';
+import { authService, sessionEvents } from './authService.js';
 import { metricsBus, type SampleEvent, type HostStatusEvent } from './_metricsBus.js';
 import { LOCAL_HOST_ID } from '../database/models/Host.js';
 import { alertService } from './alertService.js';
 import { logger } from '../utils/logger.js';
 import type { AlertEvent, AlertRule } from '../database/models/Alert.js';
+
+const SESSION_RECHECK_MS = 60_000;
 
 /**
  * Returns the WebSocketServer in noServer mode. The HTTP `upgrade`
@@ -46,14 +48,29 @@ export function setupGpuWebSocket(): WebSocketServer {
     const onAlert = (event: AlertEvent, rule: AlertRule) =>
       safeSend(ws, { type: 'alert', event, notify_browser: !!rule.notify_browser, notify_sound: !!rule.notify_sound });
 
+    // The token is only presented at connect, so re-check it while the
+    // socket lives: at once on a password change through the hub, and
+    // every minute for what happens elsewhere (reset CLI, deleted
+    // account, plain expiry). 4001 sends the browser to the login page.
+    const closeIfRevoked = () => {
+      if (!authService.verifyToken(token)) ws.close(4001, 'Session revoked');
+    };
+    const onRevoked = (userId: number) => {
+      if (userId === payload.sub) closeIfRevoked();
+    };
+    const recheck = setInterval(closeIfRevoked, SESSION_RECHECK_MS);
+
     metricsBus.on('sample', onSample);
     metricsBus.on('host_status', onHostStatus);
     alertService.on('event', onAlert);
+    sessionEvents.on('revoked', onRevoked);
 
     ws.on('close', (code, reason) => {
+      clearInterval(recheck);
       metricsBus.off('sample', onSample);
       metricsBus.off('host_status', onHostStatus);
       alertService.off('event', onAlert);
+      sessionEvents.off('revoked', onRevoked);
       const uptimeS = Math.round((Date.now() - connectedAt) / 1000);
       // Elevated to warn when the socket lived less than 5s — a healthy
       // browser tab holds this open indefinitely, so a sub-5s lifetime
