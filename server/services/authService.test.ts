@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { _setDatabaseForTests, closeDatabase } from '../database/connection.js';
 import { UserRepository } from '../database/models/User.js';
-import { authService, canRegister, PasswordChangeError } from './authService.js';
+import { authService, canRegister, AccountChangeError } from './authService.js';
+import jwt from 'jsonwebtoken';
+import { config } from '../config.js';
 
 before(() => {
   const db = new Database(':memory:');
@@ -80,11 +82,55 @@ test('changePassword: right current password, new one works for login', async ()
 test('changePassword: wrong current, too short, unchanged or unknown account are refused', async () => {
   const { user } = await authService.register('pwuser', 'old-password-1', { callerIsAdmin: false });
   const status = async (p: Promise<unknown>) => {
-    try { await p; return 0; } catch (e) { return e instanceof PasswordChangeError ? e.status : -1; }
+    try { await p; return 0; } catch (e) { return e instanceof AccountChangeError ? e.status : -1; }
   };
   assert.equal(await status(authService.changePassword(user.id, 'wrong-password', 'new-password-2')), 403);
   assert.equal(await status(authService.changePassword(user.id, 'old-password-1', 'short')), 400);
   assert.equal(await status(authService.changePassword(user.id, 'old-password-1', 'old-password-1')), 400);
   assert.equal(await status(authService.changePassword(9999, 'old-password-1', 'new-password-2')), 404);
   assert.ok((await authService.login('pwuser', 'old-password-1')).token, 'unchanged after refusals');
+});
+
+test('changeUsername: renamed account logs in under the new name, token carries it', async () => {
+  const { user } = await authService.register('olduser', 'password-123', { callerIsAdmin: false });
+  const r = await authService.changeUsername(user.id, 'password-123', '  newuser  ');
+  assert.equal(r.user.username, 'newuser');
+  assert.equal(authService.verifyToken(r.token)?.username, 'newuser');
+  await assert.rejects(authService.login('olduser', 'password-123'));
+  assert.equal((await authService.login('newuser', 'password-123')).user.id, user.id);
+});
+
+test('changeUsername: wrong password, too short, unchanged, taken or unknown account are refused', async () => {
+  const { user } = await authService.register('olduser', 'password-123', { callerIsAdmin: false });
+  await authService.register('taken', 'password-123', { callerIsAdmin: true });
+  const status = async (p: Promise<unknown>) => {
+    try { await p; return 0; } catch (e) { return e instanceof AccountChangeError ? e.status : -1; }
+  };
+  assert.equal(await status(authService.changeUsername(user.id, 'wrong-password', 'newuser')), 403);
+  assert.equal(await status(authService.changeUsername(user.id, 'password-123', 'ab')), 400);
+  assert.equal(await status(authService.changeUsername(user.id, 'password-123', 'olduser')), 400);
+  assert.equal(await status(authService.changeUsername(user.id, 'password-123', 'evil\n[INFO] forged')), 400);
+  assert.equal(await status(authService.changeUsername(user.id, 'password-123', 'taken')), 409);
+  assert.equal(await status(authService.changeUsername(9999, 'password-123', 'newuser')), 404);
+  assert.equal(UserRepository.findById(user.id)?.username, 'olduser', 'unchanged after refusals');
+});
+
+test('verifyToken: a password change revokes older tokens, a rename does not', async () => {
+  const { user, token: before } = await authService.register('sess', 'password-123', { callerIsAdmin: false });
+  const { token: renamed } = await authService.changeUsername(user.id, 'password-123', 'sess2');
+  assert.equal(authService.verifyToken(before)?.username, 'sess2', 'rename keeps sessions, name read from the row');
+  const after = await authService.changePassword(user.id, 'password-123', 'password-456');
+  assert.equal(authService.verifyToken(before), null);
+  assert.equal(authService.verifyToken(renamed), null);
+  assert.equal(authService.verifyToken(after)?.sub, user.id);
+});
+
+test('verifyToken: legacy token without ver is accepted until the first password change; deleted account is refused', async () => {
+  const { user } = await authService.register('legacy', 'password-123', { callerIsAdmin: false });
+  const legacy = jwt.sign({ sub: user.id, username: 'legacy', role: user.role }, config.jwtSecret, { expiresIn: '1h' });
+  assert.equal(authService.verifyToken(legacy)?.sub, user.id);
+  const fresh = await authService.changePassword(user.id, 'password-123', 'password-456');
+  assert.equal(authService.verifyToken(legacy), null);
+  UserRepository.delete(user.id);
+  assert.equal(authService.verifyToken(fresh), null);
 });

@@ -22,7 +22,9 @@ export const authService = {
   },
 
   signToken(user: User): string {
-    const payload: JwtPayload = { sub: user.id, username: user.username, role: user.role };
+    const payload: JwtPayload & { ver: number } = {
+      sub: user.id, username: user.username, role: user.role, ver: user.token_version,
+    };
     return jwt.sign(payload, config.jwtSecret, { expiresIn: TOKEN_TTL });
   },
 
@@ -44,7 +46,15 @@ export const authService = {
         typeof decoded.username !== 'string' ||
         (decoded.role !== 'admin' && decoded.role !== 'user')
       ) return null;
-      return { sub: decoded.sub, username: decoded.username, role: decoded.role };
+      // The signature alone isn't enough: a password change bumps the
+      // account's token_version (revoking older tokens) and a deleted
+      // account must lose access at once. Tokens signed before `ver`
+      // existed read as version 0, the column default. Username and
+      // role come from the row, so a rename shows up without re-login.
+      const user = UserRepository.findById(decoded.sub);
+      const ver = typeof decoded.ver === 'number' ? decoded.ver : 0;
+      if (user?.token_version !== ver) return null;
+      return { sub: user.id, username: user.username, role: user.role };
     } catch {
       return null;
     }
@@ -92,18 +102,43 @@ export const authService = {
   },
 
   /** Self-service password change: the current password must match.
-   *  Same 8-character minimum as register. Returns a fresh token. */
+   *  Same 8-character minimum as register. Every other session of the
+   *  account is signed out; returns a fresh token for this one. */
   async changePassword(userId: number, currentPassword: string, newPassword: string): Promise<string> {
     const user = UserRepository.findById(userId);
-    if (!user) throw new PasswordChangeError('Account not found', 404);
+    if (!user) throw new AccountChangeError('Account not found', 404);
     if (!(await this.verifyPassword(currentPassword, user.password_hash))) {
-      throw new PasswordChangeError('Current password is incorrect', 403);
+      throw new AccountChangeError('Current password is incorrect', 403);
     }
-    if (newPassword.length < 8) throw new PasswordChangeError('Password must be at least 8 characters', 400);
-    if (newPassword.length > 256) throw new PasswordChangeError('Password must be at most 256 characters', 400);
-    if (newPassword === currentPassword) throw new PasswordChangeError('The new password must differ from the current one', 400);
+    if (newPassword.length < 8) throw new AccountChangeError('Password must be at least 8 characters', 400);
+    if (newPassword.length > 256) throw new AccountChangeError('Password must be at most 256 characters', 400);
+    if (newPassword === currentPassword) throw new AccountChangeError('The new password must differ from the current one', 400);
     UserRepository.updatePassword(user.id, await this.hashPassword(newPassword));
-    return this.signToken(user);
+    // Re-read: the update bumped token_version, the new token must carry it.
+    return this.signToken(UserRepository.findById(user.id)!);
+  },
+
+  /** Self-service rename, gated on the current password like
+   *  changePassword. Same 3-character minimum as register. Returns the
+   *  renamed user and a fresh token (the JWT carries the username). */
+  async changeUsername(userId: number, currentPassword: string, newUsername: string): Promise<{ user: User; token: string }> {
+    const user = UserRepository.findById(userId);
+    if (!user) throw new AccountChangeError('Account not found', 404);
+    if (!(await this.verifyPassword(currentPassword, user.password_hash))) {
+      throw new AccountChangeError('Current password is incorrect', 403);
+    }
+    const trimmed = newUsername.trim();
+    if (trimmed.length < 3) throw new AccountChangeError('Username must be at least 3 characters', 400);
+    if (trimmed.length > 64) throw new AccountChangeError('Username must be at most 64 characters', 400);
+    // The name lands in log lines (ws connect/disconnect): no forged lines.
+    if (/\p{Cc}/u.test(trimmed)) throw new AccountChangeError('Username must not contain control characters', 400);
+    if (trimmed === user.username) throw new AccountChangeError('The new username must differ from the current one', 400);
+    // No await between this check and the UPDATE (better-sqlite3 is
+    // synchronous), and the UNIQUE constraint backs it up anyway.
+    if (UserRepository.findByUsername(trimmed)) throw new AccountChangeError('Username already taken', 409);
+    UserRepository.updateUsername(user.id, trimmed);
+    const renamed = { ...user, username: trimmed };
+    return { user: renamed, token: this.signToken(renamed) };
   },
 
   async login(username: string, password: string): Promise<{ user: User; token: string }> {
@@ -115,8 +150,8 @@ export const authService = {
   },
 };
 
-/** A refused password change, with the HTTP status the route returns. */
-export class PasswordChangeError extends Error {
+/** A refused password change or rename, with the HTTP status the route returns. */
+export class AccountChangeError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
   }

@@ -28,7 +28,8 @@ export function applySchema(database: Database.Database): void {
       username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'user',
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      token_version INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS gpu_metrics (
@@ -89,6 +90,20 @@ export function runMigrations(database: Database.Database): void {
 
   migrateUtilizationNotNull(database);
   migrateMultiHost(database);
+  migrateUserTokenVersion(database);
+}
+
+/** v0.11.22: users.token_version, bumped on every password change and
+ *  carried in the JWT so older tokens stop working. DEFAULT 0 matches
+ *  tokens signed before the column existed (no `ver` claim reads as 0),
+ *  so upgrading signs nobody out. */
+function migrateUserTokenVersion(database: Database.Database): void {
+  const cols = database.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+  // Empty = no users table (partial schemas in migration tests).
+  if (cols.length > 0 && !cols.some((c) => c.name === 'token_version')) {
+    database.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;');
+    logger.success('DB', 'users.token_version column added.');
+  }
 }
 
 /**

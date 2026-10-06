@@ -6,6 +6,7 @@ export interface User {
   password_hash: string;
   role: 'admin' | 'user';
   created_at: number;
+  token_version: number;
 }
 
 export const UserRepository = {
@@ -38,8 +39,15 @@ export const UserRepository = {
     return this.findById(Number(info.lastInsertRowid))!;
   },
 
+  /** Also bumps token_version, which revokes every token signed before. */
   updatePassword(id: number, passwordHash: string): void {
-    getDatabase().prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
+    getDatabase()
+      .prepare('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?')
+      .run(passwordHash, id);
+  },
+
+  updateUsername(id: number, username: string): void {
+    getDatabase().prepare('UPDATE users SET username = ? WHERE id = ?').run(username, id);
   },
 
   delete(id: number): void {

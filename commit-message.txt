@@ -1,7 +1,8 @@
-release: v0.11.21 APU memory = VRAM + GTT, user menu, settings layout
+release: v0.11.22 account rename, Account block, revoke old tokens
 
-- Fixed: AMD APU memory gauge shows VRAM + GTT (Strix Halo stayed at
-  147 MiB, models live in GTT); per-GPU threshold fields show the
-  inherited value instead of 0.
-- Changed: header user menu (Profile, Sign out), centred nav; Settings >
-  General sub-tabs (Dashboard, User); Settings as wide as every page.
+- Added: rename your own account (current password required).
+- Changed: Settings > General > User Account block with Username and
+  Password panels, show/hide, strength meter, inline hints.
+- Security: a password change (UI or reset CLI) signs out every other
+  session; a deleted account loses access at once. Upgrading signs
+  nobody out.

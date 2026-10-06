@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
-import { authService, canRegister, PasswordChangeError, REGISTRATION_CLOSED_MESSAGE } from '../services/authService.js';
+import { authService, canRegister, AccountChangeError, REGISTRATION_CLOSED_MESSAGE } from '../services/authService.js';
 import { UserRepository } from '../database/models/User.js';
 import { requireAuth, getBearerPayload } from '../middleware/auth.js';
 
@@ -84,8 +84,23 @@ router.post('/password', authLimiter, requireAuth, async (req, res) => {
     const token = await authService.changePassword(req.user!.sub, current, next);
     res.json({ ok: true, token });
   } catch (err) {
-    if (err instanceof PasswordChangeError) return res.status(err.status).json({ error: err.message });
+    if (err instanceof AccountChangeError) return res.status(err.status).json({ error: err.message });
     res.status(500).json({ error: 'Password change failed' });
+  }
+});
+
+// Rename the caller's own account. Same gate and rate limit as /password.
+router.post('/username', authLimiter, requireAuth, async (req, res) => {
+  const { current_password: current, new_username: next } = req.body || {};
+  if (typeof current !== 'string' || typeof next !== 'string') {
+    return res.status(400).json({ error: 'current_password and new_username required' });
+  }
+  try {
+    const { user, token } = await authService.changeUsername(req.user!.sub, current, next);
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+  } catch (err) {
+    if (err instanceof AccountChangeError) return res.status(err.status).json({ error: err.message });
+    res.status(500).json({ error: 'Username change failed' });
   }
 });
 
