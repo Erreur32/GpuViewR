@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import { _setDatabaseForTests, closeDatabase } from '../database/connection.js';
 import { UserRepository } from '../database/models/User.js';
-import { authService, canRegister, AccountChangeError } from './authService.js';
+import { authService, canRegister, AccountChangeError, sessionEvents } from './authService.js';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 
@@ -133,4 +133,19 @@ test('verifyToken: legacy token without ver is accepted until the first password
   assert.equal(authService.verifyToken(legacy), null);
   UserRepository.delete(user.id);
   assert.equal(authService.verifyToken(fresh), null);
+});
+
+test('sessionEvents: a password change emits revoked with the user id, a rename does not', async () => {
+  const { user } = await authService.register('evt', 'password-123', { callerIsAdmin: false });
+  const seen: number[] = [];
+  const onRevoked = (id: number) => seen.push(id);
+  sessionEvents.on('revoked', onRevoked);
+  try {
+    await authService.changeUsername(user.id, 'password-123', 'evt2');
+    assert.deepEqual(seen, []);
+    await authService.changePassword(user.id, 'password-123', 'password-456');
+    assert.deepEqual(seen, [user.id]);
+  } finally {
+    sessionEvents.off('revoked', onRevoked);
+  }
 });

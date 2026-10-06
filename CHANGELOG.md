@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.23] - 2026-10-06
+
+### Security
+
+- **Open dashboards are cut off too when a session is revoked.** v0.11.22 refused old tokens on every request, but a live-metrics stream opened before a password change kept running until it reconnected. The hub now closes it at once when the password is changed in the UI, and re-checks every open stream each minute for the other cases (`npm run user:reset-password`, deleted account, expired session). The revoked tab then goes to the login page instead of retrying in a loop. The tab that made the change stays signed in.
+
 ## [0.11.22] - 2026-10-06
 
 ### Added

@@ -4,6 +4,7 @@ import { useGpuStore, type GpuSample } from '../store/gpuStore';
 import { LOCAL_HOST_ID, useHostsStore, type HostStatus } from '../store/hostsStore';
 import { useUiStore } from '../store/uiStore';
 import { notify } from '../store/toastStore';
+import { api } from './api';
 
 interface AlertWsEvent {
   id: number;
@@ -117,12 +118,27 @@ export function useGpuStream(): void {
           console.warn(`[gpu-ws] closed after ${uptimeS}s (code=${ev.code}, reason=${ev.reason || '-'})`);
         }
         if (stopped) return;
+        if (ev.code === 4001) {
+          timer = setTimeout(onTokenRefused, 1000);
+          return;
+        }
         const delay = Math.min(1000 * 2 ** retryRef.current, 15_000);
         retryRef.current++;
         timer = setTimeout(connect, delay);
       };
       ws.onerror = () => ws.close();
     };
+
+    // Token refused (password changed, account deleted, expired). Our
+    // own password change also revokes the socket: by now (1 s after the
+    // close) its response has stored the new token, which re-runs this
+    // effect. Still the same token: /auth/me answers 401 and api() sends
+    // us to the login page.
+    const onTokenRefused = () => {
+      if (stopped || localStorage.getItem('gpuviewr.token') !== token) return;
+      void api('/auth/me').catch(() => undefined).then(connect);
+    };
+
     connect();
 
     return () => {
