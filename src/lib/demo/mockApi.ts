@@ -103,6 +103,10 @@ function handleAuth(ctx: RouteCtx): Response | null {
   if (ctx.url.pathname === '/api/auth/password' && ctx.method === 'POST') {
     return json({ ok: true, token: 'demo.token' });
   }
+  if (ctx.url.pathname === '/api/auth/username' && ctx.method === 'POST') {
+    const name = String((ctx.body as { new_username?: unknown } | undefined)?.new_username ?? 'demo').trim();
+    return json({ token: 'demo.token', user: { id: 1, username: name, role: 'admin' } });
+  }
   return null;
 }
 

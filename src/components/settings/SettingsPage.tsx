@@ -38,7 +38,7 @@ import HostsSettingsTab from "./HostsSettingsTab";
 import LogsPage from "../logs/LogsPage";
 import LlmSettings from "./LlmSettings";
 import ThresholdsSettings from "./ThresholdsSettings";
-import PasswordSettings from "./PasswordSettings";
+import AccountSettings from "./AccountSettings";
 import Icon, { type IconKey } from "../ui/icons/IconRegistry";
 
 type TabId =
@@ -393,7 +393,7 @@ export default function SettingsPage() {
                 </div>
               </section>
 
-              <PasswordSettings />
+              <AccountSettings />
             </>
           )}
         </div>
