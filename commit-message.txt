@@ -1,8 +1,6 @@
-release: v0.11.22 account rename, Account block, revoke old tokens
+release: v0.11.23 close revoked live-metrics streams
 
-- Added: rename your own account (current password required).
-- Changed: Settings > General > User Account block with Username and
-  Password panels, show/hide, strength meter, inline hints.
-- Security: a password change (UI or reset CLI) signs out every other
-  session; a deleted account loses access at once. Upgrading signs
-  nobody out.
+- Security: /ws/gpu sockets are closed (4001) as soon as a password
+  change revokes their token, and re-checked every minute for the reset
+  CLI, deleted accounts and expiry. The revoked tab goes to the login
+  page; the tab that made the change stays signed in.
