@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.22] - 2026-10-06
+
+### Added
+
+- **Rename your own account** in *Settings > General > User*: new username (3 to 64 characters, unique), confirmed with the current password. You stay signed in and the header shows the new name at once.
+
+### Changed
+
+- **Settings > General > User:** the password block becomes an *Account* block with two panels, *Username* and *Password*. Password fields get a show/hide button, the new password a strength meter, and each field shows its own hint (too short, same as current, passwords match or not).
+
+### Security
+
+- **A password change now signs out every other session.** Before, a token issued earlier (a stolen one included) kept working for its whole 7-day life. Same for `npm run user:reset-password`. A deleted account also loses access at once instead of at token expiry. Upgrading signs nobody out: existing sessions stay valid until the account's next password change.
+
 ## [0.11.21] - 2026-10-05
 
 ### Fixed
