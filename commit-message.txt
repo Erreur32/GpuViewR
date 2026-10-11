@@ -1,6 +1,9 @@
-release: v0.11.23 close revoked live-metrics streams
+release: v0.12.0 read-only API and MCP server
 
-- Security: /ws/gpu sockets are closed (4001) as soon as a password
-  change revokes their token, and re-checked every minute for the reset
-  CLI, deleted accounts and expiry. The revoked tab goes to the login
-  page; the tab that made the change stays signed in.
+- Add /api/v1 (GET only) and /mcp (7 read-only tools) so scripts and AI
+  assistants can query hosts, GPUs, history and LLM processes.
+- Settings > API and Settings > MCP (admins): on/off switches, examples,
+  access tokens (gvk_..., SHA-256 at rest, shown once, revocable).
+- Both off by default; a user JWT is not accepted on these endpoints.
+- MCP refuses foreign Origin headers; tool errors stay generic.
+- Docs/API.md, README and CHANGELOG updated.

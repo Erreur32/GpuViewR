@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { ensureHostsSchema, HostsRepo, LOCAL_HOST_ID } from './models/Host.js';
+import { ensureApiTokensSchema } from './models/ApiToken.js';
 
 let db: Database.Database | null = null;
 
@@ -66,6 +67,7 @@ export function applySchema(database: Database.Database): void {
     );
   `);
   ensureHostsSchema(database);
+  ensureApiTokensSchema(database);
 }
 
 /**

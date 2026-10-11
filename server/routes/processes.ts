@@ -6,6 +6,7 @@ import { processHistory } from '../services/processHistory.js';
 import { metricsBus } from '../services/_metricsBus.js';
 import { HostsRepo, LOCAL_HOST_ID } from '../database/models/Host.js';
 import type { GpuSample } from '../services/parsers/nvidia.js';
+import { fleetLlmProcesses } from '../services/readOnlyData.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
@@ -23,24 +24,7 @@ router.get('/history', (req, res) => {
 
 /** Every LLM process across the fleet, from the live snapshots. */
 router.get('/llm', (_req, res) => {
-  const rows = [];
-  for (const host of HostsRepo.list()) {
-    const snap = agentProcessStore.get(host.id);
-    if (!snap) continue;
-    const samples = metricsBus.getLatestByHost(host.id);
-    for (const p of snap.processes) {
-      if (!p.llm_runtime) continue;
-      const card = samples.find((s) => s.uuid === p.gpu_uuid);
-      rows.push({
-        host_id: host.id,
-        host_label: host.label || host.hostname || host.id,
-        gpu_index: card?.gpu_index ?? null,
-        gpu_name: card?.name ?? null,
-        ...p,
-      });
-    }
-  }
-  res.json({ processes: rows });
+  res.json({ processes: fleetLlmProcesses() });
 });
 
 /** `?gpu=<index>` filter, null when absent or not a number. */

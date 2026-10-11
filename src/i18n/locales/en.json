@@ -450,7 +450,9 @@
     "updates_frequency_help": "How often the server polls GitHub for new releases. The result is cached for this duration.",
     "tab_llm": "LLM",
     "process_filter_help": "Process table: hide processes using less GPU memory (VRAM + GTT) than the threshold. Also switched from the toggle under the table and the filter button above it. Saved in this browser.",
-    "process_filter_threshold": "Threshold"
+    "process_filter_threshold": "Threshold",
+    "tab_api": "API",
+    "tab_mcp": "MCP"
   },
   "updates": {
     "available_title": "GpuViewR {{version}} is available",
@@ -774,5 +776,39 @@
     "endpoints_help": "http(s) only, no credentials. The agent reads /api/ps, /api/show (Ollama) and /v1/models, nothing else.",
     "manifests_dir": "Ollama manifests directory",
     "manifests_dir_help": "Optional, leave empty: the agent finds it on its own. Fill it only if model names stay as sha256:…. The path is the one the agent sees: for a Docker agent, inside its container (e.g. /host/ollama/models/manifests, with the Ollama directory mounted through OLLAMA_DIR), not the host path. For a systemd or Windows agent, the path on that machine, readable by the agent."
+  },
+  "access": {
+    "api_title": "Read-only API",
+    "api_help": "JSON endpoints under /api/v1 to read hosts, GPUs, history and LLM processes from scripts, Home Assistant, Grafana or any HTTP client. GET only: nothing can be changed through it. Off by default.",
+    "api_enable": "Enable the read-only API",
+    "endpoints": "Endpoints",
+    "example": "Example",
+    "ep_health": "hub status and counts",
+    "ep_hosts": "monitored machines",
+    "ep_gpus": "latest reading of every GPU",
+    "ep_history": "time series of one GPU",
+    "ep_stats": "min / avg / max of one GPU",
+    "ep_processes": "processes on the GPUs of a host",
+    "ep_llm": "LLM processes of the whole fleet",
+    "mcp_title": "MCP server (read-only)",
+    "mcp_help": "Lets an AI assistant (Claude Code, Claude Desktop, any MCP client) look at your GPUs and LLM processes. Every tool only reads. Off by default.",
+    "mcp_enable": "Enable the MCP server",
+    "mcp_url": "Server URL",
+    "mcp_json": "Generic MCP client config",
+    "mcp_tools": "Tools",
+    "tokens_title": "Access tokens",
+    "tokens_help": "One token opens the API and MCP, read-only, as long as each one is switched on. Revoke a token to cut it off at once.",
+    "tokens_empty": "No token yet.",
+    "token_name": "Name",
+    "token_name_placeholder": "e.g. home-assistant",
+    "create_token": "Create token",
+    "token_once": "Copy this token now, it will not be shown again.",
+    "created": "created",
+    "last_used": "last used",
+    "never": "never",
+    "revoke": "Revoke",
+    "revoke_confirm": "Revoke the token \"{{name}}\"? Anything using it stops working.",
+    "copy": "Copy",
+    "copied": "Copied"
   }
 }

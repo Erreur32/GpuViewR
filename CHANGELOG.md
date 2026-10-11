@@ -5,6 +5,20 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-10-11
+
+### Added
+
+- **Read-only API** under `/api/v1`: hub health, hosts, latest GPU readings, GPU history and stats, processes per host, and the LLM processes of the whole fleet. GET only (anything else answers 405). Meant for scripts, Home Assistant, Grafana or any HTTP client. Off by default.
+- **Read-only MCP server** at `/mcp` (Streamable HTTP, POST only): 7 tools (`get_health`, `list_hosts`, `list_gpus`, `get_gpu_history`, `get_gpu_stats`, `list_processes`, `list_llm_processes`), each flagged read-only, so an AI assistant such as Claude Code can look at your GPUs and LLM processes. Off by default.
+- **Settings > API and Settings > MCP** (admins): an on/off switch for each, copy-ready examples (curl, `claude mcp add`, generic JSON config), the list of endpoints or tools, and the access tokens.
+- **Access tokens** (`gvk_...`): one token opens both surfaces, read-only. Shown once at creation, stored as a SHA-256 hash, revocable at once, with a "last used" date. Up to 20 tokens. A user login (JWT) is not accepted on these endpoints.
+- `Docs/API.md` documents both.
+
+### Security
+
+- The MCP endpoint refuses requests carrying a foreign `Origin` header (DNS rebinding guard), tool errors never echo internal messages, and token names with control characters are rejected (they are written to the hub log).
+
 ## [0.11.23] - 2026-10-06
 
 ### Security
