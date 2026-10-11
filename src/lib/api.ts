@@ -45,7 +45,12 @@ export async function api<T = unknown>(
     },
   });
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // Non-JSON body (e.g. an HTML 502 from a reverse proxy): fall back to the status.
+  }
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized(path);
     throw new ApiError(res.status, data?.error || res.statusText);

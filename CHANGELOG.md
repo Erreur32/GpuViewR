@@ -5,6 +5,13 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-10-11
+
+### Fixed
+
+- **Settings tabs on a failing hub**: when the reverse proxy answered with an HTML error page (502), the UI showed `Unexpected token '<'`. The API client now falls back to the HTTP status instead of failing on the JSON parse.
+- **Fonts blocked by the CSP**: Inter and JetBrains Mono were loaded from Google Fonts, which the `style-src 'self'` policy blocks. They are now bundled locally (`@fontsource`), so no request leaves for Google and the UI keeps its fonts offline.
+
 ## [0.12.0] - 2026-10-11
 
 ### Added
