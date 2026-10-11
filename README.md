@@ -9,6 +9,8 @@
 ![NVIDIA](https://img.shields.io/badge/NVIDIA-GPU-111827?style=for-the-badge&logo=nvidia&logoColor=76b900)
 ![AMD](https://img.shields.io/badge/AMD-ROCm-111827?style=for-the-badge&logo=amd&logoColor=ed1c24)
 ![macOS](https://img.shields.io/badge/macOS-Apple_Silicon-111827?style=for-the-badge&logo=apple&logoColor=white)
+[![API](https://img.shields.io/badge/API-read--only-111827?style=for-the-badge&logo=json&logoColor=white)](Docs/API.md)
+[![MCP](https://img.shields.io/badge/MCP-powered-111827?style=for-the-badge&logo=modelcontextprotocol&logoColor=white)](Docs/API.md)
 [![License](https://img.shields.io/badge/License-MIT-111827?style=for-the-badge&color=111827&labelColor=111827&logoColor=white)](LICENSE)
 
 [![OSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/Erreur32/GpuViewR?style=for-the-badge&label=Scorecard)](https://scorecard.dev/viewer/?uri=github.com/Erreur32/GpuViewR)
@@ -83,6 +85,7 @@ Windows and macOS, each host with its own colour on every chart.
 - **LLM-aware process view**: Ollama, llama.cpp, vLLM and more, model name and state (loaded / asleep / unload countdown) asked from the servers themselves, VRAM + GTT, container, "LLM only" filter, top over 24 h, process alerts
 - **Alerts**: sustain + cooldown, Discord / Telegram / MQTT / webhook
 - **Exports**: Prometheus, InfluxDB, MQTT
+- **API and MCP powered**: a read-only REST API (`/api/v1`) and a read-only MCP server (`/mcp`) so scripts and AI assistants such as Claude Code can query your fleet; off by default, access tokens in Settings ([Docs/API.md](Docs/API.md))
 - **Agent auto-update** from the hub, opt-in per host
 - **Single Docker image**, multi-arch (amd64 / arm64), English / French UI
 
@@ -147,6 +150,7 @@ and auto-update.
 | [Install & configuration](Docs/INSTALL.md) | Hub install, update, first login, `.env` reference, troubleshooting |
 | [Remote hosts](Docs/REMOTE_HOSTS.md) | Linux, Docker, Windows, macOS agents, multi-hub, auto-update |
 | [Agent reference](agent/README.md) | Every agent install mode and environment variable |
+| [API & MCP](Docs/API.md) | Read-only REST API and MCP server, tokens, endpoints, tools |
 | [Architecture](Docs/ARCHITECTURE.md) | How hub and agents fit together, collectors per platform |
 | [Migration](Docs/MIGRATION.md) | Coming from bigsk1/gpu-monitor, upgrade notes |
 | [Changelog](CHANGELOG.md) | Every release |

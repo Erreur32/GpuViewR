@@ -333,7 +333,43 @@ function handleThresholds(ctx: RouteCtx): Response | null {
   return json(demoThresholds);
 }
 
-const handlers = [handleAuth, handleHealthSystem, handleGpu, handleAlerts, handleExports, handleLogsUpdates, handleLlm, handleThresholds];
+// Settings > API / MCP: switches and tokens kept in memory for the tab.
+const demoAccess = {
+  api_enabled: false,
+  mcp_enabled: false,
+  tokens: [] as Array<{ id: number; name: string; prefix: string; created_at: number; last_used_at: number | null }>,
+  max_tokens: 20,
+  mcp_tools: [
+    { name: 'list_hosts', description: 'Every monitored machine with its status.' },
+    { name: 'list_gpus', description: 'Latest reading of every GPU.' },
+    { name: 'list_llm_processes', description: 'Every local LLM process in the fleet.' },
+  ],
+};
+
+function handleAccess(ctx: RouteCtx): Response | null {
+  const p = ctx.url.pathname;
+  if (p === '/api/access/tokens' && ctx.method === 'POST') {
+    const name = String((ctx.body as { name?: string } | null)?.name ?? 'token');
+    const token = `gvk_demo${demoTokenSuffix()}`;
+    const record = { id: Date.now(), name, prefix: token.slice(0, 8), created_at: Math.floor(Date.now() / 1000), last_used_at: null };
+    demoAccess.tokens.unshift(record);
+    return json({ token, record }, 201);
+  }
+  const del = /^\/api\/access\/tokens\/(\d+)$/.exec(p);
+  if (del && ctx.method === 'DELETE') {
+    demoAccess.tokens = demoAccess.tokens.filter((t) => t.id !== Number(del[1]));
+    return json({ ok: true });
+  }
+  if (p !== '/api/access') return null;
+  if (ctx.method === 'PUT') {
+    const body = (ctx.body ?? {}) as { api_enabled?: boolean; mcp_enabled?: boolean };
+    if (typeof body.api_enabled === 'boolean') demoAccess.api_enabled = body.api_enabled;
+    if (typeof body.mcp_enabled === 'boolean') demoAccess.mcp_enabled = body.mcp_enabled;
+  }
+  return json(demoAccess);
+}
+
+const handlers = [handleAccess, handleAuth, handleHealthSystem, handleGpu, handleAlerts, handleExports, handleLogsUpdates, handleLlm, handleThresholds];
 
 function parseBody(init?: RequestInit): unknown {
   if (!init || typeof init.body !== 'string') return null;

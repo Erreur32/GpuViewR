@@ -43,6 +43,9 @@ import hostsRoutes from './routes/hosts.js';
 import llmRoutes from './routes/llm.js';
 import thresholdsRoutes from './routes/thresholds.js';
 import agentDistributionRoutes from './routes/agentDistribution.js';
+import accessRoutes from './routes/access.js';
+import publicApiRoutes from './routes/publicApi.js';
+import mcpRoutes from './routes/mcp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -156,6 +159,9 @@ async function bootstrap(): Promise<void> {
   app.use('/api/hosts', hostsRoutes);
   app.use('/api/llm', llmRoutes);
   app.use('/api/thresholds', thresholdsRoutes);
+  app.use('/api/access', accessRoutes);
+  app.use('/api/v1', publicApiRoutes);
+  app.use('/mcp', apiLimiter, mcpRoutes);
   app.use('/metrics', metricsLimiter, metricsRoutes);
   // /install.sh + /agent.mjs — unauthenticated by design, the agent
   // token itself is the auth. Mounted at root, before the SPA
@@ -176,7 +182,7 @@ async function bootstrap(): Promise<void> {
         }
       },
     }));
-    app.get(/^(?!\/api\/|\/ws\/|\/metrics(?:$|\/)).*/, (_req, res) => {
+    app.get(/^(?!\/api\/|\/ws\/|\/mcp(?:$|\/)|\/metrics(?:$|\/)).*/, (_req, res) => {
       res.sendFile(path.join(distDir, 'index.html'));
     });
   } else if (config.nodeEnv === 'production') {

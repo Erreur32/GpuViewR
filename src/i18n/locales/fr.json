@@ -450,7 +450,9 @@
     "updates_frequency_help": "Intervalle entre deux interrogations de GitHub. Le résultat est mis en cache pour cette durée.",
     "tab_llm": "LLM",
     "process_filter_help": "Tableau des processus : masque ceux qui utilisent moins de mémoire GPU (VRAM + GTT) que le seuil. Activable aussi depuis l'interrupteur sous le tableau et le bouton filtre au-dessus. Mémorisé dans ce navigateur.",
-    "process_filter_threshold": "Seuil"
+    "process_filter_threshold": "Seuil",
+    "tab_api": "API",
+    "tab_mcp": "MCP"
   },
   "updates": {
     "available_title": "GpuViewR {{version}} est disponible",
@@ -774,5 +776,39 @@
     "endpoints_help": "http(s) uniquement, sans identifiants. L'agent lit /api/ps, /api/show (Ollama) et /v1/models, rien d'autre.",
     "manifests_dir": "Dossier des manifests Ollama",
     "manifests_dir_help": "Optionnel, à laisser vide : l'agent le trouve tout seul. À remplir seulement si les modèles restent en sha256:…. Le chemin est celui que voit l'agent : pour un agent Docker, dans son conteneur (ex. /host/ollama/models/manifests, avec le dossier Ollama monté via OLLAMA_DIR), pas le chemin de la machine. Pour un agent systemd ou Windows, le chemin sur cette machine, lisible par l'agent."
+  },
+  "access": {
+    "api_title": "API en lecture seule",
+    "api_help": "Endpoints JSON sous /api/v1 pour lire les hôtes, les GPU, l'historique et les processus LLM depuis des scripts, Home Assistant, Grafana ou tout client HTTP. GET uniquement : rien ne peut être modifié. Désactivée par défaut.",
+    "api_enable": "Activer l'API en lecture seule",
+    "endpoints": "Endpoints",
+    "example": "Exemple",
+    "ep_health": "état du hub et compteurs",
+    "ep_hosts": "machines surveillées",
+    "ep_gpus": "dernière mesure de chaque GPU",
+    "ep_history": "série temporelle d'un GPU",
+    "ep_stats": "min / moy / max d'un GPU",
+    "ep_processes": "processus sur les GPU d'un hôte",
+    "ep_llm": "processus LLM de tout le parc",
+    "mcp_title": "Serveur MCP (lecture seule)",
+    "mcp_help": "Permet à un assistant IA (Claude Code, Claude Desktop, tout client MCP) de consulter vos GPU et processus LLM. Chaque outil ne fait que lire. Désactivé par défaut.",
+    "mcp_enable": "Activer le serveur MCP",
+    "mcp_url": "URL du serveur",
+    "mcp_json": "Config d'un client MCP générique",
+    "mcp_tools": "Outils",
+    "tokens_title": "Jetons d'accès",
+    "tokens_help": "Un jeton ouvre l'API et le MCP, en lecture seule, tant que chacun est activé. Révoquer un jeton le coupe immédiatement.",
+    "tokens_empty": "Aucun jeton pour l'instant.",
+    "token_name": "Nom",
+    "token_name_placeholder": "ex. home-assistant",
+    "create_token": "Créer un jeton",
+    "token_once": "Copiez ce jeton maintenant, il ne sera plus affiché.",
+    "created": "créé",
+    "last_used": "dernier usage",
+    "never": "jamais",
+    "revoke": "Révoquer",
+    "revoke_confirm": "Révoquer le jeton « {{name}} » ? Tout ce qui l'utilise cessera de fonctionner.",
+    "copy": "Copier",
+    "copied": "Copié"
   }
 }

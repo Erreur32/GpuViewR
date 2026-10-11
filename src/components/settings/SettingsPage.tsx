@@ -24,6 +24,8 @@ import {
   Filter,
   LayoutDashboard,
   UserRound,
+  Braces,
+  Plug,
 } from "lucide-react";
 import { useUiStore, CONTENT_WIDTH, PROCESS_MIN_MIB_MAX } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
@@ -39,6 +41,7 @@ import LogsPage from "../logs/LogsPage";
 import LlmSettings from "./LlmSettings";
 import ThresholdsSettings from "./ThresholdsSettings";
 import AccountSettings from "./AccountSettings";
+import { ApiSettings, McpSettings } from "./AccessSettings";
 import Icon, { type IconKey } from "../ui/icons/IconRegistry";
 
 type TabId =
@@ -47,6 +50,8 @@ type TabId =
   | "exports"
   | "hosts"
   | "llm"
+  | "api"
+  | "mcp"
   | "database"
   | "updates"
   | "logs"
@@ -115,9 +120,14 @@ export default function SettingsPage() {
   const isAdmin = useAuthStore((s) => s.user?.role === "admin");
   const hostCount = useHostsStore((s) => s.hosts.length);
   const showHostsTab = isAdmin || hostCount > 1;
-  const VALID_TABS: ReadonlyArray<TabId> = showHostsTab
-    ? ["general", "theme", "exports", "hosts", "llm", "database", "logs", "updates", "about"]
-    : ["general", "theme", "exports", "llm", "database", "logs", "updates", "about"];
+  // API and MCP hold the access tokens: admins only.
+  const VALID_TABS: ReadonlyArray<TabId> = [
+    "general", "theme", "exports",
+    ...(showHostsTab ? (["hosts"] as const) : []),
+    "llm",
+    ...(isAdmin ? (["api", "mcp"] as const) : []),
+    "database", "logs", "updates", "about",
+  ];
   const fallback =
     (localStorage.getItem("gpuviewr.settingsTab") as TabId | null) ?? "general";
   const tab: TabId = (VALID_TABS as readonly string[]).includes(tabParam ?? "")
@@ -158,6 +168,12 @@ export default function SettingsPage() {
       ? [{ id: "hosts" as TabId, label: t("settings.tab_hosts"), icon: Server }]
       : []),
     { id: "llm", label: t("settings.tab_llm"), icon: Bot },
+    ...(isAdmin
+      ? [
+          { id: "api" as TabId, label: t("settings.tab_api"), icon: Braces },
+          { id: "mcp" as TabId, label: t("settings.tab_mcp"), icon: Plug },
+        ]
+      : []),
     { id: "database", label: t("settings.tab_database"), icon: Database },
     { id: "logs", label: t("settings.tab_logs"), icon: FileText },
     { id: "updates", label: t("settings.tab_updates"), icon: RefreshCw },
@@ -402,6 +418,8 @@ export default function SettingsPage() {
       {tab === "exports" && <ExportsSettings />}
       {tab === "hosts" && showHostsTab && <HostsSettingsTab />}
       {tab === "llm" && <LlmSettings />}
+      {tab === "api" && isAdmin && <ApiSettings />}
+      {tab === "mcp" && isAdmin && <McpSettings />}
       {tab === "database" && <DatabaseSettings />}
       {tab === "updates" && <UpdateSettings />}
       {tab === "logs" && <LogsPage />}
