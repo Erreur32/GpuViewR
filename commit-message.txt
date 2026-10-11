@@ -1,9 +1,4 @@
-release: v0.12.0 read-only API and MCP server
+release: v0.12.1 local fonts and readable proxy errors
 
-- Add /api/v1 (GET only) and /mcp (7 read-only tools) so scripts and AI
-  assistants can query hosts, GPUs, history and LLM processes.
-- Settings > API and Settings > MCP (admins): on/off switches, examples,
-  access tokens (gvk_..., SHA-256 at rest, shown once, revocable).
-- Both off by default; a user JWT is not accepted on these endpoints.
-- MCP refuses foreign Origin headers; tool errors stay generic.
-- Docs/API.md, README and CHANGELOG updated.
+- Bundle Inter and JetBrains Mono via @fontsource instead of Google Fonts (blocked by the CSP).
+- api(): fall back to the HTTP status when the body is not JSON (HTML 502 from a proxy).
