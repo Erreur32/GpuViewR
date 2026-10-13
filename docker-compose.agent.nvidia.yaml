@@ -90,3 +90,4 @@ services:
       # NVIDIA_SMI_PATH: nvidia-smi
       # TLS_INSECURE: 0               # 1 only in dev against self-signed
       # AGENT_LABEL: rtx-rig          # suggested label sent in the hello frame
+      # AGENT_HOSTNAME: rtx-rig       # machine name for the API, wins over the /etc/hostname mount

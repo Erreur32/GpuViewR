@@ -153,3 +153,4 @@ services:
 
       # AGENT_BUFFER_PERSIST: ${AGENT_BUFFER_PERSIST:-0}  # ring-only by default
       # AGENT_LABEL: ${AGENT_LABEL:-}                     # label sent in the hello frame
+      # AGENT_HOSTNAME: ${AGENT_HOSTNAME:-}               # machine name for the API, wins over /etc/hostname

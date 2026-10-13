@@ -70,7 +70,15 @@ The card on the hub's `/fleet` view turns green within 1–3 seconds.
 
 ## Docker Compose
 
-A drop-in `docker-compose.agent.nvidia.yaml` lives at the project root. Copy it to the remote host with a tiny `.env`:
+A drop-in `docker-compose.agent.nvidia.yaml` lives at the project root (`docker-compose.agent.amd.yaml` for AMD). Its `volumes:` must carry both host mounts: `/proc` for the process list and the LAN IPs, `/etc/hostname` for the real machine name (v0.13.0+, add it to a compose file written before that, then `docker compose up -d`):
+
+```yaml
+    volumes:
+      - /proc:/host/proc:ro
+      - /etc/hostname:/host/etc/hostname:ro
+```
+
+Copy it to the remote host with a tiny `.env`:
 
 ```env
 HUB_URL=wss://gpu.example.com/agent
@@ -220,7 +228,8 @@ before attaching it.
 | `AGENT_LABEL`          | _(none)_                     | Optional hostname hint sent in the hello frame. The hub-assigned label wins if both are set.                                                                                                                                                                             |
 | `TLS_INSECURE`         | `0`                          | Disable cert verification. Dev only.                                                                                                                                                                                                                                     |
 | `MOCK_GPU`             | `0`                          | Emit synthetic samples instead of calling `nvidia-smi`. Useful for hub-side end-to-end testing without a real GPU.                                                                                                                                                       |
-| `HOSTNAME`             | _(none)_                     | Standard; whatever Docker / systemd / the OS sets. Sent informationally in hello.                                                                                                                                                                                        |
+| `AGENT_HOSTNAME`       | _auto_                       | Real machine name sent to the hub (`hostname` in `/api/v1/hosts`). Bare metal: the OS name. Docker: the host's `/etc/hostname` mounted at `/host/etc/hostname`, else empty (never the container id). |
+| `HOST_ETC`             | `/host/etc`                  | Where a Docker agent finds the host's `hostname` file. |
 | `HEARTBEAT_FILE`       | `/tmp/.gpuviewr-agent-alive` | Path touched on every successful WS frame send. The compose `healthcheck:` block reads this file's mtime via `node -e`. Override only if you also update the matching path in the compose healthcheck command, the two must stay in sync.                                |
 | `GPU_VENDOR`           | `auto`                       | `nvidia` / `amd` / `intel` / `apple`. `auto` probes `nvidia-smi`, `rocm-smi`, then the amdgpu / i915 / xe driver in `/sys/class/drm`. The installers set it. |
 | `OLLAMA_MANIFESTS_DIR` | _auto_ | Ollama manifests directory, used to show model names (`llama3.1:8b`) instead of `sha256:` digests. Auto-detects `/host/ollama`, `/usr/share/ollama/.ollama`, `~/.ollama`, `/root/.ollama`, then the dir next to each runner's blob (needs `CAP_SYS_PTRACE`). See [Ollama model names](../Docs/INSTALL.md#ollama-model-names). |
