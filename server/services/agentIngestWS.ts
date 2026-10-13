@@ -16,6 +16,7 @@ import type { IncomingMessage } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { isIP } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcryptjs';
@@ -628,10 +629,11 @@ function applyHostInfo(hostId: string, raw: unknown): boolean {
   return true;
 }
 
-/** `::ffff:192.168.1.5` -> `192.168.1.5`; null when unknown. */
+/** `::ffff:192.168.1.5` -> `192.168.1.5`; null when not an IP (the
+ *  X-Forwarded-For value is caller-supplied and lands in the API). */
 export function normalizeRemoteAddr(addr: string): string | null {
-  if (!addr || addr === 'unknown') return null;
-  return addr.startsWith('::ffff:') && IPV4_RE.test(addr.slice(7)) ? addr.slice(7) : addr;
+  const ip = addr.startsWith('::ffff:') && IPV4_RE.test(addr.slice(7)) ? addr.slice(7) : addr;
+  return isIP(ip) ? ip : null;
 }
 
 function handleSample(host: HostRecord, frame: SampleFrame): void {

@@ -257,4 +257,5 @@ test('parseHostInfo / normalizeRemoteAddr: defensive parsing', () => {
   assert.equal(normalizeRemoteAddr('::ffff:192.168.1.5'), '192.168.1.5');
   assert.equal(normalizeRemoteAddr('fe80::1'), 'fe80::1');
   assert.equal(normalizeRemoteAddr('unknown'), null);
+  assert.equal(normalizeRemoteAddr('<script>, 10.0.0.1'), null);
 });
