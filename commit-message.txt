@@ -1,4 +1,8 @@
-release: v0.12.1 local fonts and readable proxy errors
+release: v0.13.0 host identity, fleet stats and LLM ports in the API
 
-- Bundle Inter and JetBrains Mono via @fontsource instead of Google Fonts (blocked by the CSP).
-- api(): fall back to the HTTP status when the body is not JSON (HTML 502 from a proxy).
+- Agent: report the real hostname and LAN IPv4s in hello and pings (host netns via /host/proc/1/net under Docker).
+- Hub: store ips + remote_addr, expose them with capabilities_object in /api/v1/hosts.
+- New GET /api/v1/gpus/stats/all and MCP tool get_fleet_gpu_stats.
+- /api/v1/llm: llm_port, llm_port_source, llm_alias parsed from the command line.
+- /api/v1/health: latest_version and update_available from the update checker cache.
+- Compose files mount /etc/hostname read-only for the agents.

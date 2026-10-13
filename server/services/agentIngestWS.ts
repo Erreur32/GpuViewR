@@ -16,6 +16,7 @@ import type { IncomingMessage } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { isIP } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import bcrypt from 'bcryptjs';
@@ -56,6 +57,8 @@ interface HelloFrame {
   hostname?: string;
   install_mode?: 'docker' | 'systemd' | 'windows' | 'macos' | 'unknown';
   capabilities?: { gpu?: boolean; system?: boolean; temps?: boolean; processes?: boolean; ptrace?: string };
+  /** v0.13.0+: real hostname + LAN IPv4s (agent/src/collectors/hostIdentity.ts). */
+  host_info?: unknown;
 }
 
 interface SampleFrame {
@@ -67,6 +70,7 @@ interface SampleFrame {
 interface PingFrame {
   type: 'ping';
   ts_epoch?: number;
+  host_info?: unknown;
 }
 
 interface ProcessFrame {
@@ -450,6 +454,7 @@ async function handleConnection(ws: WebSocket, req: IncomingMessage, hubVersion:
   const host = auth.host;
 
   logger.success('agent', `Agent connected: ${host.id} (label=${host.label})`);
+  HostsRepo.setRemoteAddr(host.id, normalizeRemoteAddr(clientIp(req)));
 
   // Replace any previous socket for this host_id. A reconnect from the
   // same agent (e.g. after `systemctl restart`) hits this path before
@@ -534,6 +539,7 @@ function dispatchFrame(ws: WebSocket, host: HostRecord, frame: IncomingFrame, hu
       handleSample(host, frame as SampleFrame);
       return;
     case 'ping':
+      applyHostInfo(host.id, (frame as PingFrame).host_info);
       safeSend(ws, { type: 'pong', ts_epoch: Math.floor(Date.now() / 1000) });
       return;
     case 'processes':
@@ -571,11 +577,14 @@ function handleHello(ws: WebSocket, host: HostRecord, frame: HelloFrame, hubVers
     return;
   }
   const caps = frame.capabilities ? JSON.stringify(frame.capabilities) : null;
+  // host_info (v0.13.0+ agents) owns the hostname; older agents send
+  // only `hostname`, often the container id or null.
+  const withInfo = applyHostInfo(host.id, frame.host_info);
   // install_mode: only overwrite when the agent declares it. A NULL
   // payload (pre-v0.5.3 agent) leaves the DB column alone, so we don't
   // wipe a previously-recorded mode on protocol downgrade.
   HostsRepo.update(host.id, {
-    hostname: frame.hostname ?? host.hostname,
+    ...(withInfo ? {} : { hostname: frame.hostname ?? host.hostname }),
     agent_version: frame.agent_version ?? host.agent_version,
     install_mode: frame.install_mode ?? host.install_mode,
     capabilities: caps ?? host.capabilities,
@@ -587,6 +596,44 @@ function handleHello(ws: WebSocket, host: HostRecord, frame: HelloFrame, hubVers
   // the first time after upgrade has them in `frame`, not in `host`).
   const refreshed = HostsRepo.findById(host.id);
   if (refreshed) maybePushAutoUpdate(ws, refreshed, hubVersion);
+}
+
+const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+const MAX_HOST_IPS = 16;
+
+/** Validated host_info from an agent frame, or null when absent/malformed.
+ *  The agent is authenticated but its payload still lands in the API. */
+export function parseHostInfo(raw: unknown): { hostname: string | null; ips: string[] } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { hostname, ips } = raw as { hostname?: unknown; ips?: unknown };
+  if (!Array.isArray(ips)) return null;
+  const cleanIps = [...new Set(ips.filter((ip): ip is string => typeof ip === 'string' && IPV4_RE.test(ip)))].slice(0, MAX_HOST_IPS);
+  const name = typeof hostname === 'string' ? hostname.trim() : '';
+  const cleanName = name && name.length <= 253 && !/[\s\p{Cc}]/u.test(name) ? name : null;
+  return { hostname: cleanName, ips: cleanIps };
+}
+
+/** Hub's own hostname when it is a real one (not a container id). */
+function hubRealHostname(): string | null {
+  const name = hostHostname();
+  return /^[0-9a-f]{12}$/.test(name) ? null : name;
+}
+
+/** Stores host_info; true when the frame carried a valid one. The
+ *  sidecar agent may lack the /etc/hostname mount the hub has. */
+function applyHostInfo(hostId: string, raw: unknown): boolean {
+  const info = parseHostInfo(raw);
+  if (!info) return false;
+  const hostname = info.hostname ?? (hostId === LOCAL_HOST_ID ? hubRealHostname() : null);
+  HostsRepo.setIdentity(hostId, hostname, info.ips);
+  return true;
+}
+
+/** `::ffff:192.168.1.5` -> `192.168.1.5`; null when not an IP (the
+ *  X-Forwarded-For value is caller-supplied and lands in the API). */
+export function normalizeRemoteAddr(addr: string): string | null {
+  const ip = addr.startsWith('::ffff:') && IPV4_RE.test(addr.slice(7)) ? addr.slice(7) : addr;
+  return isIP(ip) ? ip : null;
 }
 
 function handleSample(host: HostRecord, frame: SampleFrame): void {

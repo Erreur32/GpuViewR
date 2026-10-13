@@ -47,6 +47,8 @@ interface CachedEnvelope {
   result: UpdateCheckResult;
 }
 
+let backgroundCheckRunning = false;
+
 export const updateService = {
   init(): void {
     ensureAppConfigSchema();
@@ -146,6 +148,23 @@ export const updateService = {
     const result = await this.runCheck(currentVersion);
     AppConfigRepo.setJson<CachedEnvelope>(CACHE_KEY, { cachedAt: result.checkedAt, result });
     return result;
+  },
+
+  /** Last stored result, never touches the network. Null when checking is
+   *  off or nothing was checked yet. */
+  peek(): UpdateCheckResult | null {
+    if (!this.getConfig().enabled) return null;
+    return AppConfigRepo.getJson<CachedEnvelope>(CACHE_KEY)?.result ?? null;
+  },
+
+  /** check() without waiting for it, one at a time: a no-op while the
+   *  cache is fresh, a GitHub round-trip once it is stale. */
+  refreshInBackground(): void {
+    if (backgroundCheckRunning || !this.getConfig().enabled) return;
+    backgroundCheckRunning = true;
+    void this.check()
+      .catch((err: Error) => logger.warn('updates', `Background check failed: ${err.message}`))
+      .finally(() => { backgroundCheckRunning = false; });
   },
 
   async runCheck(currentVersion: string): Promise<UpdateCheckResult> {

@@ -1,5 +1,5 @@
 import {
-  currentGpus, fleetLlmProcesses, gpuHistory, gpuStats, healthSummary,
+  currentGpus, fleetGpuStats, fleetLlmProcesses, gpuHistory, gpuStats, healthSummary,
   hostOrLocal, hostProcesses, listHosts,
 } from './readOnlyData.js';
 import { readVersion } from '../utils/version.js';
@@ -33,13 +33,13 @@ function strArg(v: unknown, fallback: string): string {
 const TOOLS: Tool[] = [
   {
     name: 'get_health',
-    description: 'Hub status: version, uptime, number of GPUs and hosts online/offline.',
+    description: 'Hub status: version, uptime, number of GPUs and hosts online/offline, latest published release.',
     inputSchema: { type: 'object', properties: {} },
     run: () => healthSummary(readVersion()),
   },
   {
     name: 'list_hosts',
-    description: 'Every monitored machine with its status, agent version and last seen time.',
+    description: 'Every monitored machine with its status, agent version, last seen time, real hostname and LAN IPs.',
     inputSchema: { type: 'object', properties: {} },
     run: () => ({ hosts: listHosts() }),
   },
@@ -62,6 +62,12 @@ const TOOLS: Tool[] = [
     run: (a) => gpuStats(hostOrLocal(a.host), intArg(a.gpu, 0), strArg(a.range, '24h')),
   },
   {
+    name: 'get_fleet_gpu_stats',
+    description: 'Min / avg / max of every GPU of the fleet over a window, one row per host_id + gpu_index.',
+    inputSchema: { type: 'object', properties: { range: rangeProp('24h') } },
+    run: (a) => fleetGpuStats(strArg(a.range, '24h')),
+  },
+  {
     name: 'list_processes',
     description: 'Processes using the GPUs of one host (pid, name, VRAM, LLM runtime and model when detected).',
     inputSchema: { type: 'object', properties: { host: hostProp, gpu: { ...gpuProp, description: 'Only this GPU index; omit for all.' } } },
@@ -69,7 +75,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'list_llm_processes',
-    description: 'Every local LLM process in the fleet (Ollama, llama.cpp, vLLM, ...) with its model, host and GPU.',
+    description: 'Every local LLM process in the fleet (Ollama, llama.cpp, vLLM, ...) with its model, alias, server port, host and GPU.',
     inputSchema: { type: 'object', properties: {} },
     run: () => ({ processes: fleetLlmProcesses() }),
   },

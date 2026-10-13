@@ -186,31 +186,28 @@ function migrateMultiHost(database: Database.Database): void {
     database.exec('ALTER TABLE hosts ADD COLUMN auto_update INTEGER NOT NULL DEFAULT 0;');
     logger.success('DB', 'hosts.auto_update column added (default OFF).');
   }
-  // v0.6.5: auto-update bookkeeping for the periodic scheduler.
-  // Three nullable columns so existing rows stay NULL until the first
-  // scheduler tick / push touches them. Persisting last_update_pushed_at
-  // lets the in-memory cooldown survive hub restarts (bootstrapped at
-  // setupAgentIngestWS time), and the UI tooltip can show "last
-  // checked Xm ago" / "last pushed vA → vB".
-  const v065Columns: ReadonlyArray<readonly [string, 'INTEGER' | 'TEXT']> = [
+  // Nullable columns, added in one loop (rows stay NULL until written):
+  //  - v0.6.5 auto-update bookkeeping for the periodic scheduler.
+  //    Persisting last_update_pushed_at lets the in-memory cooldown
+  //    survive hub restarts, and the UI tooltip can show "last checked
+  //    Xm ago" / "last pushed vA → vB".
+  //  - v0.9.5 color: admin-picked hex (e.g. '#c026d3'); NULL falls back
+  //    to the index-based palette (FleetChart.tsx's hostColor()).
+  //  - v0.13.0 ips (JSON array of agent-reported LAN IPv4s) and
+  //    remote_addr (where the agent connects from), for /api/v1/hosts.
+  const nullableColumns: ReadonlyArray<readonly [string, 'INTEGER' | 'TEXT']> = [
     ['last_update_check_at', 'INTEGER'],
     ['last_update_pushed_at', 'INTEGER'],
     ['last_update_pushed_version', 'TEXT'],
+    ['color', 'TEXT'],
+    ['ips', 'TEXT'],
+    ['remote_addr', 'TEXT'],
   ];
-  for (const [name, type] of v065Columns) {
+  for (const [name, type] of nullableColumns) {
     if (!hostCols.some((c) => c.name === name)) {
       database.exec(`ALTER TABLE hosts ADD COLUMN ${name} ${type};`);
       logger.success('DB', `hosts.${name} column added.`);
     }
-  }
-
-  // v0.9.5: ADD COLUMN hosts.color (nullable hex string, e.g. '#c026d3').
-  // NULL = fall back to the index-based palette (FleetChart.tsx's
-  // hostColor()); a set value pins that host to a fixed color
-  // regardless of its position in the fleet list.
-  if (!hostCols.some((c) => c.name === 'color')) {
-    database.exec('ALTER TABLE hosts ADD COLUMN color TEXT;');
-    logger.success('DB', 'hosts.color column added.');
   }
 
   // -- gpu_metrics: ADD COLUMN host_id (legacy v0.2.x DB) — the

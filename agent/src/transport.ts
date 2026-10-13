@@ -42,6 +42,7 @@ import type { GpuSample } from "../../server/services/parsers/nvidia.js";
 import type { AgentGpuProcess, ProcessVisibility } from "./collectors/processes.js";
 import type { AgentConfig, HubTarget } from "./config.js";
 import { hasPtraceCap } from "./collectors/processesAmdgpuFdinfo.js";
+import { collectHostIdentity, type HostIdentity } from "./collectors/hostIdentity.js";
 
 export type InstallMode = "docker" | "systemd" | "windows" | "macos" | "unknown";
 
@@ -62,6 +63,17 @@ function ptraceState(): "granted" | "missing" | "declined" | undefined {
   return process.env.GPUVIEWR_NO_PTRACE === "1" ? "declined" : "missing";
 }
 const PTRACE_STATE = ptraceState();
+
+/** Real hostname + LAN IPv4s, re-read at most once per ping period and
+ *  shared by every hub connection. */
+let identityCache: { at: number; value: HostIdentity } | null = null;
+function hostIdentity(): HostIdentity {
+  const now = Date.now();
+  if (!identityCache || now - identityCache.at >= PING_INTERVAL_MS) {
+    identityCache = { at: now, value: collectHostIdentity(INSTALL_MODE === "docker") };
+  }
+  return identityCache.value;
+}
 
 function detectInstallMode(): InstallMode {
   // Windows always reports 'windows'. The install.ps1 installer
@@ -302,6 +314,7 @@ export function createTransport(config: AgentConfig): Transport {
         sendRaw(conn, {
           type: "ping",
           ts_epoch: Math.floor(Date.now() / 1000),
+          host_info: hostIdentity(),
         });
       }
     }, PING_INTERVAL_MS);
@@ -313,12 +326,15 @@ export function createTransport(config: AgentConfig): Transport {
   }
 
   function sendHello(conn: HubConnection): void {
+    const identity = hostIdentity();
     sendRaw(conn, {
       type: "hello",
       host_id: conn.target.hostId,
       agent_version: AGENT_VERSION,
       protocol_ver: PROTOCOL_VER,
-      hostname: process.env.HOSTNAME || null,
+      // Hubs before v0.13.0 only read this field; newer ones use host_info.
+      hostname: identity.hostname ?? process.env.HOSTNAME ?? null,
+      host_info: identity,
       install_mode: INSTALL_MODE,
       capabilities: {
         gpu: config.features.gpu,

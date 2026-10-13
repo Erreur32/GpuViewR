@@ -1,8 +1,10 @@
 import { HostsRepo, LOCAL_HOST_ID, type HostRecord } from '../database/models/Host.js';
-import { GpuMetricRepository } from '../database/models/GpuMetric.js';
+import { GpuDeviceRepository, GpuMetricRepository } from '../database/models/GpuMetric.js';
 import { metricsBus } from './_metricsBus.js';
 import { agentProcessStore } from './agentProcessStore.js';
 import { parseRange } from '../utils/range.js';
+import { llmServerInfo } from './llmEndpoint.js';
+import { updateService } from './updateService.js';
 
 // Read-only data shared by /api/v1 and the MCP tools, so both surfaces
 // answer from one place. Nothing in here writes or reaches an agent.
@@ -14,9 +16,26 @@ export function hostOrLocal(raw: unknown): string {
   return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : LOCAL_HOST_ID;
 }
 
+function parseJson(raw: string | null): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** API shape of a host: `capabilities` stays the stored JSON string (older
+ *  clients parse it), `capabilities_object` is the same data as an object. */
 function publicHost(h: HostRecord) {
-  const { token_hash: _omit, ...rest } = h;
-  return rest;
+  const { token_hash: _omit, ips, ...rest } = h;
+  const caps = parseJson(h.capabilities);
+  const ipList = parseJson(ips);
+  return {
+    ...rest,
+    ips: Array.isArray(ipList) ? ipList : [],
+    capabilities_object: caps && typeof caps === 'object' && !Array.isArray(caps) ? caps : null,
+  };
 }
 
 export function listHosts() {
@@ -36,6 +55,22 @@ export function healthSummary(version: string) {
     hosts_total: hosts.length,
     hosts_online: count('online'),
     hosts_offline: count('offline'),
+    ...hubUpdate(version),
+  };
+}
+
+/** Newest published release, from the update checker's cache (Settings >
+ *  Updates). Never waits on GitHub: a stale cache is refreshed in the
+ *  background and shows up on a later call. */
+function hubUpdate(version: string) {
+  updateService.refreshInBackground();
+  const r = updateService.peek();
+  const latest = r?.latestVersion ?? null;
+  return {
+    update_check_enabled: updateService.getConfig().enabled,
+    latest_version: latest,
+    update_available: latest !== null && updateService.compareVersions(latest, version) > 0,
+    update_checked_at: r?.checkedAt ?? null,
   };
 }
 
@@ -58,6 +93,22 @@ export function gpuHistory(host: string, gpuIndex: number, range: string) {
 export function gpuStats(host: string, gpuIndex: number, range: string) {
   const since = Math.floor(Date.now() / 1000) - parseRange(range);
   return { host, gpu_index: gpuIndex, range, stats: GpuMetricRepository.stats(host, gpuIndex, since) };
+}
+
+/** Min / avg / max of every GPU of the fleet over one window, one row per
+ *  (host_id, gpu_index) that has samples in it. */
+export function fleetGpuStats(range: string) {
+  const since = Math.floor(Date.now() / 1000) - parseRange(range);
+  const labels = new Map(HostsRepo.list().map((h) => [h.id, h.label || h.hostname || h.id]));
+  const names = new Map(GpuDeviceRepository.list().map((d) => [`${d.host_id}|${d.gpu_index}`, d.name]));
+  const stats = GpuMetricRepository.statsAll(since).map(({ host_id, gpu_index, ...aggregates }) => ({
+    host_id,
+    host_label: labels.get(host_id) ?? null,
+    gpu_index,
+    gpu_name: names.get(`${host_id}|${gpu_index}`) ?? null,
+    ...aggregates,
+  }));
+  return { range, count: stats.length, stats };
 }
 
 /** Processes of one host from its latest agent snapshot, optionally on one GPU. */
@@ -86,6 +137,7 @@ export function fleetLlmProcesses() {
         gpu_index: card?.gpu_index ?? null,
         gpu_name: card?.name ?? null,
         ...p,
+        ...llmServerInfo(p.llm_runtime, p.command),
       });
     }
   }

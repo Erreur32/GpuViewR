@@ -5,6 +5,17 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-10-13
+
+### Added
+
+- **Real hostname and LAN IPs of each machine in `/api/v1/hosts`**, so an API client can match a GpuViewR host with its own inventory when the labels differ. The agent (Linux, Docker, Windows) sends them at connect time and with every ping (15 s). New fields: `ips` (list of LAN IPv4s) and `remote_addr` (address the agent connects from, as a fallback); `hostname` now carries the real machine name. Loopback, link-local, `172.17.x`, `docker0`, `br-*`, `veth*`, `virbr*` and Hyper-V / VirtualBox / VMware host-only adapters are left out.
+- **Docker agents report the host, not the container**: the IPs are read from the host network namespace through the existing `/proc` mount (`/host/proc/1/net`), the name from the host's `/etc/hostname`, now mounted read-only in every compose file (or the `AGENT_HOSTNAME` env). Without that mount the hostname stays empty instead of showing the container id: add `- /etc/hostname:/host/etc/hostname:ro` to an existing agent compose file and recreate the container.
+- **`capabilities_object`** in `/api/v1/hosts`: the agent capabilities as a JSON object. `capabilities` stays the JSON string for existing clients.
+- **`GET /api/v1/gpus/stats/all?range=24h`**: min / avg / max of every GPU of the fleet in one call, one row per `host_id` + `gpu_index` (with `host_label`, `gpu_name`, `samples`). MCP tool `get_fleet_gpu_stats`.
+- **Model server port and alias in `/api/v1/llm`**: `llm_port` (`--port` from the command line, else the runtime default, such as 11434 for Ollama and 8080 for llama.cpp), `llm_port_source` (`cmdline` or `default`) and `llm_alias` (`--alias`, `--served-model-name`). Read on the hub, so it also works with older agents.
+- **Hub update status in `/api/v1/health`**: `latest_version`, `update_available`, `update_checked_at`, `update_check_enabled`, from the update checker (Settings > Updates). The call never waits on GitHub: a stale result is refreshed in the background.
+
 ## [0.12.1] - 2026-10-11
 
 ### Fixed
