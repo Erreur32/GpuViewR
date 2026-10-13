@@ -47,7 +47,7 @@ interface CachedEnvelope {
   result: UpdateCheckResult;
 }
 
-let backgroundCheck: Promise<unknown> | null = null;
+let backgroundCheckRunning = false;
 
 export const updateService = {
   init(): void {
@@ -160,10 +160,11 @@ export const updateService = {
   /** check() without waiting for it, one at a time: a no-op while the
    *  cache is fresh, a GitHub round-trip once it is stale. */
   refreshInBackground(): void {
-    if (backgroundCheck || !this.getConfig().enabled) return;
-    backgroundCheck = this.check()
+    if (backgroundCheckRunning || !this.getConfig().enabled) return;
+    backgroundCheckRunning = true;
+    void this.check()
       .catch((err: Error) => logger.warn('updates', `Background check failed: ${err.message}`))
-      .finally(() => { backgroundCheck = null; });
+      .finally(() => { backgroundCheckRunning = false; });
   },
 
   async runCheck(currentVersion: string): Promise<UpdateCheckResult> {
