@@ -580,6 +580,11 @@ docker compose logs gpuviewr-hub-agent | tail -20
 after pulling the latest compose file, or set `HUB_HOSTNAME=<your-name>`
 in `.env`.
 
+**The API shows `hostname: null` for a Docker agent**: its compose file
+predates v0.13.0 and lacks `- /etc/hostname:/host/etc/hostname:ro` under
+`volumes:`. Add it and run `docker compose up -d`, or set
+`AGENT_HOSTNAME=<name>`. The LAN IPs need no change (read through `/host/proc`).
+
 **Stale session after resetting `data/`**: the browser holds a JWT signed
 by the old `JWT_SECRET`. The UI detects it and redirects to
 `/login?expired=1`; if not, clear the site's localStorage and reload.
