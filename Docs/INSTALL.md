@@ -238,6 +238,8 @@ services:
       TZ: ${TZ:-Europe/Paris}
     volumes:
       - /proc:/host/proc:ro
+      # Real host name for the API (the container id otherwise).
+      - /etc/hostname:/host/etc/hostname:ro
     runtime: nvidia
     deploy:
       resources:
@@ -329,6 +331,8 @@ services:
     volumes:
       - /opt/rocm:/opt/rocm:ro
       - /proc:/host/proc:ro
+      # Real host name for the API (the container id otherwise).
+      - /etc/hostname:/host/etc/hostname:ro
 
 networks:
   gpuviewr:

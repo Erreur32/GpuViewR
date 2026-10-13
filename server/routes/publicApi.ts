@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireApiToken } from '../middleware/apiToken.js';
 import {
-  currentGpus, fleetLlmProcesses, gpuHistory, gpuStats, healthSummary,
+  currentGpus, fleetGpuStats, fleetLlmProcesses, gpuHistory, gpuStats, healthSummary,
   hostOrLocal, hostProcesses, listHosts,
 } from '../services/readOnlyData.js';
 import { readVersion } from '../utils/version.js';
@@ -28,6 +28,7 @@ const ENDPOINTS = [
   'GET /api/v1/gpus?host=<id>',
   'GET /api/v1/gpus/history?host=<id>&gpu=<index>&range=<1h|24h|7d>',
   'GET /api/v1/gpus/stats?host=<id>&gpu=<index>&range=<24h>',
+  'GET /api/v1/gpus/stats/all?range=<24h>',
   'GET /api/v1/processes?host=<id>&gpu=<index>',
   'GET /api/v1/llm',
 ];
@@ -60,6 +61,10 @@ router.get('/gpus/history', (req, res) => {
 
 router.get('/gpus/stats', (req, res) => {
   res.json(gpuStats(hostOrLocal(req.query.host), intParam(req.query.gpu, 0), String(req.query.range ?? '24h')));
+});
+
+router.get('/gpus/stats/all', (req, res) => {
+  res.json(fleetGpuStats(String(req.query.range ?? '24h')));
 });
 
 router.get('/processes', (req, res) => {

@@ -212,6 +212,14 @@ function migrateMultiHost(database: Database.Database): void {
     database.exec('ALTER TABLE hosts ADD COLUMN color TEXT;');
     logger.success('DB', 'hosts.color column added.');
   }
+  // v0.13.0: agent-reported LAN IPs (JSON array) and the address the
+  // agent connects from, exposed by /api/v1/hosts to match machines.
+  for (const name of ['ips', 'remote_addr']) {
+    if (!hostCols.some((c) => c.name === name)) {
+      database.exec(`ALTER TABLE hosts ADD COLUMN ${name} TEXT;`);
+      logger.success('DB', `hosts.${name} column added.`);
+    }
+  }
 
   // -- gpu_metrics: ADD COLUMN host_id (legacy v0.2.x DB) — the
   //    host-prefixed index is created unconditionally below because

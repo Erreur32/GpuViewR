@@ -17,14 +17,14 @@ import bcrypt from 'bcryptjs';
 import { WebSocket } from 'ws';
 import { _setDatabaseForTests, closeDatabase } from '../database/connection.js';
 import { HostsRepo } from '../database/models/Host.js';
-import { authenticateAgent, setupAgentIngestWS } from './agentIngestWS.js';
+import { authenticateAgent, normalizeRemoteAddr, parseHostInfo, setupAgentIngestWS } from './agentIngestWS.js';
 import { metricsBus, type SampleEvent, type HostStatusEvent } from './_metricsBus.js';
 import type { GpuSample } from './parsers/nvidia.js';
 
 let server: http.Server;
 let baseUrl: string;
 const VALID_TOKEN = 'gpvr_test-fixture-token-not-secret';
-const VALID_HOST_ID = 'aa11bb22-cc33-dd44-ee55-ff6677889900';
+const VALID_HOST_ID = 'integration-test-host';
 
 function fakeSample(idx: number): GpuSample {
   return {
@@ -219,4 +219,42 @@ test('WS: ping yields pong', async () => {
 
   const pong = messages.find((m) => m.type === 'pong');
   assert.ok(pong, 'no pong received');
+});
+
+test('WS: hello and ping host_info store hostname, LAN IPs and remote_addr', async () => {
+  const ws = connect(VALID_TOKEN, VALID_HOST_ID);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', resolve);
+      ws.on('error', reject);
+      setTimeout(() => reject(new Error('connect timeout')), 2000);
+    });
+    ws.send(JSON.stringify({
+      type: 'hello', host_id: VALID_HOST_ID, agent_version: '0.13.0', hostname: 'ignored-legacy',
+      host_info: { hostname: 'deb13', ips: ['192.168.32.209', 'not-an-ip', '10.0.0.300'] },
+    }));
+    await new Promise((r) => setTimeout(r, 150));
+    let row = HostsRepo.findById(VALID_HOST_ID)!;
+    assert.equal(row.hostname, 'deb13');
+    assert.equal(row.ips, JSON.stringify(['192.168.32.209']));
+    assert.equal(row.remote_addr, '127.0.0.1');
+
+    // A Docker agent without the /etc/hostname mount: hostname cleared.
+    ws.send(JSON.stringify({ type: 'ping', host_info: { hostname: null, ips: ['192.168.32.209', '192.168.40.2'] } }));
+    await new Promise((r) => setTimeout(r, 150));
+    row = HostsRepo.findById(VALID_HOST_ID)!;
+    assert.equal(row.hostname, null);
+    assert.equal(row.ips, JSON.stringify(['192.168.32.209', '192.168.40.2']));
+  } finally {
+    ws.close();
+  }
+});
+
+test('parseHostInfo / normalizeRemoteAddr: defensive parsing', () => {
+  assert.equal(parseHostInfo(null), null);
+  assert.equal(parseHostInfo({ hostname: 'x' }), null);
+  assert.deepEqual(parseHostInfo({ hostname: 'bad name\n', ips: ['1.2.3.4', '1.2.3.4', 5] }), { hostname: null, ips: ['1.2.3.4'] });
+  assert.equal(normalizeRemoteAddr('::ffff:192.168.1.5'), '192.168.1.5');
+  assert.equal(normalizeRemoteAddr('fe80::1'), 'fe80::1');
+  assert.equal(normalizeRemoteAddr('unknown'), null);
 });

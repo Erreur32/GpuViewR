@@ -71,6 +71,8 @@ services:
     # surfaces those), but CPU% stays empty.
     volumes:
       - /proc:/host/proc:ro
+      # Real host name for the API (the container id otherwise).
+      - /etc/hostname:/host/etc/hostname:ro
 
     environment:
       # Required — get these from the hub UI at enrollment time.

@@ -153,6 +153,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - /proc:/host/proc:ro
+      # Real host name for the API (the container id otherwise).
+      - /etc/hostname:/host/etc/hostname:ro
       # Uncomment + set OLLAMA_DIR in .env to enable Ollama model
       # resolution (see env block above):
       # - ${OLLAMA_DIR:-/usr/share/ollama/.ollama}:/host/ollama:ro
@@ -239,6 +241,8 @@ services:
     volumes:
       - /opt/rocm:/opt/rocm:ro
       - /proc:/host/proc:ro
+      # Real host name for the API (the container id otherwise).
+      - /etc/hostname:/host/etc/hostname:ro
       # Uncomment + set OLLAMA_DIR in .env to enable Ollama model
       # resolution. Typical paths: /usr/share/ollama/.ollama or
       # /root/.ollama (if ollama runs as root).

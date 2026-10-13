@@ -61,6 +61,11 @@ export interface HostRecord {
    *  cosmetic — identifies this host consistently across the fleet
    *  chart / host cards regardless of its position in the list. */
   color: string | null;
+  /** JSON array of the LAN IPv4s the agent reports (hello + pings),
+   *  NULL until an agent >= v0.13.0 connects. */
+  ips: string | null;
+  /** Address the agent's WebSocket came from, refreshed on every connect. */
+  remote_addr: string | null;
 }
 
 export interface HostInsertInput {
@@ -98,7 +103,9 @@ CREATE TABLE IF NOT EXISTS hosts (
   last_update_check_at       INTEGER,
   last_update_pushed_at      INTEGER,
   last_update_pushed_version TEXT,
-  color         TEXT
+  color         TEXT,
+  ips           TEXT,
+  remote_addr   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_hosts_status ON hosts(status);
@@ -179,6 +186,19 @@ export const HostsRepo = {
         id,
       );
     return this.findById(id);
+  },
+
+  /** Real hostname + LAN IPs from the agent. Writes only on change: pings
+   *  carry them every 15 s. */
+  setIdentity(id: string, hostname: string | null, ips: string[]): void {
+    const json = JSON.stringify(ips);
+    getDatabase()
+      .prepare('UPDATE hosts SET hostname = ?, ips = ? WHERE id = ? AND (hostname IS NOT ? OR ips IS NOT ?)')
+      .run(hostname, json, id, hostname, json);
+  },
+
+  setRemoteAddr(id: string, addr: string | null): void {
+    getDatabase().prepare('UPDATE hosts SET remote_addr = ? WHERE id = ?').run(addr, id);
   },
 
   delete(id: string): boolean {
