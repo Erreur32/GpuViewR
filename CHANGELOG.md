@@ -5,6 +5,19 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-10-18
+
+### Changed
+
+- **Dependencies**: express 5.3.0, express-rate-limit 8.7.1, mqtt 5.16.1, react and react-dom 19.3.1, postcss 8.5.30, vite 8.3.4, shell-quote and concurrently 10.0.6.
+- **Docker base image**: `node:22-trixie-slim` refreshed to the latest digest.
+- **CI**: `github/codeql-action` 3.38.3.
+- **Security**: `qs` 6.16.1 (transitive via express), fixes Snyk alerts #75 and #76.
+
+### Documentation
+
+- Docker agents: `/etc/hostname` mount and `AGENT_HOSTNAME` documented.
+
 ## [0.13.0] - 2026-10-13
 
 ### Added
