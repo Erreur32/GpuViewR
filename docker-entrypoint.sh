@@ -14,4 +14,8 @@ chown -R "${NODE_UID}:${NODE_GID}" /app/data 2>/dev/null || true
 find /app/data -type d -exec chmod 755 {} \; 2>/dev/null || true
 find /app/data -type f -exec chmod 644 {} \; 2>/dev/null || true
 
-exec gosu node "$@"
+# setpriv (util-linux) replaces gosu, whose Debian build carried a stale Go
+# stdlib. Unlike gosu it leaves HOME untouched, so set it from passwd.
+HOME=$(getent passwd node | cut -d: -f6)
+export HOME
+exec setpriv --reuid=node --regid=node --init-groups "$@"
