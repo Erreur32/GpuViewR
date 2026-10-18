@@ -127,9 +127,8 @@ toolkit: the hub still starts alone and tells you what to fix.
 it becomes admin.
 
 **Update:** `docker compose pull && docker compose up -d`. Docker agents
-installed before v0.13.0: add `- /etc/hostname:/host/etc/hostname:ro` under
-`volumes:` so the API reports the real machine name
-([agent compose](agent/README.md#docker-compose)).
+installed before v0.13.0 need one extra mount, see
+[Troubleshooting](Docs/INSTALL.md#troubleshooting).
 
 | Need | See |
 |---|---|
