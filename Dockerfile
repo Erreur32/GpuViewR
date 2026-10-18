@@ -48,7 +48,7 @@ FROM node:22-trixie-slim@sha256:154ba2f4d6fec323d28e4f4bb86bba4677f1223391a1979c
 WORKDIR /app
 
 # Runtime needs only the strict minimum:
-#  gosu             : drop privileges in entrypoint
+#  (setpriv from util-linux drops privileges in the entrypoint, already in the base image)
 #  tzdata           : honor TZ env var
 #  wget             : healthcheck probe
 #  ca-certificates  : outbound HTTPS for update checker
@@ -59,7 +59,6 @@ WORKDIR /app
 RUN apt-get update \
   && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends \
-    gosu \
     tzdata \
     wget \
     ca-certificates \

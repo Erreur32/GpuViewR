@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Hub image**: `gosu` replaced by `setpriv` (util-linux, already in the base image) to drop privileges in the entrypoint. The Debian `gosu` binary carried an outdated Go standard library, which raised 24 Snyk Container alerts. Behaviour is unchanged: the hub still runs as `node`.
+
 ## [0.13.1] - 2026-10-18
 
 ### Changed
