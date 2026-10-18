@@ -1,6 +1,4 @@
-release: v0.13.1 dependency refresh
+release: v0.13.2 replace gosu with setpriv in the hub image
 
-- Bump express, express-rate-limit, mqtt, react, vite, postcss, concurrently and shell-quote.
-- Refresh the node:22-trixie-slim base image digest.
-- Bump github/codeql-action to 3.38.3.
-- Document the /etc/hostname mount and AGENT_HOSTNAME for Docker agents.
+- Drop the Debian gosu package (outdated Go stdlib, 24 Snyk Container alerts).
+- The entrypoint now drops privileges with setpriv and sets HOME from passwd.
