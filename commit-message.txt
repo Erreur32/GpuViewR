@@ -1,4 +1,6 @@
-release: v0.13.2 replace gosu with setpriv in the hub image
+release: v0.13.3 node 22.23.4 base image (CVE-2026-111497)
 
-- Drop the Debian gosu package (outdated Go stdlib, 24 Snyk Container alerts).
-- The entrypoint now drops privileges with setpriv and sets HOME from passwd.
+- Hub and agent images now build on node:22-trixie-slim with Node.js 22.23.4.
+- Fixes the Brotli decoder out-of-bounds write (fetch() and Express 5 body parser).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
