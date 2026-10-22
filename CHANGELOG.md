@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Docker images (hub and agent)**: `node:22-trixie-slim` base image moved to the digest shipping Node.js 22.23.4, which fixes CVE-2026-111497 (out-of-bounds write in the Brotli decoder, reachable through `fetch()` and the Express 5 body parser). The images pin the base by digest, so a plain rebuild kept the vulnerable Node version.
+
 ## [0.13.2] - 2026-10-18
 
 ### Security

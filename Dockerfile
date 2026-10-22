@@ -9,7 +9,7 @@
 # Trixie (Debian 13, glibc 2.38) for the runtime stage so a bind-mounted
 # /opt/rocm with modern ABI requirements loads cleanly. Builder uses the
 # same base to keep native-module compilation environment identical.
-FROM --platform=$BUILDPLATFORM node:22-trixie-slim@sha256:154ba2f4d6fec323d28e4f4bb86bba4677f1223391a1979cf521304e03a98dfa AS builder
+FROM --platform=$BUILDPLATFORM node:22-trixie-slim@sha256:8eb619e402eaede1748a3c8173bffab391592812e85136452f781741c7242ddf AS builder
 
 WORKDIR /app
 
@@ -43,7 +43,7 @@ RUN npm prune --production && npm cache clean --force
 
 
 # ---------- Stage 2: Runtime ----------
-FROM node:22-trixie-slim@sha256:154ba2f4d6fec323d28e4f4bb86bba4677f1223391a1979cf521304e03a98dfa
+FROM node:22-trixie-slim@sha256:8eb619e402eaede1748a3c8173bffab391592812e85136452f781741c7242ddf
 
 WORKDIR /app
 
