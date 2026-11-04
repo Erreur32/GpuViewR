@@ -125,6 +125,7 @@
       "power": "Puissance",
       "fan": "Ventilateur",
       "fan_speed": "Ventilateur",
+      "fan_machine": "ventilateur machine, pas le GPU",
       "clock_gpu": "Fréquence GPU",
       "clock_mem": "Fréquence mémoire"
     },
