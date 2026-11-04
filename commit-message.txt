@@ -1,6 +1,5 @@
-release: v0.14.0 machine fan as a fallback when the GPU has none (Linux)
+release: v0.14.1 node base image digest and dependency updates
 
-- agent: readMachineFanPct() reads /sys/class/hwmon, skips GPU and drive
-  sensors, keeps the fastest spinning fan in %
-- agent: GPU samples with no fan get it, flagged fan_source "machine"
-- ui: Fan gauge and System page show "machine fan, not the GPU"
+- Docker: node:22-trixie-slim latest digest for hub and agent
+- deps: body-parser, ip-address, npm-minor-patch group, fast-uri, serialize-javascript
+- CI: codeql-action 3.39.1, docker/login-action 4.7.0, scorecard-action 2.5.0
