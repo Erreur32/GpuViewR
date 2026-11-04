@@ -5,6 +5,11 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-11-04
+
+### Added
+
+- **Machine fan as a fallback on Linux**: when the GPU reports no fan of its own (APU such as Strix Halo, passive or laptop card), the agent reads the machine fans from `/sys/class/hwmon` (motherboard chips such as nct6775 or it87; GPU and drive sensors are skipped) and shows the fastest one in the Fan gauge, flagged "machine fan, not the GPU". Duty comes from `pwmN` (or `fanN_input` against `fanN_max`); headers at 0 RPM count as unwired. History and fan alerts use that value like the card's fan. New optional sample field `fan_source: "machine"`. Tested on fixtures only: machines that expose no fan (Jarvis) keep N/A.
 ## [0.13.4] - 2026-11-04
 
 ### Fixed

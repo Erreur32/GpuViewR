@@ -184,7 +184,7 @@ Your reports are what moves those forward: open an
 | macOS process list | Planned, needs a Mac to build against | Same capture as above |
 | Hub on macOS (Docker Desktop) | Aggregator only, untested | Report whether it starts and receives agents |
 | Hub on Windows (Docker Desktop / WSL2) | Untested | Same |
-| Machine fan as a fallback when the GPU has none (Linux) | Idea | Tell us if you'd use it |
+| Machine fan as a fallback when the GPU has none, Linux (v0.14.0) | Tested on fixtures only | Report the Fan gauge ("machine fan, not the GPU") against `sensors` |
 | Filesystem handshake (replaces the sidecar bootstrap secret) | Planned | |
 | Roles and permissions (RBAC) | Planned | |
 
