@@ -1,6 +1,6 @@
-release: v0.13.3 node 22.23.4 base image (CVE-2026-111497)
+release: v0.14.0 machine fan as a fallback when the GPU has none (Linux)
 
-- Hub and agent images now build on node:22-trixie-slim with Node.js 22.23.4.
-- Fixes the Brotli decoder out-of-bounds write (fetch() and Express 5 body parser).
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+- agent: readMachineFanPct() reads /sys/class/hwmon, skips GPU and drive
+  sensors, keeps the fastest spinning fan in %
+- agent: GPU samples with no fan get it, flagged fan_source "machine"
+- ui: Fan gauge and System page show "machine fan, not the GPU"

@@ -279,7 +279,8 @@ export function createAmdgpuSysfsCollector(opts: SysfsGpuCollectorOptions): Sysf
   const amdgpuModulePath = opts.amdgpuModulePath ?? '/sys/module/amdgpu';
 
   async function ensureDiscovery(): Promise<CardMeta[]> {
-    if (cards !== null) return cards;
+    // An empty result is not cached: at boot amdgpu can bind after the agent starts (seen on Jarvis).
+    if (cards !== null && cards.length > 0) return cards;
     cards = await discoverAmdgpuCards(opts.sysClassDrm);
     driverVersion = await readDriverVersion(amdgpuModulePath);
     return cards;

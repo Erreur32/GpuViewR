@@ -26,6 +26,8 @@ export interface GpuSample {
   temp_limit?: number | null;
   /** AMD APU: memory figures are VRAM + GTT. */
   memory_shared?: boolean;
+  /** fan_speed comes from the machine fan, not the GPU (APU, passive card). */
+  fan_source?: 'machine';
   timestamp: string;
   timestamp_epoch: number;
 }
