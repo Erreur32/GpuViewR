@@ -125,6 +125,7 @@
       "power": "Power",
       "fan": "Fan",
       "fan_speed": "Fan speed",
+      "fan_machine": "machine fan, not the GPU",
       "clock_gpu": "Core Clock",
       "clock_mem": "Memory Clock"
     },

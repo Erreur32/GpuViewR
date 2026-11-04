@@ -4,6 +4,7 @@
 // both binaries and prefers whichever responds first.
 
 import { spawnSync } from "node:child_process";
+import { dirname, join } from "node:path";
 import { loadConfig, type AgentConfig, type GpuVendor } from "./config.js";
 import { logger } from "./logger.js";
 import { AGENT_VERSION, createTransport, INSTALL_MODE } from "./transport.js";
@@ -21,6 +22,7 @@ import {
 } from "./collectors/processes.js";
 import { amdgpuBusIds, createRocmProcessCollector } from "./collectors/processesRocm.js";
 import { createIntelGpuCollector } from "./collectors/gpuIntel.js";
+import { readMachineFanPct } from "./collectors/machineFan.js";
 import { INTEL_DRIVERS } from "./collectors/processesAmdgpuFdinfo.js";
 import { createPdhProcessCollector } from "./collectors/processesWindowsPdh.js";
 import {
@@ -128,6 +130,23 @@ transport.onHubConfig((hubIndex, payload) => {
   logger.info("llm", `hub config: ${c?.rules.length ?? 0} naming rule(s), ${c?.endpoints.length ?? 0} endpoint(s)${c?.manifestsDir ? `, manifests ${c.manifestsDir}` : ""}`);
 });
 
+const machineHwmonRoot = join(dirname(config.sysClassDrm), "hwmon");
+
+/** GPU samples → hub. Linux: a GPU without its own fan gets the machine
+ *  fan, flagged `fan_source: "machine"` so the UI says it is not the GPU's. */
+type GpuSamples = Parameters<typeof transport.enqueueSample>[0];
+
+async function withMachineFan(samples: GpuSamples): Promise<GpuSamples> {
+  if (process.platform !== "linux" || !samples.some((s) => s.fan_speed === null)) return samples;
+  const pct = await readMachineFanPct(machineHwmonRoot);
+  if (pct === null) return samples;
+  return samples.map((s) => (s.fan_speed === null ? { ...s, fan_speed: pct, fan_source: "machine" as const } : s));
+}
+
+function enqueueGpuSamples(samples: GpuSamples): void {
+  void withMachineFan(samples).then((s) => transport.enqueueSample(s));
+}
+
 /** Collector snapshot → hub, with what the LLM servers report merged in. */
 function sendProcesses(snap: ProcessSnapshot): void {
   transport.enqueueProcesses(llmProbe.enrich(snap.processes), snap.visibility);
@@ -173,7 +192,7 @@ if (config.features.gpu) {
         );
         gpuHandle = createPdhGpuCollector({
           tickMs: config.tickMs,
-          onSample: (samples) => transport.enqueueSample(samples),
+          onSample: enqueueGpuSamples,
         });
         windowsPdhGpu = true;
         if (gpuHandle.available()) {
@@ -315,13 +334,13 @@ async function buildGpuCollector(
   if (process.platform === "win32" && v === "amd") {
     return createPdhGpuCollector({
       tickMs: cfg.tickMs,
-      onSample: (samples) => transport.enqueueSample(samples),
+      onSample: enqueueGpuSamples,
     });
   }
   if (v === "apple") {
     return createMacosPowermetricsCollector({
       tickMs: cfg.tickMs,
-      onSample: (samples) => transport.enqueueSample(samples),
+      onSample: enqueueGpuSamples,
     });
   }
   if (v === "amd") return buildAmdGpuCollector(cfg);
@@ -330,7 +349,7 @@ async function buildGpuCollector(
       sysClassDrm: cfg.sysClassDrm,
       hostProc: cfg.hostProc,
       tickMs: cfg.tickMs,
-      onSample: (samples) => transport.enqueueSample(samples),
+      onSample: enqueueGpuSamples,
     });
     const count = await intel.discover();
     logger.info("boot", `Intel backend: sysfs + DRM fdinfo (${count} card${count === 1 ? "" : "s"} via ${cfg.sysClassDrm})`);
@@ -340,7 +359,7 @@ async function buildGpuCollector(
     nvidiaSmiPath: cfg.nvidiaSmiPath,
     tickMs: cfg.tickMs,
     pcieTickMs: cfg.pcieTickMs,
-    onSample: (samples) => transport.enqueueSample(samples),
+    onSample: enqueueGpuSamples,
   });
 }
 
@@ -359,8 +378,7 @@ const SYSFS_BOOT_RETRY_MS = 5_000;
 async function buildAmdGpuCollector(
   cfg: AgentConfig,
 ): Promise<GpuCollectorHandle> {
-  const onSample = (samples: Parameters<typeof transport.enqueueSample>[0]) =>
-    transport.enqueueSample(samples);
+  const onSample = enqueueGpuSamples;
 
   if (cfg.gpuBackend === "rocm-smi") {
     logger.info(

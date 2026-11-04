@@ -242,6 +242,7 @@ export default function Dashboard() {
           label={t("dashboard.metrics.fan")}
           value={active.fan_speed ?? 0}
           displayValue={sensorMissing("fan", active) ? "N/A" : undefined}
+          displaySubValue={active.fan_source === "machine" ? t("dashboard.metrics.fan_machine") : undefined}
           unit="%"
           max={100}
           warn={75}
