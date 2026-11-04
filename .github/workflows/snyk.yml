@@ -15,6 +15,9 @@ permissions: {}
 # CodeQL already covers SAST, so only dependencies and the image are scanned.
 jobs:
   snyk-deps:
+    # shortcut: skipped on Dependabot PRs, their secret store holds a stale SNYK_TOKEN (401);
+    # remove once `gh secret set SNYK_TOKEN --app dependabot` is done.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -45,6 +48,9 @@ jobs:
         run: test -s snyk-deps.sarif || { echo "::error::Snyk Open Source produced no SARIF, check SNYK_TOKEN and the scan step log"; exit 1; }
 
   snyk-docker:
+    # shortcut: skipped on Dependabot PRs, their secret store holds a stale SNYK_TOKEN (401);
+    # remove once `gh secret set SNYK_TOKEN --app dependabot` is done.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
