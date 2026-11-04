@@ -5,6 +5,14 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-11-04
+
+### Changed
+
+- **Docker base image (hub and agent)**: `node:22-trixie-slim` refreshed to the latest digest.
+- **Dependencies**: body-parser 2.4.0, ip-address 10.7.6, express-rate-limit 8.7.2, react-router-dom 7.18.5, ws 8.22.1, zustand 5.0.16, autoprefixer 10.6.2, postcss 8.5.32, vite 8.3.5; dev: fast-uri 3.1.9, serialize-javascript 7.1.4.
+- **CI**: `github/codeql-action` 3.39.1, `docker/login-action` 4.7.0, `ossf/scorecard-action` 2.5.0. Snyk jobs are skipped on Dependabot PRs until their token is renewed.
+
 ## [0.14.0] - 2026-11-04
 
 ### Added
