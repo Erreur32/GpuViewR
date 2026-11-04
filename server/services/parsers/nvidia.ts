@@ -53,6 +53,8 @@ export interface GpuSample {
   /** AMD APU: memory_used / memory_total are VRAM + GTT (system RAM the
    *  GPU maps), since ROCm puts model weights in GTT there. */
   memory_shared?: boolean;
+  /** Set by the agent when fan_speed is the machine fan (the GPU has none). */
+  fan_source?: 'machine';
   timestamp: string;
   timestamp_epoch: number;
 }

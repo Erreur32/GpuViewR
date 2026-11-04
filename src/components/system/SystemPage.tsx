@@ -36,6 +36,7 @@ type SystemInfo = Readonly<{
     utilization: number | null;
     power: number;
     fan_speed: number | null;
+    fan_source?: 'machine';
     clock_graphics: number | null;
     clock_memory: number | null;
     pci_bus_id: string | null;
@@ -269,7 +270,7 @@ export default function SystemPage() {
                   }
                   // Live readings, second line under the title.
                   const liveMeta: string[] = [`${g.temperature.toFixed(0)}°C`, `${g.power.toFixed(0)} W`];
-                  if (g.fan_speed !== null) liveMeta.push(`fan ${g.fan_speed.toFixed(0)}%`);
+                  if (g.fan_speed !== null) liveMeta.push(`fan ${g.fan_speed.toFixed(0)}%${g.fan_source === "machine" ? " (machine)" : ""}`);
                   if (g.clock_graphics !== null) liveMeta.push(`GR ${g.clock_graphics} MHz`);
                   if (g.clock_memory !== null) liveMeta.push(`MEM ${g.clock_memory} MHz`);
                   if (g.pci_bus_id) liveMeta.push(g.pci_bus_id);
