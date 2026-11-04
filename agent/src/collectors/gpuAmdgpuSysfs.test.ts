@@ -170,6 +170,24 @@ test('sysfs collector: available() reports false when no amdgpu card found', asy
   assert.equal(handle.available(), false);
 });
 
+test('sysfs collector: an empty discovery is retried once the card appears (boot race)', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'gpuviewr-sysfs-late-'));
+  const sysClassDrm = join(root, 'sys', 'class', 'drm');
+  await mkdir(sysClassDrm, { recursive: true });
+  const handle = createAmdgpuSysfsCollector({
+    sysClassDrm,
+    amdgpuModulePath: join(root, 'sys', 'module', 'amdgpu'),
+    tickMs: 60_000,
+    onSample: () => { /* unused */ },
+  });
+  assert.equal(await handle.discover(), 0);
+  const dev = join(sysClassDrm, 'card0', 'device');
+  await mkdir(dev, { recursive: true });
+  await writeFile(join(dev, 'uevent'), 'DRIVER=amdgpu\nPCI_ID=1002:1586\nPCI_SLOT_NAME=0000:c5:00.0\n');
+  assert.equal(await handle.discover(), 1);
+  assert.equal(handle.available(), true);
+});
+
 test('sysfs collector: hwmon symlink path also works (real-world layout)', async () => {
   // Real /sys often exposes hwmon dirs via symlinks; pickHwmonDir must
   // follow them. node's readdir returns the link name; readFile follows.

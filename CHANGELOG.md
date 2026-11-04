@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.4] - 2026-11-04
+
+### Fixed
+
+- **AMD agent started at boot showed no GPU**: when the systemd agent started in the same second as the amdgpu driver (seen on a Strix Halo host after a reboot), `/sys/class/drm` had no card yet, the agent fell back to `rocm-smi` for good and `rocm-smi` failed with "Driver not initialized". The host stayed without GPU data and the agent spawned `rocm-smi` every second (about 6 % of a core instead of about 1 %). The agent now retries sysfs for 30 s before falling back, and an empty sysfs discovery is no longer cached, so a late card is picked up.
+
 ## [0.13.3] - 2026-10-22
 
 ### Security
