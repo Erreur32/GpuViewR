@@ -344,6 +344,9 @@ async function buildGpuCollector(
   });
 }
 
+const SYSFS_BOOT_RETRIES = 6;
+const SYSFS_BOOT_RETRY_MS = 5_000;
+
 /** AMD backend selection. `sysfs` is preferred (~µs per tick vs
  *  ~80-130 ms for rocm-smi); `rocm-smi` stays as a fallback for hosts
  *  where /sys/class/drm is masked or empty (rare in containers with
@@ -376,7 +379,14 @@ async function buildAmdGpuCollector(
     tickMs: cfg.tickMs,
     onSample,
   });
-  const cards = await sysfs.discover();
+  let cards = await sysfs.discover();
+  // amdgpu can finish binding a few seconds after the unit starts at boot:
+  // retry before falling back to rocm-smi, which then fails for good.
+  if (cards === 0) logger.info("boot", `AMD backend: no amdgpu card in sysfs yet, retrying for ${(SYSFS_BOOT_RETRIES * SYSFS_BOOT_RETRY_MS) / 1000}s`);
+  for (let i = 0; cards === 0 && i < SYSFS_BOOT_RETRIES; i++) {
+    await new Promise((r) => setTimeout(r, SYSFS_BOOT_RETRY_MS));
+    cards = await sysfs.discover();
+  }
   if (cards > 0) {
     logger.info(
       "boot",
