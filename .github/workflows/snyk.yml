@@ -36,7 +36,7 @@ jobs:
           args: --severity-threshold=high --sarif-file-output=snyk-deps.sarif
 
       - name: Upload Snyk dependency results to GitHub
-        uses: github/codeql-action/upload-sarif@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        uses: github/codeql-action/upload-sarif@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
         if: always() && hashFiles('snyk-deps.sarif') != ''
         with:
           sarif_file: snyk-deps.sarif
@@ -73,7 +73,7 @@ jobs:
           args: --severity-threshold=high --exclude-base-image-vulns --sarif-file-output=snyk-docker.sarif
 
       - name: Upload Snyk Docker results to GitHub
-        uses: github/codeql-action/upload-sarif@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        uses: github/codeql-action/upload-sarif@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
         if: always() && hashFiles('snyk-docker.sarif') != ''
         with:
           sarif_file: snyk-docker.sarif
