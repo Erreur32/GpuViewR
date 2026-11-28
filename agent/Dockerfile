@@ -6,7 +6,7 @@
 #   docker build -f agent/Dockerfile -t gpuviewr-agent .
 
 # ---------- Stage 1: bundle ----------
-FROM node:22-trixie-slim@sha256:2117f713a417f3aff682ac8f5bc2ebbdf1beed51f36e67ab1e0fd3866b6d2d8f AS builder
+FROM node:22-trixie-slim@sha256:f0960f8dc047f358e3fb428f36ccba21732194fa5f0cac849f401e63e62fb9e6 AS builder
 
 WORKDIR /build
 
@@ -57,7 +57,7 @@ RUN npm prune --production && npm cache clean --force
 # nvidia-smi still comes from the host via the NVIDIA Container Toolkit
 # (`docker run --gpus all`); rocm-smi via a `/opt/rocm` bind-mount —
 # see docker-compose.agent.amd.yml.
-FROM node:22-trixie-slim@sha256:2117f713a417f3aff682ac8f5bc2ebbdf1beed51f36e67ab1e0fd3866b6d2d8f
+FROM node:22-trixie-slim@sha256:f0960f8dc047f358e3fb428f36ccba21732194fa5f0cac849f401e63e62fb9e6
 
 WORKDIR /app
 

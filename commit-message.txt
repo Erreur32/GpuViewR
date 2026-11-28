@@ -1,3 +1,4 @@
 release: v0.14.2 installed app icon matches the favicon
 
 - PWA icons (192, 512, maskable) regenerated from logo.png, replacing the blue placeholder
+- Docker: node:22-trixie-slim digest with Node 22.23.5 (security release) for hub and agent

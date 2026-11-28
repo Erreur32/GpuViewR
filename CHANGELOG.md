@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.14.2] - 2026-11-28
 
+### Security
+
+- **Docker base image (hub and agent)**: `node:22-trixie-slim` refreshed to the digest shipping Node 22.23.5 (November 2026 Node.js security releases; Snyk Container reported one critical and several high issues on 22.23.4).
+
 ### Fixed
 
 - **Installed app icon**: the PWA icons (also used as the iOS home screen icon) were a generic blue placeholder; they now show the same GR logo as the browser favicon. An already installed app may keep the old icon until it is reinstalled.
