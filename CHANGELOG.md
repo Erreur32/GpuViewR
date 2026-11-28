@@ -5,6 +5,12 @@ All notable changes to GpuViewR are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] - 2026-11-28
+
+### Fixed
+
+- **Installed app icon**: the PWA icons (also used as the iOS home screen icon) were a generic blue placeholder; they now show the same GR logo as the browser favicon. An already installed app may keep the old icon until it is reinstalled.
+
 ## [0.14.1] - 2026-11-04
 
 ### Changed
